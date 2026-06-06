@@ -7,7 +7,7 @@ import ParkCard from "@/components/ParkCard";
 export default function Home() {
   const [search, setSearch] = useState("");
   const filteredParks = parks.filter((park) =>
-    park.name.toLowerCase().includes(search.toLowerCase())
+    `${park.name} ${park.address}`.toLowerCase().includes(search.toLowerCase())
   );
   return (
     <main className="p-8">
@@ -20,7 +20,7 @@ export default function Home() {
           onChange={(e) => setSearch(e.target.value)}
           className="border p-2 rounded w-full max-w-md"
         />
-        {filteredParks.slice(0, 200).map((park) => (
+        {filteredParks.slice(0, 20000).map((park) => (
           <li key={park.id}>
             <ParkCard park={park} />
           </li>
