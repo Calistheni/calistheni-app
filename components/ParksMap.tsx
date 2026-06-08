@@ -65,6 +65,7 @@ export default function ParksMap() {
             id: park.id,
             name: park.name,
             address: park.address,
+            equipment: park.equipment,
           },
           geometry: {
             type: "Point",
@@ -190,16 +191,111 @@ export default function ParksMap() {
         const coordinates = (feature.geometry as GeoJSON.Point).coordinates;
 
         const props = feature.properties;
+        const equipment = JSON.parse(
+          (props?.equipment as string) ?? "[]"
+        ) as string[];
 
-        new mapboxgl.Popup({ closeButton: false, offset: 25 })
+        const visibleEquipment = equipment.slice(0, 2);
+        const hiddenEquipment = equipment.slice(2);
+
+        const equipmentHtml = `
+  <div style="
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    margin-top:10px;
+  ">
+    ${visibleEquipment
+      .map(
+        (item) => `
+          <span style="
+            background:#374151;
+            color:white;
+            border-radius:6px;
+            padding:4px 8px;
+            font-size:11px;
+          ">
+            ${item}
+          </span>
+        `
+      )
+      .join("")}
+
+      ${
+        hiddenEquipment.length > 0
+          ? `
+            <button
+              id="show-more-equipment"
+              style="
+                background:#111827;
+                color:white;
+                border:none;
+                border-radius:6px;
+                padding:4px 8px;
+                cursor:pointer;
+                font-size:11px;
+              "
+            >
+              +${hiddenEquipment.length}
+            </button>
+          `
+          : ""
+      }
+  </div>
+`;
+
+        const popup = new mapboxgl.Popup({
+          closeButton: false,
+          offset: 25,
+        })
           .setLngLat(coordinates as [number, number])
           .setHTML(
             `
             <h3>${props?.name}</h3>
             <p>${props?.address}</p>
+          
+            ${equipmentHtml}
           `
           )
           .addTo(map);
+
+        setTimeout(() => {
+          const btn = document.getElementById("show-more-equipment");
+
+          if (!btn) return;
+
+          btn.addEventListener("click", () => {
+            const allEquipmentHtml = equipment
+              .map(
+                (item) => `
+                    <span style="
+                      background:#1f2937;
+                      color:white;
+                      border-radius:6px;
+                      padding:4px 8px;
+                      font-size:11px;
+                    ">
+                      ${item}
+                    </span>
+                  `
+              )
+              .join("");
+
+            popup.setHTML(`
+                <h3>${props?.name}</h3>
+                <p>${props?.address}</p>
+          
+                <div style="
+                  display:flex;
+                  flex-wrap:wrap;
+                  gap:6px;
+                  margin-top:10px;
+                ">
+                  ${allEquipmentHtml}
+                </div>
+              `);
+          });
+        }, 0);
       });
     });
 
