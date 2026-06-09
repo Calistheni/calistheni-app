@@ -16,6 +16,7 @@ type ParksMapProps = {
 export default function ParksMap({ selectedPark }: ParksMapProps) {
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
 
   function getInitialLightPreset(): "dawn" | "day" | "dusk" | "night" {
     const hour = new Date().getHours();
@@ -26,7 +27,6 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
 
     return "night";
   }
-
   const [lightPreset, setLightPreset] = useState<
     "dawn" | "day" | "dusk" | "night"
   >(getInitialLightPreset);
@@ -38,6 +38,83 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
     lightPreset === "day" || lightPreset === "dawn"
       ? "#22d3ee" // cyan
       : "#ef4444"; // red
+
+  function openParkPopup(map: mapboxgl.Map, park: Park): mapboxgl.Popup {
+    const equipment = park.equipment;
+
+    const renderBadge = (item: string) => `
+          <span style="
+            background:#374151;
+            color:white;
+            border-radius:6px;
+            padding:4px 8px;
+            font-size:11px;
+          ">
+            ${item}
+          </span>
+        `;
+
+    const renderPopup = (expanded = false) => {
+      const visibleEquipment = expanded ? equipment : equipment.slice(0, 2);
+
+      const hiddenCount = equipment.length - visibleEquipment.length;
+
+      return `
+            <h3>${park.name}</h3>
+            <p>${park.address}</p>
+      
+            <div style="
+              display:flex;
+              flex-wrap:wrap;
+              gap:6px;
+              margin-top:10px;
+            ">
+              ${visibleEquipment.map(renderBadge).join("")}
+      
+              ${
+                !expanded && hiddenCount > 0
+                  ? `
+                    <button
+                      id="show-more-equipment"
+                      style="
+                        background:#374151;
+                        color:white;
+                        border:none;
+                        border-radius:6px;
+                        padding:4px 8px;
+                        cursor:pointer;
+                        font-size:11px;
+                      "
+                    >
+                      +${hiddenCount}
+                    </button>
+                  `
+                  : ""
+              }
+            </div>
+          `;
+    };
+
+    const popup = new mapboxgl.Popup({
+      closeButton: false,
+      offset: 25,
+    })
+      .setLngLat([park.lon, park.lat])
+      .setHTML(renderPopup(false))
+      .addTo(map);
+
+    setTimeout(() => {
+      const btn = document.getElementById("show-more-equipment");
+
+      if (!btn) return;
+
+      btn.addEventListener("click", () => {
+        popup.setHTML(renderPopup(true));
+      });
+    }, 0);
+    popupRef.current = popup;
+    return popup;
+  }
   useEffect(() => {
     if (!mapContainer.current) return;
     console.log(lightPreset, markerColor);
@@ -196,82 +273,13 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
 
         if (!feature) return;
 
-        const coordinates = (feature.geometry as GeoJSON.Point).coordinates;
+        const park = parks.find((p) => p.id === Number(feature.properties?.id));
 
-        const props = feature.properties;
-        const equipment = JSON.parse(
-          (props?.equipment as string) ?? "[]"
-        ) as string[];
-        const renderBadge = (item: string) => `
-        <span style="
-          background:#374151;
-          color:white;
-          border-radius:6px;
-          padding:4px 8px;
-          font-size:11px;
-        ">
-          ${item}
-        </span>
-      `;
+        if (!park) return;
 
-        const renderPopup = (expanded = false) => {
-          const visibleEquipment = expanded ? equipment : equipment.slice(0, 2);
+        popupRef.current?.remove();
 
-          const hiddenCount = equipment.length - visibleEquipment.length;
-
-          return `
-          <h3>${props?.name}</h3>
-          <p>${props?.address}</p>
-      
-          <div style="
-            display:flex;
-            flex-wrap:wrap;
-            gap:6px;
-            margin-top:10px;
-          ">
-            ${visibleEquipment.map(renderBadge).join("")}
-      
-            ${
-              !expanded && hiddenCount > 0
-                ? `
-                  <button
-                    id="show-more-equipment"
-                    style="
-                      background:#374151;
-                      color:white;
-                      border:none;
-                      border-radius:6px;
-                      padding:4px 8px;
-                      cursor:pointer;
-                      font-size:11px;
-                    "
-                  >
-                    +${hiddenCount}
-                  </button>
-                `
-                : ""
-            }
-          </div>
-        `;
-        };
-
-        const popup = new mapboxgl.Popup({
-          closeButton: false,
-          offset: 25,
-        })
-          .setLngLat(coordinates as [number, number])
-          .setHTML(renderPopup(false))
-          .addTo(map);
-
-        setTimeout(() => {
-          const btn = document.getElementById("show-more-equipment");
-
-          if (!btn) return;
-
-          btn.addEventListener("click", () => {
-            popup.setHTML(renderPopup(true));
-          });
-        }, 0);
+        popupRef.current = openParkPopup(map, park);
       });
     });
 
@@ -300,10 +308,16 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
   useEffect(() => {
     if (!selectedPark || !mapRef.current) return;
 
+    popupRef.current?.remove();
+
     mapRef.current.flyTo({
       center: [selectedPark.lon, selectedPark.lat],
       zoom: 17,
       duration: 1500,
+    });
+
+    mapRef.current.once("moveend", () => {
+      popupRef.current = openParkPopup(mapRef.current!, selectedPark);
     });
   }, [selectedPark]);
 
