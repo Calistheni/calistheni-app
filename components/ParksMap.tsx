@@ -3,11 +3,19 @@
 import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import { parks } from "@/lib/parks-data";
+import { Button } from "@/components/ui/button";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
 
-export default function ParksMap() {
+import type { Park } from "@/types/park";
+
+type ParksMapProps = {
+  selectedPark: Park | null;
+};
+
+export default function ParksMap({ selectedPark }: ParksMapProps) {
   const mapContainer = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
 
   function getInitialLightPreset(): "dawn" | "day" | "dusk" | "night" {
     const hour = new Date().getHours();
@@ -55,7 +63,7 @@ export default function ParksMap() {
       bearing: -20,
       attributionControl: false,
     });
-
+    mapRef.current = map;
     map.on("load", () => {
       const geojson: GeoJSON.FeatureCollection = {
         type: "FeatureCollection",
@@ -194,69 +202,65 @@ export default function ParksMap() {
         const equipment = JSON.parse(
           (props?.equipment as string) ?? "[]"
         ) as string[];
+        const renderBadge = (item: string) => `
+        <span style="
+          background:#374151;
+          color:white;
+          border-radius:6px;
+          padding:4px 8px;
+          font-size:11px;
+        ">
+          ${item}
+        </span>
+      `;
 
-        const visibleEquipment = equipment.slice(0, 2);
-        const hiddenEquipment = equipment.slice(2);
+        const renderPopup = (expanded = false) => {
+          const visibleEquipment = expanded ? equipment : equipment.slice(0, 2);
 
-        const equipmentHtml = `
-  <div style="
-    display:flex;
-    flex-wrap:wrap;
-    gap:6px;
-    margin-top:10px;
-  ">
-    ${visibleEquipment
-      .map(
-        (item) => `
-          <span style="
-            background:#374151;
-            color:white;
-            border-radius:6px;
-            padding:4px 8px;
-            font-size:11px;
+          const hiddenCount = equipment.length - visibleEquipment.length;
+
+          return `
+          <h3>${props?.name}</h3>
+          <p>${props?.address}</p>
+      
+          <div style="
+            display:flex;
+            flex-wrap:wrap;
+            gap:6px;
+            margin-top:10px;
           ">
-            ${item}
-          </span>
-        `
-      )
-      .join("")}
-
-      ${
-        hiddenEquipment.length > 0
-          ? `
-            <button
-              id="show-more-equipment"
-              style="
-                background:#111827;
-                color:white;
-                border:none;
-                border-radius:6px;
-                padding:4px 8px;
-                cursor:pointer;
-                font-size:11px;
-              "
-            >
-              +${hiddenEquipment.length}
-            </button>
-          `
-          : ""
-      }
-  </div>
-`;
+            ${visibleEquipment.map(renderBadge).join("")}
+      
+            ${
+              !expanded && hiddenCount > 0
+                ? `
+                  <button
+                    id="show-more-equipment"
+                    style="
+                      background:#374151;
+                      color:white;
+                      border:none;
+                      border-radius:6px;
+                      padding:4px 8px;
+                      cursor:pointer;
+                      font-size:11px;
+                    "
+                  >
+                    +${hiddenCount}
+                  </button>
+                `
+                : ""
+            }
+          </div>
+        `;
+        };
 
         const popup = new mapboxgl.Popup({
           closeButton: false,
           offset: 25,
         })
           .setLngLat(coordinates as [number, number])
-          .setHTML(
-            `
-            <h3>${props?.name}</h3>
-            <p>${props?.address}</p>
-          
-            ${equipmentHtml}
-          `
-          )
+          .setHTML(renderPopup(false))
           .addTo(map);
 
         setTimeout(() => {
@@ -265,35 +269,7 @@ export default function ParksMap() {
           if (!btn) return;
 
           btn.addEventListener("click", () => {
-            const allEquipmentHtml = equipment
-              .map(
-                (item) => `
-                    <span style="
-                      background:#1f2937;
-                      color:white;
-                      border-radius:6px;
-                      padding:4px 8px;
-                      font-size:11px;
-                    ">
-                      ${item}
-                    </span>
-                  `
-              )
-              .join("");
-
-            popup.setHTML(`
-                <h3>${props?.name}</h3>
-                <p>${props?.address}</p>
-          
-                <div style="
-                  display:flex;
-                  flex-wrap:wrap;
-                  gap:6px;
-                  margin-top:10px;
-                ">
-                  ${allEquipmentHtml}
-                </div>
-              `);
+            popup.setHTML(renderPopup(true));
           });
         }, 0);
       });
@@ -321,56 +297,46 @@ export default function ParksMap() {
     return () => map.remove();
   }, [lightPreset, theme]);
 
+  useEffect(() => {
+    if (!selectedPark || !mapRef.current) return;
+
+    mapRef.current.flyTo({
+      center: [selectedPark.lon, selectedPark.lat],
+      zoom: 17,
+      duration: 1500,
+    });
+  }, [selectedPark]);
+
   return (
     <>
       <div className="flex flex-wrap gap-2 mb-4">
-        <button
-          onClick={() => setLightPreset("dawn")}
-          className="px-3 py-2 rounded bg-gray-700"
-        >
+        <Button variant="secondary" onClick={() => setLightPreset("dawn")}>
           ☀️ Dawn
-        </button>
-        <button
-          onClick={() => setLightPreset("day")}
-          className="px-3 py-2 rounded bg-gray-700"
-        >
+        </Button>
+
+        <Button variant="secondary" onClick={() => setLightPreset("day")}>
           ☀️ Day
-        </button>
+        </Button>
 
-        <button
-          onClick={() => setLightPreset("dusk")}
-          className="px-3 py-2 rounded bg-gray-700"
-        >
+        <Button variant="secondary" onClick={() => setLightPreset("dusk")}>
           🌆 Dusk
-        </button>
+        </Button>
 
-        <button
-          onClick={() => setLightPreset("night")}
-          className="px-3 py-2 rounded bg-gray-700"
-        >
+        <Button variant="secondary" onClick={() => setLightPreset("night")}>
           🌙 Night
-        </button>
+        </Button>
 
-        <button
-          onClick={() => setTheme("default")}
-          className="px-3 py-2 rounded bg-gray-700"
-        >
+        <Button variant="secondary" onClick={() => setTheme("default")}>
           Default
-        </button>
+        </Button>
 
-        <button
-          onClick={() => setTheme("faded")}
-          className="px-3 py-2 rounded bg-gray-700"
-        >
+        <Button variant="secondary" onClick={() => setTheme("faded")}>
           Faded
-        </button>
+        </Button>
 
-        <button
-          onClick={() => setTheme("monochrome")}
-          className="px-3 py-2 rounded bg-gray-700"
-        >
+        <Button variant="secondary" onClick={() => setTheme("monochrome")}>
           Monochrome
-        </button>
+        </Button>
       </div>
 
       <div ref={mapContainer} className="w-full h-[600px] rounded-lg" />
