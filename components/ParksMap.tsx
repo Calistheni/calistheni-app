@@ -129,8 +129,16 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
           theme,
 
           show3dObjects: true,
+          show3dBuildings: true,
+          show3dTrees: true,
+
           showPointOfInterestLabels: false,
           showTransitLabels: false,
+
+          showRoadLabels: true,
+          showPlaceLabels: true,
+
+          showPedestrianRoads: true,
         },
       },
 
