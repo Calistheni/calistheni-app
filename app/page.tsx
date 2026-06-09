@@ -45,7 +45,7 @@ export default function Home() {
         {filteredParks.slice(0, 10).map((park) => (
           <li key={park.id}>
             <button
-              className="w-full text-left"
+              className="w-full text-left hover:cursor-pointer"
               onClick={() => setSelectedPark(park)}
             >
               <ParkCard park={park} />
