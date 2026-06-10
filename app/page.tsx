@@ -34,7 +34,7 @@ export default function Home() {
         <CardContent>
           <Input
             type="text"
-            placeholder="Search countries, cities, equipment"
+            placeholder="Search for countries, cities, equipment"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
