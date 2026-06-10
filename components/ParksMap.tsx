@@ -210,9 +210,12 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
     return popup;
   }
 
-  const [showLocationDialog, setShowLocationDialog] = useState(true);
+  const [showLocationDialog, setShowLocationDialog] = useState(() => {
+    if (typeof window === "undefined") return false;
+
+    return !localStorage.getItem("location-allowed");
+  });
   const enableLocation = () => {
-    localStorage.setItem("location-prompt-seen", "true");
     setShowLocationDialog(false);
 
     setTimeout(() => {
@@ -410,6 +413,8 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
 
     geolocate.on("geolocate", (e) => {
       userLocationRef.current = [e.coords.longitude, e.coords.latitude];
+
+      localStorage.setItem("location-allowed", "true");
 
       console.log("User location:", userLocationRef.current);
     });
