@@ -4,6 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import { parks } from "@/lib/parks-data";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"; // Ensure Dialog components are imported
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
 
@@ -18,6 +24,7 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const userLocationRef = useRef<[number, number] | null>(null);
+  const geolocateRef = useRef<mapboxgl.GeolocateControl | null>(null);
 
   function getInitialLightPreset(): "dawn" | "day" | "dusk" | "night" {
     const hour = new Date().getHours();
@@ -128,12 +135,11 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
 
         try {
           if (!userLocationRef.current) {
-            directionsBtn.textContent = "Click location first";
+            setShowLocationDialog(true);
+            directionsBtn.textContent = "Directions";
             return;
           }
-
           const [userLon, userLat] = userLocationRef.current;
-
           const response = await fetch(
             `https://api.mapbox.com/directions/v5/mapbox/walking/${userLon},${userLat};${park.lon},${park.lat}?geometries=geojson&access_token=${mapboxgl.accessToken}`
           );
@@ -203,6 +209,19 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
     popupRef.current = popup;
     return popup;
   }
+
+  const [showLocationDialog, setShowLocationDialog] = useState(true);
+  const enableLocation = () => {
+    localStorage.setItem("location-prompt-seen", "true");
+    setShowLocationDialog(false);
+
+    setTimeout(() => {
+      geolocateRef.current?.trigger();
+    }, 300);
+  };
+  const maybeLater = () => {
+    setShowLocationDialog(false);
+  };
   useEffect(() => {
     if (!mapContainer.current) return;
     console.log(lightPreset, markerColor);
@@ -380,25 +399,14 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
     });
 
     map.addControl(new mapboxgl.NavigationControl(), "top-right");
-    map.on("load", () => {
-      geolocate.trigger();
-    });
 
-    map.addControl(
-      new mapboxgl.GeolocateControl({
-        positionOptions: {
-          enableHighAccuracy: true,
-        },
-        trackUserLocation: true,
-      }),
-      "top-right"
-    );
     const geolocate = new mapboxgl.GeolocateControl({
       positionOptions: {
         enableHighAccuracy: true,
       },
       trackUserLocation: true,
     });
+    geolocateRef.current = geolocate;
 
     geolocate.on("geolocate", (e) => {
       userLocationRef.current = [e.coords.longitude, e.coords.latitude];
@@ -436,6 +444,31 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
 
   return (
     <>
+      <Dialog open={showLocationDialog} onOpenChange={setShowLocationDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Enable Location</DialogTitle>
+          </DialogHeader>
+
+          <p className="text-sm text-muted-foreground">
+            Allow access to your location to get walking directions to nearby
+            calisthenics parks.
+            <br />
+            <br />
+            Your location is only used while using the app and can be disabled
+            at any time from your browser settings.
+          </p>
+
+          <div className="flex gap-2 mt-4">
+            <Button variant="outline" onClick={maybeLater}>
+              Maybe Later
+            </Button>
+
+            <Button onClick={enableLocation}>Allow Location</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <div className="flex flex-wrap gap-2 mb-4">
         <Button variant="secondary" onClick={() => setLightPreset("dawn")}>
           ☀️ Dawn
