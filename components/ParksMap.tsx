@@ -434,7 +434,11 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
       localStorage.setItem("location-allowed", "true");
       localStorage.setItem("user-location", JSON.stringify(location));
 
-      console.log("User location:", location);
+      map.flyTo({
+        center: location,
+        zoom: 14,
+        duration: 1000,
+      });
     });
 
     geolocate.on("error", () => {
@@ -443,6 +447,13 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
     });
 
     map.addControl(geolocate, "top-right");
+    map.on("load", () => {
+      if (localStorage.getItem("location-allowed") === "true") {
+        setTimeout(() => {
+          geolocate.trigger();
+        }, 500);
+      }
+    });
 
     map.addControl(
       new mapboxgl.AttributionControl({
