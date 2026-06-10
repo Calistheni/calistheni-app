@@ -17,6 +17,7 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
+  const userLocationRef = useRef<[number, number] | null>(null);
 
   function getInitialLightPreset(): "dawn" | "day" | "dusk" | "night" {
     const hour = new Date().getHours();
@@ -62,6 +63,22 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
       return `
             <h3>${park.name}</h3>
             <p>${park.address}</p>
+
+             <button
+        id="show-directions"
+        style="
+    background:#2563eb;
+    color:white;
+    border:none;
+    border-radius:6px;
+    padding:6px 10px;
+    cursor:pointer;
+    font-size:12px;
+    margin-top:10px;
+  "
+      >
+        🧭 Directions
+      </button>
       
             <div style="
               display:flex;
@@ -105,6 +122,77 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
 
     setTimeout(() => {
       const btn = document.getElementById("show-more-equipment");
+      const directionsBtn = document.getElementById("show-directions");
+      directionsBtn?.addEventListener("click", async () => {
+        directionsBtn.textContent = "Loading...";
+
+        try {
+          if (!userLocationRef.current) {
+            directionsBtn.textContent = "Click location first";
+            return;
+          }
+
+          const [userLon, userLat] = userLocationRef.current;
+
+          const response = await fetch(
+            `https://api.mapbox.com/directions/v5/mapbox/walking/${userLon},${userLat};${park.lon},${park.lat}?geometries=geojson&access_token=${mapboxgl.accessToken}`
+          );
+
+          const data = await response.json();
+
+          console.log(data);
+
+          const route = data.routes?.[0]?.geometry;
+
+          if (!route) {
+            directionsBtn.textContent = "No Route";
+            return;
+          }
+
+          if (map.getSource("route")) {
+            (map.getSource("route") as mapboxgl.GeoJSONSource).setData({
+              type: "Feature",
+              properties: {},
+              geometry: route,
+            });
+          } else {
+            map.addSource("route", {
+              type: "geojson",
+              data: {
+                type: "Feature",
+                properties: {},
+                geometry: route,
+              },
+            });
+
+            map.addLayer({
+              id: "route",
+              type: "line",
+              source: "route",
+              paint: {
+                "line-color": "#2563eb",
+                "line-width": 5,
+              },
+            });
+          }
+
+          const bounds = new mapboxgl.LngLatBounds();
+
+          route.coordinates.forEach((coord: [number, number]) => {
+            bounds.extend(coord);
+          });
+
+          map.fitBounds(bounds, {
+            padding: 80,
+            duration: 1500,
+          });
+
+          directionsBtn.textContent = "✓ Route";
+        } catch (err) {
+          console.error(err);
+          directionsBtn.textContent = "Error";
+        }
+      });
 
       if (!btn) return;
 
@@ -292,6 +380,9 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
     });
 
     map.addControl(new mapboxgl.NavigationControl(), "top-right");
+    map.on("load", () => {
+      geolocate.trigger();
+    });
 
     map.addControl(
       new mapboxgl.GeolocateControl({
@@ -302,6 +393,20 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
       }),
       "top-right"
     );
+    const geolocate = new mapboxgl.GeolocateControl({
+      positionOptions: {
+        enableHighAccuracy: true,
+      },
+      trackUserLocation: true,
+    });
+
+    geolocate.on("geolocate", (e) => {
+      userLocationRef.current = [e.coords.longitude, e.coords.latitude];
+
+      console.log("User location:", userLocationRef.current);
+    });
+
+    map.addControl(geolocate, "top-right");
 
     map.addControl(
       new mapboxgl.AttributionControl({
