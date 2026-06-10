@@ -26,6 +26,15 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
   const userLocationRef = useRef<[number, number] | null>(null);
   const geolocateRef = useRef<mapboxgl.GeolocateControl | null>(null);
 
+  const savedLocation =
+    typeof window !== "undefined"
+      ? localStorage.getItem("user-location")
+      : null;
+
+  const initialCenter: [number, number] = savedLocation
+    ? JSON.parse(savedLocation)
+    : [-73.924958109856, 40.731742625495];
+
   function getInitialLightPreset(): "dawn" | "day" | "dusk" | "night" {
     const hour = new Date().getHours();
 
@@ -210,20 +219,23 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
     return popup;
   }
 
-  const [showLocationDialog, setShowLocationDialog] = useState(() => {
-    if (typeof window === "undefined") return false;
+  const [showLocationDialog, setShowLocationDialog] = useState(false);
+  useEffect(() => {
+    const locationAllowed = localStorage.getItem("location-allowed");
 
-    return !localStorage.getItem("location-allowed");
-  });
+    if (!locationAllowed) {
+      setShowLocationDialog(true);
+    }
+  }, []);
   const enableLocation = () => {
     setShowLocationDialog(false);
 
-    setTimeout(() => {
-      geolocateRef.current?.trigger();
-    }, 300);
+    geolocateRef.current?.trigger();
   };
   const maybeLater = () => {
     setShowLocationDialog(false);
+
+    localStorage.removeItem("location-allowed");
   };
   useEffect(() => {
     if (!mapContainer.current) return;
@@ -252,7 +264,7 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
         },
       },
 
-      center: [-73.924958109856, 40.731742625495],
+      center: initialCenter,
       zoom: 12,
       pitch: 60,
       bearing: -20,
@@ -412,11 +424,22 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
     geolocateRef.current = geolocate;
 
     geolocate.on("geolocate", (e) => {
-      userLocationRef.current = [e.coords.longitude, e.coords.latitude];
+      const location: [number, number] = [
+        e.coords.longitude,
+        e.coords.latitude,
+      ];
+
+      userLocationRef.current = location;
 
       localStorage.setItem("location-allowed", "true");
+      localStorage.setItem("user-location", JSON.stringify(location));
 
-      console.log("User location:", userLocationRef.current);
+      console.log("User location:", location);
+    });
+
+    geolocate.on("error", () => {
+      localStorage.removeItem("location-allowed");
+      localStorage.removeItem("user-location");
     });
 
     map.addControl(geolocate, "top-right");
