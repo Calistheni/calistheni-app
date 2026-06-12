@@ -5,5 +5,5 @@ export type Park = {
   lat: number;
   lon: number;
   address: string | null;
-  equipment: string[];
+  equipment?: string[];
 };
