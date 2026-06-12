@@ -1,15 +1,20 @@
 "use client";
 
-import { useState } from "react";
-import { parks } from "@/lib/parks-data";
+import { useState, useEffect } from "react";
 import ParkCard from "@/components/ParkCard";
 import ParksMap from "@/components/ParksMap";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import type { Park } from "@/types/park";
-
 export default function Home() {
+  const [parks, setParks] = useState<Park[]>([]);
+
+  useEffect(() => {
+    fetch("/api/parks")
+      .then((res) => res.json())
+      .then(setParks);
+  }, []);
   const [search, setSearch] = useState("");
   const [selectedPark, setSelectedPark] = useState<Park | null>(null);
 
@@ -19,7 +24,7 @@ export default function Home() {
 
   return (
     <main className="p-8">
-      <ParksMap selectedPark={selectedPark} />
+      <ParksMap parks={parks} selectedPark={selectedPark} />
       <Card className="mt-6">
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -34,7 +39,7 @@ export default function Home() {
         <CardContent>
           <Input
             type="text"
-            placeholder="Search for countries, cities, equipment"
+            placeholder="Search countries, cities, equipment"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
