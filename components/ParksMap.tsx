@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
-import { parks } from "@/lib/parks-data";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,10 +15,11 @@ mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
 import type { Park } from "@/types/park";
 
 type ParksMapProps = {
+  parks: Park[];
   selectedPark: Park | null;
 };
 
-export default function ParksMap({ selectedPark }: ParksMapProps) {
+export default function ParksMap({ parks, selectedPark }: ParksMapProps) {
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
@@ -57,8 +57,7 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
       : "#ef4444"; // red
 
   function openParkPopup(map: mapboxgl.Map, park: Park): mapboxgl.Popup {
-    const equipment = park.equipment;
-
+    const equipment = park.equipment ?? [];
     const renderBadge = (item: string) => `
           <span style="
             background:#374151;
@@ -239,7 +238,11 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
   };
   useEffect(() => {
     if (!mapContainer.current) return;
-    console.log(lightPreset, markerColor);
+
+    if (parks.length === 0) return;
+
+    if (mapRef.current) return;
+
     const map = new mapboxgl.Map({
       container: mapContainer.current,
 
@@ -272,6 +275,7 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
     });
     mapRef.current = map;
     map.on("load", () => {
+      console.log("Map parks:", parks.length);
       const geojson: GeoJSON.FeatureCollection = {
         type: "FeatureCollection",
         features: parks.map((park) => ({
@@ -280,7 +284,6 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
             id: park.id,
             name: park.name,
             address: park.address,
-            equipment: park.equipment,
           },
           geometry: {
             type: "Point",
@@ -288,7 +291,8 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
           },
         })),
       };
-
+      console.log("Features:", geojson.features.length);
+      console.log("First feature:", geojson.features[0]);
       map.addSource("parks", {
         type: "geojson",
         data: geojson,
@@ -398,14 +402,16 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
           });
         });
       });
-      map.on("click", "unclustered-point", (e) => {
+      map.on("click", "unclustered-point", async (e) => {
         const feature = e.features?.[0];
 
         if (!feature) return;
 
-        const park = parks.find((p) => p.id === Number(feature.properties?.id));
+        const parkId = Number(feature.properties?.id);
 
-        if (!park) return;
+        const response = await fetch(`/api/parks/${parkId}`);
+
+        const park = await response.json();
 
         popupRef.current?.remove();
 
@@ -462,8 +468,12 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
       "bottom-right"
     );
 
-    return () => map.remove();
-  }, [lightPreset, theme]);
+    return () => {
+      map.remove();
+
+      mapRef.current = null;
+    };
+  }, [parks]);
 
   useEffect(() => {
     if (!selectedPark || !mapRef.current) return;
@@ -476,8 +486,11 @@ export default function ParksMap({ selectedPark }: ParksMapProps) {
       duration: 1500,
     });
 
-    mapRef.current.once("moveend", () => {
-      popupRef.current = openParkPopup(mapRef.current!, selectedPark);
+    mapRef.current.once("moveend", async () => {
+      const response = await fetch(`/api/parks/${selectedPark.id}`);
+      const fullPark = await response.json();
+
+      popupRef.current = openParkPopup(mapRef.current!, fullPark);
     });
   }, [selectedPark]);
 
