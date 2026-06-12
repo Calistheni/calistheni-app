@@ -1,0 +1,39 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Park {
+  id        Int      @id
+  name      String
+  title     String?
+  lat       Float
+  lon       Float
+  address   String?
+
+  equipment ParkEquipment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Equipment {
+  id    Int    @id @default(autoincrement())
+  name  String @unique
+
+  parks ParkEquipment[]
+}
+
+model ParkEquipment {
+  parkId      Int
+  equipmentId Int
+
+  park        Park      @relation(fields: [parkId], references: [id], onDelete: Cascade)
+  equipment   Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  @@id([parkId, equipmentId])
+}
