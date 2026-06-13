@@ -19,6 +19,8 @@ model Park {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([lat, lon], map: "park_lat_lon_idx")
 }
 
 model Equipment {

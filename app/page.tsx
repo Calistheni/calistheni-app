@@ -1,22 +1,18 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import ParkCard from "@/components/ParkCard";
 import ParksMap from "@/components/ParksMap";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
-import type { Park } from "@/types/park";
-export default function Home() {
-  const [parks, setParks] = useState<Park[]>([]);
+import type { ParkSummary } from "@/types/park";
 
-  useEffect(() => {
-    fetch("/api/parks")
-      .then((res) => res.json())
-      .then(setParks);
-  }, []);
+export default function Home() {
+  const [parks, setParks] = useState<ParkSummary[]>([]);
+  const [isViewportLoading, setIsViewportLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [selectedPark, setSelectedPark] = useState<Park | null>(null);
+  const [selectedPark, setSelectedPark] = useState<ParkSummary | null>(null);
 
   const filteredParks = parks.filter((park) =>
     `${park.name} ${park.address}`.toLowerCase().includes(search.toLowerCase())
@@ -24,12 +20,23 @@ export default function Home() {
 
   return (
     <main className="p-8">
-      <ParksMap parks={parks} selectedPark={selectedPark} />
+      <ParksMap
+        parks={parks}
+        selectedPark={
+          selectedPark && parks.some((park) => park.id === selectedPark.id)
+            ? selectedPark
+            : null
+        }
+        onViewportParksChange={setParks}
+        onViewportLoadingChange={setIsViewportLoading}
+      />
       <Card className="mt-6">
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>
-              {parks.length.toLocaleString()} Parks Worldwide
+              {isViewportLoading
+                ? "Loading parks in view..."
+                : `${parks.length.toLocaleString()} Parks In View`}
             </CardTitle>
 
             <ThemeSwitcher />
@@ -47,7 +54,13 @@ export default function Home() {
       </Card>
 
       <ul className="mt-6 space-y-2">
-        {filteredParks.slice(0, 10).map((park) => (
+        {!isViewportLoading && filteredParks.length === 0 ? (
+          <li className="rounded border border-dashed p-4 text-sm text-muted-foreground">
+            No parks found in the current viewport.
+          </li>
+        ) : null}
+
+        {filteredParks.slice(0, 100).map((park) => (
           <li key={park.id}>
             <button
               className="w-full text-left hover:cursor-pointer"

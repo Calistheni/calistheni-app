@@ -1,7 +1,7 @@
-import { Park } from "@/types/park";
+import type { ParkSummary } from "@/types/park";
 
 type Props = {
-  park: Park;
+  park: ParkSummary;
 };
 
 export default function ParkCard({ park }: Props) {
