@@ -9,7 +9,16 @@ const parkSummarySelect = {
   lat: true,
   lon: true,
   address: true,
-} satisfies Prisma.ParkSelect;
+  equipment: {
+    include: {
+      equipment: {
+        select: {
+          name: true,
+        },
+      },
+    },
+  },
+};
 
 function mapParkDetail(park: {
   id: number;
@@ -31,7 +40,7 @@ function mapParkDetail(park: {
     lat: park.lat,
     lon: park.lon,
     address: park.address,
-    equipment: park.equipment.map((relation) => relation.equipment.name),
+    equipment: park.equipment.map((e) => e.equipment.name),
   };
 }
 
@@ -63,6 +72,8 @@ export async function getParksInBounds(
   });
 }
 export async function getParkDetail(id: number): Promise<ParkDetail | null> {
+  console.time(`db-${id}`);
+
   const park = await prisma.park.findUnique({
     where: {
       id,
@@ -75,6 +86,8 @@ export async function getParkDetail(id: number): Promise<ParkDetail | null> {
       },
     },
   });
+
+  console.timeEnd(`db-${id}`);
 
   if (!park) {
     return null;

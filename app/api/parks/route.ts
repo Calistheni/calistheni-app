@@ -13,15 +13,6 @@ function parseBounds(value: string | null) {
 }
 
 export async function GET() {
-  console.time("count");
-
-  const count = await prisma.park.count();
-
-  console.timeEnd("count");
-  console.log("total parks:", count);
-
-  console.time("query");
-
   const parks = await prisma.park.findMany({
     select: {
       id: true,
@@ -30,13 +21,5 @@ export async function GET() {
     },
   });
 
-  console.timeEnd("query");
-
-  return NextResponse.json(
-    parks.map((park) => ({
-      ...park,
-      name: "",
-      address: "",
-    }))
-  );
+  return NextResponse.json(parks);
 }

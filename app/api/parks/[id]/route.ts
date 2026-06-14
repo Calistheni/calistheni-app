@@ -5,10 +5,13 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  void request;
+  console.time("route");
+
   const { id } = await params;
 
   const park = await getParkDetail(Number(id));
+
+  console.timeEnd("route");
 
   if (!park) {
     return NextResponse.json({ error: "Park not found" }, { status: 404 });

@@ -19,3 +19,9 @@ export type ParkViewportBounds = {
   zoom?: number;
   limit?: number;
 };
+
+export type ParkMarker = {
+  id: number;
+  lat: number;
+  lon: number;
+};

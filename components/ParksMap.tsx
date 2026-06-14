@@ -9,19 +9,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { ParkDetail, ParkSummary } from "@/types/park";
+import type { ParkDetail, ParkSummary, ParkMarker } from "@/types/park";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
 
 const VIEWPORT_DEBOUNCE_MS = 100;
 
 type ParksMapProps = {
-  parks: ParkSummary[];
-  selectedPark: ParkSummary | null;
-  onViewportParksChange: (parks: ParkSummary[]) => void;
+  parks: ParkMarker[];
+  selectedPark: ParkDetail | null;
+  onViewportParksChange: (parks: ParkMarker[]) => void;
   onViewportLoadingChange?: (isLoading: boolean) => void;
 };
-
 type PopupRenderOptions = {
   park?: Pick<ParkSummary, "name" | "address"> | ParkDetail;
   loading?: boolean;
@@ -105,7 +104,7 @@ function renderPopupMarkup({
     return `
       <div style="min-width:220px">
         <h3 style="font-size:16px;font-weight:600;margin:0 0 8px 0;">
-          ${escapeHtml(park?.name ?? "Loading park")}
+           "Loading park"
         </h3>
         <div style="height:10px;border-radius:999px;background:#e5e7eb;margin-bottom:8px;"></div>
         <div style="height:10px;width:70%;border-radius:999px;background:#e5e7eb;margin-bottom:12px;"></div>
@@ -284,11 +283,13 @@ export default function ParksMap({
 
   async function fetchParkDetail(parkId: number) {
     const cachedPark = detailCacheRef.current.get(parkId);
+    console.log("prefetching park", parkId);
 
     if (cachedPark) {
+      console.log("cache hit", parkId);
       return cachedPark;
     }
-
+    console.time(`park-${parkId}`);
     const inFlightRequest = detailRequestCacheRef.current.get(parkId);
 
     if (inFlightRequest) {
@@ -310,6 +311,7 @@ export default function ParksMap({
       })
       .finally(() => {
         detailRequestCacheRef.current.delete(parkId);
+        console.timeEnd(`park-${parkId}`);
       });
 
     detailRequestCacheRef.current.set(parkId, request);
@@ -504,8 +506,7 @@ export default function ParksMap({
     });
 
     popupRef.current = popup;
-    setPopupMarkup(popup, map, parkId, parkPreview, {
-      park: parkPreview,
+    setPopupMarkup(popup, map, parkId, undefined, {
       loading: true,
     });
     void loadPopupDetails(popup, map, parkId, parkPreview);
@@ -602,6 +603,23 @@ export default function ParksMap({
         if (source) {
           source.setData(geojson);
         }
+
+        setTimeout(() => {
+          const features = map.queryRenderedFeatures({
+            layers: ["unclustered-point"],
+          });
+
+          features.slice(0, 20).forEach((feature) => {
+            const parkId = Number(feature.properties?.id);
+
+            if (
+              !detailCacheRef.current.has(parkId) &&
+              !detailRequestCacheRef.current.has(parkId)
+            ) {
+              void fetchParkDetail(parkId);
+            }
+          });
+        }, 500);
 
         console.timeEnd("setData");
 
@@ -789,7 +807,14 @@ export default function ParksMap({
           layers: ["clusters"],
         });
 
-        const clusterId = features[0]?.properties?.cluster_id;
+        const feature = features[0];
+
+        if (!feature) {
+          return;
+        }
+
+        const clusterId = feature.properties?.cluster_id;
+        const pointCount = feature.properties?.point_count;
 
         if (!clusterId) {
           return;
@@ -797,12 +822,33 @@ export default function ParksMap({
 
         const source = map.getSource("parks") as mapboxgl.GeoJSONSource;
 
+        // Prefetch small clusters
+        if (pointCount <= 10) {
+          source.getClusterLeaves(clusterId, pointCount, 0, (error, leaves) => {
+            if (error || !leaves) {
+              return;
+            }
+
+            console.log("prefetching cluster", pointCount);
+            leaves.forEach((leaf) => {
+              const parkId = Number(leaf.properties?.id);
+
+              if (
+                !detailCacheRef.current.has(parkId) &&
+                !detailRequestCacheRef.current.has(parkId)
+              ) {
+                void fetchParkDetail(parkId);
+              }
+            });
+          });
+        }
+
         source.getClusterExpansionZoom(clusterId, (error, zoom) => {
           if (error) {
             return;
           }
 
-          const coordinates = (features[0].geometry as GeoJSON.Point)
+          const coordinates = (feature.geometry as GeoJSON.Point)
             .coordinates as [number, number];
 
           map.easeTo({
@@ -813,7 +859,6 @@ export default function ParksMap({
           });
         });
       });
-
       map.on("click", "unclustered-point", (event) => {
         const feature = event.features?.[0];
 
@@ -831,13 +876,64 @@ export default function ParksMap({
         openParkPopupRef.current(
           map,
           parkId,
-          [parkPreview.lon, parkPreview.lat],
-          parkPreview
+          [parkPreview.lon, parkPreview.lat]
+          // parkPreview
         );
       });
 
-      map.on("moveend", () => {
-        scheduleViewportLoadRef.current();
+      map.on("idle", () => {
+        const source = map.getSource("parks") as mapboxgl.GeoJSONSource;
+
+        // Prefetch visible markers
+        const markers = map.queryRenderedFeatures({
+          layers: ["unclustered-point"],
+        });
+
+        console.log("prefetching visible", markers.length);
+
+        markers.slice(0, 20).forEach((feature) => {
+          const parkId = Number(feature.properties?.id);
+
+          if (
+            !detailCacheRef.current.has(parkId) &&
+            !detailRequestCacheRef.current.has(parkId)
+          ) {
+            void fetchParkDetail(parkId);
+          }
+        });
+
+        // Prefetch small visible clusters
+        const clusters = map.queryRenderedFeatures({
+          layers: ["clusters"],
+        });
+
+        clusters.forEach((feature) => {
+          const clusterId = feature.properties?.cluster_id;
+          const pointCount = feature.properties?.point_count;
+
+          if (!clusterId || pointCount > 5) {
+            return;
+          }
+
+          source.getClusterLeaves(clusterId, pointCount, 0, (error, leaves) => {
+            if (error || !leaves) {
+              return;
+            }
+
+            console.log("prefetching cluster", pointCount);
+
+            leaves.forEach((leaf) => {
+              const parkId = Number(leaf.properties?.id);
+
+              if (
+                !detailCacheRef.current.has(parkId) &&
+                !detailRequestCacheRef.current.has(parkId)
+              ) {
+                void fetchParkDetail(parkId);
+              }
+            });
+          });
+        });
       });
 
       if (localStorage.getItem("location-allowed") === "true") {
@@ -845,7 +941,6 @@ export default function ParksMap({
           geolocateRef.current?.trigger();
         }, 500);
       }
-
       void requestViewportParksRef.current({ force: true });
     };
 
