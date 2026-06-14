@@ -10,7 +10,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { ParkDetail, ParkSummary, ParkMarker } from "@/types/park";
-
+import {
+  loadParkDetail,
+  saveParkDetail,
+  loadParks,
+  saveParks,
+} from "@/lib/cache";
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
 
 const VIEWPORT_DEBOUNCE_MS = 100;
@@ -283,11 +288,16 @@ export default function ParksMap({
 
   async function fetchParkDetail(parkId: number) {
     const cachedPark = detailCacheRef.current.get(parkId);
-    console.log("prefetching park", parkId);
 
     if (cachedPark) {
-      console.log("cache hit", parkId);
       return cachedPark;
+    }
+
+    const indexedDbPark = await loadParkDetail(parkId);
+
+    if (indexedDbPark) {
+      detailCacheRef.current.set(parkId, indexedDbPark);
+      return indexedDbPark;
     }
     console.time(`park-${parkId}`);
     const inFlightRequest = detailRequestCacheRef.current.get(parkId);
@@ -304,9 +314,9 @@ export default function ParksMap({
 
         return (await response.json()) as ParkDetail;
       })
-      .then((park) => {
+      .then(async (park) => {
         detailCacheRef.current.set(park.id, park);
-
+        await saveParkDetail(park);
         return park;
       })
       .finally(() => {
@@ -588,6 +598,7 @@ export default function ParksMap({
         return data;
       })
       .then((nextParks) => {
+        void saveParks(nextParks);
         console.time("geojson");
 
         const geojson = buildGeoJson(nextParks);
@@ -725,7 +736,7 @@ export default function ParksMap({
 
     mapRef.current = map;
 
-    const handleMapLoad = () => {
+    const handleMapLoad = async () => {
       mapLoadedRef.current = true;
       setIsMapInitializing(false);
 
@@ -941,6 +952,29 @@ export default function ParksMap({
           geolocateRef.current?.trigger();
         }, 500);
       }
+      const cached = await loadParks();
+      const source = map.getSource("parks") as
+        | mapboxgl.GeoJSONSource
+        | undefined;
+      if (cached) {
+        parksRef.current = cached.data;
+        onViewportParksChange(cached.data);
+
+        viewportCacheRef.current.set("ALL_PARKS", cached.data);
+        lastViewportKeyRef.current = "ALL_PARKS";
+
+        source?.setData(buildGeoJson(cached.data));
+
+        setTimeout(() => {
+          viewportCacheRef.current.delete("ALL_PARKS");
+          lastViewportKeyRef.current = null;
+
+          void requestViewportParksRef.current();
+        }, 5000);
+
+        return;
+      }
+
       void requestViewportParksRef.current({ force: true });
     };
 
