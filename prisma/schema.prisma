@@ -7,7 +7,7 @@ datasource db {
   provider = "postgresql"
 }
 model Park {
-  id        Int      @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   name      String
   title     String?
   lat       Float
@@ -16,10 +16,13 @@ model Park {
 
   equipment ParkEquipment[]
 
+  deletedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-}
 
+  @@index([lat, lon], map: "park_lat_lon_idx")
+}
 model Equipment {
   id    Int    @id @default(autoincrement())
   name  String @unique
