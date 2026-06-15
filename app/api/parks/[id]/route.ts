@@ -49,9 +49,12 @@ export async function DELETE(
 ) {
   const { id } = await params;
 
-  await prisma.park.delete({
+  await prisma.park.update({
     where: {
       id: Number(id),
+    },
+    data: {
+      deletedAt: new Date(),
     },
   });
 
