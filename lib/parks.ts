@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/prisma";
-import type { Prisma } from "@/lib/generated/prisma/client";
 import type { ParkDetail, ParkSummary, ParkViewportBounds } from "@/types/park";
 
 const parkSummarySelect = {

@@ -9,7 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { ParkDetail, ParkSummary, ParkMarker } from "@/types/park";
+import type { ParkDetail, ParkSummary } from "@/types/park";
 import {
   loadParkDetail,
   saveParkDetail,
@@ -21,9 +21,9 @@ mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
 const VIEWPORT_DEBOUNCE_MS = 100;
 
 type ParksMapProps = {
-  parks: ParkMarker[];
-  selectedPark: ParkDetail | null;
-  onViewportParksChange: (parks: ParkMarker[]) => void;
+  parks: ParkSummary[];
+  selectedPark: ParkSummary | null;
+  onViewportParksChange: (parks: ParkSummary[]) => void;
   onViewportLoadingChange?: (isLoading: boolean) => void;
 };
 type PopupRenderOptions = {
@@ -58,24 +58,6 @@ function escapeHtml(value: string | null | undefined) {
 
 function normalizeCoordinate(value: number) {
   return Number(value.toFixed(1));
-}
-
-function getViewportKey(map: mapboxgl.Map) {
-  const bounds = map.getBounds();
-
-  if (!bounds) {
-    return null;
-  }
-
-  const southWest = bounds.getSouthWest();
-  const northEast = bounds.getNorthEast();
-
-  return [
-    normalizeCoordinate(southWest.lat),
-    normalizeCoordinate(southWest.lng),
-    normalizeCoordinate(northEast.lat),
-    normalizeCoordinate(northEast.lng),
-  ].join(":");
 }
 
 function buildGeoJson(parks: ParkSummary[]): GeoJSON.FeatureCollection {
@@ -242,7 +224,6 @@ export default function ParksMap({
   const detailCacheRef = useRef(new Map<number, ParkDetail>());
   const detailRequestCacheRef = useRef(new Map<number, Promise<ParkDetail>>());
   const lastViewportKeyRef = useRef<string | null>(null);
-  const lastZoomBucketRef = useRef<number | null>(null);
   const viewportRequestRef = useRef<{
     key: string;
     controller: AbortController;
@@ -542,8 +523,6 @@ export default function ParksMap({
 
     const key = "ALL_PARKS";
 
-    const zoom = map.getZoom();
-
     if (!key) {
       return;
     }
@@ -574,8 +553,6 @@ export default function ParksMap({
     if (!bounds) {
       return;
     }
-    const southWest = bounds.getSouthWest();
-    const northEast = bounds.getNorthEast();
     const params = new URLSearchParams();
     setViewportLoading(true);
     setViewportError(null);
@@ -659,10 +636,6 @@ export default function ParksMap({
       controller,
       promise,
     };
-    console.log("FETCHING", {
-      zoom: map.getZoom(),
-      key,
-    });
 
     return promise;
   }
