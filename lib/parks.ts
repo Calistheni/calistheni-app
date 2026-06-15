@@ -48,13 +48,15 @@ export async function getParksInBounds(
   limit?: number
 ): Promise<ParkSummary[]> {
   const { minLat, maxLat, minLon, maxLon } = bounds;
-
   return prisma.park.findMany({
     where: {
+      deletedAt: null,
+
       lat: {
         gte: minLat,
         lte: maxLat,
       },
+
       ...(minLon <= maxLon
         ? {
             lon: {
@@ -73,9 +75,10 @@ export async function getParksInBounds(
 export async function getParkDetail(id: number): Promise<ParkDetail | null> {
   console.time(`db-${id}`);
 
-  const park = await prisma.park.findUnique({
+  const park = await prisma.park.findFirst({
     where: {
       id,
+      deletedAt: null,
     },
     include: {
       equipment: {
