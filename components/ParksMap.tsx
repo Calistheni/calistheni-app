@@ -9,7 +9,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Progress } from "@/components/ui/progress";
 import type { ParkDetail, ParkSummary } from "@/types/park";
 import {
   loadParkDetail,
@@ -248,9 +247,13 @@ export default function ParksMap({
   const [isMapInitializing, setIsMapInitializing] = useState(true);
   const [, setIsViewportLoading] = useState(true);
   const [viewportError, setViewportError] = useState<string | null>(null);
-  const [showLoadingDialog, setShowLoadingDialog] = useState(true);
+  const [showLoadingDialog, setShowLoadingDialog] = useState(() => {
+    if (typeof window === "undefined") return false;
+
+    return localStorage.getItem("parks-initial-load-complete") !== "true";
+  });
   const [loadingProgress, setLoadingProgress] = useState(0);
-  const [mapReady, setMapReady] = useState(false);
+  // const [setMapReady] = useState(false);
 
   const savedLocation =
     typeof window !== "undefined"
@@ -562,7 +565,7 @@ export default function ParksMap({
     setViewportError(null);
 
     console.time("fetch-parks");
-
+    setLoadingProgress(75);
     const promise = fetch(`/api/parks?${params.toString()}`, {
       signal: controller.signal,
     })
@@ -619,6 +622,16 @@ export default function ParksMap({
         lastViewportKeyRef.current = key;
         parksRef.current = nextParks;
         onViewportParksChange(nextParks);
+        setLoadingProgress(100);
+
+        if (showLoadingDialog) {
+          localStorage.setItem("parks-initial-load-complete", "true");
+        }
+
+        setTimeout(() => {
+          setShowLoadingDialog(false);
+          setIsMapInitializing(false);
+        }, 300);
       })
       .catch((error: Error) => {
         if (error.name === "AbortError") {
@@ -626,6 +639,9 @@ export default function ParksMap({
         }
 
         setViewportError("Unable to load parks for this area.");
+
+        setShowLoadingDialog(false);
+        setIsMapInitializing(false);
       })
       .finally(() => {
         if (viewportRequestRef.current?.key === key) {
@@ -655,16 +671,6 @@ export default function ParksMap({
   }
   const requestViewportParksRef = useRef(requestViewportParks);
   const scheduleViewportLoadRef = useRef(scheduleViewportLoad);
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setLoadingProgress((prev) => {
-        if (prev >= 90) return prev;
-        return prev + 5;
-      });
-    }, 100);
-
-    return () => clearInterval(interval);
-  }, []);
   useEffect(() => {
     openParkPopupRef.current = openParkPopup;
     requestViewportParksRef.current = requestViewportParks;
@@ -724,12 +730,7 @@ export default function ParksMap({
 
     const handleMapLoad = async () => {
       mapLoadedRef.current = true;
-      setLoadingProgress(100);
-      setMapReady(true);
-      setTimeout(() => {
-        setShowLoadingDialog(false);
-        setIsMapInitializing(false);
-      }, 500);
+      setLoadingProgress(25);
       map.addSource("parks", {
         type: "geojson",
         data: buildGeoJson([]),
@@ -802,6 +803,7 @@ export default function ParksMap({
           "circle-emissive-strength": 1,
         },
       });
+      setLoadingProgress(50);
 
       map.on("click", "clusters", (event) => {
         const features = map.queryRenderedFeatures(event.point, {
@@ -947,6 +949,8 @@ export default function ParksMap({
         | mapboxgl.GeoJSONSource
         | undefined;
       if (cached) {
+        setShowLoadingDialog(false);
+        setIsMapInitializing(false);
         parksRef.current = cached.data;
         onViewportParksChange(cached.data);
 
