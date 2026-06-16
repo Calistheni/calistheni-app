@@ -30,6 +30,20 @@ export async function POST(request: Request) {
       address: body.address ?? null,
       lat: Number(body.lat),
       lon: Number(body.lon),
+
+      equipment: {
+        create: (body.equipmentIds ?? []).map((equipmentId: number) => ({
+          equipmentId,
+        })),
+      },
+    },
+
+    include: {
+      equipment: {
+        include: {
+          equipment: true,
+        },
+      },
     },
   });
 
