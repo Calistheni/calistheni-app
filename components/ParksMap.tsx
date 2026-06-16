@@ -252,6 +252,18 @@ export default function ParksMap({
 
     return localStorage.getItem("parks-initial-load-complete") !== "true";
   });
+  const progressIntervalRef = useRef<number | null>(null);
+
+  function startSmoothProgress() {
+    progressIntervalRef.current = window.setInterval(() => {
+      setLoadingProgress((prev) => {
+        if (prev >= 95) return prev;
+
+        return prev + (95 - prev) * 0.08;
+      });
+    }, 100);
+  }
+
   const [loadingProgress, setLoadingProgress] = useState(0);
   // const [setMapReady] = useState(false);
 
@@ -565,7 +577,8 @@ export default function ParksMap({
     setViewportError(null);
 
     console.time("fetch-parks");
-    setLoadingProgress(75);
+    setLoadingProgress(60);
+    startSmoothProgress();
     const promise = fetch(`/api/parks?${params.toString()}`, {
       signal: controller.signal,
     })
@@ -1087,7 +1100,10 @@ export default function ParksMap({
 
   return (
     <>
-      <Dialog open={showLocationDialog} onOpenChange={setShowLocationDialog}>
+      <Dialog
+        open={showLocationDialog && !showLoadingDialog}
+        onOpenChange={setShowLocationDialog}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Enable Location</DialogTitle>
