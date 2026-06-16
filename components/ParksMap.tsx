@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
 import type { ParkDetail, ParkSummary } from "@/types/park";
 import {
   loadParkDetail,
@@ -56,9 +57,9 @@ function escapeHtml(value: string | null | undefined) {
     .replaceAll("'", "&#39;");
 }
 
-function normalizeCoordinate(value: number) {
-  return Number(value.toFixed(1));
-}
+// function normalizeCoordinate(value: number) {
+//   return Number(value.toFixed(1));
+// }
 
 function buildGeoJson(parks: ParkSummary[]): GeoJSON.FeatureCollection {
   return {
@@ -245,8 +246,11 @@ export default function ParksMap({
     return !localStorage.getItem("location-allowed");
   });
   const [isMapInitializing, setIsMapInitializing] = useState(true);
-  const [isViewportLoading, setIsViewportLoading] = useState(true);
+  const [, setIsViewportLoading] = useState(true);
   const [viewportError, setViewportError] = useState<string | null>(null);
+  const [showLoadingDialog, setShowLoadingDialog] = useState(true);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [mapReady, setMapReady] = useState(false);
 
   const savedLocation =
     typeof window !== "undefined"
@@ -651,7 +655,16 @@ export default function ParksMap({
   }
   const requestViewportParksRef = useRef(requestViewportParks);
   const scheduleViewportLoadRef = useRef(scheduleViewportLoad);
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setLoadingProgress((prev) => {
+        if (prev >= 90) return prev;
+        return prev + 5;
+      });
+    }, 100);
 
+    return () => clearInterval(interval);
+  }, []);
   useEffect(() => {
     openParkPopupRef.current = openParkPopup;
     requestViewportParksRef.current = requestViewportParks;
@@ -711,8 +724,12 @@ export default function ParksMap({
 
     const handleMapLoad = async () => {
       mapLoadedRef.current = true;
-      setIsMapInitializing(false);
-
+      setLoadingProgress(100);
+      setMapReady(true);
+      setTimeout(() => {
+        setShowLoadingDialog(false);
+        setIsMapInitializing(false);
+      }, 500);
       map.addSource("parks", {
         type: "geojson",
         data: buildGeoJson([]),
@@ -1090,7 +1107,29 @@ export default function ParksMap({
           </div>
         </DialogContent>
       </Dialog>
+      <Dialog open={showLoadingDialog}>
+        <DialogContent
+          showCloseButton={false}
+          onInteractOutside={(e) => e.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle>Loading Parks</DialogTitle>
+          </DialogHeader>
 
+          <p className="text-sm text-muted-foreground">
+            Preparing map and nearby parks...
+          </p>
+
+          <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full bg-primary transition-all duration-300"
+              style={{ width: `${loadingProgress}%` }}
+            />
+          </div>
+
+          <p className="text-center text-sm">{Math.round(loadingProgress)}%</p>
+        </DialogContent>
+      </Dialog>
       <div className="mb-4 flex flex-wrap gap-2">
         <Button variant="secondary" onClick={() => setLightPreset("dawn")}>
           ☀️ Dawn
@@ -1128,9 +1167,7 @@ export default function ParksMap({
         />
 
         {isMapInitializing ? (
-          <div className="pointer-events-none absolute inset-0 rounded-lg border bg-muted/50 p-6">
-            <div className="h-full animate-pulse rounded-lg bg-gradient-to-br from-slate-200 via-slate-100 to-slate-200" />
-          </div>
+          <div className="pointer-events-none absolute inset-0 z-10 bg-black/20" />
         ) : null}
 
         {/* {!isMapInitializing && isViewportLoading ? (
