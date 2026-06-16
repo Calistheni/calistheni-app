@@ -247,6 +247,7 @@ export default function ParksMap({
   const [isMapInitializing, setIsMapInitializing] = useState(true);
   const [, setIsViewportLoading] = useState(true);
   const [viewportError, setViewportError] = useState<string | null>(null);
+  const [loadingComplete, setLoadingComplete] = useState(false);
   const [showLoadingDialog, setShowLoadingDialog] = useState(() => {
     if (typeof window === "undefined") return false;
 
@@ -636,15 +637,11 @@ export default function ParksMap({
         parksRef.current = nextParks;
         onViewportParksChange(nextParks);
         setLoadingProgress(100);
+        setLoadingComplete(true);
 
         if (showLoadingDialog) {
           localStorage.setItem("parks-initial-load-complete", "true");
         }
-
-        setTimeout(() => {
-          setShowLoadingDialog(false);
-          setIsMapInitializing(false);
-        }, 300);
       })
       .catch((error: Error) => {
         if (error.name === "AbortError") {
@@ -1098,6 +1095,15 @@ export default function ParksMap({
     localStorage.removeItem("location-allowed");
   };
 
+  const handleContinue = () => {
+    setShowLoadingDialog(false);
+    setIsMapInitializing(false);
+
+    if (!localStorage.getItem("location-allowed")) {
+      setShowLocationDialog(true);
+    }
+  };
+
   return (
     <>
       <Dialog
@@ -1133,21 +1139,37 @@ export default function ParksMap({
           onInteractOutside={(e) => e.preventDefault()}
         >
           <DialogHeader>
-            <DialogTitle>Loading Parks</DialogTitle>
+            <DialogTitle>
+              {loadingComplete ? "Ready!" : "Loading Parks"}
+            </DialogTitle>
           </DialogHeader>
 
-          <p className="text-sm text-muted-foreground">
-            Preparing map and nearby parks...
-          </p>
+          {!loadingComplete ? (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Preparing map and nearby parks...
+              </p>
 
-          <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full bg-primary transition-all duration-300"
-              style={{ width: `${loadingProgress}%` }}
-            />
-          </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full bg-primary transition-all duration-300"
+                  style={{ width: `${loadingProgress}%` }}
+                />
+              </div>
 
-          <p className="text-center text-sm">{Math.round(loadingProgress)}%</p>
+              <p className="text-center text-sm">
+                {Math.round(loadingProgress)}%
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Parks loaded successfully.
+              </p>
+
+              <Button onClick={handleContinue}>Continue</Button>
+            </>
+          )}
         </DialogContent>
       </Dialog>
       <div className="mb-4 flex flex-wrap gap-2">
