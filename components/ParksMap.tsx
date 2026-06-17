@@ -904,7 +904,7 @@ export default function ParksMap({
 
         console.log("prefetching visible", markers.length);
 
-        markers.slice(0, 20).forEach((feature) => {
+        markers.slice(0, 5).forEach((feature) => {
           const parkId = Number(feature.properties?.id);
 
           if (

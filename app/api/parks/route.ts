@@ -6,18 +6,14 @@ export async function GET() {
     where: {
       deletedAt: null,
     },
-    include: {
-      equipment: {
-        include: {
-          equipment: true,
-        },
-      },
-    },
-    orderBy: {
-      name: "asc",
+    select: {
+      id: true,
+      name: true,
+      address: true,
+      lat: true,
+      lon: true,
     },
   });
-
   return NextResponse.json(parks);
 }
 export async function POST(request: Request) {
