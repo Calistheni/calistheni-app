@@ -60,3 +60,31 @@ export async function loadParkDetail(id: number) {
   const db = await getDB();
   return db.get("park-details", id);
 }
+
+export async function saveAdminParks(
+  parks: ParkSummary[],
+  lastUpdated?: string
+) {
+  const db = await getDB();
+
+  await db.put(
+    "parks",
+    {
+      data: parks,
+      count: parks.length,
+      lastUpdated,
+      timestamp: Date.now(),
+    },
+    "admin"
+  );
+}
+
+export async function loadAdminParks() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const db = await getDB();
+
+  return db.get("parks", "admin");
+}
