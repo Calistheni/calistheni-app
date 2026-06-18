@@ -16,6 +16,7 @@ export default function AdminPage() {
   const [equipmentIds, setEquipmentIds] = useState<number[]>([]);
   const [parks, setParks] = useState<ParkSummary[]>([]);
   const [equipment, setEquipment] = useState<Equipment[]>([]);
+  const [editingParkId, setEditingParkId] = useState<number | null>(null);
 
   useEffect(() => {
     fetch("/api/parks/equipment")
@@ -52,6 +53,55 @@ export default function AdminPage() {
     console.log(park);
     console.log("equipmentIds", equipmentIds);
     setParks((prev) => [park, ...prev]);
+  }
+
+  async function updatePark() {
+    if (!editingParkId) return;
+
+    const response = await fetch(`/api/parks/${editingParkId}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name,
+        title,
+        address,
+        lat: Number(lat),
+        lon: Number(lon),
+      }),
+    });
+
+    const updatedPark = await response.json();
+
+    setParks((prev) =>
+      prev.map((park) => (park.id === editingParkId ? updatedPark : park))
+    );
+
+    setEditingParkId(null);
+
+    setName("");
+    setTitle("");
+    setAddress("");
+    setLat("");
+    setLon("");
+    setEquipmentIds([]);
+  }
+  function startEditing(park: ParkSummary) {
+    setEditingParkId(park.id);
+
+    setName(park.name);
+    setTitle(park.title ?? "");
+    setAddress(park.address ?? "");
+    setLat(String(park.lat));
+    setLon(String(park.lon));
+  }
+  async function deletePark(id: number) {
+    await fetch(`/api/parks/${id}`, {
+      method: "DELETE",
+    });
+
+    setParks((prev) => prev.filter((park) => park.id !== id));
   }
 
   return (
@@ -114,12 +164,32 @@ export default function AdminPage() {
         ))}
       </div>
 
-      <button
-        onClick={createPark}
-        className="mb-6 rounded bg-blue-500 px-4 py-2 text-white"
-      >
-        Create Park
-      </button>
+      <div className="mb-4 flex gap-2">
+        <button
+          onClick={editingParkId ? updatePark : createPark}
+          className="rounded bg-blue-500 px-4 py-2 text-white cursor-pointer"
+        >
+          {editingParkId ? "Update Park" : "Create Park"}
+        </button>
+
+        {editingParkId && (
+          <button
+            onClick={() => {
+              setEditingParkId(null);
+
+              setName("");
+              setTitle("");
+              setAddress("");
+              setLat("");
+              setLon("");
+              setEquipmentIds([]);
+            }}
+            className="rounded bg-gray-500 px-4 py-2 text-white cursor-pointer"
+          >
+            Cancel
+          </button>
+        )}
+      </div>
 
       <table className="w-full border">
         <thead>
@@ -127,15 +197,31 @@ export default function AdminPage() {
             <th>ID</th>
             <th>Name</th>
             <th>Address</th>
+            <th>Actions</th>
           </tr>
         </thead>
-
         <tbody>
           {parks.slice(0, 100).map((park) => (
             <tr key={park.id}>
               <td>{park.id}</td>
               <td>{park.name}</td>
               <td>{park.address}</td>
+
+              <td>
+                <button
+                  onClick={() => startEditing(park)}
+                  className="rounded bg-yellow-500 px-2 py-1 text-white cursor-pointer"
+                >
+                  Edit
+                </button>
+
+                <button
+                  onClick={() => deletePark(park.id)}
+                  className="ml-2 rounded bg-red-500 px-2 py-1 text-white cursor-pointer"
+                >
+                  Delete
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>

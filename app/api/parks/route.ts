@@ -45,20 +45,3 @@ export async function POST(request: Request) {
 
   return NextResponse.json(park, { status: 201 });
 }
-export async function DELETE(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id } = await params;
-
-  await prisma.park.update({
-    where: {
-      id: Number(id),
-    },
-    data: {
-      deletedAt: new Date(),
-    },
-  });
-
-  return NextResponse.json({ success: true });
-}
