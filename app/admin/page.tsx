@@ -17,6 +17,8 @@ export default function AdminPage() {
   const [parks, setParks] = useState<ParkSummary[]>([]);
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [editingParkId, setEditingParkId] = useState<number | null>(null);
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     fetch("/api/parks/equipment")
@@ -25,10 +27,18 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
-    fetch("/api/parks")
-      .then((res) => res.json())
-      .then(setParks);
-  }, []);
+    if (search.trim().length < 2) {
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      fetch(`/api/parks/search?q=${encodeURIComponent(search)}&page=${page}`)
+        .then((res) => res.json())
+        .then(setParks);
+    }, 300);
+
+    return () => clearTimeout(timeout);
+  }, [search, page]);
 
   async function createPark() {
     console.log("equipmentIds", equipmentIds);
@@ -191,6 +201,16 @@ export default function AdminPage() {
         )}
       </div>
 
+      <input
+        className="mb-4 w-full border p-2"
+        placeholder="Search park..."
+        value={search}
+        onChange={(e) => {
+          setSearch(e.target.value);
+          setPage(1);
+        }}
+      />
+
       <table className="w-full border">
         <thead>
           <tr>
@@ -201,7 +221,7 @@ export default function AdminPage() {
           </tr>
         </thead>
         <tbody>
-          {parks.slice(0, 100).map((park) => (
+          {parks.map((park) => (
             <tr key={park.id}>
               <td>{park.id}</td>
               <td>{park.name}</td>
@@ -226,6 +246,25 @@ export default function AdminPage() {
           ))}
         </tbody>
       </table>
+
+      <div className="mt-4 flex gap-2">
+        <button
+          disabled={page === 1}
+          onClick={() => setPage((p) => p - 1)}
+          className="rounded bg-gray-500 px-4 py-2 text-white disabled:opacity-50"
+        >
+          Previous
+        </button>
+
+        <span className="flex items-center px-2">Page {page}</span>
+
+        <button
+          onClick={() => setPage((p) => p + 1)}
+          className="rounded bg-blue-500 px-4 py-2 text-white"
+        >
+          Next
+        </button>
+      </div>
     </main>
   );
 }
