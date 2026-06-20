@@ -25,24 +25,49 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-
   const body = await request.json();
 
-  const park = await prisma.park.update({
-    where: {
-      id: Number(id),
-    },
-    data: {
-      name: body.name,
-      title: body.title,
-      address: body.address,
-      lat: body.lat,
-      lon: body.lon,
-    },
+  const parkId = Number(id);
+
+  const park = await prisma.$transaction(async (tx) => {
+    await tx.park.update({
+      where: {
+        id: parkId,
+      },
+      data: {
+        name: body.name,
+        title: body.title,
+        address: body.address,
+        lat: body.lat,
+        lon: body.lon,
+      },
+    });
+
+    await tx.parkEquipment.deleteMany({
+      where: {
+        parkId,
+      },
+    });
+
+    if (body.equipmentIds?.length) {
+      await tx.parkEquipment.createMany({
+        data: body.equipmentIds.map((equipmentId: number) => ({
+          parkId,
+          equipmentId,
+        })),
+      });
+    }
+
+    return tx.park.findUnique({
+      where: {
+        id: parkId,
+      },
+    });
   });
 
   return NextResponse.json(park);
 }
+
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
