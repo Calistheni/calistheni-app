@@ -60,7 +60,7 @@ export default function Home() {
           </li>
         ) : null}
 
-        {filteredParks.slice(0, 100).map((park) => (
+        {filteredParks.slice(0, 10).map((park) => (
           <li key={park.id}>
             <button
               className="w-full text-left hover:cursor-pointer"
