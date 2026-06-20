@@ -380,9 +380,7 @@ export default function AdminPage() {
               <TableCell
                 colSpan={3}
                 className="h-24 text-center text-muted-foreground"
-              >
-                Type at least 2 characters to search
-              </TableCell>
+              ></TableCell>
             </TableRow>
           ) : (
             filteredParks.slice(0, 100).map((park) => (
