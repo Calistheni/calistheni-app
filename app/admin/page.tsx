@@ -135,6 +135,7 @@ export default function AdminPage() {
         address,
         lat: Number(lat),
         lon: Number(lon),
+        equipmentIds,
       }),
     });
 
