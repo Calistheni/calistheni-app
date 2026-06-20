@@ -1,9 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { ParkSummary } from "@/types/park";
+import type { ParkSummary, ParkDetail } from "@/types/park";
 import { useMemo } from "react";
 import { loadAdminParks, saveAdminParks } from "@/lib/cache";
+import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableRow,
+  TableHead,
+  TableHeader,
+} from "@/components/ui/table";
+
 type Equipment = {
   id: number;
   name: string;
@@ -20,6 +34,7 @@ export default function AdminPage() {
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [editingParkId, setEditingParkId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
+  const [selectedPark, setSelectedPark] = useState<ParkDetail | null>(null);
 
   const filteredParks = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -167,6 +182,8 @@ export default function AdminPage() {
     const response = await fetch(`/api/parks/${park.id}`);
     const fullPark = await response.json();
 
+    setSelectedPark(fullPark);
+
     setEditingParkId(fullPark.id);
 
     setName(fullPark.name);
@@ -201,51 +218,55 @@ export default function AdminPage() {
   return (
     <main className="p-8">
       <h1 className="mb-6 text-3xl font-bold">Admin</h1>
-      <div className="mb-8 flex flex-col gap-2">
-        <input
-          className="border p-2"
-          placeholder="Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
 
-        <input
-          className="border p-2"
-          placeholder="Title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-        />
+      <Card className="mb-6">
+        <CardHeader>
+          <h2 className="text-xl font-semibold">
+            {editingParkId ? "Edit Park" : "Create Park"}
+          </h2>
+        </CardHeader>
 
-        <input
-          className="border p-2"
-          placeholder="Address"
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-        />
+        <CardContent className="space-y-3">
+          <Input
+            placeholder="Name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
 
-        <input
-          className="border p-2"
-          placeholder="Latitude"
-          value={lat}
-          onChange={(e) => setLat(e.target.value)}
-        />
+          <Input
+            placeholder="Title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
 
-        <input
-          className="border p-2"
-          placeholder="Longitude"
-          value={lon}
-          onChange={(e) => setLon(e.target.value)}
-        />
-      </div>
+          <Input
+            placeholder="Address"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+          />
 
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              placeholder="Latitude"
+              value={lat}
+              onChange={(e) => setLat(e.target.value)}
+            />
+
+            <Input
+              placeholder="Longitude"
+              value={lon}
+              onChange={(e) => setLon(e.target.value)}
+            />
+          </div>
+        </CardContent>
+      </Card>
       <div className="mb-4 grid grid-cols-3 gap-2">
         {equipment.map((item) => (
           <label key={item.id} className="flex items-center gap-2">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={equipmentIds.includes(item.id)}
-              onChange={(e) => {
-                if (e.target.checked) {
+              onCheckedChange={(checked) => {
+                if (checked) {
                   setEquipmentIds([...equipmentIds, item.id]);
                 } else {
                   setEquipmentIds(equipmentIds.filter((id) => id !== item.id));
@@ -257,17 +278,60 @@ export default function AdminPage() {
           </label>
         ))}
       </div>
+      {selectedPark && (
+        <Card className="mb-6">
+          <CardHeader>
+            <h2 className="text-2xl font-bold">{selectedPark.name}</h2>
 
+            {selectedPark.address && (
+              <p className="text-muted-foreground">{selectedPark.address}</p>
+            )}
+          </CardHeader>
+
+          <CardContent>
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm text-muted-foreground">Coordinates</p>
+
+                <p>
+                  {selectedPark.lat}, {selectedPark.lon}
+                </p>
+              </div>
+
+              <div>
+                <p className="mb-2 text-sm text-muted-foreground">Equipment</p>
+
+                <div className="flex flex-wrap gap-2">
+                  {selectedPark.equipment?.map((item: string) => (
+                    <Badge key={item} variant="secondary">
+                      {item}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Button onClick={updatePark}>Save Changes</Button>
+
+                <Button
+                  variant="destructive"
+                  onClick={() => deletePark(selectedPark.id)}
+                >
+                  Delete Park
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       <div className="mb-4 flex gap-2">
-        <button
-          onClick={editingParkId ? updatePark : createPark}
-          className="rounded bg-blue-500 px-4 py-2 text-white cursor-pointer"
-        >
+        <Button onClick={editingParkId ? updatePark : createPark}>
           {editingParkId ? "Update Park" : "Create Park"}
-        </button>
+        </Button>
 
         {editingParkId && (
-          <button
+          <Button
+            variant="secondary"
             onClick={() => {
               setEditingParkId(null);
 
@@ -278,14 +342,13 @@ export default function AdminPage() {
               setLon("");
               setEquipmentIds([]);
             }}
-            className="rounded bg-gray-500 px-4 py-2 text-white cursor-pointer"
           >
             Cancel
-          </button>
+          </Button>
         )}
       </div>
 
-      <input
+      <Input
         className="mb-4 w-full border p-2"
         placeholder="Search park..."
         value={search}
@@ -302,49 +365,40 @@ export default function AdminPage() {
         {parks.length.toLocaleString()} parks cached locally
       </p>
 
-      <table className="w-full border">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Name</th>
-            <th>Address</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>ID</TableHead>
+            <TableHead>Name</TableHead>
+            <TableHead>Address</TableHead>
+          </TableRow>
+        </TableHeader>
+
+        <TableBody>
           {search.trim().length < 2 ? (
-            <tr>
-              <td colSpan={4} className="p-4 text-center text-gray-500">
+            <TableRow>
+              <TableCell
+                colSpan={3}
+                className="h-24 text-center text-muted-foreground"
+              >
                 Type at least 2 characters to search
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ) : (
             filteredParks.slice(0, 100).map((park) => (
-              <tr key={park.id}>
-                <td>{park.id}</td>
-                <td>{park.name}</td>
-                <td>{park.address}</td>
-
-                <td>
-                  <button
-                    onClick={() => startEditing(park)}
-                    className="rounded bg-yellow-500 px-2 py-1 text-white cursor-pointer"
-                  >
-                    Edit
-                  </button>
-
-                  <button
-                    onClick={() => deletePark(park.id)}
-                    className="ml-2 rounded bg-red-500 px-2 py-1 text-white cursor-pointer"
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
+              <TableRow
+                key={park.id}
+                onClick={() => startEditing(park)}
+                className="cursor-pointer hover:bg-muted/50"
+              >
+                <TableCell>{park.id}</TableCell>
+                <TableCell>{park.name}</TableCell>
+                <TableCell>{park.address}</TableCell>
+              </TableRow>
             ))
           )}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </main>
   );
 }
