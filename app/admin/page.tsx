@@ -162,14 +162,23 @@ export default function AdminPage() {
     setLon("");
     setEquipmentIds([]);
   }
-  function startEditing(park: ParkSummary) {
-    setEditingParkId(park.id);
+  async function startEditing(park: ParkSummary) {
+    const response = await fetch(`/api/parks/${park.id}`);
+    const fullPark = await response.json();
 
-    setName(park.name);
-    setTitle(park.title ?? "");
-    setAddress(park.address ?? "");
-    setLat(String(park.lat));
-    setLon(String(park.lon));
+    setEditingParkId(fullPark.id);
+
+    setName(fullPark.name);
+    setTitle(fullPark.title ?? "");
+    setAddress(fullPark.address ?? "");
+    setLat(String(fullPark.lat));
+    setLon(String(fullPark.lon));
+
+    const selectedIds = equipment
+      .filter((item) => fullPark.equipment.includes(item.name))
+      .map((item) => item.id);
+
+    setEquipmentIds(selectedIds);
   }
   async function deletePark(id: number) {
     await fetch(`/api/parks/${id}`, {
