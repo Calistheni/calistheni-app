@@ -24,6 +24,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 
 import { Settings } from "lucide-react";
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
@@ -1182,66 +1183,67 @@ export default function ParksMap({
           )}
         </DialogContent>
       </Dialog>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="icon">
-            <Settings className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
+      <div className="fixed top-4 left-8 z-50 flex items-center gap-2 rounded-xl border border-border bg-card p-2 shadow-xl">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="icon">
+              <Settings className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
 
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => setLightPreset("dawn")}>
-            Dawn
-          </DropdownMenuItem>
+          <DropdownMenuContent
+            align="start"
+            sideOffset={8}
+            className="-translate-x-10"
+          >
+            <DropdownMenuItem onClick={() => setLightPreset("dawn")}>
+              Dawn
+            </DropdownMenuItem>
 
-          <DropdownMenuItem onClick={() => setLightPreset("day")}>
-            Day
-          </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setLightPreset("day")}>
+              Day
+            </DropdownMenuItem>
 
-          <DropdownMenuItem onClick={() => setLightPreset("dusk")}>
-            Dusk
-          </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setLightPreset("dusk")}>
+              Dusk
+            </DropdownMenuItem>
 
-          <DropdownMenuItem onClick={() => setLightPreset("night")}>
-            Night
-          </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setLightPreset("night")}>
+              Night
+            </DropdownMenuItem>
 
-          <DropdownMenuSeparator />
+            <DropdownMenuSeparator />
 
-          <DropdownMenuLabel>Theme</DropdownMenuLabel>
+            <DropdownMenuLabel>Theme</DropdownMenuLabel>
 
-          <DropdownMenuItem onClick={() => setTheme("default")}>
-            Default
-          </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setTheme("default")}>
+              Default
+            </DropdownMenuItem>
 
-          <DropdownMenuItem onClick={() => setTheme("faded")}>
-            Faded
-          </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setTheme("faded")}>
+              Faded
+            </DropdownMenuItem>
 
-          <DropdownMenuItem onClick={() => setTheme("monochrome")}>
-            Monochrome
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+            <DropdownMenuItem onClick={() => setTheme("monochrome")}>
+              Monochrome
+            </DropdownMenuItem>
+            <ThemeSwitcher />
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
 
       <div className="relative">
-        <div
-          ref={mapContainer}
-          className="h-[80vh] w-full overflow-hidden rounded-xl"
-        />
+        <div className="fixed inset-0">
+          <div ref={mapContainer} className="h-full w-full" />
 
-        {isMapInitializing ? (
-          <div className="pointer-events-none absolute inset-0 z-10 bg-black/20" />
-        ) : null}
-
-        {/* {!isMapInitializing && isViewportLoading ? (
-          <div className="pointer-events-none absolute left-4 top-4 rounded-md bg-background/90 px-3 py-2 text-sm shadow-sm">
-            Loading parks...
-          </div>
-        ) : null} */}
+          {isMapInitializing && (
+            <div className="pointer-events-none absolute inset-0 z-10 bg-black/20" />
+          )}
+        </div>
 
         {viewportError ? (
-          <div className="absolute bottom-4 left-4 rounded-md bg-background/95 p-3 shadow-sm">
+          <div className="fixed bottom-4 left-4 z-50 rounded-md bg-background/95 p-3 shadow-sm">
+            {" "}
             <p className="text-sm text-muted-foreground">{viewportError}</p>
             <Button
               className="mt-2"
