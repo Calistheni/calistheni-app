@@ -16,6 +16,7 @@ import {
   loadParks,
   saveParks,
   clearParksCache,
+  mergeParks,
 } from "@/lib/cache";
 import {
   DropdownMenu,
@@ -28,6 +29,7 @@ import {
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 
 import { Settings } from "lucide-react";
+
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
 
 const VIEWPORT_DEBOUNCE_MS = 100;
@@ -38,6 +40,13 @@ type ParksMapProps = {
   onViewportParksChange: (parks: ParkSummary[]) => void;
   onViewportLoadingChange?: (isLoading: boolean) => void;
 };
+
+type ParksChangesResponse = {
+  version: string | null;
+  updated: ParkSummary[];
+  deleted: number[];
+};
+
 type PopupRenderOptions = {
   park?: Pick<ParkSummary, "name" | "address"> | ParkDetail;
   loading?: boolean;
@@ -416,8 +425,6 @@ export default function ParksMap({
       console.log("CACHED VERSION", cached?.version);
 
       if (!cached?.version) {
-        await clearParksCache();
-
         viewportCacheRef.current.clear();
         lastViewportKeyRef.current = null;
 
@@ -432,20 +439,38 @@ export default function ParksMap({
 
       if (version !== cached.version) {
         console.log("VERSION MISMATCH");
-        console.log("CLEARING CACHE");
 
-        await clearParksCache();
+        const response = await fetch(
+          `/api/parks/changes?since=${encodeURIComponent(cached.version)}`
+        );
 
-        console.log("CACHE CLEARED");
+        const changes: ParksChangesResponse = await response.json();
 
-        viewportCacheRef.current.clear();
-        lastViewportKeyRef.current = null;
+        const merged = await mergeParks(
+          changes.updated,
+          changes.deleted,
+          changes.version
+        );
 
-        console.log("REQUESTING REFRESH");
+        if (!merged) {
+          return;
+        }
 
-        await requestViewportParksRef.current({ force: true });
+        parksRef.current = merged;
 
-        console.log("REFRESH COMPLETE");
+        viewportCacheRef.current.set("ALL_PARKS", merged);
+
+        onViewportParksChange(merged);
+
+        const source = mapRef.current?.getSource("parks") as
+          | mapboxgl.GeoJSONSource
+          | undefined;
+
+        source?.setData(buildGeoJson(merged));
+
+        console.log(
+          `Applied ${changes.updated.length} updates and ${changes.deleted.length} deletions`
+        );
       } else {
         console.log("VERSION MATCH");
       }

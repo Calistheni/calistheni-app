@@ -30,7 +30,35 @@ export async function clearParksCache() {
 
   await db.delete("parks", "all");
 }
+export async function mergeParks(
+  updated: ParkSummary[],
+  deleted: number[],
+  version?: string | null
+): Promise<ParkSummary[] | null> {
+  const cached = await loadParks();
 
+  if (!cached) {
+    return null;
+  }
+
+  const parksMap = new Map<number, ParkSummary>(
+    cached.data.map((park: ParkSummary) => [park.id, park])
+  );
+
+  updated.forEach((park) => {
+    parksMap.set(park.id, park);
+  });
+
+  deleted.forEach((id) => {
+    parksMap.delete(id);
+  });
+
+  const merged: ParkSummary[] = [...parksMap.values()];
+
+  await saveParks(merged, version ?? undefined);
+
+  return merged;
+}
 export async function saveParks(parks: ParkSummary[], version?: string) {
   const db = await getDB();
 
