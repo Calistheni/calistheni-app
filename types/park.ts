@@ -5,6 +5,7 @@ export type ParkSummary = {
   lat: number;
   lon: number;
   address: string | null;
+  updatedAt: string;
 };
 
 export type ParkDetail = ParkSummary & {

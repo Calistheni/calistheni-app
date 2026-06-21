@@ -19,6 +19,26 @@ const parkSummarySelect = {
   },
 };
 
+function mapParkSummary(park: {
+  id: number;
+  name: string;
+  title: string | null;
+  lat: number;
+  lon: number;
+  address: string | null;
+  updatedAt: Date;
+}): ParkSummary {
+  return {
+    id: park.id,
+    name: park.name,
+    title: park.title,
+    lat: park.lat,
+    lon: park.lon,
+    address: park.address,
+    updatedAt: park.updatedAt.toISOString(),
+  };
+}
+
 function mapParkDetail(park: {
   id: number;
   name: string;
@@ -26,6 +46,7 @@ function mapParkDetail(park: {
   lat: number;
   lon: number;
   address: string | null;
+  updatedAt: Date;
   equipment: Array<{
     equipment: {
       name: string;
@@ -39,6 +60,7 @@ function mapParkDetail(park: {
     lat: park.lat,
     lon: park.lon,
     address: park.address,
+    updatedAt: park.updatedAt.toISOString(),
     equipment: park.equipment.map((e) => e.equipment.name),
   };
 }
@@ -48,15 +70,14 @@ export async function getParksInBounds(
   limit?: number
 ): Promise<ParkSummary[]> {
   const { minLat, maxLat, minLon, maxLon } = bounds;
-  return prisma.park.findMany({
+
+  const parks = await prisma.park.findMany({
     where: {
       deletedAt: null,
-
       lat: {
         gte: minLat,
         lte: maxLat,
       },
-
       ...(minLon <= maxLon
         ? {
             lon: {
@@ -68,10 +89,16 @@ export async function getParksInBounds(
             OR: [{ lon: { gte: minLon } }, { lon: { lte: maxLon } }],
           }),
     },
-    select: parkSummarySelect,
+    select: {
+      ...parkSummarySelect,
+      updatedAt: true,
+    },
     take: limit,
   });
+
+  return parks.map(mapParkSummary);
 }
+
 export async function getParkDetail(id: number): Promise<ParkDetail | null> {
   console.time(`db-${id}`);
 

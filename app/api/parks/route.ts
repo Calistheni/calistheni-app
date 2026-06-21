@@ -12,6 +12,7 @@ export async function GET() {
       address: true,
       lat: true,
       lon: true,
+      updatedAt: true,
     },
   });
   return NextResponse.json(parks);

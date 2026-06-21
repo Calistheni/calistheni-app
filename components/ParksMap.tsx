@@ -353,46 +353,56 @@ export default function ParksMap({
     setIsViewportLoading(nextValue);
     onViewportLoadingChange?.(nextValue);
   }
+  async function fetchParkDetail(parkId: number, parkPreview?: ParkSummary) {
+    const memoryCache = detailCacheRef.current.get(parkId);
 
-  async function fetchParkDetail(parkId: number) {
-    const cachedPark = detailCacheRef.current.get(parkId);
-
-    if (cachedPark) {
-      return cachedPark;
+    if (
+      memoryCache &&
+      (!parkPreview || memoryCache.updatedAt === parkPreview.updatedAt)
+    ) {
+      return memoryCache;
     }
 
     const indexedDbPark = await loadParkDetail(parkId);
 
-    if (indexedDbPark) {
+    if (
+      indexedDbPark &&
+      (!parkPreview || indexedDbPark.updatedAt === parkPreview.updatedAt)
+    ) {
       detailCacheRef.current.set(parkId, indexedDbPark);
+
       return indexedDbPark;
     }
-    console.time(`park-${parkId}`);
+
     const inFlightRequest = detailRequestCacheRef.current.get(parkId);
 
     if (inFlightRequest) {
       return inFlightRequest;
     }
-
+    console.time("detail-fetch");
     const request = fetch(`/api/parks/${parkId}`)
       .then(async (response) => {
         if (!response.ok) {
           throw new Error("Failed to load park details.");
         }
 
-        return (await response.json()) as ParkDetail;
+        const park = (await response.json()) as ParkDetail;
+        console.timeEnd("detail-fetch");
+
+        console.log("FETCHED DETAIL", park.updatedAt);
+
+        return park;
       })
       .then(async (park) => {
         detailCacheRef.current.set(park.id, park);
-        await saveParkDetail(park);
-        return park;
-      })
-      .finally(() => {
-        detailRequestCacheRef.current.delete(parkId);
-        console.timeEnd(`park-${parkId}`);
-      });
 
+        await saveParkDetail(park);
+
+        return park;
+      });
     detailRequestCacheRef.current.set(parkId, request);
+    console.log("DETAIL", indexedDbPark?.updatedAt);
+    console.log("SUMMARY", parkPreview?.updatedAt);
 
     return request;
   }
@@ -556,8 +566,7 @@ export default function ParksMap({
     parkPreview?: ParkSummary
   ) {
     try {
-      const park = await fetchParkDetail(parkId);
-
+      const park = await fetchParkDetail(parkId, parkPreview);
       if (popupRef.current !== popup) {
         return;
       }
@@ -600,8 +609,8 @@ export default function ParksMap({
     });
 
     popupRef.current = popup;
-    setPopupMarkup(popup, map, parkId, undefined, {
-      loading: true,
+    setPopupMarkup(popup, map, parkId, parkPreview, {
+      park: parkPreview,
     });
     void loadPopupDetails(popup, map, parkId, parkPreview);
   }
@@ -1030,8 +1039,8 @@ export default function ParksMap({
         openParkPopupRef.current(
           map,
           parkId,
-          [parkPreview.lon, parkPreview.lat]
-          // parkPreview
+          [parkPreview.lon, parkPreview.lat],
+          parkPreview
         );
       });
 
