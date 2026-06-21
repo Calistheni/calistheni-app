@@ -15,6 +15,7 @@ import {
   saveParkDetail,
   loadParks,
   saveParks,
+  clearParksCache,
 } from "@/lib/cache";
 import {
   DropdownMenu,
@@ -407,6 +408,52 @@ export default function ParksMap({
     return request;
   }
 
+  async function checkForParkUpdates() {
+    console.log("CHECKING FOR UPDATES");
+
+    try {
+      const cached = await loadParks();
+      console.log("CACHED VERSION", cached?.version);
+
+      if (!cached?.version) {
+        await clearParksCache();
+
+        viewportCacheRef.current.clear();
+        lastViewportKeyRef.current = null;
+
+        await requestViewportParksRef.current({ force: true });
+        return;
+      }
+
+      const response = await fetch("/api/parks/version");
+      const { version } = await response.json();
+
+      console.log("SERVER VERSION", version);
+
+      if (version !== cached.version) {
+        console.log("VERSION MISMATCH");
+        console.log("CLEARING CACHE");
+
+        await clearParksCache();
+
+        console.log("CACHE CLEARED");
+
+        viewportCacheRef.current.clear();
+        lastViewportKeyRef.current = null;
+
+        console.log("REQUESTING REFRESH");
+
+        await requestViewportParksRef.current({ force: true });
+
+        console.log("REFRESH COMPLETE");
+      } else {
+        console.log("VERSION MATCH");
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
   async function drawRoute(
     map: mapboxgl.Map,
     park: ParkDetail,
@@ -619,7 +666,7 @@ export default function ParksMap({
   async function requestViewportParks({
     force = false,
   }: { force?: boolean } = {}) {
-    if (viewportCacheRef.current.has("ALL_PARKS")) {
+    if (!force && viewportCacheRef.current.has("ALL_PARKS")) {
       const parks = viewportCacheRef.current.get("ALL_PARKS")!;
 
       parksRef.current = parks;
@@ -676,6 +723,7 @@ export default function ParksMap({
       signal: controller.signal,
     })
       .then(async (response) => {
+        console.log("FETCHING ALL PARKS FROM API");
         if (!response.ok) {
           throw new Error("Failed to load parks.");
         }
@@ -696,8 +744,11 @@ export default function ParksMap({
         console.log("JSON size:", (bytes / 1024).toFixed(2), "KB");
         console.log("JSON size:", (bytes / 1024 / 1024).toFixed(2), "MB");
 
-        await saveParks(nextParks);
+        const versionResponse = await fetch("/api/parks/version");
+        const { version } = await versionResponse.json();
 
+        await saveParks(nextParks, version);
+        console.log("SAVING VERSION", version);
         if ("storage" in navigator && navigator.storage?.estimate) {
           const estimate = await navigator.storage.estimate();
 
@@ -1109,6 +1160,7 @@ export default function ParksMap({
         | mapboxgl.GeoJSONSource
         | undefined;
       if (cached) {
+        console.log("LOADED PARKS FROM INDEXEDDB");
         setShowLoadingDialog(false);
         setIsMapInitializing(false);
         parksRef.current = cached.data;
@@ -1118,14 +1170,7 @@ export default function ParksMap({
         lastViewportKeyRef.current = "ALL_PARKS";
 
         source?.setData(buildGeoJson(cached.data));
-
-        setTimeout(() => {
-          viewportCacheRef.current.delete("ALL_PARKS");
-          lastViewportKeyRef.current = null;
-
-          void requestViewportParksRef.current();
-        }, 5000);
-
+        void checkForParkUpdates();
         return;
       }
 

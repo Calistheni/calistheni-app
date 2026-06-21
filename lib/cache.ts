@@ -25,19 +25,25 @@ async function getDB() {
   return dbPromise;
 }
 
-export async function saveParks(parks: ParkSummary[]) {
+export async function clearParksCache() {
+  const db = await getDB();
+
+  await db.delete("parks", "all");
+}
+
+export async function saveParks(parks: ParkSummary[], version?: string) {
   const db = await getDB();
 
   await db.put(
     "parks",
     {
       data: parks,
+      version,
       timestamp: Date.now(),
     },
     "all"
   );
 }
-
 export async function loadParks() {
   if (typeof window === "undefined") {
     return null;
