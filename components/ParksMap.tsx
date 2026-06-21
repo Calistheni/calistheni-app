@@ -259,6 +259,10 @@ export default function ParksMap({
   const [, setIsViewportLoading] = useState(true);
   const [viewportError, setViewportError] = useState<string | null>(null);
   const [loadingComplete, setLoadingComplete] = useState(false);
+  const [activeRoute, setActiveRoute] = useState<{
+    parkId: number;
+    name: string;
+  } | null>(null);
   const [showLoadingDialog, setShowLoadingDialog] = useState(() => {
     if (typeof window === "undefined") return false;
 
@@ -292,6 +296,58 @@ export default function ParksMap({
 
   const markerColor =
     lightPreset === "day" || lightPreset === "dawn" ? "#2563eb" : "#ef4444";
+
+  function clearRoute() {
+    const map = mapRef.current;
+
+    if (!map) return;
+
+    if (map.getLayer("route")) {
+      map.removeLayer("route");
+    }
+
+    if (map.getSource("route")) {
+      map.removeSource("route");
+    }
+
+    localStorage.removeItem("active-route");
+    setActiveRoute(null);
+  }
+
+  function restoreRoute(routeData: { geometry: GeoJSON.LineString }) {
+    const map = mapRef.current;
+
+    if (!map) return;
+
+    if (map.getSource("route")) {
+      (map.getSource("route") as mapboxgl.GeoJSONSource).setData({
+        type: "Feature",
+        properties: {},
+        geometry: routeData.geometry,
+      });
+
+      return;
+    }
+
+    map.addSource("route", {
+      type: "geojson",
+      data: {
+        type: "Feature",
+        properties: {},
+        geometry: routeData.geometry,
+      },
+    });
+
+    map.addLayer({
+      id: "route",
+      type: "line",
+      source: "route",
+      paint: {
+        "line-color": "#2563eb",
+        "line-width": 5,
+      },
+    });
+  }
 
   function setViewportLoading(nextValue: boolean) {
     setIsViewportLoading(nextValue);
@@ -369,6 +425,17 @@ export default function ParksMap({
       const data = await response.json();
       const route = data.routes?.[0]?.geometry;
 
+      localStorage.setItem(
+        "active-route",
+        JSON.stringify({
+          parkId: park.id,
+          name: park.name,
+          lat: park.lat,
+          lon: park.lon,
+          geometry: route,
+        })
+      );
+
       if (!route) {
         button.textContent = "No route";
         button.disabled = false;
@@ -411,6 +478,11 @@ export default function ParksMap({
       map.fitBounds(bounds, {
         padding: 80,
         duration: 1500,
+      });
+
+      setActiveRoute({
+        parkId: park.id,
+        name: park.name,
       });
 
       button.textContent = "Route ready";
@@ -738,6 +810,23 @@ export default function ParksMap({
   }, [parks]);
 
   useEffect(() => {
+    const savedRoute = localStorage.getItem("active-route");
+
+    if (!savedRoute) return;
+
+    try {
+      const route = JSON.parse(savedRoute);
+
+      setTimeout(() => {
+        setActiveRoute({
+          parkId: route.parkId,
+          name: route.name,
+        });
+      }, 0);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
     if (!mapContainer.current || mapRef.current) {
       return;
     }
@@ -812,6 +901,22 @@ export default function ParksMap({
           "circle-emissive-strength": 1,
         },
       });
+
+      const savedRoute = localStorage.getItem("active-route");
+
+      if (savedRoute) {
+        try {
+          const routeData = JSON.parse(savedRoute);
+
+          console.log("saved route", routeData);
+
+          if (routeData.geometry) {
+            restoreRoute(routeData);
+          }
+        } catch (error) {
+          console.error(error);
+        }
+      }
 
       map.addLayer({
         id: "cluster-count",
@@ -1037,6 +1142,30 @@ export default function ParksMap({
       ];
 
       userLocationRef.current = location;
+      const savedRoute = localStorage.getItem("active-route");
+
+      if (savedRoute) {
+        try {
+          const routeData = JSON.parse(savedRoute);
+
+          if (routeData.geometry) {
+            const bounds = new mapboxgl.LngLatBounds();
+
+            routeData.geometry.coordinates.forEach(
+              (coordinate: [number, number]) => {
+                bounds.extend(coordinate);
+              }
+            );
+
+            map.fitBounds(bounds, {
+              padding: 80,
+              duration: 1000,
+            });
+
+            return;
+          }
+        } catch {}
+      }
       localStorage.setItem("location-allowed", "true");
       localStorage.setItem("user-location", JSON.stringify(location));
 
@@ -1256,7 +1385,17 @@ export default function ParksMap({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      {activeRoute && (
+        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2">
+          <div className="flex items-center gap-2 rounded-xl border bg-card p-2 shadow-lg">
+            <span className="text-sm">Navigating to {activeRoute.name}</span>
 
+            <Button variant="destructive" size="sm" onClick={clearRoute}>
+              Cancel Route
+            </Button>
+          </div>
+        </div>
+      )}
       <div className="relative">
         <div className="fixed inset-0">
           <div ref={mapContainer} className="h-full w-full" />
