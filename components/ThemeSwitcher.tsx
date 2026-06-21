@@ -3,42 +3,36 @@
 import { Moon, Sun, Monitor } from "lucide-react";
 import { useTheme } from "next-themes";
 
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-
 import { Button } from "@/components/ui/button";
 
 export function ThemeSwitcher() {
-  const { setTheme } = useTheme();
+  const { theme, setTheme } = useTheme();
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline">
-          <Sun className="h-4 w-4" />
-        </Button>
-      </DropdownMenuTrigger>
+    <div className="flex items-center gap-1 rounded-md border bg-background p-1">
+      <Button
+        size="icon"
+        variant={theme === "light" ? "default" : "ghost"}
+        onClick={() => setTheme("light")}
+      >
+        <Sun className="h-4 w-4" />
+      </Button>
 
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => setTheme("light")}>
-          <Sun className="mr-2 h-4 w-4" />
-          Light
-        </DropdownMenuItem>
+      <Button
+        size="icon"
+        variant={theme === "dark" ? "default" : "ghost"}
+        onClick={() => setTheme("dark")}
+      >
+        <Moon className="h-4 w-4" />
+      </Button>
 
-        <DropdownMenuItem onClick={() => setTheme("dark")}>
-          <Moon className="mr-2 h-4 w-4" />
-          Dark
-        </DropdownMenuItem>
-
-        <DropdownMenuItem onClick={() => setTheme("system")}>
-          <Monitor className="mr-2 h-4 w-4" />
-          System
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+      <Button
+        size="icon"
+        variant={theme === "system" ? "default" : "ghost"}
+        onClick={() => setTheme("system")}
+      >
+        <Monitor className="h-4 w-4" />
+      </Button>
+    </div>
   );
 }
