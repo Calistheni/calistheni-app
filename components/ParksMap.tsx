@@ -291,7 +291,7 @@ export default function ParksMap({
   );
 
   const markerColor =
-    lightPreset === "day" || lightPreset === "dawn" ? "#22d3ee" : "#ef4444";
+    lightPreset === "day" || lightPreset === "dawn" ? "#2563eb" : "#ef4444";
 
   function setViewportLoading(nextValue: boolean) {
     setIsViewportLoading(nextValue);
@@ -606,8 +606,33 @@ export default function ParksMap({
 
         return data;
       })
-      .then((nextParks) => {
-        void saveParks(nextParks);
+      .then(async (nextParks) => {
+        const json = JSON.stringify(nextParks);
+        const bytes = new TextEncoder().encode(json).length;
+
+        console.log("Total parks:", nextParks.length);
+        console.log("JSON size:", bytes, "bytes");
+        console.log("JSON size:", (bytes / 1024).toFixed(2), "KB");
+        console.log("JSON size:", (bytes / 1024 / 1024).toFixed(2), "MB");
+
+        await saveParks(nextParks);
+
+        if ("storage" in navigator && navigator.storage?.estimate) {
+          const estimate = await navigator.storage.estimate();
+
+          console.log(
+            "Storage used:",
+            ((estimate.usage ?? 0) / 1024 / 1024).toFixed(2),
+            "MB"
+          );
+
+          console.log(
+            "Storage quota:",
+            ((estimate.quota ?? 0) / 1024 / 1024).toFixed(2),
+            "MB"
+          );
+        }
+
         console.time("geojson");
 
         const geojson = buildGeoJson(nextParks);
@@ -720,7 +745,7 @@ export default function ParksMap({
     const initialLightPreset = getInitialLightPreset();
     const initialMarkerColor =
       initialLightPreset === "day" || initialLightPreset === "dawn"
-        ? "#22d3ee"
+        ? "#2563eb"
         : "#ef4444";
 
     const map = new mapboxgl.Map({
