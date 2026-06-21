@@ -16,6 +16,16 @@ import {
   loadParks,
   saveParks,
 } from "@/lib/cache";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+import { Settings } from "lucide-react";
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
 
 const VIEWPORT_DEBOUNCE_MS = 100;
@@ -1172,40 +1182,52 @@ export default function ParksMap({
           )}
         </DialogContent>
       </Dialog>
-      <div className="mb-4 flex flex-wrap gap-2">
-        <Button variant="secondary" onClick={() => setLightPreset("dawn")}>
-          ☀️ Dawn
-        </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="icon">
+            <Settings className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
 
-        <Button variant="secondary" onClick={() => setLightPreset("day")}>
-          ☀️ Day
-        </Button>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => setLightPreset("dawn")}>
+            Dawn
+          </DropdownMenuItem>
 
-        <Button variant="secondary" onClick={() => setLightPreset("dusk")}>
-          🌆 Dusk
-        </Button>
+          <DropdownMenuItem onClick={() => setLightPreset("day")}>
+            Day
+          </DropdownMenuItem>
 
-        <Button variant="secondary" onClick={() => setLightPreset("night")}>
-          🌙 Night
-        </Button>
+          <DropdownMenuItem onClick={() => setLightPreset("dusk")}>
+            Dusk
+          </DropdownMenuItem>
 
-        <Button variant="secondary" onClick={() => setTheme("default")}>
-          Default
-        </Button>
+          <DropdownMenuItem onClick={() => setLightPreset("night")}>
+            Night
+          </DropdownMenuItem>
 
-        <Button variant="secondary" onClick={() => setTheme("faded")}>
-          Faded
-        </Button>
+          <DropdownMenuSeparator />
 
-        <Button variant="secondary" onClick={() => setTheme("monochrome")}>
-          Monochrome
-        </Button>
-      </div>
+          <DropdownMenuLabel>Theme</DropdownMenuLabel>
+
+          <DropdownMenuItem onClick={() => setTheme("default")}>
+            Default
+          </DropdownMenuItem>
+
+          <DropdownMenuItem onClick={() => setTheme("faded")}>
+            Faded
+          </DropdownMenuItem>
+
+          <DropdownMenuItem onClick={() => setTheme("monochrome")}>
+            Monochrome
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       <div className="relative">
         <div
           ref={mapContainer}
-          className="h-[600px] w-full overflow-hidden rounded-lg"
+          className="h-[80vh] w-full overflow-hidden rounded-xl"
         />
 
         {isMapInitializing ? (
