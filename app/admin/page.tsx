@@ -18,6 +18,14 @@ import {
   TableHeader,
 } from "@/components/ui/table";
 
+import { CoordinatePicker } from "@/components/CoordinatePicker";
+
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+
 type Equipment = {
   id: number;
   name: string;
@@ -245,19 +253,54 @@ export default function AdminPage() {
             onChange={(e) => setAddress(e.target.value)}
           />
 
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              placeholder="Latitude"
-              value={lat}
-              onChange={(e) => setLat(e.target.value)}
-            />
+          <Card>
+            <CardHeader>
+              <h3 className="font-semibold">Location</h3>
+            </CardHeader>
 
-            <Input
-              placeholder="Longitude"
-              value={lon}
-              onChange={(e) => setLon(e.target.value)}
-            />
-          </div>
+            <CardContent className="space-y-4">
+              <CoordinatePicker
+                lat={lat}
+                lon={lon}
+                onChange={(newLat, newLon) => {
+                  setLat(String(newLat));
+                  setLon(String(newLon));
+                }}
+              />
+
+              <div className="rounded-lg border p-3 text-sm">
+                <div>
+                  <strong>Latitude:</strong> {lat || "Click on the map"}
+                </div>
+
+                <div>
+                  <strong>Longitude:</strong> {lon || "Click on the map"}
+                </div>
+              </div>
+
+              <Collapsible>
+                <CollapsibleTrigger asChild>
+                  <Button variant="outline">Manual Coordinates</Button>
+                </CollapsibleTrigger>
+
+                <CollapsibleContent className="mt-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input
+                      placeholder="Latitude"
+                      value={lat}
+                      onChange={(e) => setLat(e.target.value)}
+                    />
+
+                    <Input
+                      placeholder="Longitude"
+                      value={lon}
+                      onChange={(e) => setLon(e.target.value)}
+                    />
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            </CardContent>
+          </Card>
         </CardContent>
       </Card>
       <div className="mb-4 grid grid-cols-3 gap-2">
