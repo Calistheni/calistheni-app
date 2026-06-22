@@ -1033,7 +1033,7 @@ export default function ParksMap({
         filter: ["!", ["has", "point_count"]],
         paint: {
           "circle-color": initialMarkerColor,
-          "circle-radius": 6,
+          "circle-radius": 10,
           "circle-stroke-width": 2,
           "circle-stroke-color": "#ffffff",
           "circle-emissive-strength": 1,
