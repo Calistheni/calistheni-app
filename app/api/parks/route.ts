@@ -1,4 +1,6 @@
+import { getParkDetail } from "@/lib/parks";
 import { prisma } from "@/lib/prisma";
+import { parkMutationSchema } from "@/lib/validation/parks";
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -18,31 +20,43 @@ export async function GET() {
   return NextResponse.json(parks);
 }
 export async function POST(request: Request) {
-  const body = await request.json();
+  let body: unknown;
+
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON payload." }, { status: 400 });
+  }
+
+  const parsedBody = parkMutationSchema.safeParse(body);
+
+  if (!parsedBody.success) {
+    return NextResponse.json(
+      {
+        error: "Invalid park payload.",
+        fieldErrors: parsedBody.error.flatten().fieldErrors,
+      },
+      { status: 400 }
+    );
+  }
 
   const park = await prisma.park.create({
     data: {
-      name: body.name,
-      title: body.title ?? null,
-      address: body.address ?? null,
-      lat: Number(body.lat),
-      lon: Number(body.lon),
+      name: parsedBody.data.name,
+      title: parsedBody.data.title,
+      address: parsedBody.data.address,
+      lat: parsedBody.data.lat,
+      lon: parsedBody.data.lon,
 
       equipment: {
-        create: (body.equipmentIds ?? []).map((equipmentId: number) => ({
+        create: parsedBody.data.equipmentIds.map((equipmentId) => ({
           equipmentId,
         })),
       },
     },
-
-    include: {
-      equipment: {
-        include: {
-          equipment: true,
-        },
-      },
-    },
   });
 
-  return NextResponse.json(park, { status: 201 });
+  const createdPark = await getParkDetail(park.id);
+
+  return NextResponse.json(createdPark, { status: 201 });
 }
