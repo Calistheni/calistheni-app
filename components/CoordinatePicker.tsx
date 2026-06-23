@@ -85,6 +85,19 @@ export function CoordinatePicker({
     const latitude = Number(lat);
     const longitude = Number(lon);
 
+    if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+      return;
+    }
+
+    if (
+      latitude < -90 ||
+      latitude > 90 ||
+      longitude < -180 ||
+      longitude > 180
+    ) {
+      return;
+    }
+
     markerRef.current.setLngLat([longitude, latitude]);
 
     mapRef.current.flyTo({
