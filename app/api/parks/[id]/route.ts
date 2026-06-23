@@ -1,6 +1,7 @@
 import { getParkDetail } from "@/lib/parks";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { parkMutationSchema } from "@/lib/validation/parks";
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -25,21 +26,39 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const body = await request.json();
-
   const parkId = Number(id);
 
-  const park = await prisma.$transaction(async (tx) => {
+  let body: unknown;
+
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON payload." }, { status: 400 });
+  }
+
+  const parsedBody = parkMutationSchema.safeParse(body);
+
+  if (!parsedBody.success) {
+    return NextResponse.json(
+      {
+        error: "Invalid park payload.",
+        fieldErrors: parsedBody.error.flatten().fieldErrors,
+      },
+      { status: 400 }
+    );
+  }
+
+  await prisma.$transaction(async (tx) => {
     await tx.park.update({
       where: {
         id: parkId,
       },
       data: {
-        name: body.name,
-        title: body.title,
-        address: body.address,
-        lat: body.lat,
-        lon: body.lon,
+        name: parsedBody.data.name,
+        title: parsedBody.data.title,
+        address: parsedBody.data.address,
+        lat: parsedBody.data.lat,
+        lon: parsedBody.data.lon,
       },
     });
 
@@ -49,23 +68,19 @@ export async function PATCH(
       },
     });
 
-    if (body.equipmentIds?.length) {
+    if (parsedBody.data.equipmentIds.length) {
       await tx.parkEquipment.createMany({
-        data: body.equipmentIds.map((equipmentId: number) => ({
+        data: parsedBody.data.equipmentIds.map((equipmentId) => ({
           parkId,
           equipmentId,
         })),
       });
     }
-
-    return tx.park.findUnique({
-      where: {
-        id: parkId,
-      },
-    });
   });
 
-  return NextResponse.json(park);
+  const updatedPark = await getParkDetail(parkId);
+
+  return NextResponse.json(updatedPark);
 }
 
 export async function DELETE(
