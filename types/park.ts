@@ -13,6 +13,28 @@ export type ParkDetail = ParkSummary & {
   equipment: string[];
 };
 
+export type ParkMutationPayload = {
+  name: string;
+  title: string | null;
+  address: string | null;
+  lat: number;
+  lon: number;
+  equipmentIds: number[];
+};
+
+export type ParkFormValues = {
+  name: string;
+  title: string;
+  address: string;
+  lat: string;
+  lon: string;
+  equipmentIds: number[];
+};
+
+export type ParkFormErrors = Partial<
+  Record<"name" | "lat" | "lon" | "equipmentIds", string>
+>;
+
 export type ParkViewportBounds = {
   minLat: number;
   maxLat: number;
