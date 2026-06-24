@@ -15,7 +15,6 @@ import {
   saveParkDetail,
   loadParks,
   saveParks,
-  clearParksCache,
   mergeParks,
 } from "@/lib/cache";
 import {
@@ -252,6 +251,7 @@ export default function ParksMap({
   } | null>(null);
   const viewportDebounceRef = useRef<number | null>(null);
   const mapLoadedRef = useRef(false);
+  const onViewportParksChangeRef = useRef(onViewportParksChange);
   const [lightPreset, setLightPreset] = useState<
     "dawn" | "day" | "dusk" | "night"
   >(getInitialLightPreset);
@@ -363,6 +363,11 @@ export default function ParksMap({
     setIsViewportLoading(nextValue);
     onViewportLoadingChange?.(nextValue);
   }
+
+  function updateViewportParks(nextParks: ParkSummary[]) {
+    onViewportParksChangeRef.current(nextParks);
+  }
+
   async function fetchParkDetail(parkId: number, parkPreview?: ParkSummary) {
     const memoryCache = detailCacheRef.current.get(parkId);
 
@@ -460,7 +465,7 @@ export default function ParksMap({
 
         viewportCacheRef.current.set("ALL_PARKS", merged);
 
-        onViewportParksChange(merged);
+        updateViewportParks(merged);
 
         const source = mapRef.current?.getSource("parks") as
           | mapboxgl.GeoJSONSource
@@ -695,7 +700,7 @@ export default function ParksMap({
       const parks = viewportCacheRef.current.get("ALL_PARKS")!;
 
       parksRef.current = parks;
-      onViewportParksChange(parks);
+      updateViewportParks(parks);
 
       return;
     }
@@ -720,7 +725,7 @@ export default function ParksMap({
     if (cachedParks) {
       lastViewportKeyRef.current = key;
       setViewportError(null);
-      onViewportParksChange(cachedParks);
+      updateViewportParks(cachedParks);
       setViewportLoading(false);
       return;
     }
@@ -828,7 +833,7 @@ export default function ParksMap({
         viewportCacheRef.current.set(key, nextParks);
         lastViewportKeyRef.current = key;
         parksRef.current = nextParks;
-        onViewportParksChange(nextParks);
+        updateViewportParks(nextParks);
         setLoadingProgress(100);
         setLoadingComplete(true);
 
@@ -874,10 +879,13 @@ export default function ParksMap({
   }
   const requestViewportParksRef = useRef(requestViewportParks);
   const scheduleViewportLoadRef = useRef(scheduleViewportLoad);
+  const checkForParkUpdatesRef = useRef(checkForParkUpdates);
   useEffect(() => {
+    onViewportParksChangeRef.current = onViewportParksChange;
     openParkPopupRef.current = openParkPopup;
     requestViewportParksRef.current = requestViewportParks;
     scheduleViewportLoadRef.current = scheduleViewportLoad;
+    checkForParkUpdatesRef.current = checkForParkUpdates;
   });
 
   useEffect(() => {
@@ -1189,13 +1197,13 @@ export default function ParksMap({
         setShowLoadingDialog(false);
         setIsMapInitializing(false);
         parksRef.current = cached.data;
-        onViewportParksChange(cached.data);
+        updateViewportParks(cached.data);
 
         viewportCacheRef.current.set("ALL_PARKS", cached.data);
         lastViewportKeyRef.current = "ALL_PARKS";
 
         source?.setData(buildGeoJson(cached.data));
-        void checkForParkUpdates();
+        void checkForParkUpdatesRef.current();
         return;
       }
 
