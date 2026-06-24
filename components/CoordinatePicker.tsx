@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useEffectEvent, useRef } from "react";
 import mapboxgl from "mapbox-gl";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
@@ -19,20 +19,38 @@ export function CoordinatePicker({
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markerRef = useRef<mapboxgl.Marker | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const initialCoordinatesRef = useRef({ lat, lon });
+  const handleCoordinateChange = useEffectEvent(
+    (nextLat: number, nextLon: number) => {
+      onChange(nextLat, nextLon);
+    }
+  );
 
   useEffect(() => {
+    console.log("CoordinatePicker mounted");
+    console.log("container", containerRef.current);
+    console.log("existing map", mapRef.current);
     if (!containerRef.current || mapRef.current) {
+      console.log("Map init skipped");
       return;
     }
-
-    const initialLng = lon ? Number(lon) : 23.3219;
-    const initialLat = lat ? Number(lat) : 42.6977;
+    console.log("Creating map");
+    const initialLng = initialCoordinatesRef.current.lon
+      ? Number(initialCoordinatesRef.current.lon)
+      : 23.3219;
+    const initialLat = initialCoordinatesRef.current.lat
+      ? Number(initialCoordinatesRef.current.lat)
+      : 42.6977;
 
     const map = new mapboxgl.Map({
       container: containerRef.current,
       style: "mapbox://styles/mapbox/standard",
       center: [initialLng, initialLat],
       zoom: 12,
+    });
+    console.log("Map created");
+    map.on("load", () => {
+      map.resize();
     });
 
     mapRef.current = map;
@@ -53,7 +71,7 @@ export function CoordinatePicker({
 
       markerRef.current?.setLngLat([longitude, latitude]);
 
-      onChange(latitude, longitude);
+      handleCoordinateChange(latitude, longitude);
     });
 
     markerRef.current = new mapboxgl.Marker()
@@ -65,11 +83,16 @@ export function CoordinatePicker({
 
       markerRef.current?.setLngLat([lng, lat]);
 
-      onChange(lat, lng);
+      handleCoordinateChange(lat, lng);
     });
 
     return () => {
+      console.log("Destroying map");
+
       map.remove();
+
+      mapRef.current = null;
+      markerRef.current = null;
     };
   }, []);
 
