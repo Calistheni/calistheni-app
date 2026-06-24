@@ -1,5 +1,9 @@
 import { getParkDetail } from "@/lib/parks";
 import { NextResponse } from "next/server";
+import {
+  createUnauthorizedResponse,
+  isAdminAuthenticated,
+} from "@/lib/admin-auth";
 import { prisma } from "@/lib/prisma";
 import { parkMutationSchema } from "@/lib/validation/parks";
 export async function GET(
@@ -25,6 +29,10 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (!(await isAdminAuthenticated())) {
+    return createUnauthorizedResponse();
+  }
+
   const { id } = await params;
   const parkId = Number(id);
 
@@ -87,6 +95,10 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (!(await isAdminAuthenticated())) {
+    return createUnauthorizedResponse();
+  }
+
   const { id } = await params;
 
   await prisma.park.update({
