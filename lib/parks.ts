@@ -27,6 +27,7 @@ function mapParkSummary(park: {
   lon: number;
   address: string | null;
   updatedAt: Date;
+  deletedAt: Date | null;
 }): ParkSummary {
   return {
     id: park.id,
@@ -36,6 +37,7 @@ function mapParkSummary(park: {
     lon: park.lon,
     address: park.address,
     updatedAt: park.updatedAt.toISOString(),
+    deletedAt: park.deletedAt?.toISOString() ?? null,
   };
 }
 
@@ -47,6 +49,7 @@ function mapParkDetail(park: {
   lon: number;
   address: string | null;
   updatedAt: Date;
+  deletedAt: Date | null;
   equipment: Array<{
     equipment: {
       name: string;
@@ -61,6 +64,7 @@ function mapParkDetail(park: {
     lon: park.lon,
     address: park.address,
     updatedAt: park.updatedAt.toISOString(),
+    deletedAt: park.deletedAt?.toISOString() ?? null,
     equipment: park.equipment.map((e) => e.equipment.name),
   };
 }
@@ -92,6 +96,7 @@ export async function getParksInBounds(
     select: {
       ...parkSummarySelect,
       updatedAt: true,
+      deletedAt: true,
     },
     take: limit,
   });
