@@ -1,5 +1,9 @@
 import { getParkDetail } from "@/lib/parks";
 import { prisma } from "@/lib/prisma";
+import {
+  createUnauthorizedResponse,
+  isAdminAuthenticated,
+} from "@/lib/admin-auth";
 import { parkMutationSchema } from "@/lib/validation/parks";
 import { NextResponse } from "next/server";
 
@@ -11,15 +15,21 @@ export async function GET() {
     select: {
       id: true,
       name: true,
+      title: true,
       address: true,
       lat: true,
       lon: true,
       updatedAt: true,
+      deletedAt: true,
     },
   });
   return NextResponse.json(parks);
 }
 export async function POST(request: Request) {
+  if (!(await isAdminAuthenticated())) {
+    return createUnauthorizedResponse();
+  }
+
   let body: unknown;
 
   try {
