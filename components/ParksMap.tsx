@@ -1437,7 +1437,11 @@ export default function ParksMap({
       <div className="fixed top-4 left-4 z-50 flex items-center gap-2 rounded-xl border border-border bg-card p-2 shadow-xl sm:left-8">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="icon" aria-label="Open map settings">
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Open map settings"
+            >
               <Settings className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -1452,7 +1456,7 @@ export default function ParksMap({
             </DropdownMenuItem>
 
             <DropdownMenuItem onClick={() => setLightPreset("dusk")}>
-              Dusk
+              Duskkkkk
             </DropdownMenuItem>
 
             <DropdownMenuItem onClick={() => setLightPreset("night")}>
