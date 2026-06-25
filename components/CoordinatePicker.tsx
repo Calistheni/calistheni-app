@@ -124,7 +124,8 @@ export function CoordinatePicker({
   return (
     <div
       ref={containerRef}
-      className="h-150 w-full overflow-hidden rounded-lg border"
+      aria-label="Coordinate picker map"
+      className="h-[320px] w-full overflow-hidden rounded-lg border sm:h-[420px] lg:h-[600px]"
     />
   );
 }

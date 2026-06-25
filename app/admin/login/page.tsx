@@ -1,9 +1,18 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AdminLoginForm } from "@/components/admin/AdminLoginForm";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { isAdminAuthenticated } from "@/lib/admin-auth";
+
+export const metadata: Metadata = {
+  title: "Admin Login",
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
 
 export default async function AdminLoginPage() {
   if (await isAdminAuthenticated()) {

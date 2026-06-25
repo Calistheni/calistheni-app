@@ -4,27 +4,39 @@ import {
   createUnauthorizedResponse,
   isAdminAuthenticated,
 } from "@/lib/admin-auth";
+import {
+  createInternalServerErrorResponse,
+  createJsonErrorResponse,
+  createJsonValidationErrorResponse,
+} from "@/lib/api-response";
 import { parkMutationSchema } from "@/lib/validation/parks";
 import { NextResponse } from "next/server";
 
 export async function GET() {
-  const parks = await prisma.park.findMany({
-    where: {
-      deletedAt: null,
-    },
-    select: {
-      id: true,
-      name: true,
-      title: true,
-      address: true,
-      lat: true,
-      lon: true,
-      updatedAt: true,
-      deletedAt: true,
-    },
-  });
-  return NextResponse.json(parks);
+  try {
+    const parks = await prisma.park.findMany({
+      where: {
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        name: true,
+        title: true,
+        address: true,
+        lat: true,
+        lon: true,
+        updatedAt: true,
+        deletedAt: true,
+      },
+    });
+
+    return NextResponse.json(parks);
+  } catch (error) {
+    console.error(error);
+    return createInternalServerErrorResponse();
+  }
 }
+
 export async function POST(request: Request) {
   if (!(await isAdminAuthenticated())) {
     return createUnauthorizedResponse();
@@ -35,38 +47,40 @@ export async function POST(request: Request) {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON payload." }, { status: 400 });
+    return createJsonErrorResponse("Invalid JSON payload.", 400);
   }
 
   const parsedBody = parkMutationSchema.safeParse(body);
 
   if (!parsedBody.success) {
-    return NextResponse.json(
-      {
-        error: "Invalid park payload.",
-        fieldErrors: parsedBody.error.flatten().fieldErrors,
-      },
-      { status: 400 }
+    return createJsonValidationErrorResponse(
+      "Invalid park payload.",
+      parsedBody.error.flatten().fieldErrors
     );
   }
 
-  const park = await prisma.park.create({
-    data: {
-      name: parsedBody.data.name,
-      title: parsedBody.data.title,
-      address: parsedBody.data.address,
-      lat: parsedBody.data.lat,
-      lon: parsedBody.data.lon,
+  try {
+    const park = await prisma.park.create({
+      data: {
+        name: parsedBody.data.name,
+        title: parsedBody.data.title,
+        address: parsedBody.data.address,
+        lat: parsedBody.data.lat,
+        lon: parsedBody.data.lon,
 
-      equipment: {
-        create: parsedBody.data.equipmentIds.map((equipmentId) => ({
-          equipmentId,
-        })),
+        equipment: {
+          create: parsedBody.data.equipmentIds.map((equipmentId) => ({
+            equipmentId,
+          })),
+        },
       },
-    },
-  });
+    });
 
-  const createdPark = await getParkDetail(park.id);
+    const createdPark = await getParkDetail(park.id);
 
-  return NextResponse.json(createdPark, { status: 201 });
+    return NextResponse.json(createdPark, { status: 201 });
+  } catch (error) {
+    console.error(error);
+    return createInternalServerErrorResponse();
+  }
 }

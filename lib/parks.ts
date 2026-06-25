@@ -8,15 +8,6 @@ const parkSummarySelect = {
   lat: true,
   lon: true,
   address: true,
-  equipment: {
-    include: {
-      equipment: {
-        select: {
-          name: true,
-        },
-      },
-    },
-  },
 };
 
 function mapParkSummary(park: {
@@ -105,8 +96,6 @@ export async function getParksInBounds(
 }
 
 export async function getParkDetail(id: number): Promise<ParkDetail | null> {
-  console.time(`db-${id}`);
-
   const park = await prisma.park.findFirst({
     where: {
       id,
@@ -120,8 +109,6 @@ export async function getParkDetail(id: number): Promise<ParkDetail | null> {
       },
     },
   });
-
-  console.timeEnd(`db-${id}`);
 
   if (!park) {
     return null;

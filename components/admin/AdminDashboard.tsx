@@ -60,6 +60,12 @@ type ApiErrorPayload = {
   fieldErrors?: Record<string, string[] | undefined>;
 };
 
+type ParsedApiError = {
+  message: string;
+  errors: ParkFormErrors;
+  unauthorized: boolean;
+};
+
 const DUPLICATE_DISTANCE_THRESHOLD_METERS = 100;
 const EARTH_RADIUS_METERS = 6_371_000;
 
@@ -156,12 +162,20 @@ async function parseApiError(response: Response) {
     payload = null;
   }
 
-  const message = payload?.error || "Request failed.";
+  const unauthorized = response.status === 401;
+  const message = unauthorized
+    ? "Your admin session expired. Please sign in again."
+    : payload?.error || "Request failed.";
 
   return {
     message,
     errors: getParkFormErrors(payload?.fieldErrors),
-  };
+    unauthorized,
+  } satisfies ParsedApiError;
+}
+
+function redirectToLogin() {
+  window.location.href = "/admin/login";
 }
 
 export default function AdminDashboard() {
@@ -182,6 +196,10 @@ export default function AdminDashboard() {
     useState<DuplicateCandidate | null>(null);
   const [isDuplicateCreatePending, setIsDuplicateCreatePending] =
     useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isRetryingInitialLoad, setIsRetryingInitialLoad] = useState(false);
+  const [initialLoadError, setInitialLoadError] = useState<string | null>(null);
+  const [isEquipmentLoading, setIsEquipmentLoading] = useState(true);
 
   const filteredParks = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -199,47 +217,117 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     async function load() {
-      const cached = await loadAdminParks();
+      setInitialLoadError(null);
+      try {
+        const cached = await loadAdminParks();
 
-      if (cached) {
-        setParks(cached.data);
+        if (cached) {
+          setParks(cached.data);
 
-        try {
-          const response = await fetch("/api/parks/sync");
-          const { lastUpdated } = (await response.json()) as {
-            lastUpdated: string;
-          };
+          try {
+            const response = await fetch("/api/parks/sync");
+            if (!response.ok) {
+              const apiError = await parseApiError(response);
 
-          if (lastUpdated === cached.lastUpdated) {
+              if (apiError.unauthorized) {
+                toast.error(apiError.message);
+                redirectToLogin();
+                return;
+              }
+
+              throw new Error(apiError.message);
+            }
+
+            const { lastUpdated } = (await response.json()) as {
+              lastUpdated: string;
+            };
+
+            if (lastUpdated === cached.lastUpdated) {
+              return;
+            }
+          } catch (error) {
+            console.error(error);
+            toast.error("Unable to refresh parks. Showing cached data instead.");
             return;
           }
-        } catch (error) {
-          console.error(error);
-          return;
         }
+
+        const parksResponse = await fetch("/api/parks");
+        if (!parksResponse.ok) {
+          const apiError = await parseApiError(parksResponse);
+
+          if (apiError.unauthorized) {
+            toast.error(apiError.message);
+            redirectToLogin();
+            return;
+          }
+
+          throw new Error(apiError.message);
+        }
+
+        const syncResponse = await fetch("/api/parks/sync");
+        if (!syncResponse.ok) {
+          const apiError = await parseApiError(syncResponse);
+
+          if (apiError.unauthorized) {
+            toast.error(apiError.message);
+            redirectToLogin();
+            return;
+          }
+
+          throw new Error(apiError.message);
+        }
+
+        const freshParks = (await parksResponse.json()) as ParkSummary[];
+        const { lastUpdated } = (await syncResponse.json()) as {
+          lastUpdated: string;
+        };
+
+        setParks(freshParks);
+        await saveAdminParks(freshParks, lastUpdated);
+      } catch (error) {
+        console.error(error);
+        setInitialLoadError("Unable to load parks right now.");
+        toast.error("Unable to load parks right now.");
+      } finally {
+        setIsInitialLoading(false);
+        setIsRetryingInitialLoad(false);
       }
-
-      const parksResponse = await fetch("/api/parks");
-      const freshParks = (await parksResponse.json()) as ParkSummary[];
-
-      const syncResponse = await fetch("/api/parks/sync");
-      const { lastUpdated } = (await syncResponse.json()) as {
-        lastUpdated: string;
-      };
-
-      setParks(freshParks);
-      await saveAdminParks(freshParks, lastUpdated);
     }
 
     void load();
   }, []);
 
   useEffect(() => {
-    fetch("/api/parks/equipment")
-      .then((response) => response.json())
-      .then((items: Equipment[]) => {
+    async function loadEquipment() {
+      setIsEquipmentLoading(true);
+
+      try {
+        const response = await fetch("/api/parks/equipment");
+
+        if (!response.ok) {
+          const apiError = await parseApiError(response);
+
+          if (apiError.unauthorized) {
+            toast.error(apiError.message);
+            redirectToLogin();
+            return;
+          }
+
+          throw new Error(apiError.message);
+        }
+
+        const items = (await response.json()) as Equipment[];
         setEquipment(items);
-      });
+      } catch (error) {
+        console.error(error);
+        toast.error("Unable to load equipment options.");
+      } finally {
+        setIsEquipmentLoading(false);
+      }
+    }
+
+    void loadEquipment();
   }, []);
 
   function resetForm() {
@@ -287,6 +375,17 @@ export default function AdminDashboard() {
 
   async function persistParks(nextParks: ParkSummary[]) {
     const syncResponse = await fetch("/api/parks/sync");
+
+    if (!syncResponse.ok) {
+      const apiError = await parseApiError(syncResponse);
+
+      if (apiError.unauthorized) {
+        redirectToLogin();
+      }
+
+      throw new Error(apiError.message);
+    }
+
     const { lastUpdated } = (await syncResponse.json()) as {
       lastUpdated: string;
     };
@@ -320,6 +419,13 @@ export default function AdminDashboard() {
       if (!response.ok) {
         const apiError = await parseApiError(response);
         setFormErrors(apiError.errors);
+
+        if (apiError.unauthorized) {
+          toast.error(apiError.message);
+          redirectToLogin();
+          return;
+        }
+
         throw new Error(apiError.message || "Unable to create this park.");
       }
 
@@ -338,7 +444,6 @@ export default function AdminDashboard() {
       toast.success("Park created successfully");
     } catch (error) {
       toast.error(getErrorMessage(error, "Unable to create this park."));
-      throw error;
     } finally {
       setIsSubmitting(false);
     }
@@ -363,6 +468,13 @@ export default function AdminDashboard() {
       if (!response.ok) {
         const apiError = await parseApiError(response);
         setFormErrors(apiError.errors);
+
+        if (apiError.unauthorized) {
+          toast.error(apiError.message);
+          redirectToLogin();
+          return;
+        }
+
         throw new Error(apiError.message || "Unable to update this park.");
       }
 
@@ -380,7 +492,6 @@ export default function AdminDashboard() {
       toast.success("Park updated successfully");
     } catch (error) {
       toast.error(getErrorMessage(error, "Unable to update this park."));
-      throw error;
     } finally {
       setIsSubmitting(false);
     }
@@ -400,6 +511,13 @@ export default function AdminDashboard() {
 
       if (!response.ok) {
         const apiError = await parseApiError(response);
+
+        if (apiError.unauthorized) {
+          toast.error(apiError.message);
+          redirectToLogin();
+          return;
+        }
+
         throw new Error(apiError.message || "Unable to delete this park.");
       }
 
@@ -446,28 +564,39 @@ export default function AdminDashboard() {
   }
 
   async function startEditing(park: ParkSummary) {
-    const response = await fetch(`/api/parks/${park.id}`);
+    try {
+      const response = await fetch(`/api/parks/${park.id}`);
 
-    if (!response.ok) {
-      toast.error("Unable to load this park for editing.");
-      return;
+      if (!response.ok) {
+        const apiError = await parseApiError(response);
+
+        if (apiError.unauthorized) {
+          toast.error(apiError.message);
+          redirectToLogin();
+          return;
+        }
+
+        throw new Error(apiError.message);
+      }
+
+      const fullPark = (await response.json()) as ParkDetail;
+
+      setSelectedPark(fullPark);
+      setEditingParkId(fullPark.id);
+      setFormValues({
+        name: fullPark.name,
+        title: fullPark.title ?? "",
+        address: fullPark.address ?? "",
+        lat: String(fullPark.lat),
+        lon: String(fullPark.lon),
+        equipmentIds: equipment
+          .filter((item) => fullPark.equipment.includes(item.name))
+          .map((item) => item.id),
+      });
+      setFormErrors({});
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Unable to load this park for editing."));
     }
-
-    const fullPark = (await response.json()) as ParkDetail;
-
-    setSelectedPark(fullPark);
-    setEditingParkId(fullPark.id);
-    setFormValues({
-      name: fullPark.name,
-      title: fullPark.title ?? "",
-      address: fullPark.address ?? "",
-      lat: String(fullPark.lat),
-      lon: String(fullPark.lon),
-      equipmentIds: equipment
-        .filter((item) => fullPark.equipment.includes(item.name))
-        .map((item) => item.id),
-    });
-    setFormErrors({});
   }
 
   async function confirmDuplicateCreate() {
@@ -492,9 +621,10 @@ export default function AdminDashboard() {
     : editingParkId
       ? "Update Park"
       : "Create Park";
+  const isSearchActive = search.trim().length >= 2;
 
   return (
-    <main className="p-8">
+    <main className="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold">Admin</h1>
@@ -510,6 +640,34 @@ export default function AdminDashboard() {
         </form>
       </div>
 
+      {initialLoadError ? (
+        <Card className="mb-6 border-destructive/20">
+          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">{initialLoadError}</p>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsRetryingInitialLoad(true);
+                window.location.reload();
+              }}
+              disabled={isRetryingInitialLoad}
+            >
+              {isRetryingInitialLoad ? "Retrying..." : "Retry"}
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {isInitialLoading ? (
+        <Card className="mb-6">
+          <CardContent className="p-4">
+            <p className="text-sm text-muted-foreground">
+              Loading parks and admin data...
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card className="mb-6">
         <CardHeader>
           <h2 className="text-xl font-semibold">
@@ -519,7 +677,11 @@ export default function AdminDashboard() {
 
         <CardContent className="space-y-4">
           <div className="space-y-2">
+            <label htmlFor="park-name" className="text-sm font-medium">
+              Name
+            </label>
             <Input
+              id="park-name"
               placeholder="Name"
               value={formValues.name}
               onChange={(event) => updateTextField("name", event.target.value)}
@@ -530,17 +692,29 @@ export default function AdminDashboard() {
             ) : null}
           </div>
 
-          <Input
-            placeholder="Title"
-            value={formValues.title}
-            onChange={(event) => updateTextField("title", event.target.value)}
-          />
+          <div className="space-y-2">
+            <label htmlFor="park-title" className="text-sm font-medium">
+              Title
+            </label>
+            <Input
+              id="park-title"
+              placeholder="Title"
+              value={formValues.title}
+              onChange={(event) => updateTextField("title", event.target.value)}
+            />
+          </div>
 
-          <Input
-            placeholder="Address"
-            value={formValues.address}
-            onChange={(event) => updateTextField("address", event.target.value)}
-          />
+          <div className="space-y-2">
+            <label htmlFor="park-address" className="text-sm font-medium">
+              Address
+            </label>
+            <Input
+              id="park-address"
+              placeholder="Address"
+              value={formValues.address}
+              onChange={(event) => updateTextField("address", event.target.value)}
+            />
+          </div>
 
           <Card>
             <CardHeader>
@@ -582,32 +756,51 @@ export default function AdminDashboard() {
                 </CollapsibleTrigger>
 
                 <CollapsibleContent className="mt-4 space-y-2">
-                  <div className="grid grid-cols-2 gap-3">
-                    <Input
-                      placeholder="Latitude"
-                      value={formValues.lat}
-                      onChange={(event) =>
-                        updateTextField("lat", event.target.value)
-                      }
-                      aria-invalid={formErrors.lat ? true : undefined}
-                    />
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <label
+                        htmlFor="park-latitude"
+                        className="text-sm font-medium"
+                      >
+                        Latitude
+                      </label>
+                      <Input
+                        id="park-latitude"
+                        placeholder="Latitude"
+                        value={formValues.lat}
+                        onChange={(event) =>
+                          updateTextField("lat", event.target.value)
+                        }
+                        aria-invalid={formErrors.lat ? true : undefined}
+                      />
+                    </div>
 
-                    <Input
-                      placeholder="Longitude"
-                      value={formValues.lon}
-                      onChange={(event) =>
-                        updateTextField("lon", event.target.value)
-                      }
-                      aria-invalid={formErrors.lon ? true : undefined}
-                    />
+                    <div className="space-y-2">
+                      <label
+                        htmlFor="park-longitude"
+                        className="text-sm font-medium"
+                      >
+                        Longitude
+                      </label>
+                      <Input
+                        id="park-longitude"
+                        placeholder="Longitude"
+                        value={formValues.lon}
+                        onChange={(event) =>
+                          updateTextField("lon", event.target.value)
+                        }
+                        aria-invalid={formErrors.lon ? true : undefined}
+                      />
+                    </div>
                   </div>
                 </CollapsibleContent>
               </Collapsible>
             </CardContent>
           </Card>
 
-          <div className="space-y-2">
-            <div className="grid grid-cols-3 gap-2">
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium">Equipment</legend>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {equipment.map((item) => (
                 <label key={item.id} className="flex items-center gap-2">
                   <Checkbox
@@ -622,12 +815,24 @@ export default function AdminDashboard() {
               ))}
             </div>
 
+            {isEquipmentLoading ? (
+              <p className="text-xs text-muted-foreground">
+                Loading equipment options...
+              </p>
+            ) : null}
+
+            {!isEquipmentLoading && equipment.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                No equipment options are available right now.
+              </p>
+            ) : null}
+
             {formErrors.equipmentIds ? (
               <p className="text-xs text-destructive">
                 {formErrors.equipmentIds}
               </p>
             ) : null}
-          </div>
+          </fieldset>
         </CardContent>
       </Card>
 
@@ -663,7 +868,7 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {editingParkId === selectedPark.id ? (
                   <Button onClick={handleSubmit} disabled={isSubmitting}>
                     {isSubmitting ? "Saving..." : "Save Changes"}
@@ -683,7 +888,7 @@ export default function AdminDashboard() {
         </Card>
       ) : null}
 
-      <div className="mb-4 flex gap-2">
+      <div className="mb-4 flex flex-wrap gap-2">
         <Button onClick={handleSubmit} disabled={isSubmitting}>
           {submitButtonLabel}
         </Button>
@@ -699,14 +904,20 @@ export default function AdminDashboard() {
         ) : null}
       </div>
 
-      <Input
-        className="mb-4 w-full border p-2"
-        placeholder="Search park..."
-        value={search}
-        onChange={(event) => {
-          setSearch(event.target.value);
-        }}
-      />
+      <div className="mb-4 space-y-2">
+        <label htmlFor="park-search" className="text-sm font-medium">
+          Search parks
+        </label>
+        <Input
+          id="park-search"
+          className="w-full"
+          placeholder="Search by park name or address"
+          value={search}
+          onChange={(event) => {
+            setSearch(event.target.value);
+          }}
+        />
+      </div>
 
       <p className="mb-4 text-sm text-gray-500">
         {filteredParks.length.toLocaleString()} matches
@@ -716,38 +927,51 @@ export default function AdminDashboard() {
         {parks.length.toLocaleString()} parks cached locally
       </p>
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>ID</TableHead>
-            <TableHead>Name</TableHead>
-            <TableHead>Address</TableHead>
-          </TableRow>
-        </TableHeader>
-
-        <TableBody>
-          {search.trim().length < 2 ? (
+      <div className="overflow-x-auto rounded-lg border">
+        <Table>
+          <TableHeader>
             <TableRow>
-              <TableCell
-                colSpan={3}
-                className="h-24 text-center text-muted-foreground"
-              ></TableCell>
+              <TableHead className="w-20">ID</TableHead>
+              <TableHead>Name</TableHead>
+              <TableHead>Address</TableHead>
             </TableRow>
-          ) : (
-            filteredParks.slice(0, 100).map((park) => (
-              <TableRow
-                key={park.id}
-                onClick={() => void startEditing(park)}
-                className="cursor-pointer hover:bg-muted/50"
-              >
-                <TableCell>{park.id}</TableCell>
-                <TableCell>{park.name}</TableCell>
-                <TableCell>{park.address}</TableCell>
+          </TableHeader>
+
+          <TableBody>
+            {!isSearchActive ? (
+              <TableRow>
+                <TableCell
+                  colSpan={3}
+                  className="h-24 text-center text-muted-foreground"
+                >
+                  Enter at least 2 characters to search parks.
+                </TableCell>
               </TableRow>
-            ))
-          )}
-        </TableBody>
-      </Table>
+            ) : filteredParks.length === 0 ? (
+              <TableRow>
+                <TableCell
+                  colSpan={3}
+                  className="h-24 text-center text-muted-foreground"
+                >
+                  No parks matched your search.
+                </TableCell>
+              </TableRow>
+            ) : (
+              filteredParks.slice(0, 100).map((park) => (
+                <TableRow
+                  key={park.id}
+                  onClick={() => void startEditing(park)}
+                  className="cursor-pointer hover:bg-muted/50"
+                >
+                  <TableCell>{park.id}</TableCell>
+                  <TableCell>{park.name}</TableCell>
+                  <TableCell>{park.address}</TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
 
       <AlertDialog
         open={Boolean(deleteCandidate)}

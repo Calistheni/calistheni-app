@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -76,9 +77,20 @@ function escapeHtml(value: string | null | undefined) {
     .replaceAll("'", "&#39;");
 }
 
-// function normalizeCoordinate(value: number) {
-//   return Number(value.toFixed(1));
-// }
+async function getResponseErrorMessage(
+  response: Response,
+  fallbackMessage: string
+) {
+  try {
+    const payload = (await response.json()) as { error?: string };
+
+    if (payload.error) {
+      return payload.error;
+    }
+  } catch {}
+
+  return fallbackMessage;
+}
 
 function buildGeoJson(parks: ParkSummary[]): GeoJSON.FeatureCollection {
   return {
@@ -281,6 +293,10 @@ export default function ParksMap({
   const progressIntervalRef = useRef<number | null>(null);
 
   function startSmoothProgress() {
+    if (progressIntervalRef.current) {
+      window.clearInterval(progressIntervalRef.current);
+    }
+
     progressIntervalRef.current = window.setInterval(() => {
       setLoadingProgress((prev) => {
         if (prev >= 95) return prev;
@@ -288,6 +304,15 @@ export default function ParksMap({
         return prev + (95 - prev) * 0.08;
       });
     }, 100);
+  }
+
+  function stopSmoothProgress() {
+    if (!progressIntervalRef.current) {
+      return;
+    }
+
+    window.clearInterval(progressIntervalRef.current);
+    progressIntervalRef.current = null;
   }
 
   const [loadingProgress, setLoadingProgress] = useState(0);
@@ -394,24 +419,35 @@ export default function ParksMap({
     if (inFlightRequest) {
       return inFlightRequest;
     }
-    console.time("detail-fetch");
+
     const request = fetch(`/api/parks/${parkId}`)
       .then(async (response) => {
         if (!response.ok) {
-          throw new Error("Failed to load park details.");
+          throw new Error(
+            await getResponseErrorMessage(
+              response,
+              "Failed to load park details."
+            )
+          );
         }
 
         const park = (await response.json()) as ParkDetail;
-        console.timeEnd("detail-fetch");
 
         return park;
       })
       .then(async (park) => {
         detailCacheRef.current.set(park.id, park);
 
-        await saveParkDetail(park);
+        try {
+          await saveParkDetail(park);
+        } catch (error) {
+          console.error(error);
+        }
 
         return park;
+      })
+      .finally(() => {
+        detailRequestCacheRef.current.delete(parkId);
       });
     detailRequestCacheRef.current.set(parkId, request);
 
@@ -431,12 +467,29 @@ export default function ParksMap({
       }
 
       const response = await fetch("/api/parks/version");
+      if (!response.ok) {
+        throw new Error(
+          await getResponseErrorMessage(
+            response,
+            "Unable to refresh park updates right now."
+          )
+        );
+      }
+
       const { version } = await response.json();
 
       if (version !== cached.version) {
         const response = await fetch(
           `/api/parks/changes?since=${encodeURIComponent(cached.version)}`
         );
+        if (!response.ok) {
+          throw new Error(
+            await getResponseErrorMessage(
+              response,
+              "Unable to refresh park updates right now."
+            )
+          );
+        }
 
         const changes: ParksChangesResponse = await response.json();
 
@@ -720,48 +773,41 @@ export default function ParksMap({
     viewportRequestRef.current?.controller.abort();
 
     const controller = new AbortController();
-    const bounds = map.getBounds();
-
-    if (!bounds) {
-      return;
-    }
-    const params = new URLSearchParams();
     setViewportLoading(true);
     setViewportError(null);
-
-    console.time("fetch-parks");
     setLoadingProgress(60);
     startSmoothProgress();
-    const promise = fetch(`/api/parks?${params.toString()}`, {
+    const promise = fetch("/api/parks", {
       signal: controller.signal,
     })
       .then(async (response) => {
         if (!response.ok) {
-          throw new Error("Failed to load parks.");
+          throw new Error(
+            await getResponseErrorMessage(response, "Failed to load parks.")
+          );
         }
 
-        const data = (await response.json()) as ParkSummary[];
-
-        console.timeEnd("fetch-parks");
-
-        return data;
+        return (await response.json()) as ParkSummary[];
       })
       .then(async (nextParks) => {
-        const versionResponse = await fetch("/api/parks/version");
-        const { version } = await versionResponse.json();
+        try {
+          const versionResponse = await fetch("/api/parks/version");
+          if (!versionResponse.ok) {
+            throw new Error(
+              await getResponseErrorMessage(
+                versionResponse,
+                "Unable to update cached park data."
+              )
+            );
+          }
 
-        await saveParks(nextParks, version);
-        if ("storage" in navigator && navigator.storage?.estimate) {
-          const estimate = await navigator.storage.estimate();
+          const { version } = await versionResponse.json();
+          await saveParks(nextParks, version);
+        } catch (error) {
+          console.error(error);
         }
 
-        console.time("geojson");
-
         const geojson = buildGeoJson(nextParks);
-
-        console.timeEnd("geojson");
-
-        console.time("setData");
 
         const source = mapRef.current?.getSource("parks") as
           | mapboxgl.GeoJSONSource
@@ -788,14 +834,13 @@ export default function ParksMap({
           });
         }, 500);
 
-        console.timeEnd("setData");
-
         viewportCacheRef.current.set(key, nextParks);
         lastViewportKeyRef.current = key;
         parksRef.current = nextParks;
         updateViewportParks(nextParks);
         setLoadingProgress(100);
         setLoadingComplete(true);
+        stopSmoothProgress();
 
         if (showLoadingDialog) {
           localStorage.setItem("parks-initial-load-complete", "true");
@@ -816,6 +861,7 @@ export default function ParksMap({
           viewportRequestRef.current = null;
         }
 
+        stopSmoothProgress();
         setViewportLoading(false);
       });
 
@@ -1233,6 +1279,7 @@ export default function ParksMap({
         window.clearTimeout(viewportDebounceRef.current);
       }
 
+      stopSmoothProgress();
       viewportRequestRef.current?.controller.abort();
       popupRef.current?.remove();
       map.remove();
@@ -1302,6 +1349,7 @@ export default function ParksMap({
   const handleContinue = () => {
     setShowLoadingDialog(false);
     setIsMapInitializing(false);
+    stopSmoothProgress();
 
     if (!localStorage.getItem("location-allowed")) {
       setShowLocationDialog(true);
@@ -1314,9 +1362,13 @@ export default function ParksMap({
         open={showLocationDialog && !showLoadingDialog}
         onOpenChange={setShowLocationDialog}
       >
-        <DialogContent>
+        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Enable Location</DialogTitle>
+            <DialogDescription className="sr-only">
+              Allow access to your location to get walking directions to nearby
+              calisthenics parks.
+            </DialogDescription>
           </DialogHeader>
 
           <p className="text-sm text-muted-foreground">
@@ -1328,7 +1380,7 @@ export default function ParksMap({
             at any time from your browser settings.
           </p>
 
-          <div className="mt-4 flex gap-2">
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
             <Button variant="outline" onClick={maybeLater}>
               Maybe Later
             </Button>
@@ -1339,6 +1391,7 @@ export default function ParksMap({
       </Dialog>
       <Dialog open={showLoadingDialog}>
         <DialogContent
+          className="max-w-[calc(100vw-2rem)] sm:max-w-sm"
           showCloseButton={false}
           onInteractOutside={(e) => e.preventDefault()}
         >
@@ -1346,6 +1399,11 @@ export default function ParksMap({
             <DialogTitle>
               {loadingComplete ? "Ready!" : "Loading Parks"}
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              {loadingComplete
+                ? "Parks have loaded successfully and the map is ready."
+                : "Preparing the map and loading nearby parks."}
+            </DialogDescription>
           </DialogHeader>
 
           {!loadingComplete ? (
@@ -1376,19 +1434,15 @@ export default function ParksMap({
           )}
         </DialogContent>
       </Dialog>
-      <div className="fixed top-4 left-8 z-50 flex items-center gap-2 rounded-xl border border-border bg-card p-2 shadow-xl">
+      <div className="fixed top-4 left-4 z-50 flex items-center gap-2 rounded-xl border border-border bg-card p-2 shadow-xl sm:left-8">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="icon">
+            <Button variant="outline" size="icon" aria-label="Open map settings">
               <Settings className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
 
-          <DropdownMenuContent
-            align="start"
-            sideOffset={8}
-            className="-translate-x-10"
-          >
+          <DropdownMenuContent align="start" sideOffset={8} className="w-48">
             <DropdownMenuItem onClick={() => setLightPreset("dawn")}>
               Dawn
             </DropdownMenuItem>
@@ -1425,9 +1479,11 @@ export default function ParksMap({
         </DropdownMenu>
       </div>
       {activeRoute && (
-        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2">
-          <div className="flex items-center gap-2 rounded-xl border bg-card p-2 shadow-lg">
-            <span className="text-sm">Navigating to {activeRoute.name}</span>
+        <div className="fixed right-4 bottom-4 left-4 z-50 sm:right-auto sm:bottom-6 sm:left-1/2 sm:max-w-md sm:-translate-x-1/2">
+          <div className="flex flex-col gap-2 rounded-xl border bg-card p-2 shadow-lg sm:flex-row sm:items-center">
+            <span className="text-sm break-words">
+              Navigating to {activeRoute.name}
+            </span>
 
             <Button variant="destructive" size="sm" onClick={clearRoute}>
               Cancel Route
@@ -1445,8 +1501,7 @@ export default function ParksMap({
         </div>
 
         {viewportError ? (
-          <div className="fixed bottom-4 left-4 z-50 rounded-md bg-background/95 p-3 shadow-sm">
-            {" "}
+          <div className="fixed right-4 bottom-4 left-4 z-50 rounded-md bg-background/95 p-3 shadow-sm sm:right-auto sm:max-w-sm">
             <p className="text-sm text-muted-foreground">{viewportError}</p>
             <Button
               className="mt-2"

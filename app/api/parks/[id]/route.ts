@@ -4,25 +4,38 @@ import {
   createUnauthorizedResponse,
   isAdminAuthenticated,
 } from "@/lib/admin-auth";
+import {
+  createInternalServerErrorResponse,
+  createJsonErrorResponse,
+  createJsonValidationErrorResponse,
+  parsePositiveInteger,
+} from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { parkMutationSchema } from "@/lib/validation/parks";
+
 export async function GET(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  console.time("route");
-
   const { id } = await params;
+  const parkId = parsePositiveInteger(id);
 
-  const park = await getParkDetail(Number(id));
-
-  console.timeEnd("route");
-
-  if (!park) {
-    return NextResponse.json({ error: "Park not found" }, { status: 404 });
+  if (parkId === null) {
+    return createJsonErrorResponse("Invalid park id.", 400);
   }
 
-  return NextResponse.json(park);
+  try {
+    const park = await getParkDetail(parkId);
+
+    if (!park) {
+      return createJsonErrorResponse("Park not found.", 404);
+    }
+
+    return NextResponse.json(park);
+  } catch (error) {
+    console.error(error);
+    return createInternalServerErrorResponse();
+  }
 }
 
 export async function PATCH(
@@ -34,65 +47,89 @@ export async function PATCH(
   }
 
   const { id } = await params;
-  const parkId = Number(id);
+  const parkId = parsePositiveInteger(id);
+
+  if (parkId === null) {
+    return createJsonErrorResponse("Invalid park id.", 400);
+  }
 
   let body: unknown;
 
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON payload." }, { status: 400 });
+    return createJsonErrorResponse("Invalid JSON payload.", 400);
   }
 
   const parsedBody = parkMutationSchema.safeParse(body);
 
   if (!parsedBody.success) {
-    return NextResponse.json(
-      {
-        error: "Invalid park payload.",
-        fieldErrors: parsedBody.error.flatten().fieldErrors,
-      },
-      { status: 400 }
+    return createJsonValidationErrorResponse(
+      "Invalid park payload.",
+      parsedBody.error.flatten().fieldErrors
     );
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.park.update({
+  try {
+    const existingPark = await prisma.park.findFirst({
       where: {
         id: parkId,
+        deletedAt: null,
       },
-      data: {
-        name: parsedBody.data.name,
-        title: parsedBody.data.title,
-        address: parsedBody.data.address,
-        lat: parsedBody.data.lat,
-        lon: parsedBody.data.lon,
+      select: {
+        id: true,
       },
     });
 
-    await tx.parkEquipment.deleteMany({
-      where: {
-        parkId,
-      },
-    });
-
-    if (parsedBody.data.equipmentIds.length) {
-      await tx.parkEquipment.createMany({
-        data: parsedBody.data.equipmentIds.map((equipmentId) => ({
-          parkId,
-          equipmentId,
-        })),
-      });
+    if (!existingPark) {
+      return createJsonErrorResponse("Park not found.", 404);
     }
-  });
 
-  const updatedPark = await getParkDetail(parkId);
+    await prisma.$transaction(async (tx) => {
+      await tx.park.update({
+        where: {
+          id: parkId,
+        },
+        data: {
+          name: parsedBody.data.name,
+          title: parsedBody.data.title,
+          address: parsedBody.data.address,
+          lat: parsedBody.data.lat,
+          lon: parsedBody.data.lon,
+        },
+      });
 
-  return NextResponse.json(updatedPark);
+      await tx.parkEquipment.deleteMany({
+        where: {
+          parkId,
+        },
+      });
+
+      if (parsedBody.data.equipmentIds.length) {
+        await tx.parkEquipment.createMany({
+          data: parsedBody.data.equipmentIds.map((equipmentId) => ({
+            parkId,
+            equipmentId,
+          })),
+        });
+      }
+    });
+
+    const updatedPark = await getParkDetail(parkId);
+
+    if (!updatedPark) {
+      return createJsonErrorResponse("Park not found.", 404);
+    }
+
+    return NextResponse.json(updatedPark);
+  } catch (error) {
+    console.error(error);
+    return createInternalServerErrorResponse();
+  }
 }
 
 export async function DELETE(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   if (!(await isAdminAuthenticated())) {
@@ -100,17 +137,41 @@ export async function DELETE(
   }
 
   const { id } = await params;
+  const parkId = parsePositiveInteger(id);
 
-  await prisma.park.update({
-    where: {
-      id: Number(id),
-    },
-    data: {
-      deletedAt: new Date(),
-    },
-  });
+  if (parkId === null) {
+    return createJsonErrorResponse("Invalid park id.", 400);
+  }
 
-  return NextResponse.json({
-    success: true,
-  });
+  try {
+    const existingPark = await prisma.park.findFirst({
+      where: {
+        id: parkId,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!existingPark) {
+      return createJsonErrorResponse("Park not found.", 404);
+    }
+
+    await prisma.park.update({
+      where: {
+        id: parkId,
+      },
+      data: {
+        deletedAt: new Date(),
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+    });
+  } catch (error) {
+    console.error(error);
+    return createInternalServerErrorResponse();
+  }
 }

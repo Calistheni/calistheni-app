@@ -14,7 +14,12 @@ function LoginButton() {
   const { pending } = useFormStatus();
 
   return (
-    <Button type="submit" className="w-full" disabled={pending}>
+    <Button
+      type="submit"
+      className="w-full"
+      disabled={pending}
+      aria-busy={pending}
+    >
       {pending ? "Signing in..." : "Login"}
     </Button>
   );
@@ -26,20 +31,11 @@ export function AdminLoginForm() {
   return (
     <form action={formAction} className="space-y-4">
       <div className="space-y-2">
-        <p className="text-sm font-medium">Username</p>
+        <label htmlFor="admin-password" className="text-sm font-medium">
+          Password
+        </label>
         <Input
-          name="username"
-          type="text"
-          placeholder="Enter the admin username"
-          autoComplete="username"
-          aria-invalid={state.error ? true : undefined}
-          required
-        />
-      </div>
-
-      <div className="space-y-2">
-        <p className="text-sm font-medium">Password</p>
-        <Input
+          id="admin-password"
           name="password"
           type="password"
           placeholder="Enter the admin password"

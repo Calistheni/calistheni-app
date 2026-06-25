@@ -25,11 +25,6 @@ async function getDB() {
   return dbPromise;
 }
 
-export async function clearParksCache() {
-  const db = await getDB();
-
-  await db.delete("parks", "all");
-}
 export async function mergeParks(
   updated: ParkSummary[],
   deleted: number[],

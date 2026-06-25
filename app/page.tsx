@@ -1,19 +1,15 @@
-"use client";
+import type { Metadata } from "next";
+import HomePage from "@/components/HomePage";
 
-import { useState } from "react";
-import ParksMap from "@/components/ParksMap";
-import type { ParkSummary } from "@/types/park";
+export const metadata: Metadata = {
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    url: "/",
+  },
+};
 
-export default function Home() {
-  const [parks, setParks] = useState<ParkSummary[]>([]);
-
-  return (
-    <main className="h-screen overflow-hidden">
-      <ParksMap
-        parks={parks}
-        selectedPark={null}
-        onViewportParksChange={setParks}
-      />
-    </main>
-  );
+export default function Page() {
+  return <HomePage />;
 }

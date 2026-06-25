@@ -1,19 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { Moon, Sun, Monitor } from "lucide-react";
 import { useTheme } from "next-themes";
 
 import { Button } from "@/components/ui/button";
 
+function subscribe() {
+  return () => {};
+}
+
 export function ThemeSwitcher() {
   const { theme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    /* eslint-disable-next-line react-hooks/set-state-in-effect */
-    setMounted(true);
-  }, []);
+  const mounted = useSyncExternalStore(subscribe, () => true, () => false);
 
   if (!mounted) {
     return (
@@ -29,6 +28,7 @@ export function ThemeSwitcher() {
         size="icon"
         variant={theme === "light" ? "default" : "ghost"}
         onClick={() => setTheme("light")}
+        aria-label="Use light theme"
       >
         <Sun className="h-4 w-4" />
       </Button>
@@ -37,6 +37,7 @@ export function ThemeSwitcher() {
         size="icon"
         variant={theme === "dark" ? "default" : "ghost"}
         onClick={() => setTheme("dark")}
+        aria-label="Use dark theme"
       >
         <Moon className="h-4 w-4" />
       </Button>
@@ -45,6 +46,7 @@ export function ThemeSwitcher() {
         size="icon"
         variant={theme === "system" ? "default" : "ghost"}
         onClick={() => setTheme("system")}
+        aria-label="Use system theme"
       >
         <Monitor className="h-4 w-4" />
       </Button>

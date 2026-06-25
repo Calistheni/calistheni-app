@@ -1,4 +1,9 @@
 import { prisma } from "@/lib/prisma";
+import {
+  createInternalServerErrorResponse,
+  createJsonErrorResponse,
+  isValidDateString,
+} from "@/lib/api-response";
 import { NextResponse } from "next/server";
 
 export async function GET(req: Request) {
@@ -8,45 +13,61 @@ export async function GET(req: Request) {
 
   if (!since) {
     return NextResponse.json({
+      version: null,
       updated: [],
       deleted: [],
     });
   }
 
-  const changedParks = await prisma.park.findMany({
-    where: {
-      updatedAt: {
-        gt: new Date(since),
+  if (!isValidDateString(since)) {
+    return createJsonErrorResponse("Invalid since parameter.", 400);
+  }
+
+  try {
+    const changedParks = await prisma.park.findMany({
+      where: {
+        updatedAt: {
+          gt: new Date(since),
+        },
       },
-    },
-    select: {
-      id: true,
-      name: true,
-      title: true,
-      lat: true,
-      lon: true,
-      address: true,
-      updatedAt: true,
-      deletedAt: true,
-    },
-  });
-  const latestPark = await prisma.park.findFirst({
-    where: {
-      deletedAt: null,
-    },
-    orderBy: {
-      updatedAt: "desc",
-    },
-    select: {
-      updatedAt: true,
-    },
-  });
+      select: {
+        id: true,
+        name: true,
+        title: true,
+        lat: true,
+        lon: true,
+        address: true,
+        updatedAt: true,
+        deletedAt: true,
+      },
+    });
+    const latestPark = await prisma.park.findFirst({
+      where: {
+        deletedAt: null,
+      },
+      orderBy: {
+        updatedAt: "desc",
+      },
+      select: {
+        updatedAt: true,
+      },
+    });
 
-  return NextResponse.json({
-    version: latestPark?.updatedAt?.toISOString() ?? null,
-
-    updated: changedParks.filter((p) => !p.deletedAt),
-
-    deleted: changedParks.filter((p) => p.deletedAt).map((p) => p.id),
-  });
+    return NextResponse.json({
+      version: latestPark?.updatedAt?.toISOString() ?? null,
+      updated: changedParks
+        .filter((park) => !park.deletedAt)
+        .map((park) => ({
+          ...park,
+          updatedAt: park.updatedAt.toISOString(),
+          deletedAt: null,
+        })),
+      deleted: changedParks
+        .filter((park) => park.deletedAt)
+        .map((park) => park.id),
+    });
+  } catch (error) {
+    console.error(error);
+    return createInternalServerErrorResponse();
+  }
 }
