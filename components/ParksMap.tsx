@@ -1456,7 +1456,7 @@ export default function ParksMap({
             </DropdownMenuItem>
 
             <DropdownMenuItem onClick={() => setLightPreset("dusk")}>
-              Duskkkkk
+              Dusk
             </DropdownMenuItem>
 
             <DropdownMenuItem onClick={() => setLightPreset("night")}>
