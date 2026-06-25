@@ -404,8 +404,6 @@ export default function ParksMap({
         const park = (await response.json()) as ParkDetail;
         console.timeEnd("detail-fetch");
 
-        console.log("FETCHED DETAIL", park.updatedAt);
-
         return park;
       })
       .then(async (park) => {
@@ -416,18 +414,13 @@ export default function ParksMap({
         return park;
       });
     detailRequestCacheRef.current.set(parkId, request);
-    console.log("DETAIL", indexedDbPark?.updatedAt);
-    console.log("SUMMARY", parkPreview?.updatedAt);
 
     return request;
   }
 
   async function checkForParkUpdates() {
-    console.log("CHECKING FOR UPDATES");
-
     try {
       const cached = await loadParks();
-      console.log("CACHED VERSION", cached?.version);
 
       if (!cached?.version) {
         viewportCacheRef.current.clear();
@@ -440,11 +433,7 @@ export default function ParksMap({
       const response = await fetch("/api/parks/version");
       const { version } = await response.json();
 
-      console.log("SERVER VERSION", version);
-
       if (version !== cached.version) {
-        console.log("VERSION MISMATCH");
-
         const response = await fetch(
           `/api/parks/changes?since=${encodeURIComponent(cached.version)}`
         );
@@ -472,12 +461,6 @@ export default function ParksMap({
           | undefined;
 
         source?.setData(buildGeoJson(merged));
-
-        console.log(
-          `Applied ${changes.updated.length} updates and ${changes.deleted.length} deletions`
-        );
-      } else {
-        console.log("VERSION MATCH");
       }
     } catch (error) {
       console.error(error);
@@ -753,7 +736,6 @@ export default function ParksMap({
       signal: controller.signal,
     })
       .then(async (response) => {
-        console.log("FETCHING ALL PARKS FROM API");
         if (!response.ok) {
           throw new Error("Failed to load parks.");
         }
@@ -761,38 +743,16 @@ export default function ParksMap({
         const data = (await response.json()) as ParkSummary[];
 
         console.timeEnd("fetch-parks");
-        console.log("parks loaded", data.length);
 
         return data;
       })
       .then(async (nextParks) => {
-        const json = JSON.stringify(nextParks);
-        const bytes = new TextEncoder().encode(json).length;
-
-        console.log("Total parks:", nextParks.length);
-        console.log("JSON size:", bytes, "bytes");
-        console.log("JSON size:", (bytes / 1024).toFixed(2), "KB");
-        console.log("JSON size:", (bytes / 1024 / 1024).toFixed(2), "MB");
-
         const versionResponse = await fetch("/api/parks/version");
         const { version } = await versionResponse.json();
 
         await saveParks(nextParks, version);
-        console.log("SAVING VERSION", version);
         if ("storage" in navigator && navigator.storage?.estimate) {
           const estimate = await navigator.storage.estimate();
-
-          console.log(
-            "Storage used:",
-            ((estimate.usage ?? 0) / 1024 / 1024).toFixed(2),
-            "MB"
-          );
-
-          console.log(
-            "Storage quota:",
-            ((estimate.quota ?? 0) / 1024 / 1024).toFixed(2),
-            "MB"
-          );
         }
 
         console.time("geojson");
@@ -1001,8 +961,6 @@ export default function ParksMap({
         try {
           const routeData = JSON.parse(savedRoute);
 
-          console.log("saved route", routeData);
-
           if (routeData.geometry) {
             restoreRoute(routeData);
           }
@@ -1076,7 +1034,6 @@ export default function ParksMap({
               return;
             }
 
-            console.log("prefetching cluster", pointCount);
             leaves.forEach((leaf) => {
               const parkId = Number(leaf.properties?.id);
 
@@ -1136,8 +1093,6 @@ export default function ParksMap({
           layers: ["unclustered-point"],
         });
 
-        console.log("prefetching visible", markers.length);
-
         markers.slice(0, 5).forEach((feature) => {
           const parkId = Number(feature.properties?.id);
 
@@ -1167,8 +1122,6 @@ export default function ParksMap({
               return;
             }
 
-            console.log("prefetching cluster", pointCount);
-
             leaves.forEach((leaf) => {
               const parkId = Number(leaf.properties?.id);
 
@@ -1193,7 +1146,6 @@ export default function ParksMap({
         | mapboxgl.GeoJSONSource
         | undefined;
       if (cached) {
-        console.log("LOADED PARKS FROM INDEXEDDB");
         setShowLoadingDialog(false);
         setIsMapInitializing(false);
         parksRef.current = cached.data;

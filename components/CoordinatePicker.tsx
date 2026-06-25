@@ -27,14 +27,9 @@ export function CoordinatePicker({
   );
 
   useEffect(() => {
-    console.log("CoordinatePicker mounted");
-    console.log("container", containerRef.current);
-    console.log("existing map", mapRef.current);
     if (!containerRef.current || mapRef.current) {
-      console.log("Map init skipped");
       return;
     }
-    console.log("Creating map");
     const initialLng = initialCoordinatesRef.current.lon
       ? Number(initialCoordinatesRef.current.lon)
       : 23.3219;
@@ -48,7 +43,6 @@ export function CoordinatePicker({
       center: [initialLng, initialLat],
       zoom: 12,
     });
-    console.log("Map created");
     map.on("load", () => {
       map.resize();
     });
@@ -87,8 +81,6 @@ export function CoordinatePicker({
     });
 
     return () => {
-      console.log("Destroying map");
-
       map.remove();
 
       mapRef.current = null;
