@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { publicParkWhere } from "@/lib/parks";
 import {
   createInternalServerErrorResponse,
   createJsonErrorResponse,
@@ -37,13 +38,14 @@ export async function GET(req: Request) {
         lat: true,
         lon: true,
         address: true,
+        submissionStatus: true,
         updatedAt: true,
         deletedAt: true,
       },
     });
     const latestPark = await prisma.park.findFirst({
       where: {
-        deletedAt: null,
+        ...publicParkWhere,
       },
       orderBy: {
         updatedAt: "desc",
@@ -56,14 +58,19 @@ export async function GET(req: Request) {
     return NextResponse.json({
       version: latestPark?.updatedAt?.toISOString() ?? null,
       updated: changedParks
-        .filter((park) => !park.deletedAt)
+        .filter((park) => !park.deletedAt && park.submissionStatus === "APPROVED")
         .map((park) => ({
-          ...park,
+          id: park.id,
+          name: park.name,
+          title: park.title,
+          lat: park.lat,
+          lon: park.lon,
+          address: park.address,
           updatedAt: park.updatedAt.toISOString(),
           deletedAt: null,
         })),
       deleted: changedParks
-        .filter((park) => park.deletedAt)
+        .filter((park) => park.deletedAt || park.submissionStatus !== "APPROVED")
         .map((park) => park.id),
     });
   } catch (error) {

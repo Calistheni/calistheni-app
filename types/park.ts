@@ -13,6 +13,15 @@ export type ParkDetail = ParkSummary & {
   equipment: string[];
 };
 
+export type ParkSubmissionStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export type UserPark = ParkDetail & {
+  submissionStatus: ParkSubmissionStatus;
+  photoUrl: string | null;
+  rejectionReason: string | null;
+  createdAt: string;
+};
+
 export type ParkMutationPayload = {
   name: string;
   title: string | null;
@@ -32,7 +41,7 @@ export type ParkFormValues = {
 };
 
 export type ParkFormErrors = Partial<
-  Record<"name" | "lat" | "lon" | "equipmentIds", string>
+  Record<"name" | "lat" | "lon" | "equipmentIds" | "photo", string>
 >;
 
 export type ParkViewportBounds = {

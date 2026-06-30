@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import HomePage from "@/components/HomePage";
+import { UserMenu } from "@/components/UserMenu";
 
 export const metadata: Metadata = {
   alternates: {
@@ -11,5 +12,10 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
-  return <HomePage />;
+  return (
+    <>
+      <HomePage />
+      <UserMenu />
+    </>
+  );
 }

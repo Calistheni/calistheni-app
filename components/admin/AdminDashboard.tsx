@@ -66,6 +66,27 @@ type ParsedApiError = {
   unauthorized: boolean;
 };
 
+type AdminSubmission = {
+  id: number;
+  name: string;
+  title: string | null;
+  address: string | null;
+  lat: number;
+  lon: number;
+  photoUrl: string | null;
+  createdAt: string;
+  submittedBy: {
+    name: string | null;
+    email: string | null;
+  } | null;
+  equipment: string[];
+};
+
+type AdminSubmissionsResponse = {
+  count: number;
+  submissions: AdminSubmission[];
+};
+
 const DUPLICATE_DISTANCE_THRESHOLD_METERS = 100;
 const EARTH_RADIUS_METERS = 6_371_000;
 
@@ -200,6 +221,13 @@ export default function AdminDashboard() {
   const [isRetryingInitialLoad, setIsRetryingInitialLoad] = useState(false);
   const [initialLoadError, setInitialLoadError] = useState<string | null>(null);
   const [isEquipmentLoading, setIsEquipmentLoading] = useState(true);
+  const [pendingSubmissions, setPendingSubmissions] = useState<
+    AdminSubmission[]
+  >([]);
+  const [isSubmissionsLoading, setIsSubmissionsLoading] = useState(true);
+  const [reviewingSubmissionId, setReviewingSubmissionId] = useState<
+    number | null
+  >(null);
 
   const filteredParks = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -328,6 +356,38 @@ export default function AdminDashboard() {
     }
 
     void loadEquipment();
+  }, []);
+
+  useEffect(() => {
+    async function loadSubmissions() {
+      setIsSubmissionsLoading(true);
+
+      try {
+        const response = await fetch("/api/admin/submissions");
+
+        if (!response.ok) {
+          const apiError = await parseApiError(response);
+
+          if (apiError.unauthorized) {
+            toast.error(apiError.message);
+            redirectToLogin();
+            return;
+          }
+
+          throw new Error(apiError.message);
+        }
+
+        const payload = (await response.json()) as AdminSubmissionsResponse;
+        setPendingSubmissions(payload.submissions);
+      } catch (error) {
+        console.error(error);
+        toast.error("Unable to load pending submissions.");
+      } finally {
+        setIsSubmissionsLoading(false);
+      }
+    }
+
+    void loadSubmissions();
   }, []);
 
   function resetForm() {
@@ -614,6 +674,56 @@ export default function AdminDashboard() {
     }
   }
 
+  async function reviewSubmission(
+    submissionId: number,
+    status: "APPROVED" | "REJECTED"
+  ) {
+    const rejectionReason =
+      status === "REJECTED"
+        ? window.prompt("Optional rejection reason")?.trim() || null
+        : null;
+
+    setReviewingSubmissionId(submissionId);
+
+    try {
+      const response = await fetch(`/api/admin/submissions/${submissionId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          status,
+          rejectionReason,
+        }),
+      });
+
+      if (!response.ok) {
+        const apiError = await parseApiError(response);
+
+        if (apiError.unauthorized) {
+          toast.error(apiError.message);
+          redirectToLogin();
+          return;
+        }
+
+        throw new Error(apiError.message);
+      }
+
+      setPendingSubmissions((current) =>
+        current.filter((submission) => submission.id !== submissionId)
+      );
+      toast.success(
+        status === "APPROVED" ? "Submission approved." : "Submission rejected."
+      );
+    } catch (error) {
+      toast.error(
+        getErrorMessage(error, "Unable to review this submission right now.")
+      );
+    } finally {
+      setReviewingSubmissionId(null);
+    }
+  }
+
   const submitButtonLabel = isSubmitting
     ? editingParkId
       ? "Saving..."
@@ -667,6 +777,104 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
       ) : null}
+
+      <Card className="mb-6">
+        <CardHeader>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold">Pending Submissions</h2>
+              <p className="text-sm text-muted-foreground">
+                Review parks submitted by users before they appear publicly.
+              </p>
+            </div>
+            <Badge variant="secondary">
+              {pendingSubmissions.length.toLocaleString()} pending
+            </Badge>
+          </div>
+        </CardHeader>
+
+        <CardContent className="space-y-4">
+          {isSubmissionsLoading ? (
+            <p className="text-sm text-muted-foreground">
+              Loading pending submissions...
+            </p>
+          ) : pendingSubmissions.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No user submissions are waiting for review.
+            </p>
+          ) : (
+            pendingSubmissions.map((submission) => (
+              <div key={submission.id} className="rounded-lg border p-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="space-y-2">
+                    <div>
+                      <h3 className="text-lg font-semibold">
+                        {submission.name}
+                      </h3>
+                      <p className="text-sm text-muted-foreground">
+                        {submission.address ?? "Address unavailable"}
+                      </p>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Submitted by{" "}
+                      {submission.submittedBy?.email ??
+                        submission.submittedBy?.name ??
+                        "Unknown user"}{" "}
+                      on {new Date(submission.createdAt).toLocaleDateString()}
+                    </p>
+                    <p className="text-sm">
+                      {submission.lat}, {submission.lon}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {submission.equipment.map((item) => (
+                        <Badge key={item} variant="outline">
+                          {item}
+                        </Badge>
+                      ))}
+                    </div>
+                    {submission.photoUrl ? (
+                      <a
+                        href={submission.photoUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-sm font-medium underline underline-offset-4"
+                      >
+                        View submitted photo
+                      </a>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        Photo storage is not configured yet.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      onClick={() =>
+                        void reviewSubmission(submission.id, "APPROVED")
+                      }
+                      disabled={reviewingSubmissionId === submission.id}
+                    >
+                      {reviewingSubmissionId === submission.id
+                        ? "Reviewing..."
+                        : "Approve"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        void reviewSubmission(submission.id, "REJECTED")
+                      }
+                      disabled={reviewingSubmissionId === submission.id}
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
 
       <Card className="mb-6">
         <CardHeader>

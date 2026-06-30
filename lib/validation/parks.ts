@@ -120,7 +120,7 @@ export function getParkFormErrors(
     return errors;
   }
 
-  for (const field of ["name", "lat", "lon", "equipmentIds"] as const) {
+  for (const field of ["name", "lat", "lon", "equipmentIds", "photo"] as const) {
     const message = fieldErrors[field]?.[0];
 
     if (message) {

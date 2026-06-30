@@ -1,4 +1,4 @@
-import { getParkDetail } from "@/lib/parks";
+import { getParkDetail, publicParkWhere } from "@/lib/parks";
 import { prisma } from "@/lib/prisma";
 import {
   createUnauthorizedResponse,
@@ -16,7 +16,7 @@ export async function GET() {
   try {
     const parks = await prisma.park.findMany({
       where: {
-        deletedAt: null,
+        ...publicParkWhere,
       },
       select: {
         id: true,
@@ -67,6 +67,7 @@ export async function POST(request: Request) {
         address: parsedBody.data.address,
         lat: parsedBody.data.lat,
         lon: parsedBody.data.lon,
+        submissionStatus: "APPROVED",
 
         equipment: {
           create: parsedBody.data.equipmentIds.map((equipmentId) => ({

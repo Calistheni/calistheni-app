@@ -1,6 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import type { ParkDetail, ParkSummary, ParkViewportBounds } from "@/types/park";
 
+export const publicParkWhere = {
+  deletedAt: null,
+  submissionStatus: "APPROVED" as const,
+};
+
 const parkSummarySelect = {
   id: true,
   name: true,
@@ -68,7 +73,7 @@ export async function getParksInBounds(
 
   const parks = await prisma.park.findMany({
     where: {
-      deletedAt: null,
+      ...publicParkWhere,
       lat: {
         gte: minLat,
         lte: maxLat,
@@ -99,7 +104,7 @@ export async function getParkDetail(id: number): Promise<ParkDetail | null> {
   const park = await prisma.park.findFirst({
     where: {
       id,
-      deletedAt: null,
+      ...publicParkWhere,
     },
     include: {
       equipment: {

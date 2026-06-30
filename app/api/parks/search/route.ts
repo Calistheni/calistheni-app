@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { publicParkWhere } from "@/lib/parks";
 import {
   createInternalServerErrorResponse,
   createJsonErrorResponse,
@@ -19,7 +20,7 @@ export async function GET(request: Request) {
   try {
     const parks = await prisma.park.findMany({
       where: {
-        deletedAt: null,
+        ...publicParkWhere,
         OR: [
           {
             name: {

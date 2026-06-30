@@ -1,12 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import { createInternalServerErrorResponse } from "@/lib/api-response";
+import { publicParkWhere } from "@/lib/parks";
 import { NextResponse } from "next/server";
 
 export async function GET() {
   try {
     const latestPark = await prisma.park.findFirst({
       where: {
-        deletedAt: null,
+        ...publicParkWhere,
       },
       orderBy: {
         updatedAt: "desc",

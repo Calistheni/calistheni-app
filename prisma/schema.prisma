@@ -6,15 +6,76 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+enum ParkSubmissionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+
+  accounts Account[]
+  sessions Session[]
+
+  submittedParks Park[] @relation("ParkSubmitter")
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
+}
+
 model Park {
-  id        Int       @id @default(autoincrement())
-  name      String
-  title     String?
-  lat       Float
-  lon       Float
-  address   String?
+  id      Int     @id @default(autoincrement())
+  name    String
+  title   String?
+  lat     Float
+  lon     Float
+  address String?
 
   equipment ParkEquipment[]
+
+  submissionStatus ParkSubmissionStatus @default(APPROVED)
+  submittedById    String?
+  submittedBy      User?                @relation("ParkSubmitter", fields: [submittedById], references: [id], onDelete: SetNull)
+  photoUrl         String?
+  reviewedAt       DateTime?
+  rejectionReason  String?
 
   deletedAt DateTime?
 
@@ -22,10 +83,13 @@ model Park {
   updatedAt DateTime @updatedAt
 
   @@index([lat, lon], map: "park_lat_lon_idx")
+  @@index([submissionStatus])
+  @@index([submittedById])
 }
+
 model Equipment {
-  id    Int    @id @default(autoincrement())
-  name  String @unique
+  id   Int    @id @default(autoincrement())
+  name String @unique
 
   parks ParkEquipment[]
 }
@@ -34,8 +98,8 @@ model ParkEquipment {
   parkId      Int
   equipmentId Int
 
-  park        Park      @relation(fields: [parkId], references: [id], onDelete: Cascade)
-  equipment   Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  park      Park      @relation(fields: [parkId], references: [id], onDelete: Cascade)
+  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
 
   @@id([parkId, equipmentId])
 }
