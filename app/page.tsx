@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
+import { auth } from "@/auth";
 import HomePage from "@/components/HomePage";
-import { UserMenu } from "@/components/UserMenu";
 
 export const metadata: Metadata = {
   alternates: {
@@ -11,11 +11,19 @@ export const metadata: Metadata = {
   },
 };
 
-export default function Page() {
+export default async function Page() {
+  const session = await auth();
+
   return (
-    <>
-      <HomePage />
-      <UserMenu />
-    </>
+    <HomePage
+      user={
+        session?.user
+          ? {
+              name: session.user.name,
+              email: session.user.email,
+            }
+          : null
+      }
+    />
   );
 }

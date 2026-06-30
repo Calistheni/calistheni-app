@@ -18,25 +18,19 @@ import {
   saveParks,
   mergeParks,
 } from "@/lib/cache";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { ThemeSwitcher } from "@/components/ThemeSwitcher";
-
-import { Settings } from "lucide-react";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
 
 const VIEWPORT_DEBOUNCE_MS = 100;
 
+export type MapLightPreset = "dawn" | "day" | "dusk" | "night";
+export type MapTheme = "default" | "faded" | "monochrome";
+
 type ParksMapProps = {
   parks: ParkSummary[];
   selectedPark: ParkSummary | null;
+  lightPreset: MapLightPreset;
+  theme: MapTheme;
   onViewportParksChange: (parks: ParkSummary[]) => void;
   onViewportLoadingChange?: (isLoading: boolean) => void;
 };
@@ -54,7 +48,7 @@ type PopupRenderOptions = {
   expanded?: boolean;
 };
 
-function getInitialLightPreset(): "dawn" | "day" | "dusk" | "night" {
+export function getInitialLightPreset(): MapLightPreset {
   const hour = new Date().getHours();
 
   if (hour >= 6 && hour < 9) return "dawn";
@@ -243,6 +237,8 @@ function renderPopupMarkup({
 export default function ParksMap({
   parks,
   selectedPark,
+  lightPreset,
+  theme,
   onViewportParksChange,
   onViewportLoadingChange,
 }: ParksMapProps) {
@@ -264,12 +260,6 @@ export default function ParksMap({
   const viewportDebounceRef = useRef<number | null>(null);
   const mapLoadedRef = useRef(false);
   const onViewportParksChangeRef = useRef(onViewportParksChange);
-  const [lightPreset, setLightPreset] = useState<
-    "dawn" | "day" | "dusk" | "night"
-  >(getInitialLightPreset);
-  const [theme, setTheme] = useState<"default" | "faded" | "monochrome">(
-    "default"
-  );
   const [showLocationDialog, setShowLocationDialog] = useState(() => {
     if (typeof window === "undefined") {
       return false;
@@ -1434,54 +1424,6 @@ export default function ParksMap({
           )}
         </DialogContent>
       </Dialog>
-      <div className="fixed top-4 left-4 z-50 flex items-center gap-2 rounded-xl border border-border bg-card p-2 shadow-xl sm:left-8">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="icon"
-              aria-label="Open map settings"
-            >
-              <Settings className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-
-          <DropdownMenuContent align="start" sideOffset={8} className="w-48">
-            <DropdownMenuItem onClick={() => setLightPreset("dawn")}>
-              Dawn
-            </DropdownMenuItem>
-
-            <DropdownMenuItem onClick={() => setLightPreset("day")}>
-              Day
-            </DropdownMenuItem>
-
-            <DropdownMenuItem onClick={() => setLightPreset("dusk")}>
-              Dusk
-            </DropdownMenuItem>
-
-            <DropdownMenuItem onClick={() => setLightPreset("night")}>
-              Night
-            </DropdownMenuItem>
-
-            <DropdownMenuSeparator />
-
-            <DropdownMenuLabel>Theme</DropdownMenuLabel>
-
-            <DropdownMenuItem onClick={() => setTheme("default")}>
-              Default
-            </DropdownMenuItem>
-
-            <DropdownMenuItem onClick={() => setTheme("faded")}>
-              Faded
-            </DropdownMenuItem>
-
-            <DropdownMenuItem onClick={() => setTheme("monochrome")}>
-              Monochrome
-            </DropdownMenuItem>
-            <ThemeSwitcher />
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
       {activeRoute && (
         <div className="fixed right-4 bottom-4 left-4 z-50 sm:right-auto sm:bottom-6 sm:left-1/2 sm:max-w-md sm:-translate-x-1/2">
           <div className="flex flex-col gap-2 rounded-xl border bg-card p-2 shadow-lg sm:flex-row sm:items-center">
