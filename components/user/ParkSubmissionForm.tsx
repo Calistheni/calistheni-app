@@ -17,11 +17,7 @@ import {
   getParkFormErrors,
   validateParkMutation,
 } from "@/lib/validation/parks";
-import type {
-  ParkFormErrors,
-  ParkFormValues,
-  ParkMutationPayload,
-} from "@/types/park";
+import type { ParkFormErrors, ParkFormValues } from "@/types/park";
 
 type Equipment = {
   id: number;
@@ -73,26 +69,6 @@ async function parseApiError(response: Response) {
   }
 }
 
-function toFormData(payload: ParkMutationPayload, photo: File | null) {
-  const formData = new FormData();
-
-  formData.set("name", payload.name);
-  formData.set("title", payload.title ?? "");
-  formData.set("address", payload.address ?? "");
-  formData.set("lat", String(payload.lat));
-  formData.set("lon", String(payload.lon));
-
-  payload.equipmentIds.forEach((equipmentId) => {
-    formData.append("equipmentIds", String(equipmentId));
-  });
-
-  if (photo) {
-    formData.set("photo", photo);
-  }
-
-  return formData;
-}
-
 export function ParkSubmissionForm({
   equipment,
   mode,
@@ -141,7 +117,28 @@ export function ParkSubmissionForm({
     }));
     clearFieldError("equipmentIds");
   }
+  async function uploadParkPhoto(photo: File) {
+    const formData = new FormData();
+    formData.set("file", photo);
 
+    const response = await fetch("/api/uploads/park-photo", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+
+      throw new Error(payload?.error || "Unable to upload photo.");
+    }
+
+    return (await response.json()) as {
+      photoUrl: string;
+      key: string;
+    };
+  }
   async function handleSubmit() {
     const validationResult = validateParkMutation(formValues);
 
@@ -154,11 +151,24 @@ export function ParkSubmissionForm({
     setIsSubmitting(true);
 
     try {
+      let photoUrl: string | null = null;
+
+      if (mode === "create" && photo) {
+        const uploadedPhoto = await uploadParkPhoto(photo);
+        photoUrl = uploadedPhoto.photoUrl;
+      }
+
       const response =
         mode === "create"
           ? await fetch("/api/user/parks", {
               method: "POST",
-              body: toFormData(validationResult.data, photo),
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                ...validationResult.data,
+                photoUrl,
+              }),
             })
           : await fetch(`/api/user/parks/${parkId}`, {
               method: "PATCH",
@@ -179,6 +189,7 @@ export function ParkSubmissionForm({
           ? "Park submitted for admin review."
           : "Park updated and sent back for review."
       );
+
       router.push("/my-parks");
       router.refresh();
     } catch (error) {
@@ -377,8 +388,8 @@ export function ParkSubmissionForm({
               ? "Submitting..."
               : "Saving..."
             : mode === "create"
-              ? "Submit for Review"
-              : "Save Changes"}
+            ? "Submit for Review"
+            : "Save Changes"}
         </Button>
       </CardContent>
     </Card>

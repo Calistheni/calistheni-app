@@ -11,31 +11,15 @@ import {
 import { prisma } from "@/lib/prisma";
 import { parkMutationSchema } from "@/lib/validation/parks";
 
-const MAX_PHOTO_SIZE_BYTES = 5 * 1024 * 1024;
-
-function getFormString(formData: FormData, field: string) {
-  const value = formData.get(field);
-
-  return typeof value === "string" ? value : "";
-}
-
-function getPhotoValidationError(formData: FormData) {
-  const photo = formData.get("photo");
-
-  if (!(photo instanceof File) || photo.size === 0) {
-    return null;
-  }
-
-  if (!photo.type.startsWith("image/")) {
-    return "Photo must be an image.";
-  }
-
-  if (photo.size > MAX_PHOTO_SIZE_BYTES) {
-    return "Photo must be 5MB or smaller.";
-  }
-
-  return null;
-}
+type CreateParkBody = {
+  name?: unknown;
+  title?: unknown;
+  address?: unknown;
+  lat?: unknown;
+  lon?: unknown;
+  equipmentIds?: unknown;
+  photoUrl?: unknown;
+};
 
 export async function POST(request: Request) {
   const userId = await getAuthenticatedUserId();
@@ -44,21 +28,21 @@ export async function POST(request: Request) {
     return createUserUnauthorizedResponse();
   }
 
-  let formData: FormData;
+  let body: CreateParkBody;
 
   try {
-    formData = await request.formData();
+    body = (await request.json()) as CreateParkBody;
   } catch {
-    return createJsonErrorResponse("Invalid form payload.", 400);
+    return createJsonErrorResponse("Invalid JSON payload.", 400);
   }
 
   const parsedBody = parkMutationSchema.safeParse({
-    name: getFormString(formData, "name"),
-    title: getFormString(formData, "title"),
-    address: getFormString(formData, "address"),
-    lat: getFormString(formData, "lat"),
-    lon: getFormString(formData, "lon"),
-    equipmentIds: formData.getAll("equipmentIds"),
+    name: body.name,
+    title: body.title,
+    address: body.address,
+    lat: body.lat,
+    lon: body.lon,
+    equipmentIds: body.equipmentIds,
   });
 
   if (!parsedBody.success) {
@@ -68,13 +52,10 @@ export async function POST(request: Request) {
     );
   }
 
-  const photoError = getPhotoValidationError(formData);
-
-  if (photoError) {
-    return createJsonValidationErrorResponse("Invalid photo.", {
-      photo: [photoError],
-    });
-  }
+  const photoUrl =
+    typeof body.photoUrl === "string" && body.photoUrl.length > 0
+      ? body.photoUrl
+      : null;
 
   try {
     const park = await prisma.park.create({
@@ -86,8 +67,7 @@ export async function POST(request: Request) {
         lon: parsedBody.data.lon,
         submissionStatus: "PENDING",
         submittedById: userId,
-        // TODO: Store the validated camera image in object storage and save its URL here.
-        photoUrl: null,
+        photoUrl,
         equipment: {
           create: parsedBody.data.equipmentIds.map((equipmentId) => ({
             equipmentId,
