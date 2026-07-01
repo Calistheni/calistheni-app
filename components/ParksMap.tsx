@@ -581,17 +581,12 @@ export default function ParksMap({
           },
         });
       }
-
-      const bounds = new mapboxgl.LngLatBounds();
-
-      route.coordinates.forEach((coordinate: [number, number]) => {
-        bounds.extend(coordinate);
+      setActiveRoute({
+        parkId: park.id,
+        name: park.name,
       });
 
-      map.fitBounds(bounds, {
-        padding: 80,
-        duration: 1500,
-      });
+      button.textContent = "Route ready";
 
       setActiveRoute({
         parkId: park.id,
@@ -1206,6 +1201,7 @@ export default function ParksMap({
         enableHighAccuracy: true,
       },
       trackUserLocation: true,
+      showUserHeading: true,
     });
 
     geolocateRef.current = geolocate;
@@ -1217,30 +1213,7 @@ export default function ParksMap({
       ];
 
       userLocationRef.current = location;
-      const savedRoute = localStorage.getItem("active-route");
 
-      if (savedRoute) {
-        try {
-          const routeData = JSON.parse(savedRoute);
-
-          if (routeData.geometry) {
-            const bounds = new mapboxgl.LngLatBounds();
-
-            routeData.geometry.coordinates.forEach(
-              (coordinate: [number, number]) => {
-                bounds.extend(coordinate);
-              }
-            );
-
-            map.fitBounds(bounds, {
-              padding: 80,
-              duration: 1000,
-            });
-
-            return;
-          }
-        } catch {}
-      }
       localStorage.setItem("location-allowed", "true");
       localStorage.setItem("user-location", JSON.stringify(location));
 
