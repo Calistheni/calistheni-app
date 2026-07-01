@@ -581,11 +581,6 @@ export default function ParksMap({
           },
         });
       }
-      setActiveRoute({
-        parkId: park.id,
-        name: park.name,
-      });
-
       button.textContent = "Route ready";
 
       setActiveRoute({
@@ -1212,16 +1207,20 @@ export default function ParksMap({
         event.coords.latitude,
       ];
 
+      const hadLocation = Boolean(userLocationRef.current);
+
       userLocationRef.current = location;
 
       localStorage.setItem("location-allowed", "true");
       localStorage.setItem("user-location", JSON.stringify(location));
 
-      map.flyTo({
-        center: location,
-        zoom: 14,
-        duration: 1000,
-      });
+      if (!hadLocation) {
+        map.flyTo({
+          center: location,
+          zoom: 14,
+          duration: 1000,
+        });
+      }
     });
 
     geolocate.on("error", () => {
