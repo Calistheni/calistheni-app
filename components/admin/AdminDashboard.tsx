@@ -213,6 +213,10 @@ export default function AdminDashboard() {
   const [deleteCandidate, setDeleteCandidate] = useState<ParkDetail | null>(
     null
   );
+
+  const [rejectCandidate, setRejectCandidate] =
+    useState<AdminSubmission | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
   const [duplicateCandidate, setDuplicateCandidate] =
     useState<DuplicateCandidate | null>(null);
   const [isDuplicateCreatePending, setIsDuplicateCreatePending] =
@@ -275,7 +279,9 @@ export default function AdminDashboard() {
             }
           } catch (error) {
             console.error(error);
-            toast.error("Unable to refresh parks. Showing cached data instead.");
+            toast.error(
+              "Unable to refresh parks. Showing cached data instead."
+            );
             return;
           }
         }
@@ -655,7 +661,9 @@ export default function AdminDashboard() {
       });
       setFormErrors({});
     } catch (error) {
-      toast.error(getErrorMessage(error, "Unable to load this park for editing."));
+      toast.error(
+        getErrorMessage(error, "Unable to load this park for editing.")
+      );
     }
   }
 
@@ -678,11 +686,8 @@ export default function AdminDashboard() {
     submissionId: number,
     status: "APPROVED" | "REJECTED"
   ) {
-    const rejectionReason =
-      status === "REJECTED"
-        ? window.prompt("Optional rejection reason")?.trim() || null
-        : null;
-
+    const finalRejectionReason =
+      status === "REJECTED" ? rejectionReason.trim() || null : null;
     setReviewingSubmissionId(submissionId);
 
     try {
@@ -693,7 +698,7 @@ export default function AdminDashboard() {
         },
         body: JSON.stringify({
           status,
-          rejectionReason,
+          rejectionReason: finalRejectionReason,
         }),
       });
 
@@ -715,6 +720,8 @@ export default function AdminDashboard() {
       toast.success(
         status === "APPROVED" ? "Submission approved." : "Submission rejected."
       );
+      setRejectCandidate(null);
+      setRejectionReason("");
     } catch (error) {
       toast.error(
         getErrorMessage(error, "Unable to review this submission right now.")
@@ -729,8 +736,8 @@ export default function AdminDashboard() {
       ? "Saving..."
       : "Creating..."
     : editingParkId
-      ? "Update Park"
-      : "Create Park";
+    ? "Update Park"
+    : "Create Park";
   const isSearchActive = search.trim().length >= 2;
 
   return (
@@ -861,9 +868,10 @@ export default function AdminDashboard() {
                     </Button>
                     <Button
                       variant="outline"
-                      onClick={() =>
-                        void reviewSubmission(submission.id, "REJECTED")
-                      }
+                      onClick={() => {
+                        setRejectCandidate(submission);
+                        setRejectionReason("");
+                      }}
                       disabled={reviewingSubmissionId === submission.id}
                     >
                       Reject
@@ -920,7 +928,9 @@ export default function AdminDashboard() {
               id="park-address"
               placeholder="Address"
               value={formValues.address}
-              onChange={(event) => updateTextField("address", event.target.value)}
+              onChange={(event) =>
+                updateTextField("address", event.target.value)
+              }
             />
           </div>
 
@@ -1256,6 +1266,62 @@ export default function AdminDashboard() {
               }}
             >
               {isDuplicateCreatePending ? "Creating..." : "Create Anyway"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={Boolean(rejectCandidate)}
+        onOpenChange={(open) => {
+          if (!open && reviewingSubmissionId !== rejectCandidate?.id) {
+            setRejectCandidate(null);
+            setRejectionReason("");
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reject Submission</AlertDialogTitle>
+            <AlertDialogDescription>
+              Optionally explain why this park submission is being rejected.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="space-y-2">
+            <label htmlFor="rejection-reason" className="text-sm font-medium">
+              Rejection reason
+            </label>
+
+            <textarea
+              id="rejection-reason"
+              value={rejectionReason}
+              onChange={(event) => setRejectionReason(event.target.value)}
+              placeholder="Example: Duplicate park, unclear location, invalid photo..."
+              className="min-h-28 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={Boolean(reviewingSubmissionId)}>
+              Cancel
+            </AlertDialogCancel>
+
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={Boolean(reviewingSubmissionId) || !rejectCandidate}
+              onClick={(event) => {
+                event.preventDefault();
+
+                if (!rejectCandidate) {
+                  return;
+                }
+
+                void reviewSubmission(rejectCandidate.id, "REJECTED");
+              }}
+            >
+              {reviewingSubmissionId === rejectCandidate?.id
+                ? "Rejecting..."
+                : "Reject Submission"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
