@@ -64,6 +64,10 @@ export function UserMenu({
               </DropdownMenuItem>
 
               <DropdownMenuItem asChild>
+                <Link href="/workouts">Workouts</Link>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem asChild>
                 <Link href="/my-parks">My Parks</Link>
               </DropdownMenuItem>
 
@@ -86,6 +90,20 @@ export function UserMenu({
               </DropdownMenuItem>
             </>
           )}
+
+          <DropdownMenuSeparator />
+
+          <DropdownMenuLabel>Training</DropdownMenuLabel>
+
+          <DropdownMenuItem asChild>
+            <Link href="/exercises">Exercises</Link>
+          </DropdownMenuItem>
+
+          {user ? (
+            <DropdownMenuItem asChild>
+              <Link href="/workouts/new">New Workout</Link>
+            </DropdownMenuItem>
+          ) : null}
 
           <DropdownMenuSeparator />
 

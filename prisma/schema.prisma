@@ -23,7 +23,8 @@ model User {
   accounts Account[]
   sessions Session[]
 
-  submittedParks Park[] @relation("ParkSubmitter")
+  submittedParks Park[]    @relation("ParkSubmitter")
+  workouts       Workout[]
 }
 
 model Account {
@@ -102,4 +103,74 @@ model ParkEquipment {
   equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
 
   @@id([parkId, equipmentId])
+}
+
+model Exercise {
+  id           String  @id
+  slug         String  @unique
+  name         String
+  muscle       String
+  thumbnailUrl String?
+  videoUrl     String?
+
+  workoutExercises WorkoutExercise[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([muscle])
+  @@index([name])
+}
+
+model Workout {
+  id          Int       @id @default(autoincrement())
+  userId      String
+  title       String?
+  notes       String?
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercises WorkoutExercise[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, startedAt])
+}
+
+model WorkoutExercise {
+  id         Int     @id @default(autoincrement())
+  workoutId  Int
+  exerciseId String
+  order      Int
+  notes      String?
+
+  workout  Workout      @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  exercise Exercise     @relation(fields: [exerciseId], references: [id], onDelete: Restrict)
+  sets     WorkoutSet[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([workoutId, order])
+  @@index([exerciseId])
+}
+
+model WorkoutSet {
+  id                Int     @id @default(autoincrement())
+  workoutExerciseId Int
+  order             Int
+  reps              Int?
+  weight            Float?
+  durationSeconds   Int?
+  distanceMeters    Float?
+  notes             String?
+
+  workoutExercise WorkoutExercise @relation(fields: [workoutExerciseId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([workoutExerciseId, order])
 }
