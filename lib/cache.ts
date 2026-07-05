@@ -2,7 +2,7 @@ import { openDB, type IDBPDatabase } from "idb";
 import type { ParkDetail, ParkSummary } from "@/types/park";
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
-const PARKS_CACHE_SCHEMA_VERSION = 2;
+const PARKS_CACHE_SCHEMA_VERSION = 3;
 const PARK_DETAIL_CACHE_SCHEMA_VERSION = 2;
 
 async function getDB() {
@@ -111,6 +111,18 @@ export async function loadParkDetail(id: number) {
   }
 
   return cache.data as ParkDetail;
+}
+
+export async function deleteParkDetails(ids: number[]) {
+  if (typeof window === "undefined" || ids.length === 0) {
+    return;
+  }
+
+  const db = await getDB();
+  const tx = db.transaction("park-details", "readwrite");
+
+  await Promise.all(ids.map((id) => tx.store.delete(id)));
+  await tx.done;
 }
 
 export async function saveAdminParks(

@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import type { ParkDetail, ParkSummary } from "@/types/park";
 import {
+  deleteParkDetails,
   loadParkDetail,
   saveParkDetail,
   loadParks,
@@ -290,6 +291,7 @@ export default function ParksMap({
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
+  const popupParkIdRef = useRef<number | null>(null);
   const geolocateRef = useRef<mapboxgl.GeolocateControl | null>(null);
   const parksRef = useRef(parks);
   const userLocationRef = useRef<[number, number] | null>(null);
@@ -545,11 +547,28 @@ export default function ParksMap({
           changes.version
         );
 
-        if (!merged) {
-          return;
-        }
+	        if (!merged) {
+	          return;
+	        }
 
-        parksRef.current = merged;
+	        changes.deleted.forEach((parkId) => {
+	          detailCacheRef.current.delete(parkId);
+	          detailRequestCacheRef.current.delete(parkId);
+	        });
+	        await deleteParkDetails(changes.deleted).catch((error) => {
+	          console.error(error);
+	        });
+
+	        if (
+	          popupParkIdRef.current !== null &&
+	          changes.deleted.includes(popupParkIdRef.current)
+	        ) {
+	          popupRef.current?.remove();
+	          popupRef.current = null;
+	          popupParkIdRef.current = null;
+	        }
+	
+	        parksRef.current = merged;
 
         viewportCacheRef.current.set("ALL_PARKS", merged);
 
@@ -754,10 +773,12 @@ export default function ParksMap({
     popup.on("close", () => {
       if (popupRef.current === popup) {
         popupRef.current = null;
+        popupParkIdRef.current = null;
       }
     });
 
     popupRef.current = popup;
+    popupParkIdRef.current = parkId;
     setPopupMarkup(popup, map, parkId, parkPreview, {
       park: parkPreview,
     });

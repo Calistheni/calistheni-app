@@ -2,7 +2,6 @@ import { prisma } from "@/lib/prisma";
 import {
   latestParkPhotoQuery,
   mapParkSummary,
-  publicParkWhere,
 } from "@/lib/parks";
 import {
   createInternalServerErrorResponse,
@@ -50,9 +49,6 @@ export async function GET(req: Request) {
       },
     });
     const latestPark = await prisma.park.findFirst({
-      where: {
-        ...publicParkWhere,
-      },
       orderBy: {
         updatedAt: "desc",
       },
