@@ -67,13 +67,18 @@ type ParsedApiError = {
 };
 
 type AdminSubmission = {
+  reviewId: string;
+  kind: "NEW_PARK" | "PARK_EDIT";
   id: number;
+  parkId: number | null;
+  originalParkName: string | null;
+  originalParkAddress: string | null;
   name: string;
   title: string | null;
   address: string | null;
   lat: number;
   lon: number;
-  photoUrl: string | null;
+  photoUrls: string[];
   createdAt: string;
   submittedBy: {
     name: string | null;
@@ -161,6 +166,7 @@ function toParkSummary(park: ParkDetail): ParkSummary {
     lat: park.lat,
     lon: park.lon,
     address: park.address,
+    photoUrl: park.photoUrl,
     updatedAt: park.updatedAt,
     deletedAt: park.deletedAt ?? null,
   };
@@ -230,7 +236,7 @@ export default function AdminDashboard() {
   >([]);
   const [isSubmissionsLoading, setIsSubmissionsLoading] = useState(true);
   const [reviewingSubmissionId, setReviewingSubmissionId] = useState<
-    number | null
+    string | null
   >(null);
 
   const filteredParks = useMemo(() => {
@@ -683,15 +689,15 @@ export default function AdminDashboard() {
   }
 
   async function reviewSubmission(
-    submissionId: number,
+    reviewId: string,
     status: "APPROVED" | "REJECTED"
   ) {
     const finalRejectionReason =
       status === "REJECTED" ? rejectionReason.trim() || null : null;
-    setReviewingSubmissionId(submissionId);
+    setReviewingSubmissionId(reviewId);
 
     try {
-      const response = await fetch(`/api/admin/submissions/${submissionId}`, {
+      const response = await fetch(`/api/admin/submissions/${reviewId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -715,7 +721,7 @@ export default function AdminDashboard() {
       }
 
       setPendingSubmissions((current) =>
-        current.filter((submission) => submission.id !== submissionId)
+        current.filter((submission) => submission.reviewId !== reviewId)
       );
       toast.success(
         status === "APPROVED" ? "Submission approved." : "Submission rejected."
@@ -811,17 +817,35 @@ export default function AdminDashboard() {
             </p>
           ) : (
             pendingSubmissions.map((submission) => (
-              <div key={submission.id} className="rounded-lg border p-4">
+              <div key={submission.reviewId} className="rounded-lg border p-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="space-y-2">
                     <div>
-                      <h3 className="text-lg font-semibold">
-                        {submission.name}
-                      </h3>
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <h3 className="text-lg font-semibold">
+                          {submission.name}
+                        </h3>
+                        <Badge variant="outline">
+                          {submission.kind === "PARK_EDIT"
+                            ? "Edit Request"
+                            : "New Park"}
+                        </Badge>
+                      </div>
                       <p className="text-sm text-muted-foreground">
                         {submission.address ?? "Address unavailable"}
                       </p>
                     </div>
+                    {submission.kind === "PARK_EDIT" ? (
+                      <p className="text-sm text-muted-foreground">
+                        Editing{" "}
+                        <span className="font-medium text-foreground">
+                          {submission.originalParkName ?? "existing park"}
+                        </span>
+                        {submission.originalParkAddress
+                          ? ` at ${submission.originalParkAddress}`
+                          : ""}
+                      </p>
+                    ) : null}
                     <p className="text-sm text-muted-foreground">
                       Submitted by{" "}
                       {submission.submittedBy?.email ??
@@ -839,18 +863,23 @@ export default function AdminDashboard() {
                         </Badge>
                       ))}
                     </div>
-                    {submission.photoUrl ? (
-                      <a
-                        href={submission.photoUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-sm font-medium underline underline-offset-4"
-                      >
-                        View submitted photo
-                      </a>
+                    {submission.photoUrls.length > 0 ? (
+                      <div className="flex flex-wrap gap-3">
+                        {submission.photoUrls.map((photoUrl, index) => (
+                          <a
+                            key={photoUrl}
+                            href={photoUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-sm font-medium underline underline-offset-4"
+                          >
+                            View photo {index + 1}
+                          </a>
+                        ))}
+                      </div>
                     ) : (
                       <p className="text-xs text-muted-foreground">
-                        Photo storage is not configured yet.
+                        No photos were attached.
                       </p>
                     )}
                   </div>
@@ -858,11 +887,11 @@ export default function AdminDashboard() {
                   <div className="flex flex-wrap gap-2">
                     <Button
                       onClick={() =>
-                        void reviewSubmission(submission.id, "APPROVED")
+                        void reviewSubmission(submission.reviewId, "APPROVED")
                       }
-                      disabled={reviewingSubmissionId === submission.id}
+                      disabled={reviewingSubmissionId === submission.reviewId}
                     >
-                      {reviewingSubmissionId === submission.id
+                      {reviewingSubmissionId === submission.reviewId
                         ? "Reviewing..."
                         : "Approve"}
                     </Button>
@@ -872,7 +901,7 @@ export default function AdminDashboard() {
                         setRejectCandidate(submission);
                         setRejectionReason("");
                       }}
-                      disabled={reviewingSubmissionId === submission.id}
+                      disabled={reviewingSubmissionId === submission.reviewId}
                     >
                       Reject
                     </Button>
@@ -1273,7 +1302,7 @@ export default function AdminDashboard() {
       <AlertDialog
         open={Boolean(rejectCandidate)}
         onOpenChange={(open) => {
-          if (!open && reviewingSubmissionId !== rejectCandidate?.id) {
+          if (!open && reviewingSubmissionId !== rejectCandidate?.reviewId) {
             setRejectCandidate(null);
             setRejectionReason("");
           }
@@ -1316,10 +1345,10 @@ export default function AdminDashboard() {
                   return;
                 }
 
-                void reviewSubmission(rejectCandidate.id, "REJECTED");
+                void reviewSubmission(rejectCandidate.reviewId, "REJECTED");
               }}
             >
-              {reviewingSubmissionId === rejectCandidate?.id
+              {reviewingSubmissionId === rejectCandidate?.reviewId
                 ? "Rejecting..."
                 : "Reject Submission"}
             </AlertDialogAction>

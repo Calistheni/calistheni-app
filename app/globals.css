@@ -48,14 +48,19 @@
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
 }
-
 .mapboxgl-popup-content {
   background: #111827;
   color: white;
-  border-radius: 12px;
+  border-radius: 16px;
   padding: 12px;
-
   font-family: var(--font-sans);
+  width: 280px;
+  max-width: 280px;
+  box-sizing: border-box;
+}
+
+.mapboxgl-popup {
+  max-width: 280px !important;
 }
 .park-marker {
   width: 12px;

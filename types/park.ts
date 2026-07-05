@@ -5,6 +5,7 @@ export type ParkSummary = {
   lat: number;
   lon: number;
   address: string | null;
+  photoUrl: string | null;
   updatedAt: string;
   deletedAt: string | null;
 };
@@ -17,7 +18,6 @@ export type ParkSubmissionStatus = "PENDING" | "APPROVED" | "REJECTED";
 
 export type UserPark = ParkDetail & {
   submissionStatus: ParkSubmissionStatus;
-  photoUrl: string | null;
   rejectionReason: string | null;
   createdAt: string;
 };

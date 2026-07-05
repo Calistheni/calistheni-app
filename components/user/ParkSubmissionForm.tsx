@@ -26,7 +26,7 @@ type Equipment = {
 
 type ParkSubmissionFormProps = {
   equipment: Equipment[];
-  mode: "create" | "edit";
+  mode: "create" | "suggest-edit";
   parkId?: number;
   initialValues?: ParkFormValues;
 };
@@ -78,7 +78,7 @@ export function ParkSubmissionForm({
   const router = useRouter();
   const [formValues, setFormValues] = useState<ParkFormValues>(initialValues);
   const [formErrors, setFormErrors] = useState<ParkFormErrors>({});
-  const [photo, setPhoto] = useState<File | null>(null);
+  const [photos, setPhotos] = useState<File[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   function clearFieldError(field: keyof ParkFormErrors) {
@@ -151,11 +151,11 @@ export function ParkSubmissionForm({
     setIsSubmitting(true);
 
     try {
-      let photoUrl: string | null = null;
+      const uploadedPhotoUrls: string[] = [];
 
-      if (mode === "create" && photo) {
-        const uploadedPhoto = await uploadParkPhoto(photo);
-        photoUrl = uploadedPhoto.photoUrl;
+      for (const selectedPhoto of photos) {
+        const uploadedPhoto = await uploadParkPhoto(selectedPhoto);
+        uploadedPhotoUrls.push(uploadedPhoto.photoUrl);
       }
 
       const response =
@@ -167,15 +167,18 @@ export function ParkSubmissionForm({
               },
               body: JSON.stringify({
                 ...validationResult.data,
-                photoUrl,
+                photoUrl: uploadedPhotoUrls[0] ?? null,
               }),
             })
-          : await fetch(`/api/user/parks/${parkId}`, {
-              method: "PATCH",
+          : await fetch(`/api/user/parks/${parkId}/edits`, {
+              method: "POST",
               headers: {
                 "Content-Type": "application/json",
               },
-              body: JSON.stringify(validationResult.data),
+              body: JSON.stringify({
+                ...validationResult.data,
+                photoUrls: uploadedPhotoUrls,
+              }),
             });
 
       if (!response.ok) {
@@ -187,10 +190,10 @@ export function ParkSubmissionForm({
       toast.success(
         mode === "create"
           ? "Park submitted for admin review."
-          : "Park updated and sent back for review."
+          : "Park edit submitted for admin review."
       );
 
-      router.push("/my-parks");
+      router.push(mode === "create" ? "/my-parks" : "/");
       router.refresh();
     } catch (error) {
       toast.error(
@@ -198,7 +201,7 @@ export function ParkSubmissionForm({
           error,
           mode === "create"
             ? "Unable to submit this park."
-            : "Unable to update this park."
+            : "Unable to submit this park edit."
         )
       );
     } finally {
@@ -210,12 +213,12 @@ export function ParkSubmissionForm({
     <Card>
       <CardHeader>
         <h1 className="text-2xl font-bold">
-          {mode === "create" ? "Submit a Park" : "Edit Submitted Park"}
+          {mode === "create" ? "Submit a Park" : "Suggest Park Edit"}
         </h1>
         <p className="text-sm text-muted-foreground">
           {mode === "create"
             ? "Submissions are reviewed by an admin before they appear publicly."
-            : "Saving changes sends the park back to admin review."}
+            : "Your suggested changes are reviewed before the public park is updated."}
         </p>
       </CardHeader>
 
@@ -356,31 +359,31 @@ export function ParkSubmissionForm({
           ) : null}
         </fieldset>
 
-        {mode === "create" ? (
-          <div className="space-y-2">
-            <label htmlFor="park-photo" className="text-sm font-medium">
-              Camera photo
-            </label>
-            <Input
-              id="park-photo"
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={(event) => {
-                setPhoto(event.target.files?.[0] ?? null);
-                clearFieldError("photo");
-              }}
-              aria-invalid={formErrors.photo ? true : undefined}
-            />
-            <p className="text-xs text-muted-foreground">
-              Uses the device camera when supported. Some browsers may still
-              allow gallery selection.
-            </p>
-            {formErrors.photo ? (
-              <p className="text-xs text-destructive">{formErrors.photo}</p>
-            ) : null}
-          </div>
-        ) : null}
+        <div className="space-y-2">
+          <label htmlFor="park-photo" className="text-sm font-medium">
+            {mode === "create" ? "Camera photo" : "Photos"}
+          </label>
+          <Input
+            id="park-photo"
+            type="file"
+            accept="image/*"
+            capture={mode === "create" ? "environment" : undefined}
+            multiple={mode === "suggest-edit"}
+            onChange={(event) => {
+              setPhotos(Array.from(event.target.files ?? []));
+              clearFieldError("photo");
+            }}
+            aria-invalid={formErrors.photo ? true : undefined}
+          />
+          <p className="text-xs text-muted-foreground">
+            {mode === "create"
+              ? "Uses the device camera when supported. Some browsers may still allow gallery selection."
+              : "Upload one or more photos to help the admin review this edit."}
+          </p>
+          {formErrors.photo ? (
+            <p className="text-xs text-destructive">{formErrors.photo}</p>
+          ) : null}
+        </div>
 
         <Button onClick={handleSubmit} disabled={isSubmitting}>
           {isSubmitting
@@ -389,7 +392,7 @@ export function ParkSubmissionForm({
               : "Saving..."
             : mode === "create"
             ? "Submit for Review"
-            : "Save Changes"}
+            : "Submit Edit for Review"}
         </Button>
       </CardContent>
     </Card>

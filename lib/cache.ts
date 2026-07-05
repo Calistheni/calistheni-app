@@ -2,6 +2,8 @@ import { openDB, type IDBPDatabase } from "idb";
 import type { ParkDetail, ParkSummary } from "@/types/park";
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
+const PARKS_CACHE_SCHEMA_VERSION = 2;
+const PARK_DETAIL_CACHE_SCHEMA_VERSION = 2;
 
 async function getDB() {
   if (typeof window === "undefined") {
@@ -62,6 +64,7 @@ export async function saveParks(parks: ParkSummary[], version?: string) {
     {
       data: parks,
       version,
+      schemaVersion: PARKS_CACHE_SCHEMA_VERSION,
       timestamp: Date.now(),
     },
     "all"
@@ -73,12 +76,26 @@ export async function loadParks() {
   }
 
   const db = await getDB();
-  return db.get("parks", "all");
+  const cache = await db.get("parks", "all");
+
+  if (!cache || cache.schemaVersion !== PARKS_CACHE_SCHEMA_VERSION) {
+    return null;
+  }
+
+  return cache;
 }
 
 export async function saveParkDetail(park: ParkDetail) {
   const db = await getDB();
-  await db.put("park-details", park, park.id);
+  await db.put(
+    "park-details",
+    {
+      data: park,
+      schemaVersion: PARK_DETAIL_CACHE_SCHEMA_VERSION,
+      timestamp: Date.now(),
+    },
+    park.id
+  );
 }
 
 export async function loadParkDetail(id: number) {
@@ -87,7 +104,13 @@ export async function loadParkDetail(id: number) {
   }
 
   const db = await getDB();
-  return db.get("park-details", id);
+  const cache = await db.get("park-details", id);
+
+  if (!cache || cache.schemaVersion !== PARK_DETAIL_CACHE_SCHEMA_VERSION) {
+    return null;
+  }
+
+  return cache.data as ParkDetail;
 }
 
 export async function saveAdminParks(
@@ -102,6 +125,7 @@ export async function saveAdminParks(
       data: parks,
       count: parks.length,
       lastUpdated,
+      schemaVersion: PARKS_CACHE_SCHEMA_VERSION,
       timestamp: Date.now(),
     },
     "admin"
@@ -115,5 +139,11 @@ export async function loadAdminParks() {
 
   const db = await getDB();
 
-  return db.get("parks", "admin");
+  const cache = await db.get("parks", "admin");
+
+  if (!cache || cache.schemaVersion !== PARKS_CACHE_SCHEMA_VERSION) {
+    return null;
+  }
+
+  return cache;
 }

@@ -1,4 +1,4 @@
-import { getParkDetail, publicParkWhere } from "@/lib/parks";
+import { getParkDetail, getPublicParks } from "@/lib/parks";
 import { prisma } from "@/lib/prisma";
 import {
   createUnauthorizedResponse,
@@ -14,21 +14,7 @@ import { NextResponse } from "next/server";
 
 export async function GET() {
   try {
-    const parks = await prisma.park.findMany({
-      where: {
-        ...publicParkWhere,
-      },
-      select: {
-        id: true,
-        name: true,
-        title: true,
-        address: true,
-        lat: true,
-        lon: true,
-        updatedAt: true,
-        deletedAt: true,
-      },
-    });
+    const parks = await getPublicParks();
 
     return NextResponse.json(parks);
   } catch (error) {

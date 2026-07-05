@@ -6,6 +6,14 @@ export const publicParkWhere = {
   submissionStatus: "APPROVED" as const,
 };
 
+export const latestParkPhotoQuery = {
+  orderBy: [{ createdAt: "desc" as const }, { id: "desc" as const }],
+  take: 1,
+  select: {
+    url: true,
+  },
+};
+
 const parkSummarySelect = {
   id: true,
   name: true,
@@ -13,9 +21,23 @@ const parkSummarySelect = {
   lat: true,
   lon: true,
   address: true,
+  updatedAt: true,
+  deletedAt: true,
+  photos: latestParkPhotoQuery,
 };
 
-function mapParkSummary(park: {
+type ParkWithLatestPhoto = {
+  photos?: Array<{
+    url: string;
+  }>;
+  photoUrl?: string | null;
+};
+
+export function getMainParkPhotoUrl(park: ParkWithLatestPhoto) {
+  return park.photos?.[0]?.url ?? park.photoUrl ?? null;
+}
+
+export function mapParkSummary(park: {
   id: number;
   name: string;
   title: string | null;
@@ -24,7 +46,7 @@ function mapParkSummary(park: {
   address: string | null;
   updatedAt: Date;
   deletedAt: Date | null;
-}): ParkSummary {
+} & ParkWithLatestPhoto): ParkSummary {
   return {
     id: park.id,
     name: park.name,
@@ -32,6 +54,7 @@ function mapParkSummary(park: {
     lat: park.lat,
     lon: park.lon,
     address: park.address,
+    photoUrl: getMainParkPhotoUrl(park),
     updatedAt: park.updatedAt.toISOString(),
     deletedAt: park.deletedAt?.toISOString() ?? null,
   };
@@ -51,7 +74,7 @@ function mapParkDetail(park: {
       name: string;
     };
   }>;
-}): ParkDetail {
+} & ParkWithLatestPhoto): ParkDetail {
   return {
     id: park.id,
     name: park.name,
@@ -59,10 +82,22 @@ function mapParkDetail(park: {
     lat: park.lat,
     lon: park.lon,
     address: park.address,
+    photoUrl: getMainParkPhotoUrl(park),
     updatedAt: park.updatedAt.toISOString(),
     deletedAt: park.deletedAt?.toISOString() ?? null,
     equipment: park.equipment.map((e) => e.equipment.name),
   };
+}
+
+export async function getPublicParks(): Promise<ParkSummary[]> {
+  const parks = await prisma.park.findMany({
+    where: {
+      ...publicParkWhere,
+    },
+    select: parkSummarySelect,
+  });
+
+  return parks.map(mapParkSummary);
 }
 
 export async function getParksInBounds(
@@ -89,11 +124,7 @@ export async function getParksInBounds(
             OR: [{ lon: { gte: minLon } }, { lon: { lte: maxLon } }],
           }),
     },
-    select: {
-      ...parkSummarySelect,
-      updatedAt: true,
-      deletedAt: true,
-    },
+    select: parkSummarySelect,
     take: limit,
   });
 
@@ -112,6 +143,7 @@ export async function getParkDetail(id: number): Promise<ParkDetail | null> {
           equipment: true,
         },
       },
+      photos: latestParkPhotoQuery,
     },
   });
 

@@ -5,7 +5,6 @@ import { auth } from "@/auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { DeleteUserParkButton } from "@/components/user/DeleteUserParkButton";
 import { prisma } from "@/lib/prisma";
 
 export const metadata: Metadata = {
@@ -46,7 +45,7 @@ export default async function MyParksPage() {
         <div>
           <h1 className="text-3xl font-bold">My Parks</h1>
           <p className="text-sm text-muted-foreground">
-            Manage parks you submitted for review.
+            Review parks you submitted. Deletions are handled by admins only.
           </p>
         </div>
         <Button asChild>
@@ -94,10 +93,15 @@ export default async function MyParksPage() {
                   </p>
                 ) : null}
                 <div className="flex flex-wrap gap-2">
-                  <Button asChild variant="outline">
-                    <Link href={`/my-parks/${park.id}/edit`}>Edit</Link>
-                  </Button>
-                  <DeleteUserParkButton parkId={park.id} />
+                  {park.submissionStatus === "APPROVED" ? (
+                    <Button asChild variant="outline">
+                      <Link href={`/parks/${park.id}/edit`}>Suggest Edit</Link>
+                    </Button>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Awaiting admin review.
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>

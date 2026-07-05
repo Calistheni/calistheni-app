@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma";
-import { publicParkWhere } from "@/lib/parks";
+import {
+  latestParkPhotoQuery,
+  mapParkSummary,
+  publicParkWhere,
+} from "@/lib/parks";
 import {
   createInternalServerErrorResponse,
   createJsonErrorResponse,
@@ -38,6 +42,7 @@ export async function GET(req: Request) {
         lat: true,
         lon: true,
         address: true,
+        photos: latestParkPhotoQuery,
         submissionStatus: true,
         updatedAt: true,
         deletedAt: true,
@@ -59,16 +64,7 @@ export async function GET(req: Request) {
       version: latestPark?.updatedAt?.toISOString() ?? null,
       updated: changedParks
         .filter((park) => !park.deletedAt && park.submissionStatus === "APPROVED")
-        .map((park) => ({
-          id: park.id,
-          name: park.name,
-          title: park.title,
-          lat: park.lat,
-          lon: park.lon,
-          address: park.address,
-          updatedAt: park.updatedAt.toISOString(),
-          deletedAt: null,
-        })),
+        .map(mapParkSummary),
       deleted: changedParks
         .filter((park) => park.deletedAt || park.submissionStatus !== "APPROVED")
         .map((park) => park.id),

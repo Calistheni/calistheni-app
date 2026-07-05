@@ -42,7 +42,7 @@ type ParksChangesResponse = {
 };
 
 type PopupRenderOptions = {
-  park?: Pick<ParkSummary, "name" | "address"> | ParkDetail;
+  park?: Pick<ParkSummary, "id" | "name" | "address" | "photoUrl"> | ParkDetail;
   loading?: boolean;
   error?: string;
   expanded?: boolean;
@@ -115,7 +115,7 @@ function renderPopupMarkup({
 
   if (loading) {
     return `
-      <div style="min-width:220px">
+      <div style="width:100%;">
         <h3 style="font-size:16px;font-weight:600;margin:0 0 8px 0;">
            "Loading park"
         </h3>
@@ -131,7 +131,7 @@ function renderPopupMarkup({
 
   if (error) {
     return `
-      <div style="min-width:220px">
+      <div style="width:100%;">
         <h3 style="font-size:16px;font-weight:600;margin:0 0 8px 0;">
           ${escapeHtml(park?.name ?? "Park")}
         </h3>
@@ -157,7 +157,27 @@ function renderPopupMarkup({
   }
 
   return `
-    <div style="min-width:220px">
+   <div style="width:100%;">
+   ${
+     park?.photoUrl
+       ? `
+        <img
+  src="${escapeHtml(park.photoUrl)}"
+  alt="${escapeHtml(`${park.name} photo`)}"
+  style="
+    display:block;
+    width:100%;
+    height:150px;
+    object-fit:cover;
+    object-position:center;
+    border-radius:10px;
+    margin-bottom:12px;
+  "
+/>
+      `
+       : ""
+   }
+
       <h3 style="font-size:16px;font-weight:600;margin:0 0 6px 0;">
         ${escapeHtml(park?.name ?? "Park")}
       </h3>
@@ -180,6 +200,31 @@ function renderPopupMarkup({
       >
         Directions
       </button>
+
+      ${
+        park
+          ? `
+            <a
+              href="/parks/${park.id}/edit"
+              style="
+                display:inline-block;
+                background:#f3f4f6;
+                color:#111827;
+                border:none;
+                border-radius:6px;
+                padding:6px 10px;
+                cursor:pointer;
+                font-size:12px;
+                margin-top:10px;
+                margin-left:6px;
+                text-decoration:none;
+              "
+            >
+              Suggest Edit
+            </a>
+          `
+          : ""
+      }
 
       ${
         equipment
@@ -383,12 +428,22 @@ export default function ParksMap({
     onViewportParksChangeRef.current(nextParks);
   }
 
+  function hasCurrentSummaryPhoto(
+    parkDetail: ParkDetail,
+    parkPreview?: ParkSummary
+  ) {
+    return (
+      !parkPreview?.photoUrl || parkDetail.photoUrl === parkPreview.photoUrl
+    );
+  }
+
   async function fetchParkDetail(parkId: number, parkPreview?: ParkSummary) {
     const memoryCache = detailCacheRef.current.get(parkId);
 
     if (
       memoryCache &&
-      (!parkPreview || memoryCache.updatedAt === parkPreview.updatedAt)
+      (!parkPreview || memoryCache.updatedAt === parkPreview.updatedAt) &&
+      hasCurrentSummaryPhoto(memoryCache, parkPreview)
     ) {
       return memoryCache;
     }
@@ -397,7 +452,8 @@ export default function ParksMap({
 
     if (
       indexedDbPark &&
-      (!parkPreview || indexedDbPark.updatedAt === parkPreview.updatedAt)
+      (!parkPreview || indexedDbPark.updatedAt === parkPreview.updatedAt) &&
+      hasCurrentSummaryPhoto(indexedDbPark, parkPreview)
     ) {
       detailCacheRef.current.set(parkId, indexedDbPark);
 
@@ -866,12 +922,14 @@ export default function ParksMap({
   const requestViewportParksRef = useRef(requestViewportParks);
   const scheduleViewportLoadRef = useRef(scheduleViewportLoad);
   const checkForParkUpdatesRef = useRef(checkForParkUpdates);
+  const fetchParkDetailRef = useRef(fetchParkDetail);
   useEffect(() => {
     onViewportParksChangeRef.current = onViewportParksChange;
     openParkPopupRef.current = openParkPopup;
     requestViewportParksRef.current = requestViewportParks;
     scheduleViewportLoadRef.current = scheduleViewportLoad;
     checkForParkUpdatesRef.current = checkForParkUpdates;
+    fetchParkDetailRef.current = fetchParkDetail;
   });
 
   useEffect(() => {
@@ -1067,7 +1125,7 @@ export default function ParksMap({
                 !detailCacheRef.current.has(parkId) &&
                 !detailRequestCacheRef.current.has(parkId)
               ) {
-                void fetchParkDetail(parkId);
+                void fetchParkDetailRef.current(parkId);
               }
             });
           });
@@ -1126,7 +1184,7 @@ export default function ParksMap({
             !detailCacheRef.current.has(parkId) &&
             !detailRequestCacheRef.current.has(parkId)
           ) {
-            void fetchParkDetail(parkId);
+            void fetchParkDetailRef.current(parkId);
           }
         });
 
@@ -1155,7 +1213,7 @@ export default function ParksMap({
                 !detailCacheRef.current.has(parkId) &&
                 !detailRequestCacheRef.current.has(parkId)
               ) {
-                void fetchParkDetail(parkId);
+                void fetchParkDetailRef.current(parkId);
               }
             });
           });

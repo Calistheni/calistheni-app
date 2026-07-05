@@ -12,47 +12,130 @@ export async function GET() {
   }
 
   try {
-    const submissions = await prisma.park.findMany({
-      where: {
-        deletedAt: null,
-        submissionStatus: "PENDING",
-        submittedById: {
-          not: null,
+    const [newParkSubmissions, editSubmissions] = await Promise.all([
+      prisma.park.findMany({
+        where: {
+          deletedAt: null,
+          submissionStatus: "PENDING",
+          submittedById: {
+            not: null,
+          },
         },
-      },
-      orderBy: {
-        createdAt: "asc",
-      },
-      select: {
-        id: true,
-        name: true,
-        title: true,
-        address: true,
-        lat: true,
-        lon: true,
-        photoUrl: true,
-        createdAt: true,
-        submittedBy: {
+        orderBy: {
+          createdAt: "asc",
+        },
+        select: {
+          id: true,
+          name: true,
+          title: true,
+          address: true,
+          lat: true,
+          lon: true,
+          photoUrl: true,
+          createdAt: true,
+          submittedBy: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
+          equipment: {
+            include: {
+              equipment: true,
+            },
+          },
+        },
+      }),
+      prisma.parkEditSubmission.findMany({
+        where: {
+          status: "PENDING",
+        },
+        orderBy: {
+          createdAt: "asc",
+        },
+        include: {
+          park: {
+            select: {
+              id: true,
+              name: true,
+              address: true,
+            },
+          },
+          submittedBy: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    const editEquipmentIds = [
+      ...new Set(editSubmissions.flatMap((submission) => submission.equipmentIds)),
+    ];
+    const editEquipment = editEquipmentIds.length
+      ? await prisma.equipment.findMany({
+          where: {
+            id: {
+              in: editEquipmentIds,
+            },
+          },
           select: {
+            id: true,
             name: true,
-            email: true,
           },
-        },
-        equipment: {
-          include: {
-            equipment: true,
-          },
-        },
-      },
-    });
+        })
+      : [];
+    const equipmentById = new Map(
+      editEquipment.map((item) => [item.id, item.name])
+    );
+
+    const submissions = [
+      ...newParkSubmissions.map((submission) => ({
+        reviewId: `park-${submission.id}`,
+        kind: "NEW_PARK" as const,
+        id: submission.id,
+        parkId: null,
+        originalParkName: null,
+        originalParkAddress: null,
+        name: submission.name,
+        title: submission.title,
+        address: submission.address,
+        lat: submission.lat,
+        lon: submission.lon,
+        photoUrls: submission.photoUrl ? [submission.photoUrl] : [],
+        createdAt: submission.createdAt.toISOString(),
+        submittedBy: submission.submittedBy,
+        equipment: submission.equipment.map((item) => item.equipment.name),
+      })),
+      ...editSubmissions.map((submission) => ({
+        reviewId: `edit-${submission.id}`,
+        kind: "PARK_EDIT" as const,
+        id: submission.id,
+        parkId: submission.parkId,
+        originalParkName: submission.park.name,
+        originalParkAddress: submission.park.address,
+        name: submission.name,
+        title: submission.title,
+        address: submission.address,
+        lat: submission.lat,
+        lon: submission.lon,
+        photoUrls: submission.photoUrls,
+        createdAt: submission.createdAt.toISOString(),
+        submittedBy: submission.submittedBy,
+        equipment: submission.equipmentIds
+          .map((equipmentId) => equipmentById.get(equipmentId))
+          .filter((item): item is string => Boolean(item)),
+      })),
+    ].sort(
+      (first, second) =>
+        new Date(first.createdAt).getTime() - new Date(second.createdAt).getTime()
+    );
 
     return NextResponse.json({
       count: submissions.length,
-      submissions: submissions.map((submission) => ({
-        ...submission,
-        createdAt: submission.createdAt.toISOString(),
-        equipment: submission.equipment.map((item) => item.equipment.name),
-      })),
+      submissions,
     });
   } catch (error) {
     console.error(error);

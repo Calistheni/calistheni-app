@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma";
-import { publicParkWhere } from "@/lib/parks";
+import {
+  getMainParkPhotoUrl,
+  latestParkPhotoQuery,
+  publicParkWhere,
+} from "@/lib/parks";
 import {
   createInternalServerErrorResponse,
   createJsonErrorResponse,
@@ -47,10 +51,20 @@ export async function GET(request: Request) {
         address: true,
         lat: true,
         lon: true,
+        photos: latestParkPhotoQuery,
       },
     });
 
-    return NextResponse.json(parks);
+    return NextResponse.json(
+      parks.map((park) => ({
+        id: park.id,
+        name: park.name,
+        address: park.address,
+        lat: park.lat,
+        lon: park.lon,
+        photoUrl: getMainParkPhotoUrl(park),
+      }))
+    );
   } catch (error) {
     console.error(error);
     return createInternalServerErrorResponse();
