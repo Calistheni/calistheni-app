@@ -126,17 +126,31 @@ export function ParkSubmissionForm({
       body: formData,
     });
 
-    if (!response.ok) {
-      const payload = (await response.json().catch(() => null)) as {
-        error?: string;
-      } | null;
+    const text = await response.text();
 
-      throw new Error(payload?.error || "Unable to upload photo.");
+    let payload: { error?: string; photoUrl?: string; key?: string } | null =
+      null;
+
+    try {
+      payload = text ? JSON.parse(text) : null;
+    } catch {
+      payload = null;
     }
 
-    return (await response.json()) as {
-      photoUrl: string;
-      key: string;
+    if (!response.ok) {
+      throw new Error(
+        payload?.error ||
+          `Upload failed with status ${response.status}: ${text}`
+      );
+    }
+
+    if (!payload?.photoUrl || !payload?.key) {
+      throw new Error(`Upload response was invalid: ${text}`);
+    }
+
+    return {
+      photoUrl: payload.photoUrl,
+      key: payload.key,
     };
   }
   async function handleSubmit() {
