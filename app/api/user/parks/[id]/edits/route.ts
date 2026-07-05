@@ -6,6 +6,7 @@ import {
   parsePositiveInteger,
 } from "@/lib/api-response";
 import { publicParkWhere } from "@/lib/parks";
+import { PENDING_PARK_PHOTO_PREFIX } from "@/lib/park-photo-storage";
 import { prisma } from "@/lib/prisma";
 import {
   createUserUnauthorizedResponse,
@@ -21,6 +22,7 @@ type ParkEditBody = {
   lon?: unknown;
   equipmentIds?: unknown;
   photoUrls?: unknown;
+  photoKeys?: unknown;
 };
 
 function parsePhotoUrls(value: unknown) {
@@ -32,6 +34,18 @@ function parsePhotoUrls(value: unknown) {
     .filter((item): item is string => typeof item === "string")
     .map((item) => item.trim())
     .filter((item) => item.length > 0)
+    .slice(0, 10);
+}
+
+function parsePhotoKeys(value: unknown, userId: string) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter((item) => item.startsWith(`${PENDING_PARK_PHOTO_PREFIX}${userId}/`))
     .slice(0, 10);
 }
 
@@ -77,6 +91,14 @@ export async function POST(
   }
 
   const photoUrls = parsePhotoUrls(body.photoUrls);
+  const photoKeys = parsePhotoKeys(body.photoKeys, userId);
+
+  if (photoUrls.length !== photoKeys.length) {
+    return createJsonErrorResponse(
+      "Every uploaded photo must include a valid storage key.",
+      400
+    );
+  }
 
   try {
     const [park, equipmentCount] = await Promise.all([
@@ -117,6 +139,7 @@ export async function POST(
         lon: parsedBody.data.lon,
         equipmentIds: parsedBody.data.equipmentIds,
         photoUrls,
+        photoKeys,
       },
       select: {
         id: true,

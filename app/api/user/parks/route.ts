@@ -8,6 +8,7 @@ import {
   createUserUnauthorizedResponse,
   getAuthenticatedUserId,
 } from "@/lib/user-auth";
+import { PENDING_PARK_PHOTO_PREFIX } from "@/lib/park-photo-storage";
 import { prisma } from "@/lib/prisma";
 import { parkMutationSchema } from "@/lib/validation/parks";
 
@@ -19,7 +20,22 @@ type CreateParkBody = {
   lon?: unknown;
   equipmentIds?: unknown;
   photoUrl?: unknown;
+  photoKey?: unknown;
 };
+
+function parsePendingPhotoKey(value: unknown, userId: string) {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return null;
+  }
+
+  const photoKey = value.trim();
+
+  if (!photoKey.startsWith(`${PENDING_PARK_PHOTO_PREFIX}${userId}/`)) {
+    return null;
+  }
+
+  return photoKey;
+}
 
 export async function POST(request: Request) {
   const userId = await getAuthenticatedUserId();
@@ -56,6 +72,15 @@ export async function POST(request: Request) {
     typeof body.photoUrl === "string" && body.photoUrl.length > 0
       ? body.photoUrl
       : null;
+  const photoKey = parsePendingPhotoKey(body.photoKey, userId);
+
+  if (body.photoKey && !photoKey) {
+    return createJsonErrorResponse("Invalid uploaded photo key.", 400);
+  }
+
+  if (photoUrl && !photoKey) {
+    return createJsonErrorResponse("Uploaded photo key is required.", 400);
+  }
 
   try {
     const park = await prisma.park.create({
@@ -68,6 +93,7 @@ export async function POST(request: Request) {
         submissionStatus: "PENDING",
         submittedById: userId,
         photoUrl,
+        photoKey,
         equipment: {
           create: parsedBody.data.equipmentIds.map((equipmentId) => ({
             equipmentId,

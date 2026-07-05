@@ -1,6 +1,10 @@
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
+import {
+  getParkPhotoUrlFromKey,
+  PENDING_PARK_PHOTO_PREFIX,
+} from "@/lib/park-photo-storage";
 import { r2, R2_BUCKET_NAME, R2_PUBLIC_URL } from "@/lib/r2";
 
 const MAX_FILE_SIZE = 15 * 1024 * 1024;
@@ -58,15 +62,28 @@ export async function POST(request: Request) {
     );
   }
 
-  const formData = await request.formData();
+  let formData: FormData;
+
+  try {
+    formData = await request.formData();
+  } catch (error) {
+    console.error("Unable to parse park photo upload form data.", error);
+    return NextResponse.json(
+      { error: "Unable to read uploaded photo. Please try a smaller image." },
+      { status: 400 }
+    );
+  }
+
   const file = formData.get("file");
 
-  console.log("UPLOAD DEBUG", {
-    isFile: file instanceof File,
-    type: file instanceof File ? file.type : null,
-    size: file instanceof File ? file.size : null,
-    name: file instanceof File ? file.name : null,
-  });
+  if (process.env.NODE_ENV === "development") {
+    console.info("Park photo upload", {
+      isFile: file instanceof File,
+      type: file instanceof File ? file.type : null,
+      size: file instanceof File ? file.size : null,
+      name: file instanceof File ? file.name : null,
+    });
+  }
 
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "No file uploaded." }, { status: 400 });
@@ -97,7 +114,7 @@ export async function POST(request: Request) {
       {
         error: `Image is too large (${(file.size / 1024 / 1024).toFixed(
           2
-        )} MB). Maximum is 5 MB.`,
+        )} MB). Maximum is 15 MB.`,
       },
       { status: 400 }
     );
@@ -108,7 +125,9 @@ export async function POST(request: Request) {
 
   const extension = getExtension(file);
 
-  const key = `parks/${session.user.id}/${crypto.randomUUID()}.${extension}`;
+  const key = `${PENDING_PARK_PHOTO_PREFIX}${
+    session.user.id
+  }/${crypto.randomUUID()}.${extension}`;
 
   await r2.send(
     new PutObjectCommand({
@@ -121,7 +140,7 @@ export async function POST(request: Request) {
   );
 
   return NextResponse.json({
-    photoUrl: `${R2_PUBLIC_URL}/${key}`,
+    photoUrl: getParkPhotoUrlFromKey(key),
     key,
   });
 }

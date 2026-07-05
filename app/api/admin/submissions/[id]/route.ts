@@ -8,6 +8,12 @@ import {
   createJsonErrorResponse,
   parsePositiveInteger,
 } from "@/lib/api-response";
+import {
+  copyPendingParkPhotoToPermanent,
+  deletePendingParkPhotoKey,
+  deletePendingParkPhotoKeys,
+  type UploadedParkPhoto,
+} from "@/lib/park-photo-storage";
 import { prisma } from "@/lib/prisma";
 
 type SubmissionReviewPayload = {
@@ -66,6 +72,7 @@ export async function PATCH(
         select: {
           id: true,
           photoUrl: true,
+          photoKey: true,
           submittedById: true,
         },
       });
@@ -74,6 +81,14 @@ export async function PATCH(
         return createJsonErrorResponse("Submission not found.", 404);
       }
 
+      const approvedPhoto =
+        reviewStatus === "APPROVED" && existingSubmission.photoUrl
+          ? await copyPendingParkPhotoToPermanent({
+              photoUrl: existingSubmission.photoUrl,
+              key: existingSubmission.photoKey,
+            })
+          : null;
+
       await prisma.$transaction(async (tx) => {
         await tx.park.update({
           where: {
@@ -81,13 +96,17 @@ export async function PATCH(
           },
           data: {
             submissionStatus: reviewStatus,
+            photoUrl:
+              reviewStatus === "APPROVED" && approvedPhoto
+                ? approvedPhoto.photoUrl
+                : existingSubmission.photoUrl,
             reviewedAt: new Date(),
             rejectionReason:
               reviewStatus === "REJECTED" ? rejectionReason || null : null,
           },
         });
 
-        if (reviewStatus === "APPROVED" && existingSubmission.photoUrl) {
+        if (reviewStatus === "APPROVED" && approvedPhoto) {
           await tx.parkPhoto.updateMany({
             where: {
               parkId: submissionId,
@@ -99,13 +118,15 @@ export async function PATCH(
           await tx.parkPhoto.create({
             data: {
               parkId: submissionId,
-              url: existingSubmission.photoUrl,
+              url: approvedPhoto.photoUrl,
               uploadedById: existingSubmission.submittedById,
               isPrimary: true,
             },
           });
         }
       });
+
+      await deletePendingParkPhotoKey(existingSubmission.photoKey);
 
       return NextResponse.json({
         success: true,
@@ -129,12 +150,26 @@ export async function PATCH(
         lon: true,
         equipmentIds: true,
         photoUrls: true,
+        photoKeys: true,
       },
     });
 
     if (!existingEdit) {
       return createJsonErrorResponse("Submission not found.", 404);
     }
+
+    const approvedPhotos: UploadedParkPhoto[] =
+      reviewStatus === "APPROVED"
+        ? await Promise.all(
+            existingEdit.photoUrls.map((photoUrl, index) =>
+              copyPendingParkPhotoToPermanent({
+                photoUrl,
+                key: existingEdit.photoKeys[index] ?? null,
+              })
+            )
+          )
+        : [];
+    const approvedPhotoUrls = approvedPhotos.map((photo) => photo.photoUrl);
 
     await prisma.$transaction(async (tx) => {
       if (reviewStatus === "APPROVED") {
@@ -159,9 +194,9 @@ export async function PATCH(
           }),
         ]);
         const shouldPromoteNewestSubmittedPhoto =
-          !currentPrimaryPhoto && existingEdit.photoUrls.length > 0;
+          !currentPrimaryPhoto && approvedPhotoUrls.length > 0;
         const latestSubmittedPhotoUrl = shouldPromoteNewestSubmittedPhoto
-          ? existingEdit.photoUrls[existingEdit.photoUrls.length - 1] ?? null
+          ? approvedPhotoUrls[approvedPhotoUrls.length - 1] ?? null
           : null;
 
         await tx.park.update({
@@ -175,7 +210,10 @@ export async function PATCH(
             lat: existingEdit.lat,
             lon: existingEdit.lon,
             photoUrl:
-              currentPrimaryPhoto?.url ?? latestSubmittedPhotoUrl ?? park?.photoUrl ?? null,
+              currentPrimaryPhoto?.url ??
+              latestSubmittedPhotoUrl ??
+              park?.photoUrl ??
+              null,
           },
         });
 
@@ -194,11 +232,11 @@ export async function PATCH(
           });
         }
 
-        if (existingEdit.photoUrls.length) {
-          const primaryPhotoIndex = existingEdit.photoUrls.length - 1;
+        if (approvedPhotoUrls.length) {
+          const primaryPhotoIndex = approvedPhotoUrls.length - 1;
 
           await tx.parkPhoto.createMany({
-            data: existingEdit.photoUrls.map((photoUrl, index) => ({
+            data: approvedPhotoUrls.map((photoUrl, index) => ({
               parkId: existingEdit.parkId,
               url: photoUrl,
               uploadedById: existingEdit.submittedById,
@@ -221,6 +259,8 @@ export async function PATCH(
         },
       });
     });
+
+    await deletePendingParkPhotoKeys(existingEdit.photoKeys);
 
     return NextResponse.json({
       success: true,

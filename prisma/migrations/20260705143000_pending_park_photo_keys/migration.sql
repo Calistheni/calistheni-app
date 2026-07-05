@@ -1,0 +1,3 @@
+ALTER TABLE "Park" ADD COLUMN "photoKey" TEXT;
+
+ALTER TABLE "ParkEditSubmission" ADD COLUMN "photoKeys" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

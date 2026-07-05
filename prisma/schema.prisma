@@ -86,6 +86,7 @@ model Park {
   submittedById    String?
   submittedBy      User?                @relation("ParkSubmitter", fields: [submittedById], references: [id], onDelete: SetNull)
   photoUrl         String?
+  photoKey         String?
   reviewedAt       DateTime?
   rejectionReason  String?
 
@@ -148,6 +149,7 @@ model ParkEditSubmission {
   lon          Float
   equipmentIds Int[]    @default([])
   photoUrls    String[] @default([])
+  photoKeys    String[] @default([])
 
   reviewedAt      DateTime?
   rejectionReason String?

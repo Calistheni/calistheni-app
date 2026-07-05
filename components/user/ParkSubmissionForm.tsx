@@ -1,5 +1,6 @@
 "use client";
 
+import imageCompression from "browser-image-compression";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { CoordinatePicker } from "@/components/CoordinatePicker";
@@ -36,6 +37,11 @@ type ApiErrorPayload = {
   fieldErrors?: Record<string, string[] | undefined>;
 };
 
+type UploadedPhoto = {
+  photoUrl: string;
+  key: string;
+};
+
 const EMPTY_FORM_VALUES: ParkFormValues = {
   name: "",
   title: "",
@@ -51,6 +57,16 @@ function getErrorMessage(error: unknown, fallbackMessage: string) {
   }
 
   return fallbackMessage;
+}
+
+function getCompressedFileName(file: File) {
+  const name = file.name.replace(/\.[^.]+$/, "");
+
+  return `${name || "park-photo"}.jpg`;
+}
+
+function formatFileSize(file: File) {
+  return `${(file.size / 1024 / 1024).toFixed(2)} MB`;
 }
 
 async function parseApiError(response: Response) {
@@ -117,9 +133,58 @@ export function ParkSubmissionForm({
     }));
     clearFieldError("equipmentIds");
   }
+
+  async function compressParkPhoto(photo: File) {
+    if (process.env.NODE_ENV === "development") {
+      console.info("Selected park photo", {
+        name: photo.name,
+        type: photo.type,
+        size: photo.size,
+      });
+    }
+
+    try {
+      const compressedPhoto = await imageCompression(photo, {
+        maxSizeMB: 1.5,
+        maxWidthOrHeight: 1920,
+        useWebWorker: true,
+        fileType: "image/jpeg",
+      });
+      const uploadablePhoto = new File(
+        [compressedPhoto],
+        getCompressedFileName(photo),
+        {
+          type: compressedPhoto.type || "image/jpeg",
+          lastModified: Date.now(),
+        }
+      );
+
+      if (process.env.NODE_ENV === "development") {
+        console.info("Compressed park photo", {
+          name: uploadablePhoto.name,
+          type: uploadablePhoto.type,
+          originalSize: photo.size,
+          compressedSize: uploadablePhoto.size,
+        });
+      }
+
+      return uploadablePhoto;
+    } catch (error) {
+      console.error("Park photo compression failed.", error);
+      throw new Error(
+        `Unable to compress ${photo.name || "this photo"}. ${
+          photo.type === "image/heic" || photo.type === "image/heif"
+            ? "This browser may not support HEIC uploads. Please try JPEG if it keeps failing."
+            : "Please try a different image."
+        }`
+      );
+    }
+  }
+
   async function uploadParkPhoto(photo: File) {
+    const compressedPhoto = await compressParkPhoto(photo);
     const formData = new FormData();
-    formData.set("file", photo);
+    formData.set("file", compressedPhoto);
 
     const response = await fetch("/api/uploads/park-photo", {
       method: "POST",
@@ -140,7 +205,9 @@ export function ParkSubmissionForm({
     if (!response.ok) {
       throw new Error(
         payload?.error ||
-          `Upload failed with status ${response.status}: ${text}`
+          `Upload failed with status ${response.status}: ${
+            text || response.statusText
+          }`
       );
     }
 
@@ -165,11 +232,11 @@ export function ParkSubmissionForm({
     setIsSubmitting(true);
 
     try {
-      const uploadedPhotoUrls: string[] = [];
+      const uploadedPhotos: UploadedPhoto[] = [];
 
       for (const selectedPhoto of photos) {
         const uploadedPhoto = await uploadParkPhoto(selectedPhoto);
-        uploadedPhotoUrls.push(uploadedPhoto.photoUrl);
+        uploadedPhotos.push(uploadedPhoto);
       }
 
       const response =
@@ -181,7 +248,8 @@ export function ParkSubmissionForm({
               },
               body: JSON.stringify({
                 ...validationResult.data,
-                photoUrl: uploadedPhotoUrls[0] ?? null,
+                photoUrl: uploadedPhotos[0]?.photoUrl ?? null,
+                photoKey: uploadedPhotos[0]?.key ?? null,
               }),
             })
           : await fetch(`/api/user/parks/${parkId}/edits`, {
@@ -191,7 +259,8 @@ export function ParkSubmissionForm({
               },
               body: JSON.stringify({
                 ...validationResult.data,
-                photoUrls: uploadedPhotoUrls,
+                photoUrls: uploadedPhotos.map((photo) => photo.photoUrl),
+                photoKeys: uploadedPhotos.map((photo) => photo.key),
               }),
             });
 
@@ -384,7 +453,21 @@ export function ParkSubmissionForm({
             capture={mode === "create" ? "environment" : undefined}
             multiple={mode === "suggest-edit"}
             onChange={(event) => {
-              setPhotos(Array.from(event.target.files ?? []));
+              const selectedPhotos = Array.from(event.target.files ?? []);
+
+              if (process.env.NODE_ENV === "development") {
+                console.info(
+                  "Selected park photos",
+                  selectedPhotos.map((photo) => ({
+                    name: photo.name,
+                    type: photo.type,
+                    size: photo.size,
+                    sizeLabel: formatFileSize(photo),
+                  }))
+                );
+              }
+
+              setPhotos(selectedPhotos);
               clearFieldError("photo");
             }}
             aria-invalid={formErrors.photo ? true : undefined}
