@@ -5,12 +5,20 @@ import { r2, R2_BUCKET_NAME, R2_PUBLIC_URL } from "@/lib/r2";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
-const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const ALLOWED_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+]);
 
 function getExtension(type: string) {
   if (type === "image/jpeg") return "jpg";
   if (type === "image/png") return "png";
   if (type === "image/webp") return "webp";
+  if (type === "image/heic") return "heic";
+  if (type === "image/heif") return "heif";
   return "jpg";
 }
 
