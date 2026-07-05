@@ -88,11 +88,20 @@ export async function PATCH(
         });
 
         if (reviewStatus === "APPROVED" && existingSubmission.photoUrl) {
+          await tx.parkPhoto.updateMany({
+            where: {
+              parkId: submissionId,
+            },
+            data: {
+              isPrimary: false,
+            },
+          });
           await tx.parkPhoto.create({
             data: {
               parkId: submissionId,
               url: existingSubmission.photoUrl,
               uploadedById: existingSubmission.submittedById,
+              isPrimary: true,
             },
           });
         }
@@ -129,16 +138,31 @@ export async function PATCH(
 
     await prisma.$transaction(async (tx) => {
       if (reviewStatus === "APPROVED") {
-        const park = await tx.park.findUnique({
-          where: {
-            id: existingEdit.parkId,
-          },
-          select: {
-            photoUrl: true,
-          },
-        });
-        const latestSubmittedPhotoUrl =
-          existingEdit.photoUrls[existingEdit.photoUrls.length - 1] ?? null;
+        const [park, currentPrimaryPhoto] = await Promise.all([
+          tx.park.findUnique({
+            where: {
+              id: existingEdit.parkId,
+            },
+            select: {
+              photoUrl: true,
+            },
+          }),
+          tx.parkPhoto.findFirst({
+            where: {
+              parkId: existingEdit.parkId,
+              hiddenAt: null,
+              isPrimary: true,
+            },
+            select: {
+              url: true,
+            },
+          }),
+        ]);
+        const shouldPromoteNewestSubmittedPhoto =
+          !currentPrimaryPhoto && existingEdit.photoUrls.length > 0;
+        const latestSubmittedPhotoUrl = shouldPromoteNewestSubmittedPhoto
+          ? existingEdit.photoUrls[existingEdit.photoUrls.length - 1] ?? null
+          : null;
 
         await tx.park.update({
           where: {
@@ -150,7 +174,8 @@ export async function PATCH(
             address: existingEdit.address,
             lat: existingEdit.lat,
             lon: existingEdit.lon,
-            photoUrl: latestSubmittedPhotoUrl ?? park?.photoUrl ?? null,
+            photoUrl:
+              currentPrimaryPhoto?.url ?? latestSubmittedPhotoUrl ?? park?.photoUrl ?? null,
           },
         });
 
@@ -170,11 +195,15 @@ export async function PATCH(
         }
 
         if (existingEdit.photoUrls.length) {
+          const primaryPhotoIndex = existingEdit.photoUrls.length - 1;
+
           await tx.parkPhoto.createMany({
-            data: existingEdit.photoUrls.map((photoUrl) => ({
+            data: existingEdit.photoUrls.map((photoUrl, index) => ({
               parkId: existingEdit.parkId,
               url: photoUrl,
               uploadedById: existingEdit.submittedById,
+              isPrimary:
+                shouldPromoteNewestSubmittedPhoto && index === primaryPhotoIndex,
             })),
           });
         }

@@ -110,10 +110,12 @@ model ParkEquipment {
 }
 
 model ParkPhoto {
-  id           Int     @id @default(autoincrement())
+  id           Int       @id @default(autoincrement())
   parkId       Int
   url          String
   uploadedById String?
+  isPrimary    Boolean   @default(false)
+  hiddenAt     DateTime?
 
   park       Park  @relation(fields: [parkId], references: [id], onDelete: Cascade)
   uploadedBy User? @relation("ParkPhotoUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
@@ -121,6 +123,8 @@ model ParkPhoto {
   createdAt DateTime @default(now())
 
   @@index([parkId])
+  @@index([parkId, isPrimary])
+  @@index([parkId, hiddenAt])
   @@index([uploadedById])
 }
 

@@ -51,6 +51,7 @@ export async function GET(request: Request) {
         address: true,
         lat: true,
         lon: true,
+        photoUrl: true,
         photos: latestParkPhotoQuery,
       },
     });

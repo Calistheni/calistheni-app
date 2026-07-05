@@ -42,6 +42,7 @@ export async function GET(req: Request) {
         lat: true,
         lon: true,
         address: true,
+        photoUrl: true,
         photos: latestParkPhotoQuery,
         submissionStatus: true,
         updatedAt: true,

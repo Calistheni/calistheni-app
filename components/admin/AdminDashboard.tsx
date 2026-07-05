@@ -92,6 +92,28 @@ type AdminSubmissionsResponse = {
   submissions: AdminSubmission[];
 };
 
+type AdminParkPhoto = {
+  id: number;
+  url: string;
+  isPrimary: boolean;
+  isHidden: boolean;
+  hiddenAt: string | null;
+  createdAt: string;
+  uploadedBy: {
+    name: string | null;
+    email: string | null;
+  } | null;
+};
+
+type AdminParkPhotosResponse = {
+  photos: AdminParkPhoto[];
+};
+
+type AdminParkPhotoUpdateResponse = {
+  park: ParkDetail | null;
+  photos: AdminParkPhoto[];
+};
+
 const DUPLICATE_DISTANCE_THRESHOLD_METERS = 100;
 const EARTH_RADIUS_METERS = 6_371_000;
 
@@ -214,6 +236,9 @@ export default function AdminDashboard() {
   const [editingParkId, setEditingParkId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [selectedPark, setSelectedPark] = useState<ParkDetail | null>(null);
+  const [parkPhotos, setParkPhotos] = useState<AdminParkPhoto[]>([]);
+  const [isParkPhotosLoading, setIsParkPhotosLoading] = useState(false);
+  const [updatingPhotoId, setUpdatingPhotoId] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeletePending, setIsDeletePending] = useState(false);
   const [deleteCandidate, setDeleteCandidate] = useState<ParkDetail | null>(
@@ -465,6 +490,95 @@ export default function AdminDashboard() {
     await saveAdminParks(nextParks, lastUpdated);
   }
 
+  function applyUpdatedPark(updatedPark: ParkDetail) {
+    const nextParks = parks.map((park) =>
+      park.id === updatedPark.id ? toParkSummary(updatedPark) : park
+    );
+
+    setParks(nextParks);
+    setSelectedPark(updatedPark);
+    void persistParks(nextParks).catch((error) => {
+      console.error(error);
+    });
+  }
+
+  async function loadParkPhotos(parkId: number) {
+    setIsParkPhotosLoading(true);
+    setParkPhotos([]);
+
+    try {
+      const response = await fetch(`/api/admin/parks/${parkId}/photos`);
+
+      if (!response.ok) {
+        const apiError = await parseApiError(response);
+
+        if (apiError.unauthorized) {
+          toast.error(apiError.message);
+          redirectToLogin();
+          return;
+        }
+
+        throw new Error(apiError.message);
+      }
+
+      const payload = (await response.json()) as AdminParkPhotosResponse;
+      setParkPhotos(payload.photos);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Unable to load park photos."));
+    } finally {
+      setIsParkPhotosLoading(false);
+    }
+  }
+
+  async function updateParkPhoto(
+    photoId: number,
+    action: "SET_PRIMARY" | "HIDE" | "RESTORE"
+  ) {
+    if (!selectedPark) {
+      return;
+    }
+
+    setUpdatingPhotoId(photoId);
+
+    try {
+      const response = await fetch(
+        `/api/admin/parks/${selectedPark.id}/photos/${photoId}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ action }),
+        }
+      );
+
+      if (!response.ok) {
+        const apiError = await parseApiError(response);
+
+        if (apiError.unauthorized) {
+          toast.error(apiError.message);
+          redirectToLogin();
+          return;
+        }
+
+        throw new Error(apiError.message);
+      }
+
+      const payload = (await response.json()) as AdminParkPhotoUpdateResponse;
+      setParkPhotos(payload.photos);
+
+      if (payload.park) {
+        applyUpdatedPark(payload.park);
+      }
+
+      toast.success("Park photo updated.");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Unable to update this photo."));
+    } finally {
+      setUpdatingPhotoId(null);
+    }
+  }
+
   async function submitCreate(payload: ParkMutationPayload) {
     const duplicate = findDuplicatePark(parks, payload);
 
@@ -507,9 +621,10 @@ export default function AdminDashboard() {
         ...parks.filter((park) => park.id !== createdPark.id),
       ];
 
-      setParks(nextParks);
-      setSelectedPark(createdPark);
-      resetForm();
+	      setParks(nextParks);
+	      setSelectedPark(createdPark);
+	      setParkPhotos([]);
+	      resetForm();
       void persistParks(nextParks).catch((error) => {
         console.error(error);
       });
@@ -597,9 +712,10 @@ export default function AdminDashboard() {
 
       setParks(nextParks);
 
-      if (selectedPark?.id === deleteCandidate.id) {
-        setSelectedPark(null);
-      }
+	      if (selectedPark?.id === deleteCandidate.id) {
+	        setSelectedPark(null);
+	        setParkPhotos([]);
+	      }
 
       if (editingParkId === deleteCandidate.id) {
         resetForm();
@@ -635,8 +751,9 @@ export default function AdminDashboard() {
     void submitCreate(validationResult.data);
   }
 
-  async function startEditing(park: ParkSummary) {
-    try {
+	  async function startEditing(park: ParkSummary) {
+	    setParkPhotos([]);
+	    try {
       const response = await fetch(`/api/parks/${park.id}`);
 
       if (!response.ok) {
@@ -653,8 +770,9 @@ export default function AdminDashboard() {
 
       const fullPark = (await response.json()) as ParkDetail;
 
-      setSelectedPark(fullPark);
-      setEditingParkId(fullPark.id);
+	      setSelectedPark(fullPark);
+	      void loadParkPhotos(fullPark.id);
+	      setEditingParkId(fullPark.id);
       setFormValues({
         name: fullPark.name,
         title: fullPark.title ?? "",
@@ -1103,19 +1221,138 @@ export default function AdminDashboard() {
                 </p>
               </div>
 
-              <div>
-                <p className="mb-2 text-sm text-muted-foreground">Equipment</p>
-
-                <div className="flex flex-wrap gap-2">
+	              <div>
+	                <p className="mb-2 text-sm text-muted-foreground">Equipment</p>
+	
+	                <div className="flex flex-wrap gap-2">
                   {selectedPark.equipment.map((item) => (
                     <Badge key={item} variant="secondary">
                       {item}
                     </Badge>
                   ))}
-                </div>
-              </div>
+	                </div>
+	              </div>
 
-              <div className="flex flex-wrap gap-2">
+	              <div className="space-y-3">
+	                <div>
+	                  <p className="text-sm font-medium">Park photos</p>
+	                  <p className="text-sm text-muted-foreground">
+	                    Choose the main public photo or hide photos from users.
+	                  </p>
+	                </div>
+
+	                {isParkPhotosLoading ? (
+	                  <p className="text-sm text-muted-foreground">
+	                    Loading park photos...
+	                  </p>
+	                ) : parkPhotos.length === 0 ? (
+	                  <p className="rounded-lg border p-3 text-sm text-muted-foreground">
+	                    No approved photos have been assigned to this park yet.
+	                  </p>
+	                ) : (
+	                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+	                    {parkPhotos.map((photo) => {
+	                      const isUpdating = updatingPhotoId === photo.id;
+
+	                      return (
+	                        <div
+	                          key={photo.id}
+	                          className="overflow-hidden rounded-lg border bg-card"
+	                        >
+	                          <div
+	                            aria-label={`Park photo ${photo.id}`}
+	                            className="h-36 bg-muted bg-cover bg-center"
+	                            role="img"
+	                            style={{
+	                              backgroundImage: `url("${photo.url}")`,
+	                            }}
+	                          />
+
+	                          <div className="space-y-3 p-3">
+	                            <div className="flex flex-wrap gap-2">
+	                              {photo.isPrimary ? (
+	                                <Badge>Main</Badge>
+	                              ) : null}
+	                              {photo.isHidden ? (
+	                                <Badge variant="secondary">Hidden</Badge>
+	                              ) : (
+	                                <Badge variant="outline">Visible</Badge>
+	                              )}
+	                            </div>
+
+	                            <p className="text-xs text-muted-foreground">
+	                              Added{" "}
+	                              {new Date(photo.createdAt).toLocaleDateString()}
+	                            </p>
+
+	                            {photo.uploadedBy?.email ||
+	                            photo.uploadedBy?.name ? (
+	                              <p className="text-xs text-muted-foreground">
+	                                Uploaded by{" "}
+	                                {photo.uploadedBy.email ??
+	                                  photo.uploadedBy.name}
+	                              </p>
+	                            ) : null}
+
+	                            <div className="flex flex-wrap gap-2">
+	                              <Button asChild size="sm" variant="outline">
+	                                <a
+	                                  href={photo.url}
+	                                  rel="noreferrer"
+	                                  target="_blank"
+	                                >
+	                                  Open
+	                                </a>
+	                              </Button>
+
+	                              {!photo.isPrimary || photo.isHidden ? (
+	                                <Button
+	                                  size="sm"
+	                                  onClick={() =>
+	                                    void updateParkPhoto(
+	                                      photo.id,
+	                                      "SET_PRIMARY"
+	                                    )
+	                                  }
+	                                  disabled={Boolean(updatingPhotoId)}
+	                                >
+	                                  {isUpdating ? "Saving..." : "Set main"}
+	                                </Button>
+	                              ) : null}
+
+	                              {photo.isHidden ? (
+	                                <Button
+	                                  size="sm"
+	                                  variant="outline"
+	                                  onClick={() =>
+	                                    void updateParkPhoto(photo.id, "RESTORE")
+	                                  }
+	                                  disabled={Boolean(updatingPhotoId)}
+	                                >
+	                                  {isUpdating ? "Saving..." : "Restore"}
+	                                </Button>
+	                              ) : (
+	                                <Button
+	                                  size="sm"
+	                                  variant="outline"
+	                                  onClick={() =>
+	                                    void updateParkPhoto(photo.id, "HIDE")
+	                                  }
+	                                  disabled={Boolean(updatingPhotoId)}
+	                                >
+	                                  {isUpdating ? "Saving..." : "Hide"}
+	                                </Button>
+	                              )}
+	                            </div>
+	                          </div>
+	                        </div>
+	                      );
+	                    })}
+	                  </div>
+	                )}
+	              </div>
+	
+	              <div className="flex flex-wrap gap-2">
                 {editingParkId === selectedPark.id ? (
                   <Button onClick={handleSubmit} disabled={isSubmitting}>
                     {isSubmitting ? "Saving..." : "Save Changes"}

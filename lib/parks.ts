@@ -5,9 +5,15 @@ export const publicParkWhere = {
   deletedAt: null,
   submissionStatus: "APPROVED" as const,
 };
-
 export const latestParkPhotoQuery = {
-  orderBy: [{ createdAt: "desc" as const }, { id: "desc" as const }],
+  where: {
+    hiddenAt: null,
+  },
+  orderBy: [
+    { isPrimary: "desc" as const },
+    { createdAt: "desc" as const },
+    { id: "desc" as const },
+  ],
   take: 1,
   select: {
     url: true,
@@ -21,6 +27,7 @@ const parkSummarySelect = {
   lat: true,
   lon: true,
   address: true,
+  photoUrl: true,
   updatedAt: true,
   deletedAt: true,
   photos: latestParkPhotoQuery,
@@ -34,19 +41,25 @@ type ParkWithLatestPhoto = {
 };
 
 export function getMainParkPhotoUrl(park: ParkWithLatestPhoto) {
-  return park.photos?.[0]?.url ?? park.photoUrl ?? null;
+  if ("photos" in park) {
+    return park.photos?.[0]?.url ?? park.photoUrl ?? null;
+  }
+
+  return park.photoUrl ?? null;
 }
 
-export function mapParkSummary(park: {
-  id: number;
-  name: string;
-  title: string | null;
-  lat: number;
-  lon: number;
-  address: string | null;
-  updatedAt: Date;
-  deletedAt: Date | null;
-} & ParkWithLatestPhoto): ParkSummary {
+export function mapParkSummary(
+  park: {
+    id: number;
+    name: string;
+    title: string | null;
+    lat: number;
+    lon: number;
+    address: string | null;
+    updatedAt: Date;
+    deletedAt: Date | null;
+  } & ParkWithLatestPhoto
+): ParkSummary {
   return {
     id: park.id,
     name: park.name,
@@ -60,21 +73,23 @@ export function mapParkSummary(park: {
   };
 }
 
-function mapParkDetail(park: {
-  id: number;
-  name: string;
-  title: string | null;
-  lat: number;
-  lon: number;
-  address: string | null;
-  updatedAt: Date;
-  deletedAt: Date | null;
-  equipment: Array<{
-    equipment: {
-      name: string;
-    };
-  }>;
-} & ParkWithLatestPhoto): ParkDetail {
+function mapParkDetail(
+  park: {
+    id: number;
+    name: string;
+    title: string | null;
+    lat: number;
+    lon: number;
+    address: string | null;
+    updatedAt: Date;
+    deletedAt: Date | null;
+    equipment: Array<{
+      equipment: {
+        name: string;
+      };
+    }>;
+  } & ParkWithLatestPhoto
+): ParkDetail {
   return {
     id: park.id,
     name: park.name,
