@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { prisma } from "@/lib/prisma";
 
 export const metadata: Metadata = {
   title: "Profile",
@@ -20,16 +23,113 @@ export default async function ProfilePage() {
     redirect("/login");
   }
 
+  const [
+    workoutCount,
+    workoutSets,
+    submittedParkCount,
+    approvedEditCount,
+    approvedPhotoCount,
+  ] = await Promise.all([
+    prisma.workout.count({
+      where: {
+        userId: session.user.id,
+      },
+    }),
+    prisma.workoutSet.count({
+      where: {
+        workoutExercise: {
+          workout: {
+            userId: session.user.id,
+          },
+        },
+      },
+    }),
+    prisma.park.count({
+      where: {
+        submittedById: session.user.id,
+      },
+    }),
+    prisma.parkEditSubmission.count({
+      where: {
+        submittedById: session.user.id,
+        status: "APPROVED",
+      },
+    }),
+    prisma.parkPhoto.count({
+      where: {
+        uploadedById: session.user.id,
+        park: {
+          submissionStatus: "APPROVED",
+          deletedAt: null,
+        },
+      },
+    }),
+  ]);
+
   return (
     <main className="mx-auto w-full max-w-4xl p-4 sm:p-6 lg:p-8">
+      <Card className="mb-6">
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center">
+          {session.user.image ? (
+            <Image
+              src={session.user.image}
+              alt=""
+              width={72}
+              height={72}
+              unoptimized
+              className="h-16 w-16 rounded-full bg-muted object-cover"
+            />
+          ) : (
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted text-xl font-bold">
+              {(session.user.name ?? "U").slice(0, 1)}
+            </div>
+          )}
+          <div>
+            <h1 className="text-3xl font-bold">
+              {session.user.name ?? "Profile"}
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              {session.user.email ?? "Signed in user"}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Badge variant="secondary">Calistheni member</Badge>
+              <Badge variant="outline">Workout tracker</Badge>
+            </div>
+          </div>
+        </CardHeader>
+      </Card>
+
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        {[
+          ["Workouts", workoutCount],
+          ["Sets", workoutSets],
+          ["Parks", submittedParkCount],
+          ["Approved edits", approvedEditCount],
+          ["Approved photos", approvedPhotoCount],
+        ].map(([label, value]) => (
+          <Card key={label}>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">{label}</p>
+              <p className="text-2xl font-bold">{value}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
       <Card>
         <CardHeader>
-          <h1 className="text-3xl font-bold">Profile</h1>
+          <h2 className="text-2xl font-bold">Quick Links</h2>
           <p className="text-sm text-muted-foreground">
-            {session.user.email ?? session.user.name ?? "Signed in user"}
+            Jump into map, workout, or profile tools.
           </p>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-3">
+          <Button asChild>
+            <Link href="/workouts/new">Start Workout</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/workouts">My Workouts</Link>
+          </Button>
           <Button asChild>
             <Link href="/submit-park">Submit Park</Link>
           </Button>
@@ -38,6 +138,15 @@ export default async function ProfilePage() {
           </Button>
           <Button asChild variant="secondary">
             <Link href="/">Open Map</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/feed">Workout Feed</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/users">Find Users</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href={`/users/${session.user.id}`}>Public Profile</Link>
           </Button>
         </CardContent>
       </Card>

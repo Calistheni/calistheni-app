@@ -47,7 +47,7 @@ export default async function WorkoutsPage() {
         <div>
           <h1 className="text-3xl font-bold">Workouts</h1>
           <p className="text-sm text-muted-foreground">
-            Your private workout history.
+            Review completed sessions, volume, and exercise history.
           </p>
         </div>
         <Button asChild>
@@ -59,7 +59,8 @@ export default async function WorkoutsPage() {
         <Card>
           <CardContent className="space-y-3 p-6">
             <p className="text-sm text-muted-foreground">
-              No workouts logged yet.
+              No workouts logged yet. Start with a simple session and build the
+              habit from there.
             </p>
             <Button asChild>
               <Link href="/workouts/new">Log your first workout</Link>
@@ -82,10 +83,20 @@ export default async function WorkoutsPage() {
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
+                      <Badge
+                        variant={
+                          workout.visibility === "PUBLIC" ? "secondary" : "outline"
+                        }
+                      >
+                        {workout.visibility === "PUBLIC" ? "Public" : "Private"}
+                      </Badge>
                       <Badge variant="secondary">
                         {workout.exerciseCount} exercises
                       </Badge>
                       <Badge variant="outline">{workout.setCount} sets</Badge>
+                      <Badge variant="outline">
+                        {workout.totalVolume.toLocaleString()} volume
+                      </Badge>
                     </div>
                   </div>
                 </CardHeader>

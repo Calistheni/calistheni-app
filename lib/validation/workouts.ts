@@ -77,6 +77,7 @@ export const workoutMutationSchema = z.object({
   notes: nullableText(1000),
   startedAt: nullableDate,
   completedAt: nullableDate,
+  visibility: z.enum(["PRIVATE", "PUBLIC"]).default("PUBLIC"),
   exercises: z
     .array(
       z.object({
@@ -90,6 +91,7 @@ export const workoutMutationSchema = z.object({
               durationSeconds: nullableInteger(0, 86400),
               distanceMeters: nullableNumber(0, 1000000),
               notes: nullableText(500),
+              completed: z.boolean().default(false),
             })
           )
           .min(1, "Add at least one set."),

@@ -26,10 +26,6 @@ export default async function WorkoutDetailPage({
 }) {
   const session = await auth();
 
-  if (!session?.user) {
-    redirect("/login");
-  }
-
   const { id } = await params;
   const workoutId = parsePositiveInteger(id);
 
@@ -40,16 +36,32 @@ export default async function WorkoutDetailPage({
   const workout = await prisma.workout.findFirst({
     where: {
       id: workoutId,
-      userId: session.user.id,
+      OR: [
+        {
+          visibility: "PUBLIC",
+        },
+        ...(session?.user?.id
+          ? [
+              {
+                userId: session.user.id,
+              },
+            ]
+          : []),
+      ],
     },
     include: userWorkoutInclude,
   });
 
   if (!workout) {
+    if (!session?.user) {
+      redirect("/login");
+    }
+
     notFound();
   }
 
   const detail = mapWorkoutDetail(workout);
+  const isOwner = session?.user?.id === workout.userId;
 
   return (
     <main className="mx-auto w-full max-w-5xl p-4 sm:p-6 lg:p-8">
@@ -63,7 +75,39 @@ export default async function WorkoutDetailPage({
             {new Date(detail.startedAt).toLocaleString()}
           </p>
         </div>
-        <DeleteWorkoutButton workoutId={detail.id} />
+        {isOwner ? (
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline">
+              <Link href={`/workouts/${detail.id}/edit`}>Edit Workout</Link>
+            </Button>
+            <DeleteWorkoutButton workoutId={detail.id} />
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mb-6 grid gap-3 sm:grid-cols-3">
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-sm text-muted-foreground">Total sets</p>
+            <p className="text-2xl font-bold">{detail.setCount}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-sm text-muted-foreground">Volume</p>
+            <p className="text-2xl font-bold">
+              {detail.totalVolume.toLocaleString()}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-sm text-muted-foreground">Visibility</p>
+            <p className="text-2xl font-bold">
+              {detail.visibility === "PUBLIC" ? "Public" : "Private"}
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
       {detail.notes ? (
@@ -103,7 +147,10 @@ export default async function WorkoutDetailPage({
                   key={set.id}
                   className="grid gap-2 rounded-lg border p-3 text-sm sm:grid-cols-5"
                 >
-                  <div className="font-medium">Set {index + 1}</div>
+                  <div className="flex items-center gap-2 font-medium">
+                    <span>Set {index + 1}</span>
+                    {set.completed ? <Badge>Done</Badge> : null}
+                  </div>
                   <div>Reps: {set.reps ?? "-"}</div>
                   <div>Weight: {set.weight ?? "-"}</div>
                   <div>Seconds: {set.durationSeconds ?? "-"}</div>

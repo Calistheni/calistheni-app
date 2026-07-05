@@ -13,6 +13,11 @@ enum ParkSubmissionStatus {
   REJECTED
 }
 
+enum WorkoutVisibility {
+  PRIVATE
+  PUBLIC
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -27,6 +32,8 @@ model User {
   parkEditSubmissions ParkEditSubmission[] @relation("ParkEditSubmitter")
   parkPhotos          ParkPhoto[]          @relation("ParkPhotoUploader")
   workouts            Workout[]
+  following           UserFollow[]         @relation("UserFollowing")
+  followers           UserFollow[]         @relation("UserFollowers")
 }
 
 model Account {
@@ -174,12 +181,13 @@ model Exercise {
 }
 
 model Workout {
-  id          Int       @id @default(autoincrement())
+  id          Int               @id @default(autoincrement())
   userId      String
   title       String?
   notes       String?
-  startedAt   DateTime  @default(now())
+  startedAt   DateTime          @default(now())
   completedAt DateTime?
+  visibility  WorkoutVisibility @default(PUBLIC)
 
   user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   exercises WorkoutExercise[]
@@ -188,6 +196,7 @@ model Workout {
   updatedAt DateTime @updatedAt
 
   @@index([userId, startedAt])
+  @@index([visibility, completedAt])
 }
 
 model WorkoutExercise {
@@ -217,6 +226,7 @@ model WorkoutSet {
   durationSeconds   Int?
   distanceMeters    Float?
   notes             String?
+  completed         Boolean @default(false)
 
   workoutExercise WorkoutExercise @relation(fields: [workoutExerciseId], references: [id], onDelete: Cascade)
 
@@ -224,4 +234,16 @@ model WorkoutSet {
   updatedAt DateTime @updatedAt
 
   @@index([workoutExerciseId, order])
+}
+
+model UserFollow {
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+
+  follower  User @relation("UserFollowing", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("UserFollowers", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@id([followerId, followingId])
+  @@index([followingId])
 }

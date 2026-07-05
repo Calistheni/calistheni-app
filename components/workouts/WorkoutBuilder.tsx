@@ -6,10 +6,19 @@ import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 import type {
   ExerciseListItem,
+  WorkoutDetail,
   WorkoutExerciseInput,
   WorkoutMutationPayload,
   WorkoutSetInput,
@@ -17,6 +26,7 @@ import type {
 
 type WorkoutBuilderProps = {
   exercises: ExerciseListItem[];
+  initialWorkout?: WorkoutDetail;
 };
 
 type LocalWorkoutExercise = WorkoutExerciseInput & {
@@ -29,6 +39,7 @@ const EMPTY_SET: WorkoutSetInput = {
   durationSeconds: null,
   distanceMeters: null,
   notes: null,
+  completed: false,
 };
 
 function getNumberValue(value: string) {
@@ -59,31 +70,66 @@ async function getApiErrorMessage(response: Response) {
   }
 }
 
-export function WorkoutBuilder({ exercises }: WorkoutBuilderProps) {
+function buildInitialExercises(
+  initialWorkout: WorkoutDetail | undefined
+): LocalWorkoutExercise[] {
+  if (!initialWorkout) {
+    return [];
+  }
+
+  return initialWorkout.exercises.map((workoutExercise) => ({
+    localId: String(workoutExercise.id),
+    exerciseId: workoutExercise.exercise.id,
+    notes: workoutExercise.notes,
+    sets: workoutExercise.sets.map((set) => ({
+      reps: set.reps,
+      weight: set.weight,
+      durationSeconds: set.durationSeconds,
+      distanceMeters: set.distanceMeters,
+      notes: set.notes,
+      completed: set.completed,
+    })),
+  }));
+}
+
+export function WorkoutBuilder({
+  exercises,
+  initialWorkout,
+}: WorkoutBuilderProps) {
   const router = useRouter();
-  const [title, setTitle] = useState("");
-  const [notes, setNotes] = useState("");
+  const isEditing = Boolean(initialWorkout);
+  const [title, setTitle] = useState(initialWorkout?.title ?? "");
+  const [notes, setNotes] = useState(initialWorkout?.notes ?? "");
+  const [visibility, setVisibility] = useState<"PRIVATE" | "PUBLIC">(
+    initialWorkout?.visibility ?? "PUBLIC"
+  );
   const [search, setSearch] = useState("");
+  const [muscleFilter, setMuscleFilter] = useState("all");
   const [selectedExercises, setSelectedExercises] = useState<
     LocalWorkoutExercise[]
-  >([]);
+  >(buildInitialExercises(initialWorkout));
   const [isSaving, setIsSaving] = useState(false);
+  const muscles = useMemo(
+    () => [...new Set(exercises.map((exercise) => exercise.muscle))].sort(),
+    [exercises]
+  );
 
   const filteredExercises = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
 
-    if (!normalizedSearch) {
-      return exercises.slice(0, 24);
-    }
-
     return exercises
       .filter(
         (exercise) =>
+          muscleFilter === "all" || exercise.muscle === muscleFilter
+      )
+      .filter(
+        (exercise) =>
+          !normalizedSearch ||
           exercise.name.toLowerCase().includes(normalizedSearch) ||
-          exercise.muscle.toLowerCase().includes(normalizedSearch)
+            exercise.muscle.toLowerCase().includes(normalizedSearch)
       )
       .slice(0, 40);
-  }, [exercises, search]);
+  }, [exercises, muscleFilter, search]);
 
   function addExercise(exerciseId: string) {
     if (selectedExercises.some((item) => item.exerciseId === exerciseId)) {
@@ -137,7 +183,7 @@ export function WorkoutBuilder({ exercises }: WorkoutBuilderProps) {
     localId: string,
     setIndex: number,
     field: keyof WorkoutSetInput,
-    value: string
+    value: string | boolean
   ) {
     setSelectedExercises((current) =>
       current.map((item) =>
@@ -146,13 +192,15 @@ export function WorkoutBuilder({ exercises }: WorkoutBuilderProps) {
               ...item,
               sets: item.sets.map((set, index) =>
                 index === setIndex
-                  ? {
-                      ...set,
-                      [field]:
-                        field === "notes"
-                          ? getTextValue(value)
-                          : getNumberValue(value),
-                    }
+	                  ? {
+	                      ...set,
+	                      [field]:
+	                        field === "completed"
+	                          ? Boolean(value)
+	                        : field === "notes"
+	                          ? getTextValue(String(value))
+	                          : getNumberValue(String(value)),
+	                    }
                   : set
               ),
             }
@@ -177,6 +225,7 @@ export function WorkoutBuilder({ exercises }: WorkoutBuilderProps) {
       notes: getTextValue(notes),
       startedAt: new Date().toISOString(),
       completedAt: new Date().toISOString(),
+      visibility,
       exercises: selectedExercises.map(({ exerciseId, notes, sets }) => ({
         exerciseId,
         notes,
@@ -187,20 +236,25 @@ export function WorkoutBuilder({ exercises }: WorkoutBuilderProps) {
     setIsSaving(true);
 
     try {
-      const response = await fetch("/api/user/workouts", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
+      const response = await fetch(
+	        isEditing
+	          ? `/api/user/workouts/${initialWorkout?.id}`
+	          : "/api/user/workouts",
+	        {
+	          method: isEditing ? "PATCH" : "POST",
+	          headers: {
+	            "Content-Type": "application/json",
+	          },
+	          body: JSON.stringify(payload),
+	        }
+	      );
 
       if (!response.ok) {
         throw new Error(await getApiErrorMessage(response));
       }
 
       const workout = (await response.json()) as { id: number };
-      toast.success("Workout saved.");
+      toast.success(isEditing ? "Workout updated." : "Workout saved.");
       router.push(`/workouts/${workout.id}`);
       router.refresh();
     } catch (error) {
@@ -215,10 +269,13 @@ export function WorkoutBuilder({ exercises }: WorkoutBuilderProps) {
       <section className="space-y-4">
         <Card>
           <CardHeader>
-            <h1 className="text-2xl font-bold">New Workout</h1>
-            <p className="text-sm text-muted-foreground">
-              Pick exercises, add sets, and save the session to your history.
-            </p>
+	            <h1 className="text-2xl font-bold">
+	              {isEditing ? "Edit Workout" : "New Workout"}
+	            </h1>
+	            <p className="text-sm text-muted-foreground">
+	              Pick exercises, complete sets, and save the session to your
+	              history.
+	            </p>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -232,19 +289,45 @@ export function WorkoutBuilder({ exercises }: WorkoutBuilderProps) {
                 placeholder="Morning pull session"
               />
             </div>
-            <div className="space-y-2">
-              <label htmlFor="workout-notes" className="text-sm font-medium">
+	            <div className="space-y-2">
+	              <label htmlFor="workout-notes" className="text-sm font-medium">
                 Notes
               </label>
               <Input
                 id="workout-notes"
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
-                placeholder="How did it feel?"
-              />
-            </div>
-          </CardContent>
-        </Card>
+	                placeholder="How did it feel?"
+	              />
+	            </div>
+	            <div className="space-y-2">
+	              <label
+	                htmlFor="workout-visibility"
+	                className="text-sm font-medium"
+	              >
+	                Visibility
+	              </label>
+	              <Select
+	                value={visibility}
+	                onValueChange={(value) =>
+	                  setVisibility(value as "PRIVATE" | "PUBLIC")
+	                }
+	              >
+	                <SelectTrigger id="workout-visibility" className="w-full">
+	                  <SelectValue />
+	                </SelectTrigger>
+	                <SelectContent>
+	                  <SelectItem value="PUBLIC">Public</SelectItem>
+	                  <SelectItem value="PRIVATE">Private</SelectItem>
+	                </SelectContent>
+	              </Select>
+	              <p className="text-xs text-muted-foreground">
+	                Public workouts can appear on follower feeds and your public
+	                profile.
+	              </p>
+	            </div>
+	          </CardContent>
+	        </Card>
 
         {selectedExercises.length === 0 ? (
           <Card>
@@ -296,8 +379,22 @@ export function WorkoutBuilder({ exercises }: WorkoutBuilderProps) {
                         key={setIndex}
                         className="grid gap-2 rounded-lg border p-3 sm:grid-cols-2 lg:grid-cols-6"
                       >
-                        <Input
-                          type="number"
+	                        <label className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+	                          <Checkbox
+	                            checked={set.completed}
+	                            onCheckedChange={(checked) =>
+	                              updateSet(
+	                                selectedExercise.localId,
+	                                setIndex,
+	                                "completed",
+	                                checked === true
+	                              )
+	                            }
+	                          />
+	                          Done
+	                        </label>
+	                        <Input
+	                          type="number"
                           min="0"
                           placeholder="Reps"
                           aria-label={`Set ${setIndex + 1} reps`}
@@ -377,8 +474,8 @@ export function WorkoutBuilder({ exercises }: WorkoutBuilderProps) {
                           onClick={() =>
                             removeSet(selectedExercise.localId, setIndex)
                           }
-                          disabled={selectedExercise.sets.length <= 1}
-                        >
+	                          disabled={selectedExercise.sets.length <= 1}
+	                        >
                           Remove Set
                         </Button>
                       </div>
@@ -407,12 +504,25 @@ export function WorkoutBuilder({ exercises }: WorkoutBuilderProps) {
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search exercises"
-              aria-label="Search exercises"
-            />
+	            <Input
+	              value={search}
+	              onChange={(event) => setSearch(event.target.value)}
+	              placeholder="Search exercises"
+	              aria-label="Search exercises"
+	            />
+	            <Select value={muscleFilter} onValueChange={setMuscleFilter}>
+	              <SelectTrigger className="w-full" aria-label="Filter muscle">
+	                <SelectValue placeholder="All muscles" />
+	              </SelectTrigger>
+	              <SelectContent>
+	                <SelectItem value="all">All muscles</SelectItem>
+	                {muscles.map((muscle) => (
+	                  <SelectItem key={muscle} value={muscle}>
+	                    {muscle}
+	                  </SelectItem>
+	                ))}
+	              </SelectContent>
+	            </Select>
             <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
               {filteredExercises.map((exercise) => {
                 const selected = selectedExercises.some(
@@ -457,8 +567,12 @@ export function WorkoutBuilder({ exercises }: WorkoutBuilderProps) {
               onClick={() => void saveWorkout()}
               disabled={isSaving}
             >
-              {isSaving ? "Saving..." : "Save Workout"}
-            </Button>
+	              {isSaving
+	                ? "Saving..."
+	                : isEditing
+	                  ? "Update Workout"
+	                  : "Save Workout"}
+	            </Button>
           </CardContent>
         </Card>
       </aside>

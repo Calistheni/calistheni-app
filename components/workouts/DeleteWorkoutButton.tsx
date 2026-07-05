@@ -2,6 +2,17 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
@@ -24,10 +35,6 @@ export function DeleteWorkoutButton({ workoutId }: DeleteWorkoutButtonProps) {
   const [isDeleting, setIsDeleting] = useState(false);
 
   async function handleDelete() {
-    if (!window.confirm("Delete this workout?")) {
-      return;
-    }
-
     setIsDeleting(true);
 
     try {
@@ -52,13 +59,34 @@ export function DeleteWorkoutButton({ workoutId }: DeleteWorkoutButtonProps) {
   }
 
   return (
-    <Button
-      type="button"
-      variant="destructive"
-      onClick={handleDelete}
-      disabled={isDeleting}
-    >
-      {isDeleting ? "Deleting..." : "Delete Workout"}
-    </Button>
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button type="button" variant="destructive" disabled={isDeleting}>
+          Delete Workout
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete workout?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This removes the workout from your history. This action cannot be
+            undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            disabled={isDeleting}
+            onClick={(event) => {
+              event.preventDefault();
+              void handleDelete();
+            }}
+          >
+            {isDeleting ? "Deleting..." : "Delete Workout"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

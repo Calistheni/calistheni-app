@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import type { ValidWorkoutMutation } from "@/lib/validation/workouts";
-import type { ExerciseListItem, WorkoutDetail, WorkoutSummary } from "@/types/workout";
+import type {
+  ExerciseListItem,
+  WorkoutDetail,
+  WorkoutSummary,
+} from "@/types/workout";
 
 const workoutInclude = {
   exercises: {
@@ -42,6 +46,7 @@ export function mapWorkoutDetail(workout: {
   notes: string | null;
   startedAt: Date;
   completedAt: Date | null;
+  visibility: "PRIVATE" | "PUBLIC";
   createdAt: Date;
   updatedAt: Date;
   exercises: Array<{
@@ -62,17 +67,36 @@ export function mapWorkoutDetail(workout: {
       durationSeconds: number | null;
       distanceMeters: number | null;
       notes: string | null;
+      completed: boolean;
     }>;
   }>;
 }): WorkoutDetail {
+  const setCount = workout.exercises.reduce(
+    (count, exercise) => count + exercise.sets.length,
+    0
+  );
+  const totalVolume = workout.exercises.reduce(
+    (volume, exercise) =>
+      volume +
+      exercise.sets.reduce(
+        (exerciseVolume, set) =>
+          exerciseVolume + (set.reps ?? 0) * (set.weight ?? 0),
+        0
+      ),
+    0
+  );
+
   return {
     id: workout.id,
     title: workout.title,
     notes: workout.notes,
     startedAt: workout.startedAt.toISOString(),
     completedAt: workout.completedAt?.toISOString() ?? null,
+    visibility: workout.visibility,
     createdAt: workout.createdAt.toISOString(),
     updatedAt: workout.updatedAt.toISOString(),
+    setCount,
+    totalVolume,
     exercises: workout.exercises.map((workoutExercise) => ({
       id: workoutExercise.id,
       notes: workoutExercise.notes,
@@ -84,6 +108,7 @@ export function mapWorkoutDetail(workout: {
         durationSeconds: set.durationSeconds,
         distanceMeters: set.distanceMeters,
         notes: set.notes,
+        completed: set.completed,
       })),
     })),
   };
@@ -94,20 +119,44 @@ export function mapWorkoutSummary(workout: {
   title: string | null;
   startedAt: Date;
   completedAt: Date | null;
+  visibility: "PRIVATE" | "PUBLIC";
+  user?: {
+    id: string;
+    name: string | null;
+    image: string | null;
+  };
   exercises: Array<{
-    sets: unknown[];
+    sets: Array<{
+      reps: number | null;
+      weight: number | null;
+    }>;
   }>;
 }): WorkoutSummary {
+  const setCount = workout.exercises.reduce(
+    (count, exercise) => count + exercise.sets.length,
+    0
+  );
+  const totalVolume = workout.exercises.reduce(
+    (volume, exercise) =>
+      volume +
+      exercise.sets.reduce(
+        (exerciseVolume, set) =>
+          exerciseVolume + (set.reps ?? 0) * (set.weight ?? 0),
+        0
+      ),
+    0
+  );
+
   return {
     id: workout.id,
     title: workout.title,
     startedAt: workout.startedAt.toISOString(),
     completedAt: workout.completedAt?.toISOString() ?? null,
     exerciseCount: workout.exercises.length,
-    setCount: workout.exercises.reduce(
-      (count, exercise) => count + exercise.sets.length,
-      0
-    ),
+    setCount,
+    totalVolume,
+    visibility: workout.visibility,
+    user: workout.user,
   };
 }
 
@@ -130,6 +179,7 @@ function buildWorkoutData(payload: ValidWorkoutMutation) {
     notes: payload.notes,
     startedAt: payload.startedAt ? new Date(payload.startedAt) : new Date(),
     completedAt: payload.completedAt ? new Date(payload.completedAt) : null,
+    visibility: payload.visibility,
     exercises: {
       create: payload.exercises.map((exercise, exerciseIndex) => ({
         exerciseId: exercise.exerciseId,
@@ -143,6 +193,7 @@ function buildWorkoutData(payload: ValidWorkoutMutation) {
             durationSeconds: set.durationSeconds,
             distanceMeters: set.distanceMeters,
             notes: set.notes,
+            completed: set.completed,
           })),
         },
       })),

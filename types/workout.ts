@@ -13,6 +13,7 @@ export type WorkoutSetInput = {
   durationSeconds: number | null;
   distanceMeters: number | null;
   notes: string | null;
+  completed: boolean;
 };
 
 export type WorkoutExerciseInput = {
@@ -26,6 +27,7 @@ export type WorkoutMutationPayload = {
   notes: string | null;
   startedAt: string | null;
   completedAt: string | null;
+  visibility: "PRIVATE" | "PUBLIC";
   exercises: WorkoutExerciseInput[];
 };
 
@@ -48,8 +50,12 @@ export type WorkoutDetail = {
       durationSeconds: number | null;
       distanceMeters: number | null;
       notes: string | null;
+      completed: boolean;
     }>;
   }>;
+  visibility: "PRIVATE" | "PUBLIC";
+  setCount: number;
+  totalVolume: number;
 };
 
 export type WorkoutSummary = {
@@ -59,4 +65,11 @@ export type WorkoutSummary = {
   completedAt: string | null;
   exerciseCount: number;
   setCount: number;
+  totalVolume: number;
+  visibility: "PRIVATE" | "PUBLIC";
+  user?: {
+    id: string;
+    name: string | null;
+    image: string | null;
+  };
 };

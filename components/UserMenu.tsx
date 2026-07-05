@@ -50,22 +50,34 @@ export function UserMenu({
         <DropdownMenuContent align="start" sideOffset={8} className="w-56">
           {user ? (
             <>
-              <DropdownMenuLabel>
-                <div className="flex flex-col">
-                  <span>Account</span>
+	              <DropdownMenuLabel>
+	                <div className="flex flex-col">
+	                  <span>Account</span>
                   <span className="truncate text-xs font-normal text-muted-foreground">
                     {user.email ?? user.name}
                   </span>
                 </div>
-              </DropdownMenuLabel>
+	              </DropdownMenuLabel>
+	
+	              <DropdownMenuItem asChild>
+	                <Link href="/home">Home</Link>
+	              </DropdownMenuItem>
 
-              <DropdownMenuItem asChild>
-                <Link href="/profile">Profile</Link>
-              </DropdownMenuItem>
+	              <DropdownMenuItem asChild>
+	                <Link href="/profile">Profile</Link>
+	              </DropdownMenuItem>
 
-              <DropdownMenuItem asChild>
-                <Link href="/workouts">Workouts</Link>
-              </DropdownMenuItem>
+	              <DropdownMenuItem asChild>
+	                <Link href="/workouts">Workouts</Link>
+	              </DropdownMenuItem>
+
+	              <DropdownMenuItem asChild>
+	                <Link href="/feed">Workout Feed</Link>
+	              </DropdownMenuItem>
+
+	              <DropdownMenuItem asChild>
+	                <Link href="/users">Find Users</Link>
+	              </DropdownMenuItem>
 
               <DropdownMenuItem asChild>
                 <Link href="/my-parks">My Parks</Link>
