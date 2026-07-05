@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { r2, R2_BUCKET_NAME, R2_PUBLIC_URL } from "@/lib/r2";
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const MAX_FILE_SIZE = 15 * 1024 * 1024;
 
 const ALLOWED_TYPES = new Set([
   "image/jpeg",
