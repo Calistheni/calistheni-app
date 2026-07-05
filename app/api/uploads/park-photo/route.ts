@@ -13,12 +13,34 @@ const ALLOWED_TYPES = new Set([
   "image/heif",
 ]);
 
-function getExtension(type: string) {
-  if (type === "image/jpeg") return "jpg";
-  if (type === "image/png") return "png";
-  if (type === "image/webp") return "webp";
-  if (type === "image/heic") return "heic";
-  if (type === "image/heif") return "heif";
+function getExtension(file: File) {
+  const type = file.type;
+  const name = file.name.toLowerCase();
+
+  if (
+    type === "image/jpeg" ||
+    name.endsWith(".jpg") ||
+    name.endsWith(".jpeg")
+  ) {
+    return "jpg";
+  }
+
+  if (type === "image/png" || name.endsWith(".png")) {
+    return "png";
+  }
+
+  if (type === "image/webp" || name.endsWith(".webp")) {
+    return "webp";
+  }
+
+  if (type === "image/heic" || name.endsWith(".heic")) {
+    return "heic";
+  }
+
+  if (type === "image/heif" || name.endsWith(".heif")) {
+    return "heif";
+  }
+
   return "jpg";
 }
 
@@ -39,27 +61,53 @@ export async function POST(request: Request) {
   const formData = await request.formData();
   const file = formData.get("file");
 
+  console.log("UPLOAD DEBUG", {
+    isFile: file instanceof File,
+    type: file instanceof File ? file.type : null,
+    size: file instanceof File ? file.size : null,
+    name: file instanceof File ? file.name : null,
+  });
+
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "No file uploaded." }, { status: 400 });
   }
 
-  if (!ALLOWED_TYPES.has(file.type)) {
+  const fileName = file.name.toLowerCase();
+
+  const isAllowed =
+    ALLOWED_TYPES.has(file.type) ||
+    fileName.endsWith(".jpg") ||
+    fileName.endsWith(".jpeg") ||
+    fileName.endsWith(".png") ||
+    fileName.endsWith(".webp") ||
+    fileName.endsWith(".heic") ||
+    fileName.endsWith(".heif");
+
+  if (!isAllowed) {
     return NextResponse.json(
-      { error: "Only JPG, PNG, and WebP images are allowed." },
+      {
+        error: `Unsupported image. Type="${file.type}", Name="${file.name}"`,
+      },
       { status: 400 }
     );
   }
 
   if (file.size > MAX_FILE_SIZE) {
     return NextResponse.json(
-      { error: "Image must be smaller than 5 MB." },
+      {
+        error: `Image is too large (${(file.size / 1024 / 1024).toFixed(
+          2
+        )} MB). Maximum is 5 MB.`,
+      },
       { status: 400 }
     );
   }
 
   const bytes = await file.arrayBuffer();
   const buffer = Buffer.from(bytes);
-  const extension = getExtension(file.type);
+
+  const extension = getExtension(file);
+
   const key = `parks/${session.user.id}/${crypto.randomUUID()}.${extension}`;
 
   await r2.send(
@@ -67,15 +115,13 @@ export async function POST(request: Request) {
       Bucket: R2_BUCKET_NAME,
       Key: key,
       Body: buffer,
-      ContentType: file.type,
+      ContentType: file.type || "application/octet-stream",
       CacheControl: "public, max-age=31536000, immutable",
     })
   );
 
-  const photoUrl = `${R2_PUBLIC_URL}/${key}`;
-
   return NextResponse.json({
-    photoUrl,
+    photoUrl: `${R2_PUBLIC_URL}/${key}`,
     key,
   });
 }
