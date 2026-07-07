@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type { ValidWorkoutMutation } from "@/lib/validation/workouts";
 import type {
   ExerciseListItem,
+  ExerciseTrackingType,
   WorkoutDetail,
   WorkoutSummary,
 } from "@/types/workout";
@@ -29,6 +30,8 @@ function mapExercise(exercise: {
   muscle: string;
   thumbnailUrl: string | null;
   videoUrl: string | null;
+  trackingType: ExerciseTrackingType;
+  bodyweightLoadFactor: number | null;
 }): ExerciseListItem {
   return {
     id: exercise.id,
@@ -37,7 +40,78 @@ function mapExercise(exercise: {
     muscle: exercise.muscle,
     thumbnailUrl: exercise.thumbnailUrl,
     videoUrl: exercise.videoUrl,
+    trackingType: exercise.trackingType,
+    bodyweightLoadFactor: exercise.bodyweightLoadFactor,
   };
+}
+
+function calculateSetVolume(
+  exercise: {
+    trackingType: ExerciseTrackingType;
+    bodyweightLoadFactor: number | null;
+  },
+  set: {
+    reps: number | null;
+    weight: number | null;
+    durationSeconds?: number | null;
+  },
+  userBodyweightKg: number | null
+) {
+  const reps = set.reps ?? 0;
+
+  if (reps === 0) {
+    return 0;
+  }
+
+  switch (exercise.trackingType) {
+    case "BODYWEIGHT_REPS":
+      return userBodyweightKg === null
+        ? null
+        : userBodyweightKg * (exercise.bodyweightLoadFactor ?? 1) * reps;
+    case "WEIGHTED_BODYWEIGHT":
+      return userBodyweightKg === null
+        ? null
+        : (userBodyweightKg + (set.weight ?? 0)) * reps;
+    case "EXTERNAL_WEIGHT":
+      return (set.weight ?? 0) * reps;
+    case "DURATION":
+      return 0;
+  }
+}
+
+function calculateWorkoutVolume(
+  exercises: Array<{
+    exercise: {
+      trackingType: ExerciseTrackingType;
+      bodyweightLoadFactor: number | null;
+    };
+    sets: Array<{
+      reps: number | null;
+      weight: number | null;
+      durationSeconds?: number | null;
+    }>;
+  }>,
+  userBodyweightKg: number | null = null
+) {
+  let totalVolume = 0;
+
+  for (const workoutExercise of exercises) {
+    for (const set of workoutExercise.sets) {
+      const setVolume = calculateSetVolume(
+        workoutExercise.exercise,
+        set,
+        userBodyweightKg
+      );
+
+      if (setVolume === null) {
+        return null;
+      }
+
+      totalVolume += setVolume;
+    }
+  }
+
+  return totalVolume;
 }
 
 export function mapWorkoutDetail(workout: {
@@ -59,6 +133,8 @@ export function mapWorkoutDetail(workout: {
       muscle: string;
       thumbnailUrl: string | null;
       videoUrl: string | null;
+      trackingType: ExerciseTrackingType;
+      bodyweightLoadFactor: number | null;
     };
     sets: Array<{
       id: number;
@@ -75,16 +151,7 @@ export function mapWorkoutDetail(workout: {
     (count, exercise) => count + exercise.sets.length,
     0
   );
-  const totalVolume = workout.exercises.reduce(
-    (volume, exercise) =>
-      volume +
-      exercise.sets.reduce(
-        (exerciseVolume, set) =>
-          exerciseVolume + (set.reps ?? 0) * (set.weight ?? 0),
-        0
-      ),
-    0
-  );
+  const totalVolume = calculateWorkoutVolume(workout.exercises);
 
   return {
     id: workout.id,
@@ -126,9 +193,14 @@ export function mapWorkoutSummary(workout: {
     image: string | null;
   };
   exercises: Array<{
+    exercise: {
+      trackingType: ExerciseTrackingType;
+      bodyweightLoadFactor: number | null;
+    };
     sets: Array<{
       reps: number | null;
       weight: number | null;
+      durationSeconds?: number | null;
     }>;
   }>;
 }): WorkoutSummary {
@@ -136,16 +208,7 @@ export function mapWorkoutSummary(workout: {
     (count, exercise) => count + exercise.sets.length,
     0
   );
-  const totalVolume = workout.exercises.reduce(
-    (volume, exercise) =>
-      volume +
-      exercise.sets.reduce(
-        (exerciseVolume, set) =>
-          exerciseVolume + (set.reps ?? 0) * (set.weight ?? 0),
-        0
-      ),
-    0
-  );
+  const totalVolume = calculateWorkoutVolume(workout.exercises);
 
   return {
     id: workout.id,

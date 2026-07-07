@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { CoordinatePicker } from "@/components/CoordinatePicker";
 import {
@@ -874,11 +875,16 @@ export default function AdminDashboard() {
           </p>
         </div>
 
-        <form action="/admin/logout" method="post">
-          <Button type="submit" variant="outline">
-            Logout
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline">
+            <Link href="/admin/exercises">Classify Exercises</Link>
           </Button>
-        </form>
+          <form action="/admin/logout" method="post">
+            <Button type="submit" variant="outline">
+              Logout
+            </Button>
+          </form>
+        </div>
       </div>
 
       {initialLoadError ? (

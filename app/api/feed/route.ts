@@ -53,6 +53,7 @@ export async function GET() {
         },
         exercises: {
           include: {
+            exercise: true,
             sets: true,
           },
         },

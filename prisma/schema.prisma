@@ -18,6 +18,13 @@ enum WorkoutVisibility {
   PUBLIC
 }
 
+enum ExerciseTrackingType {
+  BODYWEIGHT_REPS
+  WEIGHTED_BODYWEIGHT
+  EXTERNAL_WEIGHT
+  DURATION
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -166,12 +173,14 @@ model ParkEditSubmission {
 }
 
 model Exercise {
-  id           String  @id
-  slug         String  @unique
-  name         String
-  muscle       String
-  thumbnailUrl String?
-  videoUrl     String?
+  id                   String               @id
+  slug                 String               @unique
+  name                 String
+  muscle               String
+  thumbnailUrl         String?
+  videoUrl             String?
+  trackingType         ExerciseTrackingType @default(EXTERNAL_WEIGHT)
+  bodyweightLoadFactor Float?
 
   workoutExercises WorkoutExercise[]
 
@@ -180,6 +189,7 @@ model Exercise {
 
   @@index([muscle])
   @@index([name])
+  @@index([trackingType])
 }
 
 model Workout {

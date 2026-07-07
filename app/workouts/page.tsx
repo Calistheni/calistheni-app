@@ -30,13 +30,14 @@ export default async function WorkoutsPage() {
     orderBy: {
       startedAt: "desc",
     },
-    include: {
-      exercises: {
-        include: {
-          sets: true,
+      include: {
+        exercises: {
+          include: {
+            exercise: true,
+            sets: true,
+          },
         },
       },
-    },
   });
 
   const summaries = workouts.map(mapWorkoutSummary);
@@ -95,7 +96,9 @@ export default async function WorkoutsPage() {
                       </Badge>
                       <Badge variant="outline">{workout.setCount} sets</Badge>
                       <Badge variant="outline">
-                        {workout.totalVolume.toLocaleString()} volume
+                        {workout.totalVolume === null
+                          ? "Volume unavailable"
+                          : `${workout.totalVolume.toLocaleString()} volume`}
                       </Badge>
                     </div>
                   </div>

@@ -23,6 +23,8 @@ export async function GET(
         muscle: true,
         thumbnailUrl: true,
         videoUrl: true,
+        trackingType: true,
+        bodyweightLoadFactor: true,
       },
     });
 
@@ -37,6 +39,8 @@ export async function GET(
       muscle: exercise.muscle,
       thumbnailUrl: exercise.thumbnailUrl,
       videoUrl: exercise.videoUrl,
+      trackingType: exercise.trackingType,
+      bodyweightLoadFactor: exercise.bodyweightLoadFactor,
     });
   } catch (error) {
     console.error(error);

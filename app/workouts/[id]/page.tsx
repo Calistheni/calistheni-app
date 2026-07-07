@@ -19,6 +19,18 @@ export const metadata: Metadata = {
   },
 };
 
+function formatDuration(durationSeconds: number | null) {
+  if (durationSeconds === null) {
+    return "-";
+  }
+
+  if (durationSeconds % 60 === 0) {
+    return `${durationSeconds / 60} min`;
+  }
+
+  return `${durationSeconds} sec`;
+}
+
 export default async function WorkoutDetailPage({
   params,
 }: {
@@ -96,7 +108,9 @@ export default async function WorkoutDetailPage({
           <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">Volume</p>
             <p className="text-2xl font-bold">
-              {detail.totalVolume.toLocaleString()}
+              {detail.totalVolume === null
+                ? "Unavailable"
+                : detail.totalVolume.toLocaleString()}
             </p>
           </CardContent>
         </Card>
@@ -151,10 +165,30 @@ export default async function WorkoutDetailPage({
                     <span>Set {index + 1}</span>
                     {set.completed ? <Badge>Done</Badge> : null}
                   </div>
-                  <div>Reps: {set.reps ?? "-"}</div>
-                  <div>Weight: {set.weight ?? "-"}</div>
-                  <div>Seconds: {set.durationSeconds ?? "-"}</div>
-                  <div>Meters: {set.distanceMeters ?? "-"}</div>
+                  {workoutExercise.exercise.trackingType !== "DURATION" ||
+                  set.reps !== null ? (
+                    <div>Reps: {set.reps ?? "-"}</div>
+                  ) : null}
+                  {workoutExercise.exercise.trackingType ===
+                    "WEIGHTED_BODYWEIGHT" ||
+                  workoutExercise.exercise.trackingType ===
+                    "EXTERNAL_WEIGHT" ||
+                  set.weight !== null ? (
+                    <div>
+                      {workoutExercise.exercise.trackingType ===
+                      "WEIGHTED_BODYWEIGHT"
+                        ? "Added weight"
+                        : "Weight"}
+                      : {set.weight ?? "-"}
+                    </div>
+                  ) : null}
+                  {workoutExercise.exercise.trackingType === "DURATION" ||
+                  set.durationSeconds !== null ? (
+                    <div>Duration: {formatDuration(set.durationSeconds)}</div>
+                  ) : null}
+                  {set.distanceMeters !== null ? (
+                    <div>Meters: {set.distanceMeters}</div>
+                  ) : null}
                   {set.notes ? (
                     <div className="text-muted-foreground sm:col-span-5">
                       {set.notes}

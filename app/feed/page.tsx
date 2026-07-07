@@ -145,7 +145,9 @@ export default async function FeedPage() {
                       </Badge>
                       <Badge variant="outline">{workout.setCount} sets</Badge>
                       <Badge variant="outline">
-                        {workout.totalVolume.toLocaleString()} volume
+                        {workout.totalVolume === null
+                          ? "Volume unavailable"
+                          : `${workout.totalVolume.toLocaleString()} volume`}
                       </Badge>
                     </div>
                   </div>

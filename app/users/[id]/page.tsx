@@ -53,6 +53,7 @@ export default async function UserProfilePage({
         include: {
           exercises: {
             include: {
+              exercise: true,
               sets: true,
             },
           },
@@ -81,6 +82,9 @@ export default async function UserProfilePage({
     ]);
   const summaries = workouts.map(mapWorkoutSummary);
   const totalSets = summaries.reduce((count, workout) => count + workout.setCount, 0);
+  const totalVolume = summaries.some((workout) => workout.totalVolume === null)
+    ? null
+    : summaries.reduce((sum, workout) => sum + (workout.totalVolume ?? 0), 0);
 
   return (
     <main className="mx-auto w-full max-w-4xl p-4 sm:p-6 lg:p-8">
@@ -137,9 +141,7 @@ export default async function UserProfilePage({
           <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">Volume</p>
             <p className="text-2xl font-bold">
-              {summaries
-                .reduce((sum, workout) => sum + workout.totalVolume, 0)
-                .toLocaleString()}
+              {totalVolume === null ? "Unavailable" : totalVolume.toLocaleString()}
             </p>
           </CardContent>
         </Card>
@@ -177,7 +179,9 @@ export default async function UserProfilePage({
                   </Badge>
                   <Badge variant="outline">{workout.setCount} sets</Badge>
                   <Badge variant="outline">
-                    {workout.totalVolume.toLocaleString()} volume
+                    {workout.totalVolume === null
+                      ? "Volume unavailable"
+                      : `${workout.totalVolume.toLocaleString()} volume`}
                   </Badge>
                 </CardContent>
               </Card>

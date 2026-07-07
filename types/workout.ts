@@ -1,3 +1,9 @@
+export type ExerciseTrackingType =
+  | "BODYWEIGHT_REPS"
+  | "WEIGHTED_BODYWEIGHT"
+  | "EXTERNAL_WEIGHT"
+  | "DURATION";
+
 export type ExerciseListItem = {
   id: string;
   slug: string;
@@ -5,6 +11,8 @@ export type ExerciseListItem = {
   muscle: string;
   thumbnailUrl: string | null;
   videoUrl: string | null;
+  trackingType: ExerciseTrackingType;
+  bodyweightLoadFactor: number | null;
 };
 
 export type WorkoutSetInput = {
@@ -55,7 +63,7 @@ export type WorkoutDetail = {
   }>;
   visibility: "PRIVATE" | "PUBLIC";
   setCount: number;
-  totalVolume: number;
+  totalVolume: number | null;
 };
 
 export type WorkoutSummary = {
@@ -65,7 +73,7 @@ export type WorkoutSummary = {
   completedAt: string | null;
   exerciseCount: number;
   setCount: number;
-  totalVolume: number;
+  totalVolume: number | null;
   visibility: "PRIVATE" | "PUBLIC";
   user?: {
     id: string;

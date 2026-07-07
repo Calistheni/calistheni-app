@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { prisma } from "@/lib/prisma";
-import type { ExerciseListItem } from "@/types/workout";
+import type { ExerciseListItem, ExerciseTrackingType } from "@/types/workout";
 
 export const metadata: Metadata = {
   title: "Exercises",
@@ -21,6 +21,8 @@ function mapExercise(exercise: {
   muscle: string;
   thumbnailUrl: string | null;
   videoUrl: string | null;
+  trackingType: ExerciseTrackingType;
+  bodyweightLoadFactor: number | null;
 }): ExerciseListItem {
   return {
     id: exercise.id,
@@ -29,6 +31,8 @@ function mapExercise(exercise: {
     muscle: exercise.muscle,
     thumbnailUrl: exercise.thumbnailUrl,
     videoUrl: exercise.videoUrl,
+    trackingType: exercise.trackingType,
+    bodyweightLoadFactor: exercise.bodyweightLoadFactor,
   };
 }
 
@@ -73,6 +77,8 @@ export default async function ExercisesPage({
         muscle: true,
         thumbnailUrl: true,
         videoUrl: true,
+        trackingType: true,
+        bodyweightLoadFactor: true,
       },
     }),
     prisma.exercise.findMany({

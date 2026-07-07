@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { WorkoutBuilder } from "@/components/workouts/WorkoutBuilder";
 import { prisma } from "@/lib/prisma";
-import type { ExerciseListItem } from "@/types/workout";
+import type { ExerciseListItem, ExerciseTrackingType } from "@/types/workout";
 
 export const metadata: Metadata = {
   title: "New Workout",
@@ -20,6 +20,8 @@ function mapExercise(exercise: {
   muscle: string;
   thumbnailUrl: string | null;
   videoUrl: string | null;
+  trackingType: ExerciseTrackingType;
+  bodyweightLoadFactor: number | null;
 }): ExerciseListItem {
   return {
     id: exercise.id,
@@ -28,6 +30,8 @@ function mapExercise(exercise: {
     muscle: exercise.muscle,
     thumbnailUrl: exercise.thumbnailUrl,
     videoUrl: exercise.videoUrl,
+    trackingType: exercise.trackingType,
+    bodyweightLoadFactor: exercise.bodyweightLoadFactor,
   };
 }
 
@@ -47,6 +51,8 @@ export default async function NewWorkoutPage() {
       muscle: true,
       thumbnailUrl: true,
       videoUrl: true,
+      trackingType: true,
+      bodyweightLoadFactor: true,
     },
   });
 

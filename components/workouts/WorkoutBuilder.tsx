@@ -33,6 +33,13 @@ type LocalWorkoutExercise = WorkoutExerciseInput & {
   localId: string;
 };
 
+const TRACKING_TYPE_LABELS = {
+  BODYWEIGHT_REPS: "Bodyweight reps",
+  WEIGHTED_BODYWEIGHT: "Weighted bodyweight",
+  EXTERNAL_WEIGHT: "External weight",
+  DURATION: "Duration",
+} as const;
+
 const EMPTY_SET: WorkoutSetInput = {
   reps: null,
   weight: null,
@@ -50,6 +57,10 @@ function getTextValue(value: string) {
   const trimmed = value.trim();
 
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function getDurationMinutesValue(durationSeconds: number | null) {
+  return durationSeconds === null ? "" : durationSeconds / 60;
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -209,6 +220,21 @@ export function WorkoutBuilder({
     );
   }
 
+  function updateSetDurationMinutes(
+    localId: string,
+    setIndex: number,
+    value: string
+  ) {
+    const minutes = getNumberValue(value);
+
+    updateSet(
+      localId,
+      setIndex,
+      "durationSeconds",
+      minutes === null ? "" : String(Math.round(minutes * 60))
+    );
+  }
+
   async function saveWorkout() {
     if (selectedExercises.length === 0) {
       toast.error("Select at least one exercise.");
@@ -360,7 +386,12 @@ export function WorkoutBuilder({
                       />
                       <div>
                         <h2 className="font-semibold">{exercise.name}</h2>
-                        <Badge variant="secondary">{exercise.muscle}</Badge>
+                        <div className="mt-1 flex flex-wrap gap-2">
+                          <Badge variant="secondary">{exercise.muscle}</Badge>
+                          <Badge variant="outline">
+                            {TRACKING_TYPE_LABELS[exercise.trackingType]}
+                          </Badge>
+                        </div>
                       </div>
                     </div>
                     <Button
@@ -377,7 +408,7 @@ export function WorkoutBuilder({
                     {selectedExercise.sets.map((set, setIndex) => (
                       <div
                         key={setIndex}
-                        className="grid gap-2 rounded-lg border p-3 sm:grid-cols-2 lg:grid-cols-6"
+                        className="grid gap-2 rounded-lg border p-3 sm:grid-cols-2 lg:grid-cols-5"
                       >
 	                        <label className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
 	                          <Checkbox
@@ -393,6 +424,7 @@ export function WorkoutBuilder({
 	                          />
 	                          Done
 	                        </label>
+                        {exercise.trackingType !== "DURATION" ? (
 	                        <Input
 	                          type="number"
                           min="0"
@@ -408,12 +440,23 @@ export function WorkoutBuilder({
                             )
                           }
                         />
+                        ) : null}
+                        {exercise.trackingType === "WEIGHTED_BODYWEIGHT" ||
+                        exercise.trackingType === "EXTERNAL_WEIGHT" ? (
                         <Input
                           type="number"
                           min="0"
                           step="0.5"
-                          placeholder="Weight"
-                          aria-label={`Set ${setIndex + 1} weight`}
+                          placeholder={
+                            exercise.trackingType === "WEIGHTED_BODYWEIGHT"
+                              ? "Added weight"
+                              : "Weight"
+                          }
+                          aria-label={
+                            exercise.trackingType === "WEIGHTED_BODYWEIGHT"
+                              ? `Set ${setIndex + 1} added weight`
+                              : `Set ${setIndex + 1} weight`
+                          }
                           value={set.weight ?? ""}
                           onChange={(event) =>
                             updateSet(
@@ -424,37 +467,26 @@ export function WorkoutBuilder({
                             )
                           }
                         />
+                        ) : null}
+                        {exercise.trackingType === "DURATION" ? (
                         <Input
                           type="number"
                           min="0"
-                          placeholder="Seconds"
-                          aria-label={`Set ${setIndex + 1} duration seconds`}
-                          value={set.durationSeconds ?? ""}
+                          step="0.25"
+                          placeholder="Minutes"
+                          aria-label={`Set ${setIndex + 1} duration minutes`}
+                          value={getDurationMinutesValue(
+                            set.durationSeconds
+                          )}
                           onChange={(event) =>
-                            updateSet(
+                            updateSetDurationMinutes(
                               selectedExercise.localId,
                               setIndex,
-                              "durationSeconds",
                               event.target.value
                             )
                           }
                         />
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.1"
-                          placeholder="Meters"
-                          aria-label={`Set ${setIndex + 1} distance meters`}
-                          value={set.distanceMeters ?? ""}
-                          onChange={(event) =>
-                            updateSet(
-                              selectedExercise.localId,
-                              setIndex,
-                              "distanceMeters",
-                              event.target.value
-                            )
-                          }
-                        />
+                        ) : null}
                         <Input
                           placeholder="Notes"
                           aria-label={`Set ${setIndex + 1} notes`}

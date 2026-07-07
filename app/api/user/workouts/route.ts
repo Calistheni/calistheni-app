@@ -30,6 +30,7 @@ export async function GET() {
       include: {
         exercises: {
           include: {
+            exercise: true,
             sets: true,
           },
         },

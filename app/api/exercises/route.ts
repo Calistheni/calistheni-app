@@ -57,6 +57,8 @@ export async function GET(request: Request) {
         muscle: true,
         thumbnailUrl: true,
         videoUrl: true,
+        trackingType: true,
+        bodyweightLoadFactor: true,
       },
     });
 
@@ -68,6 +70,8 @@ export async function GET(request: Request) {
         muscle: exercise.muscle,
         thumbnailUrl: exercise.thumbnailUrl,
         videoUrl: exercise.videoUrl,
+        trackingType: exercise.trackingType,
+        bodyweightLoadFactor: exercise.bodyweightLoadFactor,
       }))
     );
   } catch (error) {
