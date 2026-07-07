@@ -34,6 +34,7 @@ export type WorkoutSetInput = {
 export type WorkoutExerciseInput = {
   exerciseId: string;
   notes: string | null;
+  restSeconds: number | null;
   sets: WorkoutSetInput[];
 };
 
@@ -57,6 +58,7 @@ export type WorkoutDetail = {
   exercises: Array<{
     id: number;
     notes: string | null;
+    restSeconds: number | null;
     exercise: ExerciseListItem;
     sets: Array<{
       id: number;

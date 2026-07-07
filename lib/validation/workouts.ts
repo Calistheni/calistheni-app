@@ -83,6 +83,7 @@ export const workoutMutationSchema = z.object({
       z.object({
         exerciseId: z.string().min(1, "Exercise is required."),
         notes: nullableText(500),
+        restSeconds: nullableInteger(0, 3600),
         sets: z
           .array(
             z.object({

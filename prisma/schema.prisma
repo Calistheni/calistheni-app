@@ -223,6 +223,7 @@ model WorkoutExercise {
   exerciseId String
   order      Int
   notes      String?
+  restSeconds Int?
 
   workout  Workout      @relation(fields: [workoutId], references: [id], onDelete: Cascade)
   exercise Exercise     @relation(fields: [exerciseId], references: [id], onDelete: Restrict)

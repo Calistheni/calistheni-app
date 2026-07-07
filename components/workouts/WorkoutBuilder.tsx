@@ -15,6 +15,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  formatElapsedTime,
+  useWorkoutTimer,
+} from "@/components/workouts/hooks/useWorkoutTimer";
+import { useRestTimer } from "@/components/workouts/hooks/useRestTimer";
 import { toast } from "sonner";
 import { calculateWorkoutVolumeKg } from "@/lib/workout-volume";
 import type {
@@ -34,6 +39,9 @@ type WorkoutBuilderProps = {
 type LocalWorkoutExercise = WorkoutExerciseInput & {
   localId: string;
 };
+
+const DEFAULT_REST_SECONDS = 90;
+const REST_PRESETS = [30, 60, 90, 120];
 
 const TRACKING_TYPE_LABELS = {
   NOT_SELECTED: "Not selected",
@@ -70,6 +78,10 @@ function getTextValue(value: string) {
 
 function getDurationMinutesValue(durationSeconds: number | null) {
   return durationSeconds === null ? "" : durationSeconds / 60;
+}
+
+function formatRestOption(seconds: number) {
+  return `${seconds} sec`;
 }
 
 function isRepsFieldVisible(trackingType: ExerciseListItem["trackingType"]) {
@@ -155,6 +167,7 @@ function buildInitialExercises(
     localId: String(workoutExercise.id),
     exerciseId: workoutExercise.exercise.id,
     notes: workoutExercise.notes,
+    restSeconds: workoutExercise.restSeconds ?? DEFAULT_REST_SECONDS,
     sets: workoutExercise.sets.map((set) => ({
       reps: set.reps,
       weight: set.weight,
@@ -175,6 +188,10 @@ export function WorkoutBuilder({
 }: WorkoutBuilderProps) {
   const router = useRouter();
   const isEditing = Boolean(initialWorkout);
+  const workoutTimer = useWorkoutTimer(
+    `calistheni-workout-timer:${initialWorkout?.id ?? "new"}`
+  );
+  const restTimer = useRestTimer();
   const [title, setTitle] = useState(initialWorkout?.title ?? "");
   const [notes, setNotes] = useState(initialWorkout?.notes ?? "");
   const [visibility, setVisibility] = useState<"PRIVATE" | "PUBLIC">(
@@ -266,6 +283,7 @@ export function WorkoutBuilder({
         localId: crypto.randomUUID(),
         exerciseId,
         notes: null,
+        restSeconds: DEFAULT_REST_SECONDS,
         sets: [{ ...EMPTY_SET }],
       },
     ]);
@@ -303,6 +321,19 @@ export function WorkoutBuilder({
     );
   }
 
+  function updateExerciseRestSeconds(localId: string, restSeconds: number) {
+    setSelectedExercises((current) =>
+      current.map((item) =>
+        item.localId === localId
+          ? {
+              ...item,
+              restSeconds,
+            }
+          : item
+      )
+    );
+  }
+
   function updateSet(
     localId: string,
     setIndex: number,
@@ -331,6 +362,73 @@ export function WorkoutBuilder({
           : item
       )
     );
+  }
+
+  function updateSetCompleted(
+    localId: string,
+    setIndex: number,
+    completed: boolean,
+    exerciseName: string,
+    restSeconds: number | null
+  ) {
+    void restTimer.initializeAudio();
+    updateSet(localId, setIndex, "completed", completed);
+
+    if (completed) {
+      restTimer.startRestTimer({
+        exerciseLocalId: localId,
+        exerciseName,
+        restSeconds: restSeconds ?? DEFAULT_REST_SECONDS,
+      });
+    }
+  }
+
+  function startWorkout() {
+    void restTimer.initializeAudio();
+    workoutTimer.start();
+  }
+
+  function pauseWorkout() {
+    void restTimer.initializeAudio();
+    workoutTimer.pause();
+  }
+
+  function resumeWorkout() {
+    void restTimer.initializeAudio();
+    workoutTimer.resume();
+  }
+
+  function resetWorkoutTimer() {
+    void restTimer.initializeAudio();
+    workoutTimer.reset();
+  }
+
+  function addRestSeconds(seconds: number) {
+    void restTimer.initializeAudio();
+    restTimer.addSeconds(seconds);
+  }
+
+  function resetRestTimer() {
+    void restTimer.initializeAudio();
+    restTimer.resetRestTimer();
+  }
+
+  function skipRestTimer() {
+    void restTimer.initializeAudio();
+    restTimer.skipRestTimer();
+  }
+
+  function toggleRestSound() {
+    if (restTimer.isMuted) {
+      void restTimer.initializeAudio();
+    }
+
+    restTimer.toggleMuted();
+  }
+
+  async function testRestSound() {
+    await restTimer.initializeAudio();
+    await restTimer.testSound();
   }
 
   function updateSetDurationMinutes(
@@ -365,9 +463,10 @@ export function WorkoutBuilder({
       startedAt: new Date().toISOString(),
       completedAt: new Date().toISOString(),
       visibility,
-      exercises: selectedExercises.map(({ exerciseId, notes, sets }) => ({
+      exercises: selectedExercises.map(({ exerciseId, notes, restSeconds, sets }) => ({
         exerciseId,
         notes,
+        restSeconds,
         sets,
       })),
     };
@@ -417,6 +516,123 @@ export function WorkoutBuilder({
 	            </p>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="rounded-lg border bg-card p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">
+                    Workout timer
+                  </p>
+                  <p className="text-3xl font-bold tabular-nums">
+                    {workoutTimer.formattedElapsed}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {workoutTimer.status === "idle" ? (
+                    <Button type="button" onClick={startWorkout}>
+                      Start Workout
+                    </Button>
+                  ) : null}
+                  {workoutTimer.status === "running" ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={pauseWorkout}
+                    >
+                      Pause
+                    </Button>
+                  ) : null}
+                  {workoutTimer.status === "paused" ? (
+                    <Button type="button" onClick={resumeWorkout}>
+                      Resume
+                    </Button>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={resetWorkoutTimer}
+                  >
+                    Reset
+                  </Button>
+                  {restTimer.showTestSoundButton ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void testRestSound()}
+                    >
+                      Test Sound
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+            {restTimer.activeTimer ? (
+              <div className="sticky top-3 z-20 rounded-lg border bg-card p-4 shadow-lg">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">
+                      Rest timer
+                    </p>
+                    <p className="text-xl font-bold tabular-nums">
+                      {restTimer.activeTimer.exerciseName} -{" "}
+                      {formatElapsedTime(restTimer.remainingSeconds)}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => addRestSeconds(30)}
+                    >
+                      +30s
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => addRestSeconds(60)}
+                    >
+                      +1m
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={resetRestTimer}
+                    >
+                      Reset
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={skipRestTimer}
+                    >
+                      Skip
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={toggleRestSound}
+                    >
+                      {restTimer.isMuted ? "Unmute" : "Mute"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={toggleRestSound}
+                >
+                  Rest sounds: {restTimer.isMuted ? "Muted" : "On"}
+                </Button>
+              </div>
+            )}
             <div className="space-y-2">
               <label htmlFor="workout-title" className="text-sm font-medium">
                 Title
@@ -531,6 +747,74 @@ export function WorkoutBuilder({
                       Remove
                     </Button>
                   </div>
+                  <div className="grid gap-3 sm:grid-cols-[220px_160px]">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">
+                        Rest preset
+                      </label>
+                      <Select
+                        value={
+                          REST_PRESETS.includes(
+                            selectedExercise.restSeconds ??
+                              DEFAULT_REST_SECONDS
+                          )
+                            ? String(
+                                selectedExercise.restSeconds ??
+                                  DEFAULT_REST_SECONDS
+                              )
+                            : "custom"
+                        }
+                        onValueChange={(value) => {
+                          if (value !== "custom") {
+                            updateExerciseRestSeconds(
+                              selectedExercise.localId,
+                              Number(value)
+                            );
+                          }
+                        }}
+                      >
+                        <SelectTrigger
+                          aria-label={`${exercise.name} rest preset`}
+                          className="w-full"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {REST_PRESETS.map((restSeconds) => (
+                            <SelectItem
+                              key={restSeconds}
+                              value={String(restSeconds)}
+                            >
+                              {formatRestOption(restSeconds)}
+                            </SelectItem>
+                          ))}
+                          <SelectItem value="custom">Custom</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">
+                        Custom rest
+                      </label>
+                      <Input
+                        type="number"
+                        min="0"
+                        max="3600"
+                        step="5"
+                        aria-label={`${exercise.name} rest seconds`}
+                        value={
+                          selectedExercise.restSeconds ??
+                          DEFAULT_REST_SECONDS
+                        }
+                        onChange={(event) =>
+                          updateExerciseRestSeconds(
+                            selectedExercise.localId,
+                            Math.max(0, Number(event.target.value) || 0)
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid gap-3">
@@ -543,11 +827,12 @@ export function WorkoutBuilder({
 	                          <Checkbox
 	                            checked={set.completed}
 	                            onCheckedChange={(checked) =>
-	                              updateSet(
+	                              updateSetCompleted(
 	                                selectedExercise.localId,
 	                                setIndex,
-	                                "completed",
-	                                checked === true
+	                                checked === true,
+                                  exercise.name,
+                                  selectedExercise.restSeconds
 	                              )
 	                            }
 	                          />

@@ -66,6 +66,7 @@ export function mapWorkoutDetail(workout: {
   exercises: Array<{
     id: number;
     notes: string | null;
+    restSeconds: number | null;
     exercise: {
       id: string;
       slug: string;
@@ -119,6 +120,7 @@ export function mapWorkoutDetail(workout: {
     exercises: workout.exercises.map((workoutExercise) => ({
       id: workoutExercise.id,
       notes: workoutExercise.notes,
+      restSeconds: workoutExercise.restSeconds,
       exercise: mapExercise(workoutExercise.exercise),
       sets: workoutExercise.sets.map((set) => ({
         id: set.id,
@@ -219,6 +221,7 @@ function buildWorkoutData(payload: ValidWorkoutMutation) {
         exerciseId: exercise.exerciseId,
         order: exerciseIndex,
         notes: exercise.notes,
+        restSeconds: exercise.restSeconds,
         sets: {
           create: exercise.sets.map((set, setIndex) => ({
             order: setIndex,
