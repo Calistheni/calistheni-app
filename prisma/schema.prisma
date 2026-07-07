@@ -36,6 +36,7 @@ model User {
   email         String?   @unique
   emailVerified DateTime?
   image         String?
+  bodyweightKg  Float?
 
   accounts Account[]
   sessions Session[]

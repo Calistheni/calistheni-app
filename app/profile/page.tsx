@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
+import { BodyweightForm } from "@/components/profile/BodyweightForm";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -29,6 +30,7 @@ export default async function ProfilePage() {
     submittedParkCount,
     approvedEditCount,
     approvedPhotoCount,
+    profile,
   ] = await Promise.all([
     prisma.workout.count({
       where: {
@@ -62,6 +64,14 @@ export default async function ProfilePage() {
           submissionStatus: "APPROVED",
           deletedAt: null,
         },
+      },
+    }),
+    prisma.user.findUnique({
+      where: {
+        id: session.user.id,
+      },
+      select: {
+        bodyweightKg: true,
       },
     }),
   ]);
@@ -115,6 +125,20 @@ export default async function ProfilePage() {
           </Card>
         ))}
       </div>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <h2 className="text-2xl font-bold">Workout Settings</h2>
+          <p className="text-sm text-muted-foreground">
+            Bodyweight is used to calculate bodyweight exercise volume.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <BodyweightForm
+            initialBodyweightKg={profile?.bodyweightKg ?? null}
+          />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

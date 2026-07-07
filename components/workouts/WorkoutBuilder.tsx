@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { calculateWorkoutVolumeKg } from "@/lib/workout-volume";
 import type {
   ExerciseListItem,
   WorkoutDetail,
@@ -27,6 +28,7 @@ import type {
 type WorkoutBuilderProps = {
   exercises: ExerciseListItem[];
   initialWorkout?: WorkoutDetail;
+  userBodyweightKg: number | null;
 };
 
 type LocalWorkoutExercise = WorkoutExerciseInput & {
@@ -113,6 +115,17 @@ function isDistanceFieldVisible(
   );
 }
 
+function usesBodyweightVolume(trackingType: ExerciseListItem["trackingType"]) {
+  return (
+    trackingType === "BODYWEIGHT_REPS" ||
+    trackingType === "WEIGHTED_BODYWEIGHT"
+  );
+}
+
+function formatVolumeKg(volumeKg: number) {
+  return `${Math.round(volumeKg).toLocaleString()} kg`;
+}
+
 function getErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error && error.message) {
     return error.message;
@@ -158,6 +171,7 @@ function buildInitialExercises(
 export function WorkoutBuilder({
   exercises,
   initialWorkout,
+  userBodyweightKg,
 }: WorkoutBuilderProps) {
   const router = useRouter();
   const isEditing = Boolean(initialWorkout);
@@ -193,6 +207,53 @@ export function WorkoutBuilder({
       )
       .slice(0, 40);
   }, [exercises, muscleFilter, search]);
+  const selectedExercisesWithMetadata = useMemo(
+    () =>
+      selectedExercises
+        .map((selectedExercise) => {
+          const exercise = exercises.find(
+            (item) => item.id === selectedExercise.exerciseId
+          );
+
+          return exercise
+            ? {
+                selectedExercise,
+                exercise,
+              }
+            : null;
+        })
+        .filter(
+          (
+            item
+          ): item is {
+            selectedExercise: LocalWorkoutExercise;
+            exercise: ExerciseListItem;
+          } => item !== null
+        ),
+    [exercises, selectedExercises]
+  );
+  const liveVolumeKg = useMemo(
+    () =>
+      calculateWorkoutVolumeKg({
+        exercises: selectedExercisesWithMetadata.map(
+          ({ selectedExercise, exercise }) => ({
+            trackingType: exercise.trackingType,
+            bodyweightLoadFactor: exercise.bodyweightLoadFactor,
+            sets: selectedExercise.sets.map((set) => ({
+              reps: set.reps,
+              weightKg: set.weight,
+            })),
+          })
+        ),
+        userBodyweightKg,
+      }),
+    [selectedExercisesWithMetadata, userBodyweightKg]
+  );
+  const needsBodyweightForVolume =
+    userBodyweightKg === null &&
+    selectedExercisesWithMetadata.some(({ exercise }) =>
+      usesBodyweightVolume(exercise.trackingType)
+    );
 
   function addExercise(exerciseId: string) {
     if (selectedExercises.some((item) => item.exerciseId === exerciseId)) {
@@ -404,6 +465,22 @@ export function WorkoutBuilder({
 	                profile.
 	              </p>
 	            </div>
+              <div className="rounded-lg border bg-muted/30 p-4">
+                <p className="text-sm text-muted-foreground">
+                  Total workout volume
+                </p>
+                <p className="text-2xl font-bold">
+                  {liveVolumeKg === null
+                    ? "Volume unavailable"
+                    : formatVolumeKg(liveVolumeKg)}
+                </p>
+                {needsBodyweightForVolume ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Set your bodyweight in your profile to calculate
+                    bodyweight exercise volume.
+                  </p>
+                ) : null}
+              </div>
 	          </CardContent>
 	        </Card>
 

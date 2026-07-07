@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { ValidWorkoutMutation } from "@/lib/validation/workouts";
+import { calculateWorkoutVolumeKg } from "@/lib/workout-volume";
 import type {
   ExerciseListItem,
   ExerciseTrackingType,
@@ -8,6 +9,11 @@ import type {
 } from "@/types/workout";
 
 const workoutInclude = {
+  user: {
+    select: {
+      bodyweightKg: true,
+    },
+  },
   exercises: {
     orderBy: {
       order: "asc" as const,
@@ -45,83 +51,6 @@ function mapExercise(exercise: {
   };
 }
 
-function calculateSetVolume(
-  exercise: {
-    trackingType: ExerciseTrackingType;
-    bodyweightLoadFactor: number | null;
-  },
-  set: {
-    reps: number | null;
-    weight: number | null;
-    durationSeconds?: number | null;
-  },
-  userBodyweightKg: number | null
-) {
-  const reps = set.reps ?? 0;
-
-  if (reps === 0) {
-    return 0;
-  }
-
-  switch (exercise.trackingType) {
-    case "NOT_SELECTED":
-      return null;
-    case "BODYWEIGHT_REPS":
-      return userBodyweightKg === null
-        ? null
-        : userBodyweightKg * (exercise.bodyweightLoadFactor ?? 1) * reps;
-    case "WEIGHTED_BODYWEIGHT":
-      return userBodyweightKg === null
-        ? null
-        : (userBodyweightKg * (exercise.bodyweightLoadFactor ?? 1) +
-            (set.weight ?? 0)) *
-            reps;
-    case "EXTERNAL_WEIGHT":
-      return (set.weight ?? 0) * reps;
-    case "DURATION":
-    case "DISTANCE_DURATION":
-    case "STEPS_DISTANCE_DURATION":
-    case "FLOORS_DISTANCE_DURATION":
-    case "WEIGHT_DISTANCE_DURATION":
-      return 0;
-  }
-}
-
-function calculateWorkoutVolume(
-  exercises: Array<{
-    exercise: {
-      trackingType: ExerciseTrackingType;
-      bodyweightLoadFactor: number | null;
-    };
-    sets: Array<{
-      reps: number | null;
-      weight: number | null;
-      durationSeconds?: number | null;
-    }>;
-  }>,
-  userBodyweightKg: number | null = null
-) {
-  let totalVolume = 0;
-
-  for (const workoutExercise of exercises) {
-    for (const set of workoutExercise.sets) {
-      const setVolume = calculateSetVolume(
-        workoutExercise.exercise,
-        set,
-        userBodyweightKg
-      );
-
-      if (setVolume === null) {
-        return null;
-      }
-
-      totalVolume += setVolume;
-    }
-  }
-
-  return totalVolume;
-}
-
 export function mapWorkoutDetail(workout: {
   id: number;
   title: string | null;
@@ -131,6 +60,9 @@ export function mapWorkoutDetail(workout: {
   visibility: "PRIVATE" | "PUBLIC";
   createdAt: Date;
   updatedAt: Date;
+  user: {
+    bodyweightKg: number | null;
+  };
   exercises: Array<{
     id: number;
     notes: string | null;
@@ -161,7 +93,17 @@ export function mapWorkoutDetail(workout: {
     (count, exercise) => count + exercise.sets.length,
     0
   );
-  const totalVolume = calculateWorkoutVolume(workout.exercises);
+  const totalVolume = calculateWorkoutVolumeKg({
+    exercises: workout.exercises.map((workoutExercise) => ({
+      trackingType: workoutExercise.exercise.trackingType,
+      bodyweightLoadFactor: workoutExercise.exercise.bodyweightLoadFactor,
+      sets: workoutExercise.sets.map((set) => ({
+        reps: set.reps,
+        weightKg: set.weight,
+      })),
+    })),
+    userBodyweightKg: workout.user.bodyweightKg,
+  });
 
   return {
     id: workout.id,
@@ -203,6 +145,7 @@ export function mapWorkoutSummary(workout: {
     id: string;
     name: string | null;
     image: string | null;
+    bodyweightKg?: number | null;
   };
   exercises: Array<{
     exercise: {
@@ -220,7 +163,17 @@ export function mapWorkoutSummary(workout: {
     (count, exercise) => count + exercise.sets.length,
     0
   );
-  const totalVolume = calculateWorkoutVolume(workout.exercises);
+  const totalVolume = calculateWorkoutVolumeKg({
+    exercises: workout.exercises.map((workoutExercise) => ({
+      trackingType: workoutExercise.exercise.trackingType,
+      bodyweightLoadFactor: workoutExercise.exercise.bodyweightLoadFactor,
+      sets: workoutExercise.sets.map((set) => ({
+        reps: set.reps,
+        weightKg: set.weight,
+      })),
+    })),
+    userBodyweightKg: workout.user?.bodyweightKg ?? null,
+  });
 
   return {
     id: workout.id,
@@ -231,7 +184,13 @@ export function mapWorkoutSummary(workout: {
     setCount,
     totalVolume,
     visibility: workout.visibility,
-    user: workout.user,
+    user: workout.user
+      ? {
+          id: workout.user.id,
+          name: workout.user.name,
+          image: workout.user.image,
+        }
+      : undefined,
   };
 }
 

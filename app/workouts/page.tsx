@@ -30,14 +30,22 @@ export default async function WorkoutsPage() {
     orderBy: {
       startedAt: "desc",
     },
-      include: {
-        exercises: {
-          include: {
-            exercise: true,
-            sets: true,
-          },
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          image: true,
+          bodyweightKg: true,
         },
       },
+      exercises: {
+        include: {
+          exercise: true,
+          sets: true,
+        },
+      },
+    },
   });
 
   const summaries = workouts.map(mapWorkoutSummary);

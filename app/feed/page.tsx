@@ -54,6 +54,7 @@ export default async function FeedPage() {
               id: true,
               name: true,
               image: true,
+              bodyweightKg: true,
             },
           },
           exercises: {

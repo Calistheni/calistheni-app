@@ -28,6 +28,14 @@ export async function GET() {
         startedAt: "desc",
       },
       include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            image: true,
+            bodyweightKg: true,
+          },
+        },
         exercises: {
           include: {
             exercise: true,

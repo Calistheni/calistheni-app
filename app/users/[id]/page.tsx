@@ -51,6 +51,14 @@ export default async function UserProfilePage({
         },
         take: 20,
         include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              image: true,
+              bodyweightKg: true,
+            },
+          },
           exercises: {
             include: {
               exercise: true,

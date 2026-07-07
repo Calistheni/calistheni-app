@@ -42,23 +42,36 @@ export default async function NewWorkoutPage() {
     redirect("/login");
   }
 
-  const exercises = await prisma.exercise.findMany({
-    orderBy: [{ muscle: "asc" }, { name: "asc" }],
-    select: {
-      id: true,
-      slug: true,
-      name: true,
-      muscle: true,
-      thumbnailUrl: true,
-      videoUrl: true,
-      trackingType: true,
-      bodyweightLoadFactor: true,
-    },
-  });
+  const [exercises, user] = await Promise.all([
+    prisma.exercise.findMany({
+      orderBy: [{ muscle: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        muscle: true,
+        thumbnailUrl: true,
+        videoUrl: true,
+        trackingType: true,
+        bodyweightLoadFactor: true,
+      },
+    }),
+    prisma.user.findUnique({
+      where: {
+        id: session.user.id,
+      },
+      select: {
+        bodyweightKg: true,
+      },
+    }),
+  ]);
 
   return (
     <main className="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">
-      <WorkoutBuilder exercises={exercises.map(mapExercise)} />
+      <WorkoutBuilder
+        exercises={exercises.map(mapExercise)}
+        userBodyweightKg={user?.bodyweightKg ?? null}
+      />
     </main>
   );
 }

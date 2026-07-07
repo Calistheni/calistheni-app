@@ -55,7 +55,7 @@ export default async function EditWorkoutPage({
     notFound();
   }
 
-  const [workout, exercises] = await Promise.all([
+  const [workout, exercises, user] = await Promise.all([
     prisma.workout.findFirst({
       where: {
         id: workoutId,
@@ -76,6 +76,14 @@ export default async function EditWorkoutPage({
         bodyweightLoadFactor: true,
       },
     }),
+    prisma.user.findUnique({
+      where: {
+        id: session.user.id,
+      },
+      select: {
+        bodyweightKg: true,
+      },
+    }),
   ]);
 
   if (!workout) {
@@ -87,6 +95,7 @@ export default async function EditWorkoutPage({
       <WorkoutBuilder
         exercises={exercises.map(mapExercise)}
         initialWorkout={mapWorkoutDetail(workout)}
+        userBodyweightKg={user?.bodyweightKg ?? null}
       />
     </main>
   );
