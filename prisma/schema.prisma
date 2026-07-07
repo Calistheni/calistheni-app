@@ -19,10 +19,15 @@ enum WorkoutVisibility {
 }
 
 enum ExerciseTrackingType {
+  NOT_SELECTED
   BODYWEIGHT_REPS
   WEIGHTED_BODYWEIGHT
   EXTERNAL_WEIGHT
   DURATION
+  DISTANCE_DURATION
+  STEPS_DISTANCE_DURATION
+  FLOORS_DISTANCE_DURATION
+  WEIGHT_DISTANCE_DURATION
 }
 
 model User {
@@ -179,7 +184,7 @@ model Exercise {
   muscle               String
   thumbnailUrl         String?
   videoUrl             String?
-  trackingType         ExerciseTrackingType @default(EXTERNAL_WEIGHT)
+  trackingType         ExerciseTrackingType @default(NOT_SELECTED)
   bodyweightLoadFactor Float?
 
   workoutExercises WorkoutExercise[]
@@ -237,6 +242,8 @@ model WorkoutSet {
   weight            Float?
   durationSeconds   Int?
   distanceMeters    Float?
+  steps             Int?
+  floors            Int?
   notes             String?
   completed         Boolean @default(false)
 

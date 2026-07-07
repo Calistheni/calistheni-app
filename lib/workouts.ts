@@ -64,6 +64,8 @@ function calculateSetVolume(
   }
 
   switch (exercise.trackingType) {
+    case "NOT_SELECTED":
+      return null;
     case "BODYWEIGHT_REPS":
       return userBodyweightKg === null
         ? null
@@ -71,10 +73,16 @@ function calculateSetVolume(
     case "WEIGHTED_BODYWEIGHT":
       return userBodyweightKg === null
         ? null
-        : (userBodyweightKg + (set.weight ?? 0)) * reps;
+        : (userBodyweightKg * (exercise.bodyweightLoadFactor ?? 1) +
+            (set.weight ?? 0)) *
+            reps;
     case "EXTERNAL_WEIGHT":
       return (set.weight ?? 0) * reps;
     case "DURATION":
+    case "DISTANCE_DURATION":
+    case "STEPS_DISTANCE_DURATION":
+    case "FLOORS_DISTANCE_DURATION":
+    case "WEIGHT_DISTANCE_DURATION":
       return 0;
   }
 }
@@ -142,6 +150,8 @@ export function mapWorkoutDetail(workout: {
       weight: number | null;
       durationSeconds: number | null;
       distanceMeters: number | null;
+      steps: number | null;
+      floors: number | null;
       notes: string | null;
       completed: boolean;
     }>;
@@ -174,6 +184,8 @@ export function mapWorkoutDetail(workout: {
         weight: set.weight,
         durationSeconds: set.durationSeconds,
         distanceMeters: set.distanceMeters,
+        steps: set.steps,
+        floors: set.floors,
         notes: set.notes,
         completed: set.completed,
       })),
@@ -255,6 +267,8 @@ function buildWorkoutData(payload: ValidWorkoutMutation) {
             weight: set.weight,
             durationSeconds: set.durationSeconds,
             distanceMeters: set.distanceMeters,
+            steps: set.steps,
+            floors: set.floors,
             notes: set.notes,
             completed: set.completed,
           })),

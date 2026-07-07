@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -36,18 +37,35 @@ type ExerciseClassificationTableProps = {
 };
 
 const TRACKING_TYPES: ExerciseTrackingType[] = [
+  "NOT_SELECTED",
   "BODYWEIGHT_REPS",
   "WEIGHTED_BODYWEIGHT",
   "EXTERNAL_WEIGHT",
   "DURATION",
+  "DISTANCE_DURATION",
+  "STEPS_DISTANCE_DURATION",
+  "FLOORS_DISTANCE_DURATION",
+  "WEIGHT_DISTANCE_DURATION",
 ];
 
 const TRACKING_TYPE_LABELS: Record<ExerciseTrackingType, string> = {
+  NOT_SELECTED: "Not selected",
   BODYWEIGHT_REPS: "Bodyweight reps",
   WEIGHTED_BODYWEIGHT: "Weighted bodyweight",
   EXTERNAL_WEIGHT: "External weight",
   DURATION: "Duration",
+  DISTANCE_DURATION: "Distance + time",
+  STEPS_DISTANCE_DURATION: "Steps + distance + time",
+  FLOORS_DISTANCE_DURATION: "Floors + distance + time",
+  WEIGHT_DISTANCE_DURATION: "Weight + distance + time",
 };
+
+function usesBodyweightLoadFactor(trackingType: ExerciseTrackingType) {
+  return (
+    trackingType === "BODYWEIGHT_REPS" ||
+    trackingType === "WEIGHTED_BODYWEIGHT"
+  );
+}
 
 async function getApiErrorMessage(response: Response) {
   try {
@@ -88,7 +106,7 @@ export function ExerciseClassificationTable({
         body: JSON.stringify({
           trackingType: exercise.trackingType,
           bodyweightLoadFactor:
-            exercise.trackingType === "BODYWEIGHT_REPS"
+            usesBodyweightLoadFactor(exercise.trackingType)
               ? exercise.bodyweightLoadFactor
               : null,
         }),
@@ -143,9 +161,12 @@ export function ExerciseClassificationTable({
                   <div className="flex items-center gap-3">
                     <div className="h-14 w-14 overflow-hidden rounded-md border bg-muted shrink-0">
                       {exercise.thumbnailUrl ? (
-                        <img
+                        <Image
                           src={exercise.thumbnailUrl}
                           alt={exercise.name}
+                          width={96}
+                          height={96}
+                          unoptimized
                           className="h-full w-full object-cover"
                         />
                       ) : (
@@ -173,7 +194,8 @@ export function ExerciseClassificationTable({
                       updateExercise(exercise.id, {
                         trackingType: value as ExerciseTrackingType,
                         bodyweightLoadFactor:
-                          value === "BODYWEIGHT_REPS"
+                          value === "BODYWEIGHT_REPS" ||
+                          value === "WEIGHTED_BODYWEIGHT"
                             ? exercise.bodyweightLoadFactor ?? 1
                             : null,
                       })
@@ -195,7 +217,7 @@ export function ExerciseClassificationTable({
                   </Select>
                 </TableCell>
                 <TableCell>
-                  {exercise.trackingType === "BODYWEIGHT_REPS" ? (
+                  {usesBodyweightLoadFactor(exercise.trackingType) ? (
                     <Input
                       type="number"
                       min="0.01"

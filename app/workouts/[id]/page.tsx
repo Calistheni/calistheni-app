@@ -31,6 +31,31 @@ function formatDuration(durationSeconds: number | null) {
   return `${durationSeconds} sec`;
 }
 
+function shouldShowWeight(trackingType: string, weight: number | null) {
+  return (
+    trackingType === "NOT_SELECTED" ||
+    trackingType === "WEIGHTED_BODYWEIGHT" ||
+    trackingType === "EXTERNAL_WEIGHT" ||
+    trackingType === "WEIGHT_DISTANCE_DURATION" ||
+    weight !== null
+  );
+}
+
+function shouldShowDuration(
+  trackingType: string,
+  durationSeconds: number | null
+) {
+  return (
+    trackingType === "NOT_SELECTED" ||
+    trackingType === "DURATION" ||
+    trackingType === "DISTANCE_DURATION" ||
+    trackingType === "STEPS_DISTANCE_DURATION" ||
+    trackingType === "FLOORS_DISTANCE_DURATION" ||
+    trackingType === "WEIGHT_DISTANCE_DURATION" ||
+    durationSeconds !== null
+  );
+}
+
 export default async function WorkoutDetailPage({
   params,
 }: {
@@ -165,15 +190,21 @@ export default async function WorkoutDetailPage({
                     <span>Set {index + 1}</span>
                     {set.completed ? <Badge>Done</Badge> : null}
                   </div>
-                  {workoutExercise.exercise.trackingType !== "DURATION" ||
-                  set.reps !== null ? (
-                    <div>Reps: {set.reps ?? "-"}</div>
-                  ) : null}
                   {workoutExercise.exercise.trackingType ===
+                    "NOT_SELECTED" ||
+                  workoutExercise.exercise.trackingType ===
+                    "BODYWEIGHT_REPS" ||
+                  workoutExercise.exercise.trackingType ===
                     "WEIGHTED_BODYWEIGHT" ||
                   workoutExercise.exercise.trackingType ===
                     "EXTERNAL_WEIGHT" ||
-                  set.weight !== null ? (
+                  set.reps !== null ? (
+                    <div>Reps: {set.reps ?? "-"}</div>
+                  ) : null}
+                  {shouldShowWeight(
+                    workoutExercise.exercise.trackingType,
+                    set.weight
+                  ) ? (
                     <div>
                       {workoutExercise.exercise.trackingType ===
                       "WEIGHTED_BODYWEIGHT"
@@ -182,12 +213,18 @@ export default async function WorkoutDetailPage({
                       : {set.weight ?? "-"}
                     </div>
                   ) : null}
-                  {workoutExercise.exercise.trackingType === "DURATION" ||
-                  set.durationSeconds !== null ? (
+                  {shouldShowDuration(
+                    workoutExercise.exercise.trackingType,
+                    set.durationSeconds
+                  ) ? (
                     <div>Duration: {formatDuration(set.durationSeconds)}</div>
                   ) : null}
                   {set.distanceMeters !== null ? (
                     <div>Meters: {set.distanceMeters}</div>
+                  ) : null}
+                  {set.steps !== null ? <div>Steps: {set.steps}</div> : null}
+                  {set.floors !== null ? (
+                    <div>Floors: {set.floors}</div>
                   ) : null}
                   {set.notes ? (
                     <div className="text-muted-foreground sm:col-span-5">

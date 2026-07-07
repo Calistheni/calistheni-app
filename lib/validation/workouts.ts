@@ -90,6 +90,8 @@ export const workoutMutationSchema = z.object({
               weight: nullableNumber(0, 100000),
               durationSeconds: nullableInteger(0, 86400),
               distanceMeters: nullableNumber(0, 1000000),
+              steps: nullableInteger(0, 1000000),
+              floors: nullableInteger(0, 1000000),
               notes: nullableText(500),
               completed: z.boolean().default(false),
             })

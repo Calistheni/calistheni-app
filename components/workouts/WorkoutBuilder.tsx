@@ -34,10 +34,15 @@ type LocalWorkoutExercise = WorkoutExerciseInput & {
 };
 
 const TRACKING_TYPE_LABELS = {
+  NOT_SELECTED: "Not selected",
   BODYWEIGHT_REPS: "Bodyweight reps",
   WEIGHTED_BODYWEIGHT: "Weighted bodyweight",
   EXTERNAL_WEIGHT: "External weight",
   DURATION: "Duration",
+  DISTANCE_DURATION: "Distance + time",
+  STEPS_DISTANCE_DURATION: "Steps + distance + time",
+  FLOORS_DISTANCE_DURATION: "Floors + distance + time",
+  WEIGHT_DISTANCE_DURATION: "Weight + distance + time",
 } as const;
 
 const EMPTY_SET: WorkoutSetInput = {
@@ -45,6 +50,8 @@ const EMPTY_SET: WorkoutSetInput = {
   weight: null,
   durationSeconds: null,
   distanceMeters: null,
+  steps: null,
+  floors: null,
   notes: null,
   completed: false,
 };
@@ -61,6 +68,49 @@ function getTextValue(value: string) {
 
 function getDurationMinutesValue(durationSeconds: number | null) {
   return durationSeconds === null ? "" : durationSeconds / 60;
+}
+
+function isRepsFieldVisible(trackingType: ExerciseListItem["trackingType"]) {
+  return (
+    trackingType === "NOT_SELECTED" ||
+    trackingType === "BODYWEIGHT_REPS" ||
+    trackingType === "WEIGHTED_BODYWEIGHT" ||
+    trackingType === "EXTERNAL_WEIGHT"
+  );
+}
+
+function isWeightFieldVisible(trackingType: ExerciseListItem["trackingType"]) {
+  return (
+    trackingType === "NOT_SELECTED" ||
+    trackingType === "WEIGHTED_BODYWEIGHT" ||
+    trackingType === "EXTERNAL_WEIGHT" ||
+    trackingType === "WEIGHT_DISTANCE_DURATION"
+  );
+}
+
+function isDurationFieldVisible(
+  trackingType: ExerciseListItem["trackingType"]
+) {
+  return (
+    trackingType === "NOT_SELECTED" ||
+    trackingType === "DURATION" ||
+    trackingType === "DISTANCE_DURATION" ||
+    trackingType === "STEPS_DISTANCE_DURATION" ||
+    trackingType === "FLOORS_DISTANCE_DURATION" ||
+    trackingType === "WEIGHT_DISTANCE_DURATION"
+  );
+}
+
+function isDistanceFieldVisible(
+  trackingType: ExerciseListItem["trackingType"]
+) {
+  return (
+    trackingType === "NOT_SELECTED" ||
+    trackingType === "DISTANCE_DURATION" ||
+    trackingType === "STEPS_DISTANCE_DURATION" ||
+    trackingType === "FLOORS_DISTANCE_DURATION" ||
+    trackingType === "WEIGHT_DISTANCE_DURATION"
+  );
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -97,6 +147,8 @@ function buildInitialExercises(
       weight: set.weight,
       durationSeconds: set.durationSeconds,
       distanceMeters: set.distanceMeters,
+      steps: set.steps,
+      floors: set.floors,
       notes: set.notes,
       completed: set.completed,
     })),
@@ -424,7 +476,7 @@ export function WorkoutBuilder({
 	                          />
 	                          Done
 	                        </label>
-                        {exercise.trackingType !== "DURATION" ? (
+                        {isRepsFieldVisible(exercise.trackingType) ? (
 	                        <Input
 	                          type="number"
                           min="0"
@@ -441,8 +493,7 @@ export function WorkoutBuilder({
                           }
                         />
                         ) : null}
-                        {exercise.trackingType === "WEIGHTED_BODYWEIGHT" ||
-                        exercise.trackingType === "EXTERNAL_WEIGHT" ? (
+                        {isWeightFieldVisible(exercise.trackingType) ? (
                         <Input
                           type="number"
                           min="0"
@@ -468,7 +519,7 @@ export function WorkoutBuilder({
                           }
                         />
                         ) : null}
-                        {exercise.trackingType === "DURATION" ? (
+                        {isDurationFieldVisible(exercise.trackingType) ? (
                         <Input
                           type="number"
                           min="0"
@@ -486,6 +537,62 @@ export function WorkoutBuilder({
                             )
                           }
                         />
+                        ) : null}
+                        {isDistanceFieldVisible(exercise.trackingType) ? (
+                          <Input
+                            type="number"
+                            min="0"
+                            step="1"
+                            placeholder="Meters"
+                            aria-label={`Set ${setIndex + 1} distance meters`}
+                            value={set.distanceMeters ?? ""}
+                            onChange={(event) =>
+                              updateSet(
+                                selectedExercise.localId,
+                                setIndex,
+                                "distanceMeters",
+                                event.target.value
+                              )
+                            }
+                          />
+                        ) : null}
+                        {exercise.trackingType ===
+                        "STEPS_DISTANCE_DURATION" ? (
+                          <Input
+                            type="number"
+                            min="0"
+                            step="1"
+                            placeholder="Steps"
+                            aria-label={`Set ${setIndex + 1} steps`}
+                            value={set.steps ?? ""}
+                            onChange={(event) =>
+                              updateSet(
+                                selectedExercise.localId,
+                                setIndex,
+                                "steps",
+                                event.target.value
+                              )
+                            }
+                          />
+                        ) : null}
+                        {exercise.trackingType ===
+                        "FLOORS_DISTANCE_DURATION" ? (
+                          <Input
+                            type="number"
+                            min="0"
+                            step="1"
+                            placeholder="Floors"
+                            aria-label={`Set ${setIndex + 1} floors`}
+                            value={set.floors ?? ""}
+                            onChange={(event) =>
+                              updateSet(
+                                selectedExercise.localId,
+                                setIndex,
+                                "floors",
+                                event.target.value
+                              )
+                            }
+                          />
                         ) : null}
                         <Input
                           placeholder="Notes"

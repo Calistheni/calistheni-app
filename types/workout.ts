@@ -1,8 +1,13 @@
 export type ExerciseTrackingType =
+  | "NOT_SELECTED"
   | "BODYWEIGHT_REPS"
   | "WEIGHTED_BODYWEIGHT"
   | "EXTERNAL_WEIGHT"
-  | "DURATION";
+  | "DURATION"
+  | "DISTANCE_DURATION"
+  | "STEPS_DISTANCE_DURATION"
+  | "FLOORS_DISTANCE_DURATION"
+  | "WEIGHT_DISTANCE_DURATION";
 
 export type ExerciseListItem = {
   id: string;
@@ -20,6 +25,8 @@ export type WorkoutSetInput = {
   weight: number | null;
   durationSeconds: number | null;
   distanceMeters: number | null;
+  steps: number | null;
+  floors: number | null;
   notes: string | null;
   completed: boolean;
 };
@@ -57,6 +64,8 @@ export type WorkoutDetail = {
       weight: number | null;
       durationSeconds: number | null;
       distanceMeters: number | null;
+      steps: number | null;
+      floors: number | null;
       notes: string | null;
       completed: boolean;
     }>;

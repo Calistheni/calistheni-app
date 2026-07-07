@@ -1,0 +1,8 @@
+ALTER TYPE "ExerciseTrackingType" ADD VALUE IF NOT EXISTS 'NOT_SELECTED';
+
+ALTER TABLE "Exercise"
+ALTER COLUMN "trackingType" SET DEFAULT 'NOT_SELECTED';
+
+UPDATE "Exercise"
+SET "trackingType" = 'NOT_SELECTED'
+WHERE "trackingType" = 'EXTERNAL_WEIGHT';

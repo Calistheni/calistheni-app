@@ -37,17 +37,27 @@ type AdminExercisesPageProps = {
 };
 
 const TRACKING_TYPES: ExerciseTrackingType[] = [
+  "NOT_SELECTED",
   "BODYWEIGHT_REPS",
   "WEIGHTED_BODYWEIGHT",
   "EXTERNAL_WEIGHT",
   "DURATION",
+  "DISTANCE_DURATION",
+  "STEPS_DISTANCE_DURATION",
+  "FLOORS_DISTANCE_DURATION",
+  "WEIGHT_DISTANCE_DURATION",
 ];
 
 const TRACKING_TYPE_LABELS: Record<ExerciseTrackingType, string> = {
+  NOT_SELECTED: "Not selected",
   BODYWEIGHT_REPS: "Bodyweight reps",
   WEIGHTED_BODYWEIGHT: "Weighted bodyweight",
   EXTERNAL_WEIGHT: "External weight",
   DURATION: "Duration",
+  DISTANCE_DURATION: "Distance + time",
+  STEPS_DISTANCE_DURATION: "Steps + distance + time",
+  FLOORS_DISTANCE_DURATION: "Floors + distance + time",
+  WEIGHT_DISTANCE_DURATION: "Weight + distance + time",
 };
 
 function isTrackingType(value: string): value is ExerciseTrackingType {
@@ -91,7 +101,7 @@ export default async function AdminExercisesPage({
       : {}),
     ...(defaultOnly
       ? {
-          trackingType: "EXTERNAL_WEIGHT",
+          trackingType: "NOT_SELECTED",
         }
       : trackingType !== null
       ? {
@@ -172,7 +182,7 @@ export default async function AdminExercisesPage({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="0">Include all</SelectItem>
-                  <SelectItem value="1">Default external only</SelectItem>
+                  <SelectItem value="1">Not selected only</SelectItem>
                 </SelectContent>
               </Select>
             </div>

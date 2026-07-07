@@ -16,14 +16,29 @@ type ExerciseClassificationPayload = {
 };
 
 const TRACKING_TYPES: ExerciseTrackingType[] = [
+  "NOT_SELECTED",
   "BODYWEIGHT_REPS",
   "WEIGHTED_BODYWEIGHT",
   "EXTERNAL_WEIGHT",
   "DURATION",
+  "DISTANCE_DURATION",
+  "STEPS_DISTANCE_DURATION",
+  "FLOORS_DISTANCE_DURATION",
+  "WEIGHT_DISTANCE_DURATION",
 ];
 
 function isTrackingType(value: unknown): value is ExerciseTrackingType {
-  return typeof value === "string" && TRACKING_TYPES.includes(value as ExerciseTrackingType);
+  return (
+    typeof value === "string" &&
+    TRACKING_TYPES.includes(value as ExerciseTrackingType)
+  );
+}
+
+function usesBodyweightLoadFactor(trackingType: ExerciseTrackingType) {
+  return (
+    trackingType === "BODYWEIGHT_REPS" ||
+    trackingType === "WEIGHTED_BODYWEIGHT"
+  );
 }
 
 function parseBodyweightLoadFactor(value: unknown) {
@@ -99,7 +114,7 @@ export async function PATCH(
       data: {
         trackingType: body.trackingType,
         bodyweightLoadFactor:
-          body.trackingType === "BODYWEIGHT_REPS"
+          usesBodyweightLoadFactor(body.trackingType)
             ? bodyweightLoadFactor ?? 1
             : null,
       },
