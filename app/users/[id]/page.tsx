@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { auth } from "@/auth";
+import { BackButton } from "@/components/navigation/BackButton";
 import { FollowButton } from "@/components/social/FollowButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -96,6 +97,7 @@ export default async function UserProfilePage({
 
   return (
     <main className="mx-auto w-full max-w-4xl p-4 sm:p-6 lg:p-8">
+      <BackButton fallbackHref="/feed" />
       <Card className="mb-6">
         <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
@@ -120,6 +122,12 @@ export default async function UserProfilePage({
               <p className="text-sm text-muted-foreground">
                 {followerCount} followers · {followingCount} following
               </p>
+              {followerCount === 0 ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  No followers yet. Their next public workout can still be the
+                  first spark.
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -165,8 +173,14 @@ export default async function UserProfilePage({
 
         {summaries.length === 0 ? (
           <Card>
-            <CardContent className="p-6 text-sm text-muted-foreground">
-              No public workouts yet.
+            <CardContent className="space-y-2 p-6 text-sm text-muted-foreground">
+              <p className="font-medium text-foreground">
+                No public workouts yet.
+              </p>
+              <p>
+                When this athlete shares a completed public workout, it will
+                appear here.
+              </p>
             </CardContent>
           </Card>
         ) : (

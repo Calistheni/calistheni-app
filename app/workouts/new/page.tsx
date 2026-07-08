@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
+import { BackButton } from "@/components/navigation/BackButton";
 import { WorkoutBuilder } from "@/components/workouts/WorkoutBuilder";
 import { prisma } from "@/lib/prisma";
 import type { ExerciseListItem, ExerciseTrackingType } from "@/types/workout";
@@ -68,6 +69,7 @@ export default async function NewWorkoutPage() {
 
   return (
     <main className="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">
+      <BackButton fallbackHref="/workouts" />
       <WorkoutBuilder
         exercises={exercises.map(mapExercise)}
         userBodyweightKg={user?.bodyweightKg ?? null}

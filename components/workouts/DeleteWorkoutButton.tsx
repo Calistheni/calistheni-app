@@ -24,9 +24,9 @@ async function getErrorMessage(response: Response) {
   try {
     const payload = (await response.json()) as { error?: string };
 
-    return payload.error || "Unable to delete workout.";
+    return payload.error || "We couldn't delete this workout. Please try again.";
   } catch {
-    return "Unable to delete workout.";
+    return "We couldn't delete this workout. Please try again.";
   }
 }
 
@@ -51,7 +51,9 @@ export function DeleteWorkoutButton({ workoutId }: DeleteWorkoutButtonProps) {
       router.refresh();
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Unable to delete workout."
+        error instanceof Error
+          ? error.message
+          : "We couldn't delete this workout. Please try again."
       );
     } finally {
       setIsDeleting(false);

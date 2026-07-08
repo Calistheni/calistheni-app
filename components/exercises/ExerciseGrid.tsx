@@ -12,8 +12,11 @@ export function ExerciseGrid({ exercises }: ExerciseGridProps) {
   if (exercises.length === 0) {
     return (
       <Card>
-        <CardContent className="p-6 text-sm text-muted-foreground">
-          No exercises matched your filters.
+        <CardContent className="space-y-2 p-6 text-sm text-muted-foreground">
+          <p className="font-medium text-foreground">
+            No exercises matched your filters.
+          </p>
+          <p>Try a broader search or select another muscle group.</p>
         </CardContent>
       </Card>
     );

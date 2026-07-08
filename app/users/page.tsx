@@ -130,8 +130,14 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
 
       {!query ? (
         <Card>
-          <CardContent className="p-6 text-sm text-muted-foreground">
-            Type at least two characters to find other Calistheni athletes.
+          <CardContent className="space-y-2 p-6 text-sm text-muted-foreground">
+            <p className="font-medium text-foreground">
+              Find athletes to follow
+            </p>
+            <p>
+              Type at least two characters to search profiles and start filling
+              your workout feed.
+            </p>
           </CardContent>
         </Card>
       ) : !canSearch ? (
@@ -142,8 +148,11 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
         </Card>
       ) : users.length === 0 ? (
         <Card>
-          <CardContent className="p-6 text-sm text-muted-foreground">
-            No users found for {query}.
+          <CardContent className="space-y-2 p-6 text-sm text-muted-foreground">
+            <p className="font-medium text-foreground">
+              No users found for {query}.
+            </p>
+            <p>Try a different spelling or a shorter search.</p>
           </CardContent>
         </Card>
       ) : (

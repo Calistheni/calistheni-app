@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
+import { BackButton } from "@/components/navigation/BackButton";
 import { ParkSubmissionForm } from "@/components/user/ParkSubmissionForm";
 import { parsePositiveInteger } from "@/lib/api-response";
 import { publicParkWhere } from "@/lib/parks";
@@ -55,6 +56,7 @@ export default async function SuggestParkEditPage({
 
   return (
     <main className="mx-auto w-full max-w-4xl p-4 sm:p-6 lg:p-8">
+      <BackButton fallbackHref="/" />
       <ParkSubmissionForm
         equipment={equipment}
         mode="suggest-edit"

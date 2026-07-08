@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
+import { BackButton } from "@/components/navigation/BackButton";
 import { ParkSubmissionForm } from "@/components/user/ParkSubmissionForm";
 import { prisma } from "@/lib/prisma";
 
@@ -28,6 +29,7 @@ export default async function SubmitParkPage() {
 
   return (
     <main className="mx-auto w-full max-w-4xl p-4 sm:p-6 lg:p-8">
+      <BackButton fallbackHref="/" />
       <ParkSubmissionForm equipment={equipment} mode="create" />
     </main>
   );

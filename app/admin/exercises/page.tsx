@@ -5,6 +5,7 @@ import {
   ExerciseClassificationTable,
   type AdminExerciseClassification,
 } from "@/components/admin/exercises/ExerciseClassificationTable";
+import { BackButton } from "@/components/navigation/BackButton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -124,11 +125,9 @@ export default async function AdminExercisesPage({
 
   return (
     <main className="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">
+      <BackButton fallbackHref="/admin" />
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <Button asChild variant="outline" size="sm" className="mb-3">
-            <Link href="/admin">Back to Admin</Link>
-          </Button>
           <h1 className="text-3xl font-bold">Exercise Classification</h1>
           <p className="text-sm text-muted-foreground">
             Assign one tracking type to each exercise so workout logging shows

@@ -71,9 +71,12 @@ async function getApiErrorMessage(response: Response) {
   try {
     const payload = (await response.json()) as { error?: string };
 
-    return payload.error || "Unable to update exercise.";
+    return (
+      payload.error ||
+      "We couldn't save this exercise classification. Please try again."
+    );
   } catch {
-    return "Unable to update exercise.";
+    return "We couldn't save this exercise classification. Please try again.";
   }
 }
 
@@ -124,7 +127,7 @@ export function ExerciseClassificationTable({
       toast.error(
         error instanceof Error
           ? error.message
-          : "Unable to update exercise classification."
+          : "We couldn't save this exercise classification. Please try again."
       );
     } finally {
       setSavingId(null);
@@ -134,8 +137,11 @@ export function ExerciseClassificationTable({
   if (items.length === 0) {
     return (
       <Card>
-        <CardContent className="p-6 text-sm text-muted-foreground">
-          No exercises match these filters.
+        <CardContent className="space-y-2 p-6 text-sm text-muted-foreground">
+          <p className="font-medium text-foreground">
+            No exercises match these filters.
+          </p>
+          <p>Try clearing the search or choosing a different tracking type.</p>
         </CardContent>
       </Card>
     );

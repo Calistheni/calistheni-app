@@ -67,9 +67,9 @@ export default async function WorkoutsPage() {
       {summaries.length === 0 ? (
         <Card>
           <CardContent className="space-y-3 p-6">
+            <p className="text-sm font-medium">Create your first workout</p>
             <p className="text-sm text-muted-foreground">
-              No workouts logged yet. Start with a simple session and build the
-              habit from there.
+              Start with a simple session and build the habit from there.
             </p>
             <Button asChild>
               <Link href="/workouts/new">Log your first workout</Link>

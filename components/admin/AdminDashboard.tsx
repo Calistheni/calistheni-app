@@ -215,7 +215,7 @@ async function parseApiError(response: Response) {
   const unauthorized = response.status === 401;
   const message = unauthorized
     ? "Your admin session expired. Please sign in again."
-    : payload?.error || "Request failed.";
+    : payload?.error || "Something went wrong. Please try again in a moment.";
 
   return {
     message,
@@ -353,8 +353,8 @@ export default function AdminDashboard() {
         await saveAdminParks(freshParks, lastUpdated);
       } catch (error) {
         console.error(error);
-        setInitialLoadError("Unable to load parks right now.");
-        toast.error("Unable to load parks right now.");
+        setInitialLoadError("We couldn't load parks right now.");
+        toast.error("We couldn't load parks right now. Please try again.");
       } finally {
         setIsInitialLoading(false);
         setIsRetryingInitialLoad(false);
@@ -387,7 +387,7 @@ export default function AdminDashboard() {
         setEquipment(items);
       } catch (error) {
         console.error(error);
-        toast.error("Unable to load equipment options.");
+        toast.error("We couldn't load equipment options. Please try again.");
       } finally {
         setIsEquipmentLoading(false);
       }
@@ -419,7 +419,7 @@ export default function AdminDashboard() {
         setPendingSubmissions(payload.submissions);
       } catch (error) {
         console.error(error);
-        toast.error("Unable to load pending submissions.");
+        toast.error("We couldn't load pending submissions. Please try again.");
       } finally {
         setIsSubmissionsLoading(false);
       }
@@ -629,7 +629,7 @@ export default function AdminDashboard() {
       void persistParks(nextParks).catch((error) => {
         console.error(error);
       });
-      toast.success("Park created successfully");
+      toast.success("Park created successfully.");
     } catch (error) {
       toast.error(getErrorMessage(error, "Unable to create this park."));
     } finally {
@@ -677,7 +677,7 @@ export default function AdminDashboard() {
       void persistParks(nextParks).catch((error) => {
         console.error(error);
       });
-      toast.success("Park updated successfully");
+      toast.success("Park updated successfully.");
     } catch (error) {
       toast.error(getErrorMessage(error, "Unable to update this park."));
     } finally {
@@ -726,7 +726,7 @@ export default function AdminDashboard() {
       void persistParks(nextParks).catch((error) => {
         console.error(error);
       });
-      toast.success("Park deleted successfully");
+      toast.success("Park deleted successfully.");
     } catch (error) {
       toast.error(getErrorMessage(error, "Unable to delete this park."));
     } finally {

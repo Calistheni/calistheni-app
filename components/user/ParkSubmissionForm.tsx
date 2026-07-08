@@ -74,12 +74,13 @@ async function parseApiError(response: Response) {
     const payload = (await response.json()) as ApiErrorPayload;
 
     return {
-      message: payload.error || "Request failed.",
+      message:
+        payload.error || "Something went wrong. Please try again in a moment.",
       errors: getParkFormErrors(payload.fieldErrors),
     };
   } catch {
     return {
-      message: "Request failed.",
+      message: "Something went wrong. Please try again in a moment.",
       errors: {},
     };
   }

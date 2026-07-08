@@ -14,9 +14,9 @@ async function getErrorMessage(response: Response) {
   try {
     const payload = (await response.json()) as { error?: string };
 
-    return payload.error || "Unable to update follow status.";
+    return payload.error || "We couldn't update that follow. Please try again.";
   } catch {
-    return "Unable to update follow status.";
+    return "We couldn't update that follow. Please try again.";
   }
 }
 
@@ -48,7 +48,7 @@ export function FollowButton({
       toast.error(
         error instanceof Error
           ? error.message
-          : "Unable to update follow status."
+          : "We couldn't update that follow. Please try again."
       );
     } finally {
       setIsPending(false);

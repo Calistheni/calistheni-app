@@ -150,9 +150,9 @@ async function getApiErrorMessage(response: Response) {
   try {
     const payload = (await response.json()) as { error?: string };
 
-    return payload.error || "Unable to save workout.";
+    return payload.error || "We couldn't save your workout. Please try again.";
   } catch {
-    return "Unable to save workout.";
+    return "We couldn't save your workout. Please try again.";
   }
 }
 
@@ -496,7 +496,9 @@ export function WorkoutBuilder({
       router.push(`/workouts/${workout.id}`);
       router.refresh();
     } catch (error) {
-      toast.error(getErrorMessage(error, "Unable to save workout."));
+      toast.error(
+        getErrorMessage(error, "We couldn't save your workout. Please try again.")
+      );
     } finally {
       setIsSaving(false);
     }
