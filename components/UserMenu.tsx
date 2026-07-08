@@ -87,6 +87,10 @@ export function UserMenu({
                 <Link href="/submit-park">Submit Park</Link>
               </DropdownMenuItem>
 
+              <DropdownMenuItem asChild>
+                <Link href="/rewards">Rewards</Link>
+              </DropdownMenuItem>
+
               <DropdownMenuItem
                 onClick={() => void signOut({ callbackUrl: "/" })}
               >
@@ -109,6 +113,10 @@ export function UserMenu({
 
           <DropdownMenuItem asChild>
             <Link href="/exercises">Exercises</Link>
+          </DropdownMenuItem>
+
+          <DropdownMenuItem asChild>
+            <Link href="/rewards">Rewards</Link>
           </DropdownMenuItem>
 
           {user ? (

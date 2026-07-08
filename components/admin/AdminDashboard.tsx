@@ -877,6 +877,9 @@ export default function AdminDashboard() {
 
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline">
+            <Link href="/admin/rewards">Manage Rewards</Link>
+          </Button>
+          <Button asChild variant="outline">
             <Link href="/admin/exercises">Classify Exercises</Link>
           </Button>
           <form action="/admin/logout" method="post">

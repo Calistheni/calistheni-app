@@ -73,6 +73,7 @@ export default async function ProfilePage() {
       },
       select: {
         bodyweightKg: true,
+        rewardPoints: true,
       },
     }),
   ]);
@@ -111,13 +112,14 @@ export default async function ProfilePage() {
         </CardHeader>
       </Card>
 
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
         {[
           ["Workouts", workoutCount],
           ["Sets", workoutSets],
           ["Parks", submittedParkCount],
           ["Approved edits", approvedEditCount],
           ["Approved photos", approvedPhotoCount],
+          ["⭐ Reward Points", profile?.rewardPoints ?? 0],
         ].map(([label, value]) => (
           <Card key={label}>
             <CardContent className="p-4">
@@ -127,6 +129,20 @@ export default async function ProfilePage() {
           </Card>
         ))}
       </div>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <h2 className="text-2xl font-bold">Rewards</h2>
+          <p className="text-sm text-muted-foreground">
+            Upgrade to Pro to begin earning reward points.
+          </p>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-3">
+          <Button asChild>
+            <Link href="/rewards">View Rewards</Link>
+          </Button>
+        </CardContent>
+      </Card>
 
       <Card className="mb-6">
         <CardHeader>

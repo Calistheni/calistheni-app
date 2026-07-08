@@ -30,6 +30,23 @@ enum ExerciseTrackingType {
   WEIGHT_DISTANCE_DURATION
 }
 
+enum RewardTransactionType {
+  WORKOUT_COMPLETED
+  STREAK
+  PARK_APPROVED
+  PHOTO_APPROVED
+  CHALLENGE
+  ADMIN
+  REDEMPTION
+}
+
+enum RewardRedemptionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -37,6 +54,7 @@ model User {
   emailVerified DateTime?
   image         String?
   bodyweightKg  Float?
+  rewardPoints  Int       @default(0)
 
   accounts Account[]
   sessions Session[]
@@ -47,6 +65,8 @@ model User {
   workouts            Workout[]
   following           UserFollow[]         @relation("UserFollowing")
   followers           UserFollow[]         @relation("UserFollowers")
+  rewardTransactions  RewardTransaction[]
+  rewardRedemptions   RewardRedemption[]
 }
 
 model Account {
@@ -267,4 +287,54 @@ model UserFollow {
 
   @@id([followerId, followingId])
   @@index([followingId])
+}
+
+model RewardTransaction {
+  id          Int                   @id @default(autoincrement())
+  userId      String
+  type        RewardTransactionType
+  points      Int
+  description String
+  referenceId String?
+  createdAt   DateTime              @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([type])
+  @@index([referenceId])
+}
+
+model Reward {
+  id          Int     @id @default(autoincrement())
+  title       String
+  partnerName String
+  description String
+  imageUrl    String?
+  pointsCost  Int
+  active      Boolean @default(true)
+
+  redemptions RewardRedemption[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([title, partnerName])
+  @@index([active])
+  @@index([pointsCost])
+}
+
+model RewardRedemption {
+  id        Int                    @id @default(autoincrement())
+  userId    String
+  rewardId  Int
+  status    RewardRedemptionStatus @default(PENDING)
+  createdAt DateTime               @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reward Reward @relation(fields: [rewardId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
+  @@index([rewardId])
+  @@index([status])
 }

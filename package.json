@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "seed:exercises": "node scripts/seed-exercises.mjs",
+    "seed:rewards": "node scripts/seed-rewards.mjs",
     "cleanup:pending-park-photos": "node scripts/cleanup-pending-park-photos.mjs"
   },
   "dependencies": {
