@@ -5,6 +5,10 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { BackButton } from "@/components/navigation/BackButton";
 import { BodyweightForm } from "@/components/profile/BodyweightForm";
+import {
+  MuscleActivityRadar,
+  type MuscleActivityPoint,
+} from "@/components/profile/MuscleActivityRadar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -23,12 +27,90 @@ export const metadata: Metadata = {
   },
 };
 
+const MAIN_MUSCLE_GROUPS = [
+  "Chest",
+  "Back",
+  "Shoulders",
+  "Arms",
+  "Core",
+  "Legs",
+  "Glutes",
+  "Cardio",
+  "Full Body",
+] as const;
+
+function getMainMuscleGroup(muscle: string) {
+  const normalized = muscle.toLowerCase();
+
+  if (
+    normalized.includes("lat") ||
+    normalized.includes("back") ||
+    normalized.includes("trap") ||
+    normalized.includes("rhomboid")
+  ) {
+    return "Back";
+  }
+
+  if (
+    normalized.includes("bicep") ||
+    normalized.includes("tricep") ||
+    normalized.includes("forearm") ||
+    normalized.includes("arm")
+  ) {
+    return "Arms";
+  }
+
+  if (
+    normalized.includes("ab") ||
+    normalized.includes("core") ||
+    normalized.includes("oblique")
+  ) {
+    return "Core";
+  }
+
+  if (
+    normalized.includes("quad") ||
+    normalized.includes("hamstring") ||
+    normalized.includes("calf") ||
+    normalized.includes("leg") ||
+    normalized.includes("adductor") ||
+    normalized.includes("abductor")
+  ) {
+    return "Legs";
+  }
+
+  if (normalized.includes("glute")) {
+    return "Glutes";
+  }
+
+  if (normalized.includes("shoulder") || normalized.includes("delt")) {
+    return "Shoulders";
+  }
+
+  if (normalized.includes("cardio")) {
+    return "Cardio";
+  }
+
+  if (normalized.includes("full")) {
+    return "Full Body";
+  }
+
+  if (normalized.includes("chest") || normalized.includes("pec")) {
+    return "Chest";
+  }
+
+  return "Full Body";
+}
+
 export default async function ProfilePage() {
   const session = await auth();
 
   if (!session?.user) {
     redirect("/login");
   }
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
   const [
     workoutCount,
@@ -38,6 +120,7 @@ export default async function ProfilePage() {
     approvedPhotoCount,
     profile,
     recentPersonalRecords,
+    recentMuscleSets,
   ] = await Promise.all([
     prisma.workout.count({
       where: {
@@ -98,7 +181,44 @@ export default async function ProfilePage() {
         },
       },
     }),
+    prisma.workoutSet.findMany({
+      where: {
+        completed: true,
+        workoutExercise: {
+          workout: {
+            userId: session.user.id,
+            startedAt: {
+              gte: thirtyDaysAgo,
+            },
+          },
+        },
+      },
+      select: {
+        workoutExercise: {
+          select: {
+            exercise: {
+              select: {
+                muscle: true,
+              },
+            },
+          },
+        },
+      },
+    }),
   ]);
+  const muscleActivityMap = new Map<string, number>();
+
+  for (const set of recentMuscleSets) {
+    const muscle = getMainMuscleGroup(set.workoutExercise.exercise.muscle);
+    muscleActivityMap.set(muscle, (muscleActivityMap.get(muscle) ?? 0) + 1);
+  }
+
+  const muscleActivity: MuscleActivityPoint[] = MAIN_MUSCLE_GROUPS.map(
+    (muscle) => ({
+      muscle,
+      sets: muscleActivityMap.get(muscle) ?? 0,
+    })
+  );
 
   return (
     <main className="mx-auto w-full max-w-4xl p-4 sm:p-6 lg:p-8">
@@ -151,6 +271,8 @@ export default async function ProfilePage() {
           </Card>
         ))}
       </div>
+
+      <MuscleActivityRadar data={muscleActivity} />
 
       <Card className="mb-6">
         <CardHeader>

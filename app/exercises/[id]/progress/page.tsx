@@ -2,17 +2,16 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
+import {
+  ExerciseProgressChart,
+  type ExerciseProgressChartPoint,
+} from "@/components/exercises/ExerciseProgressChart";
 import { BackButton } from "@/components/navigation/BackButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
 import { calculateSetVolumeKg } from "@/lib/workout-volume";
-
-type ProgressPoint = {
-  label: string;
-  value: number;
-};
 
 export const metadata: Metadata = {
   title: "Exercise Progress",
@@ -37,60 +36,6 @@ function formatDuration(seconds: number) {
 
 function formatKg(value: number | null) {
   return value === null ? "Unavailable" : `${Math.round(value).toLocaleString()} kg`;
-}
-
-function MiniChart({
-  title,
-  points,
-}: {
-  title: string;
-  points: ProgressPoint[];
-}) {
-  const width = 360;
-  const height = 120;
-  const maxValue = Math.max(...points.map((point) => point.value), 0);
-  const chartPoints =
-    points.length <= 1 || maxValue <= 0
-      ? ""
-      : points
-          .map((point, index) => {
-            const x = (index / (points.length - 1)) * width;
-            const y = height - (point.value / maxValue) * (height - 16) - 8;
-
-            return `${x},${y}`;
-          })
-          .join(" ");
-
-  return (
-    <Card>
-      <CardHeader>
-        <h2 className="text-lg font-semibold">{title}</h2>
-      </CardHeader>
-      <CardContent>
-        {points.length <= 1 || !chartPoints ? (
-          <p className="text-sm text-muted-foreground">
-            Log more sessions to see a trend.
-          </p>
-        ) : (
-          <svg
-            aria-label={title}
-            className="h-32 w-full overflow-visible"
-            role="img"
-            viewBox={`0 0 ${width} ${height}`}
-          >
-            <polyline
-              fill="none"
-              points={chartPoints}
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="4"
-            />
-          </svg>
-        )}
-      </CardContent>
-    </Card>
-  );
 }
 
 export default async function ExerciseProgressPage({
@@ -171,9 +116,7 @@ export default async function ExerciseProgressPage({
   let lifetimeVolume = 0;
   let hasUnavailableVolume = false;
   const sessionIds = new Set<number>();
-  const volumePoints: ProgressPoint[] = [];
-  const bestSetPoints: ProgressPoint[] = [];
-  const repsPoints: ProgressPoint[] = [];
+  const chartData: ExerciseProgressChartPoint[] = [];
 
   for (const workoutExercise of workoutExercises) {
     sessionIds.add(workoutExercise.workout.id);
@@ -181,6 +124,8 @@ export default async function ExerciseProgressPage({
     let workoutVolumeAvailable = true;
     let workoutBestSet = 0;
     let workoutReps = 0;
+    let workoutDuration = 0;
+    let workoutBestWeight = 0;
 
     for (const set of workoutExercise.sets) {
       totalSets += 1;
@@ -188,8 +133,10 @@ export default async function ExerciseProgressPage({
       workoutReps += set.reps ?? 0;
       bestReps = Math.max(bestReps, set.reps ?? 0);
       bestWeight = Math.max(bestWeight, set.weight ?? 0);
+      workoutBestWeight = Math.max(workoutBestWeight, set.weight ?? 0);
       longestDuration = Math.max(longestDuration, set.durationSeconds ?? 0);
       totalDuration += set.durationSeconds ?? 0;
+      workoutDuration += set.durationSeconds ?? 0;
 
       const setVolume = calculateSetVolumeKg({
         trackingType: exercise.trackingType,
@@ -211,13 +158,15 @@ export default async function ExerciseProgressPage({
       }
     }
 
-    const label = workoutExercise.workout.startedAt.toLocaleDateString();
-    repsPoints.push({ label, value: workoutReps });
-    bestSetPoints.push({ label, value: workoutBestSet });
-
-    if (workoutVolumeAvailable) {
-      volumePoints.push({ label, value: workoutVolume });
-    }
+    chartData.push({
+      date: workoutExercise.workout.startedAt.toISOString(),
+      label: workoutExercise.workout.startedAt.toLocaleDateString(),
+      volume: workoutVolumeAvailable ? workoutVolume : 0,
+      bestSet: workoutBestSet,
+      reps: workoutReps,
+      duration: workoutDuration,
+      weight: workoutBestWeight,
+    });
   }
 
   const isDurationExercise =
@@ -226,6 +175,12 @@ export default async function ExerciseProgressPage({
     exercise.trackingType === "STEPS_DISTANCE_DURATION" ||
     exercise.trackingType === "FLOORS_DISTANCE_DURATION" ||
     exercise.trackingType === "WEIGHT_DISTANCE_DURATION";
+  const enabledMetrics = [
+    ...(hasUnavailableVolume ? [] : (["volume", "bestSet"] as const)),
+    ...(!isDurationExercise ? (["reps"] as const) : []),
+    ...(isDurationExercise ? (["duration"] as const) : []),
+    ...(bestWeight > 0 ? (["weight"] as const) : []),
+  ];
 
   return (
     <main className="mx-auto w-full max-w-6xl p-4 sm:p-6 lg:p-8">
@@ -329,11 +284,10 @@ export default async function ExerciseProgressPage({
             </Card>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-3">
-            <MiniChart title="Volume Over Time" points={volumePoints} />
-            <MiniChart title="Best Set Over Time" points={bestSetPoints} />
-            <MiniChart title="Reps Over Time" points={repsPoints} />
-          </div>
+          <ExerciseProgressChart
+            data={chartData}
+            enabledMetrics={[...enabledMetrics]}
+          />
 
           <Card>
             <CardHeader>
