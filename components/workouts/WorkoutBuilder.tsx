@@ -34,6 +34,7 @@ type WorkoutBuilderProps = {
   exercises: ExerciseListItem[];
   initialWorkout?: WorkoutDetail;
   userBodyweightKg: number | null;
+  saveMode?: "create" | "edit";
 };
 
 type LocalWorkoutExercise = WorkoutExerciseInput & {
@@ -185,11 +186,12 @@ export function WorkoutBuilder({
   exercises,
   initialWorkout,
   userBodyweightKg,
+  saveMode,
 }: WorkoutBuilderProps) {
   const router = useRouter();
-  const isEditing = Boolean(initialWorkout);
+  const isEditing = saveMode ? saveMode === "edit" : Boolean(initialWorkout);
   const workoutTimer = useWorkoutTimer(
-    `calistheni-workout-timer:${initialWorkout?.id ?? "new"}`
+    `calistheni-workout-timer:${isEditing ? initialWorkout?.id : "new"}`
   );
   const restTimer = useRestTimer();
   const [title, setTitle] = useState(initialWorkout?.title ?? "");

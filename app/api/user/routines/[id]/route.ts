@@ -5,18 +5,13 @@ import {
   createJsonValidationErrorResponse,
   parsePositiveInteger,
 } from "@/lib/api-response";
+import { mapRoutineDetail, routineInclude, updateUserRoutine } from "@/lib/routines";
 import {
   createUserUnauthorizedResponse,
   getAuthenticatedUserId,
 } from "@/lib/user-auth";
 import { prisma } from "@/lib/prisma";
-import { recomputeUserPersonalRecords } from "@/lib/personal-records";
-import {
-  mapWorkoutDetail,
-  updateUserWorkout,
-  userWorkoutInclude,
-} from "@/lib/workouts";
-import { workoutMutationSchema } from "@/lib/validation/workouts";
+import { routineMutationSchema } from "@/lib/validation/routines";
 
 export async function GET(
   _request: Request,
@@ -29,26 +24,26 @@ export async function GET(
   }
 
   const { id } = await params;
-  const workoutId = parsePositiveInteger(id);
+  const routineId = parsePositiveInteger(id);
 
-  if (workoutId === null) {
-    return createJsonErrorResponse("Invalid workout id.", 400);
+  if (routineId === null) {
+    return createJsonErrorResponse("Invalid routine id.", 400);
   }
 
   try {
-    const workout = await prisma.workout.findFirst({
+    const routine = await prisma.workoutTemplate.findFirst({
       where: {
-        id: workoutId,
+        id: routineId,
         userId,
       },
-      include: userWorkoutInclude,
+      include: routineInclude,
     });
 
-    if (!workout) {
-      return createJsonErrorResponse("Workout not found.", 404);
+    if (!routine) {
+      return createJsonErrorResponse("Routine not found.", 404);
     }
 
-    return NextResponse.json(mapWorkoutDetail(workout));
+    return NextResponse.json(mapRoutineDetail(routine));
   } catch (error) {
     console.error(error);
     return createInternalServerErrorResponse();
@@ -66,10 +61,10 @@ export async function PATCH(
   }
 
   const { id } = await params;
-  const workoutId = parsePositiveInteger(id);
+  const routineId = parsePositiveInteger(id);
 
-  if (workoutId === null) {
-    return createJsonErrorResponse("Invalid workout id.", 400);
+  if (routineId === null) {
+    return createJsonErrorResponse("Invalid routine id.", 400);
   }
 
   let body: unknown;
@@ -80,23 +75,23 @@ export async function PATCH(
     return createJsonErrorResponse("Invalid JSON payload.", 400);
   }
 
-  const parsedBody = workoutMutationSchema.safeParse(body);
+  const parsedBody = routineMutationSchema.safeParse(body);
 
   if (!parsedBody.success) {
     return createJsonValidationErrorResponse(
-      "Invalid workout payload.",
+      "Invalid routine payload.",
       parsedBody.error.flatten().fieldErrors
     );
   }
 
   try {
-    const workout = await updateUserWorkout(userId, workoutId, parsedBody.data);
+    const result = await updateUserRoutine(userId, routineId, parsedBody.data);
 
-    if (!workout) {
-      return createJsonErrorResponse("Workout not found.", 404);
+    if ("routine" in result) {
+      return NextResponse.json(result.routine);
     }
 
-    return NextResponse.json(workout);
+    return createJsonErrorResponse(result.error, 404);
   } catch (error) {
     console.error(error);
     return createInternalServerErrorResponse();
@@ -114,37 +109,25 @@ export async function DELETE(
   }
 
   const { id } = await params;
-  const workoutId = parsePositiveInteger(id);
+  const routineId = parsePositiveInteger(id);
 
-  if (workoutId === null) {
-    return createJsonErrorResponse("Invalid workout id.", 400);
+  if (routineId === null) {
+    return createJsonErrorResponse("Invalid routine id.", 400);
   }
 
   try {
-    const existingWorkout = await prisma.workout.findFirst({
+    const result = await prisma.workoutTemplate.deleteMany({
       where: {
-        id: workoutId,
+        id: routineId,
         userId,
       },
-      select: {
-        id: true,
-      },
     });
 
-    if (!existingWorkout) {
-      return createJsonErrorResponse("Workout not found.", 404);
+    if (result.count !== 1) {
+      return createJsonErrorResponse("Routine not found.", 404);
     }
 
-    await prisma.workout.delete({
-      where: {
-        id: workoutId,
-      },
-    });
-    await recomputeUserPersonalRecords(userId);
-
-    return NextResponse.json({
-      success: true,
-    });
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error(error);
     return createInternalServerErrorResponse();

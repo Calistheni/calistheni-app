@@ -8,6 +8,11 @@ import { BodyweightForm } from "@/components/profile/BodyweightForm";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import {
+  formatPersonalRecordValue,
+  PERSONAL_RECORD_LABELS,
+  type PersonalRecordType,
+} from "@/lib/personal-records";
 import { prisma } from "@/lib/prisma";
 
 export const metadata: Metadata = {
@@ -32,6 +37,7 @@ export default async function ProfilePage() {
     approvedEditCount,
     approvedPhotoCount,
     profile,
+    recentPersonalRecords,
   ] = await Promise.all([
     prisma.workout.count({
       where: {
@@ -74,6 +80,22 @@ export default async function ProfilePage() {
       select: {
         bodyweightKg: true,
         rewardPoints: true,
+      },
+    }),
+    prisma.personalRecord.findMany({
+      where: {
+        userId: session.user.id,
+      },
+      orderBy: {
+        achievedAt: "desc",
+      },
+      take: 5,
+      include: {
+        exercise: {
+          select: {
+            name: true,
+          },
+        },
       },
     }),
   ]);
@@ -146,6 +168,58 @@ export default async function ProfilePage() {
 
       <Card className="mb-6">
         <CardHeader>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-2xl font-bold">Recent PRs</h2>
+              <p className="text-sm text-muted-foreground">
+                Your latest personal records from logged workouts.
+              </p>
+            </div>
+            <Button asChild variant="outline">
+              <Link href="/profile/records">View All PRs</Link>
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {recentPersonalRecords.length === 0 ? (
+            <p className="rounded-xl border p-4 text-sm text-muted-foreground">
+              Complete workout sets to start collecting personal records.
+            </p>
+          ) : (
+            <div className="grid gap-3">
+              {recentPersonalRecords.map((record) => (
+                <Link
+                  key={record.id}
+                  href={`/workouts/${record.workoutId}`}
+                  className="rounded-xl border p-4 transition hover:border-primary/50"
+                >
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="font-medium">{record.exercise.name}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {
+                          PERSONAL_RECORD_LABELS[
+                            record.type as PersonalRecordType
+                          ]
+                        }
+                      </p>
+                    </div>
+                    <p className="text-lg font-bold">
+                      {formatPersonalRecordValue(
+                        record.type as PersonalRecordType,
+                        record.value
+                      )}
+                    </p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="mb-6">
+        <CardHeader>
           <h2 className="text-2xl font-bold">Workout Settings</h2>
           <p className="text-sm text-muted-foreground">
             Bodyweight is used to calculate bodyweight exercise volume.
@@ -171,6 +245,9 @@ export default async function ProfilePage() {
           </Button>
           <Button asChild variant="outline">
             <Link href="/workouts">My Workouts</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/routines">Routines</Link>
           </Button>
           <Button asChild>
             <Link href="/submit-park">Submit Park</Link>

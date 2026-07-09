@@ -64,9 +64,16 @@ export default async function ExerciseDetailPage({
             {exercise.muscle}
           </Badge>
         </div>
-        <Button asChild>
-          <Link href="/workouts/new">Use in Workout</Link>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline">
+            <Link href={`/exercises/${exercise.slug}/progress`}>
+              View Progress
+            </Link>
+          </Button>
+          <Button asChild>
+            <Link href="/workouts/new">Use in Workout</Link>
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">

@@ -7,8 +7,14 @@ import { BackButton } from "@/components/navigation/BackButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { SaveWorkoutAsRoutineButton } from "@/components/routines/RoutineActions";
 import { DeleteWorkoutButton } from "@/components/workouts/DeleteWorkoutButton";
 import { parsePositiveInteger } from "@/lib/api-response";
+import {
+  formatPersonalRecordValue,
+  PERSONAL_RECORD_LABELS,
+  type PersonalRecordType,
+} from "@/lib/personal-records";
 import { prisma } from "@/lib/prisma";
 import { mapWorkoutDetail, userWorkoutInclude } from "@/lib/workouts";
 
@@ -100,6 +106,30 @@ export default async function WorkoutDetailPage({
 
   const detail = mapWorkoutDetail(workout);
   const isOwner = session?.user?.id === workout.userId;
+  const personalRecords = isOwner
+    ? await prisma.personalRecord.findMany({
+        where: {
+          userId: workout.userId,
+          workoutId: workout.id,
+        },
+      })
+    : [];
+  const recordsBySetId = new Map<number, typeof personalRecords>();
+  const recordsByWorkoutExerciseId = new Map<string, typeof personalRecords>();
+
+  for (const record of personalRecords) {
+    if (record.workoutSetId !== null) {
+      recordsBySetId.set(record.workoutSetId, [
+        ...(recordsBySetId.get(record.workoutSetId) ?? []),
+        record,
+      ]);
+    } else {
+      recordsByWorkoutExerciseId.set(record.exerciseId, [
+        ...(recordsByWorkoutExerciseId.get(record.exerciseId) ?? []),
+        record,
+      ]);
+    }
+  }
 
   return (
     <main className="mx-auto w-full max-w-5xl p-4 sm:p-6 lg:p-8">
@@ -116,6 +146,7 @@ export default async function WorkoutDetailPage({
             <Button asChild variant="outline">
               <Link href={`/workouts/${detail.id}/edit`}>Edit Workout</Link>
             </Button>
+            <SaveWorkoutAsRoutineButton workoutId={detail.id} />
             <DeleteWorkoutButton workoutId={detail.id} />
           </div>
         ) : null}
@@ -173,9 +204,29 @@ export default async function WorkoutDetailPage({
                   <h2 className="text-xl font-semibold">
                     {workoutExercise.exercise.name}
                   </h2>
-                  <Badge variant="secondary">
-                    {workoutExercise.exercise.muscle}
-                  </Badge>
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    <Badge variant="secondary">
+                      {workoutExercise.exercise.muscle}
+                    </Badge>
+                    {(
+                      recordsByWorkoutExerciseId.get(
+                        workoutExercise.exercise.id
+                      ) ?? []
+                    ).map((record) => (
+                      <Badge key={record.id} variant="outline">
+                        PR:{" "}
+                        {
+                          PERSONAL_RECORD_LABELS[
+                            record.type as PersonalRecordType
+                          ]
+                        }{" "}
+                        {formatPersonalRecordValue(
+                          record.type as PersonalRecordType,
+                          record.value
+                        )}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
               </div>
             </CardHeader>
@@ -188,6 +239,16 @@ export default async function WorkoutDetailPage({
                   <div className="flex items-center gap-2 font-medium">
                     <span>Set {index + 1}</span>
                     {set.completed ? <Badge>Done</Badge> : null}
+                    {(recordsBySetId.get(set.id) ?? []).map((record) => (
+                      <Badge key={record.id} variant="secondary">
+                        PR:{" "}
+                        {
+                          PERSONAL_RECORD_LABELS[
+                            record.type as PersonalRecordType
+                          ]
+                        }
+                      </Badge>
+                    ))}
                   </div>
                   {workoutExercise.exercise.trackingType ===
                     "NOT_SELECTED" ||

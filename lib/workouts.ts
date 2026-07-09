@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { recomputeUserPersonalRecords } from "@/lib/personal-records";
 import type { ValidWorkoutMutation } from "@/lib/validation/workouts";
 import { calculateWorkoutVolumeKg } from "@/lib/workout-volume";
 import type {
@@ -256,6 +257,8 @@ export async function createUserWorkout(
     include: workoutInclude,
   });
 
+  await recomputeUserPersonalRecords(userId);
+
   return mapWorkoutDetail(workout);
 }
 
@@ -304,6 +307,8 @@ export async function updateUserWorkout(
     },
     include: workoutInclude,
   });
+
+  await recomputeUserPersonalRecords(userId);
 
   return workout ? mapWorkoutDetail(workout) : null;
 }

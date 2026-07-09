@@ -47,6 +47,20 @@ enum RewardRedemptionStatus {
   COMPLETED
 }
 
+enum PersonalRecordType {
+  MAX_EXTERNAL_WEIGHT
+  MAX_ADDED_WEIGHT
+  MAX_REPS
+  MAX_SET_VOLUME
+  MAX_EXERCISE_VOLUME
+  LONGEST_DURATION
+}
+
+enum WorkoutTemplateVisibility {
+  PRIVATE
+  PUBLIC
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -67,6 +81,8 @@ model User {
   followers           UserFollow[]         @relation("UserFollowers")
   rewardTransactions  RewardTransaction[]
   rewardRedemptions   RewardRedemption[]
+  personalRecords      PersonalRecord[]
+  workoutTemplates     WorkoutTemplate[]
 }
 
 model Account {
@@ -209,6 +225,8 @@ model Exercise {
   bodyweightLoadFactor Float?
 
   workoutExercises WorkoutExercise[]
+  personalRecords  PersonalRecord[]
+  templateExercises WorkoutTemplateExercise[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -229,6 +247,7 @@ model Workout {
 
   user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   exercises WorkoutExercise[]
+  personalRecords PersonalRecord[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -270,6 +289,7 @@ model WorkoutSet {
   completed         Boolean @default(false)
 
   workoutExercise WorkoutExercise @relation(fields: [workoutExerciseId], references: [id], onDelete: Cascade)
+  personalRecords PersonalRecord[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -337,4 +357,77 @@ model RewardRedemption {
   @@index([userId, createdAt])
   @@index([rewardId])
   @@index([status])
+}
+
+model PersonalRecord {
+  id           Int                @id @default(autoincrement())
+  userId       String
+  exerciseId   String
+  type         PersonalRecordType
+  value        Float
+  workoutId    Int
+  workoutSetId Int?
+  achievedAt   DateTime
+  createdAt    DateTime           @default(now())
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercise   Exercise    @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  workout    Workout     @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  workoutSet WorkoutSet? @relation(fields: [workoutSetId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, exerciseId, type])
+  @@index([userId, achievedAt])
+  @@index([exerciseId])
+  @@index([workoutId])
+  @@index([workoutSetId])
+}
+
+model WorkoutTemplate {
+  id          Int                       @id @default(autoincrement())
+  userId      String
+  name        String
+  description String?
+  visibility  WorkoutTemplateVisibility @default(PRIVATE)
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+
+  user      User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercises WorkoutTemplateExercise[]
+
+  @@index([userId, updatedAt])
+  @@index([visibility])
+}
+
+model WorkoutTemplateExercise {
+  id          Int     @id @default(autoincrement())
+  templateId  Int
+  exerciseId  String
+  order       Int
+  restSeconds Int?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  template WorkoutTemplate      @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  exercise Exercise             @relation(fields: [exerciseId], references: [id], onDelete: Restrict)
+  sets     WorkoutTemplateSet[]
+
+  @@index([templateId, order])
+  @@index([exerciseId])
+}
+
+model WorkoutTemplateSet {
+  id                 Int    @id @default(autoincrement())
+  templateExerciseId Int
+  order              Int
+  reps               Int?
+  weightKg           Float?
+  durationSec        Int?
+
+  templateExercise WorkoutTemplateExercise @relation(fields: [templateExerciseId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([templateExerciseId, order])
 }

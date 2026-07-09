@@ -67,12 +67,16 @@ export function UserMenu({
 	                <Link href="/profile">Profile</Link>
 	              </DropdownMenuItem>
 
-	              <DropdownMenuItem asChild>
-	                <Link href="/workouts">Workouts</Link>
-	              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/workouts">Workouts</Link>
+              </DropdownMenuItem>
 
-	              <DropdownMenuItem asChild>
-	                <Link href="/feed">Workout Feed</Link>
+              <DropdownMenuItem asChild>
+                <Link href="/routines">Routines</Link>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem asChild>
+                <Link href="/feed">Workout Feed</Link>
 	              </DropdownMenuItem>
 
 	              <DropdownMenuItem asChild>
@@ -122,6 +126,12 @@ export function UserMenu({
           {user ? (
             <DropdownMenuItem asChild>
               <Link href="/workouts/new">New Workout</Link>
+            </DropdownMenuItem>
+          ) : null}
+
+          {user ? (
+            <DropdownMenuItem asChild>
+              <Link href="/routines/new">New Routine</Link>
             </DropdownMenuItem>
           ) : null}
 
