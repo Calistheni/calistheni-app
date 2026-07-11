@@ -857,7 +857,7 @@ export function ParkSubmissionForm({
           </div>
           <p className="text-xs text-muted-foreground">
             {mode === "create"
-              ? "Take the photo with your phone camera first, then choose it from Photos for maximum quality."
+              ? "On iPhone, tap Photo Library in the picker. Avoid Take Photo because Safari may lower photo quality."
               : "Upload one or more photos to help the admin review this edit."}{" "}
             If photo GPS is unavailable, your browser may ask for location
             permission to help verify that you are near the selected park.
