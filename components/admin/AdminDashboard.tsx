@@ -34,6 +34,10 @@ import {
 import { toast } from "sonner";
 import { loadAdminParks, saveAdminParks } from "@/lib/cache";
 import {
+  findClosestNearbyPark,
+  PARK_DUPLICATE_WARNING_RADIUS_METERS,
+} from "@/lib/park-distance";
+import {
   getParkFormErrors,
   validateParkMutation,
 } from "@/lib/validation/parks";
@@ -87,6 +91,13 @@ type AdminSubmission = {
   lon: number;
   photoUrls: string[];
   photoLocationVerifications: StoredPhotoLocationVerification[];
+  nearbyParkWarning: boolean;
+  closestNearbyPark: {
+    id: number;
+    name: string;
+    title: string | null;
+  } | null;
+  closestNearbyParkDistanceMeters: number | null;
   createdAt: string;
   submittedBy: {
     name: string | null;
@@ -122,9 +133,6 @@ type AdminParkPhotoUpdateResponse = {
   photos: AdminParkPhoto[];
 };
 
-const DUPLICATE_DISTANCE_THRESHOLD_METERS = 100;
-const EARTH_RADIUS_METERS = 6_371_000;
-
 const EMPTY_FORM_VALUES: ParkFormValues = {
   name: "",
   title: "",
@@ -134,58 +142,21 @@ const EMPTY_FORM_VALUES: ParkFormValues = {
   equipmentIds: [],
 };
 
-function toRadians(value: number) {
-  return (value * Math.PI) / 180;
-}
-
-function calculateDistanceMeters(
-  sourceLat: number,
-  sourceLon: number,
-  targetLat: number,
-  targetLon: number
-) {
-  const deltaLat = toRadians(targetLat - sourceLat);
-  const deltaLon = toRadians(targetLon - sourceLon);
-  const sourceLatRadians = toRadians(sourceLat);
-  const targetLatRadians = toRadians(targetLat);
-  const haversine =
-    Math.sin(deltaLat / 2) ** 2 +
-    Math.cos(sourceLatRadians) *
-      Math.cos(targetLatRadians) *
-      Math.sin(deltaLon / 2) ** 2;
-
-  return (
-    2 *
-    EARTH_RADIUS_METERS *
-    Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine))
-  );
-}
-
 function findDuplicatePark(parks: ParkSummary[], payload: ParkMutationPayload) {
-  let closestCandidate: DuplicateCandidate | null = null;
+  const closestPark = findClosestNearbyPark(
+    parks,
+    payload.lat,
+    payload.lon,
+    PARK_DUPLICATE_WARNING_RADIUS_METERS
+  );
 
-  for (const park of parks) {
-    const distanceMeters = calculateDistanceMeters(
-      payload.lat,
-      payload.lon,
-      park.lat,
-      park.lon
-    );
-
-    if (distanceMeters > DUPLICATE_DISTANCE_THRESHOLD_METERS) {
-      continue;
-    }
-
-    if (!closestCandidate || distanceMeters < closestCandidate.distanceMeters) {
-      closestCandidate = {
-        existingPark: park,
-        distanceMeters,
+  return closestPark
+    ? {
+        existingPark: closestPark,
+        distanceMeters: closestPark.distanceMeters,
         payload,
-      };
-    }
-  }
-
-  return closestCandidate;
+      }
+    : null;
 }
 
 function getPhotoLocationBadgeLabel(
@@ -1028,6 +999,33 @@ export default function AdminDashboard() {
                         </Badge>
                       ))}
                     </div>
+                    {submission.nearbyParkWarning &&
+                    submission.closestNearbyPark ? (
+                      <div className="space-y-2 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
+                        <Badge variant="destructive">
+                          Potential duplicate park
+                        </Badge>
+                        <p>
+                          <span className="font-medium">
+                            Closest existing park:
+                          </span>{" "}
+                          <Link
+                            href={`/parks/${submission.closestNearbyPark.id}`}
+                            target="_blank"
+                            className="underline underline-offset-4"
+                          >
+                            {submission.closestNearbyPark.name}
+                          </Link>
+                        </p>
+                        <p className="text-muted-foreground">
+                          Distance:{" "}
+                          {Math.round(
+                            submission.closestNearbyParkDistanceMeters ?? 0
+                          )}{" "}
+                          m
+                        </p>
+                      </div>
+                    ) : null}
                     {submission.photoUrls.length > 0 ? (
                       <div className="flex flex-wrap gap-3">
                         {submission.photoUrls.map((photoUrl, index) => {

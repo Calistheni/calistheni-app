@@ -10,6 +10,10 @@ import {
 } from "@/lib/user-auth";
 import { PENDING_PARK_PHOTO_PREFIX } from "@/lib/park-photo-storage";
 import { normalizePhotoLocationVerifications } from "@/lib/photo-location-verification";
+import {
+  findNearbyPublicParks,
+  PARK_DUPLICATE_WARNING_RADIUS_METERS,
+} from "@/lib/nearby-parks";
 import { prisma } from "@/lib/prisma";
 import { parkMutationSchema } from "@/lib/validation/parks";
 
@@ -23,6 +27,7 @@ type CreateParkBody = {
   photoUrl?: unknown;
   photoKey?: unknown;
   photoLocationVerifications?: unknown;
+  allowNearbyPark?: unknown;
 };
 
 function parsePendingPhotoKey(value: unknown, userId: string) {
@@ -92,6 +97,23 @@ export async function POST(request: Request) {
   );
 
   try {
+    const nearbyParks = await findNearbyPublicParks({
+      lat: parsedBody.data.lat,
+      lon: parsedBody.data.lon,
+      radiusMeters: PARK_DUPLICATE_WARNING_RADIUS_METERS,
+    });
+    const closestNearbyPark = nearbyParks[0] ?? null;
+
+    if (closestNearbyPark && body.allowNearbyPark !== true) {
+      return NextResponse.json(
+        {
+          error: "A park already exists nearby.",
+          nearbyParks,
+        },
+        { status: 409 }
+      );
+    }
+
     const park = await prisma.park.create({
       data: {
         name: parsedBody.data.name,
@@ -106,6 +128,10 @@ export async function POST(request: Request) {
         photoLocationVerifications: photoLocationVerifications.length
           ? photoLocationVerifications
           : undefined,
+        nearbyParkWarning: Boolean(closestNearbyPark),
+        closestNearbyParkId: closestNearbyPark?.id ?? null,
+        closestNearbyParkDistanceMeters:
+          closestNearbyPark?.distanceMeters ?? null,
         equipment: {
           create: parsedBody.data.equipmentIds.map((equipmentId) => ({
             equipmentId,

@@ -59,6 +59,7 @@ type ParkSubmissionFormProps = {
 type ApiErrorPayload = {
   error?: string;
   fieldErrors?: Record<string, string[] | undefined>;
+  nearbyParks?: NearbyPark[];
 };
 
 type UploadedPhoto = {
@@ -77,6 +78,21 @@ type SelectedPhoto = {
 type LocationWarning = {
   data: ParkMutationPayload;
   photos: SelectedPhoto[];
+  allowNearbyPark?: boolean;
+};
+
+type NearbyPark = {
+  id: number;
+  name: string;
+  title: string | null;
+  lat: number;
+  lon: number;
+  distanceMeters: number;
+};
+
+type NearbyParkWarning = {
+  data: ParkMutationPayload;
+  nearbyParks: NearbyPark[];
 };
 
 type GpsCoordinates = {
@@ -261,11 +277,13 @@ async function parseApiError(response: Response) {
       message:
         payload.error || "Something went wrong. Please try again in a moment.",
       errors: getParkFormErrors(payload.fieldErrors),
+      nearbyParks: payload.nearbyParks,
     };
   } catch {
     return {
       message: "Something went wrong. Please try again in a moment.",
       errors: {},
+      nearbyParks: undefined,
     };
   }
 }
@@ -281,9 +299,12 @@ export function ParkSubmissionForm({
   const [formErrors, setFormErrors] = useState<ParkFormErrors>({});
   const [photos, setPhotos] = useState<SelectedPhoto[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCheckingNearbyParks, setIsCheckingNearbyParks] = useState(false);
   const [isVerifyingPhotos, setIsVerifyingPhotos] = useState(false);
   const [locationWarning, setLocationWarning] =
     useState<LocationWarning | null>(null);
+  const [nearbyParkWarning, setNearbyParkWarning] =
+    useState<NearbyParkWarning | null>(null);
 
   function clearFieldError(field: keyof ParkFormErrors) {
     setFormErrors((current) => {
@@ -528,7 +549,8 @@ export function ParkSubmissionForm({
 
   async function submitVerifiedPark(
     data: ParkMutationPayload,
-    verifiedPhotos: SelectedPhoto[]
+    verifiedPhotos: SelectedPhoto[],
+    options: { allowNearbyPark?: boolean } = {}
   ) {
     setIsSubmitting(true);
 
@@ -561,6 +583,7 @@ export function ParkSubmissionForm({
                 photoLocationVerifications: uploadedPhotos[0]
                   ? [uploadedPhotos[0].locationVerification]
                   : [],
+                allowNearbyPark: options.allowNearbyPark === true,
               }),
             })
           : await fetch(`/api/user/parks/${parkId}/edits`, {
@@ -579,6 +602,15 @@ export function ParkSubmissionForm({
       if (!response.ok) {
         const apiError = await parseApiError(response);
         setFormErrors(apiError.errors);
+
+        if (response.status === 409 && apiError.nearbyParks?.length) {
+          setNearbyParkWarning({
+            data,
+            nearbyParks: apiError.nearbyParks,
+          });
+          return;
+        }
+
         throw new Error(apiError.message);
       }
 
@@ -615,6 +647,18 @@ export function ParkSubmissionForm({
     setFormErrors({});
 
     try {
+      if (mode === "create") {
+        const nearbyParks = await checkNearbyParks(validationResult.data);
+
+        if (nearbyParks.length) {
+          setNearbyParkWarning({
+            data: validationResult.data,
+            nearbyParks,
+          });
+          return;
+        }
+      }
+
       const verifiedPhotos = await verifyPhotosForPark(validationResult.data);
       setPhotos(verifiedPhotos);
 
@@ -649,7 +693,9 @@ export function ParkSubmissionForm({
 
     setPhotos(remainingPhotos);
     setLocationWarning(null);
-    void submitVerifiedPark(locationWarning.data, remainingPhotos);
+    void submitVerifiedPark(locationWarning.data, remainingPhotos, {
+      allowNearbyPark: locationWarning.allowNearbyPark === true,
+    });
   }
 
   function continueWithMismatchedPhotos() {
@@ -658,7 +704,65 @@ export function ParkSubmissionForm({
     }
 
     setLocationWarning(null);
-    void submitVerifiedPark(locationWarning.data, locationWarning.photos);
+    void submitVerifiedPark(locationWarning.data, locationWarning.photos, {
+      allowNearbyPark: locationWarning.allowNearbyPark === true,
+    });
+  }
+
+  async function checkNearbyParks(data: ParkMutationPayload) {
+    setIsCheckingNearbyParks(true);
+
+    try {
+      const searchParams = new URLSearchParams({
+        lat: String(data.lat),
+        lon: String(data.lon),
+        radius: "100",
+      });
+      const response = await fetch(`/api/parks/nearby-check?${searchParams}`);
+
+      if (!response.ok) {
+        throw new Error("Unable to check for nearby parks. Please try again.");
+      }
+
+      const payload = (await response.json()) as { nearbyParks?: NearbyPark[] };
+
+      return Array.isArray(payload.nearbyParks) ? payload.nearbyParks : [];
+    } finally {
+      setIsCheckingNearbyParks(false);
+    }
+  }
+
+  async function continueWithNearbyPark() {
+    if (!nearbyParkWarning) {
+      return;
+    }
+
+    const data = nearbyParkWarning.data;
+    setNearbyParkWarning(null);
+
+    try {
+      const verifiedPhotos = await verifyPhotosForPark(data);
+      setPhotos(verifiedPhotos);
+
+      if (
+        verifiedPhotos.some(
+          (photo) => photo.locationVerification.locationStatus === "MISMATCH"
+        )
+      ) {
+        setLocationWarning({
+          data,
+          photos: verifiedPhotos,
+          allowNearbyPark: true,
+        });
+        return;
+      }
+
+      await submitVerifiedPark(data, verifiedPhotos, {
+        allowNearbyPark: true,
+      });
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Unable to submit this park."));
+    }
   }
 
   function updateSelectedPhotos(fileList: FileList | null) {
@@ -912,9 +1016,11 @@ export function ParkSubmissionForm({
 
         <Button
           onClick={handleSubmit}
-          disabled={isSubmitting || isVerifyingPhotos}
+          disabled={isSubmitting || isCheckingNearbyParks || isVerifyingPhotos}
         >
-          {isVerifyingPhotos
+          {isCheckingNearbyParks
+            ? "Checking nearby parks..."
+            : isVerifyingPhotos
             ? "Checking photos..."
             : isSubmitting
             ? mode === "create"
@@ -925,6 +1031,58 @@ export function ParkSubmissionForm({
             : "Submit Edit for Review"}
         </Button>
       </CardContent>
+
+      <AlertDialog
+        open={Boolean(nearbyParkWarning)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setNearbyParkWarning(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>A park already exists nearby</AlertDialogTitle>
+            <AlertDialogDescription>
+              We found an existing park very close to the location you selected.
+              Please check whether you are submitting a duplicate park. If this
+              is a different training area, you can continue anyway.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          {nearbyParkWarning?.nearbyParks[0] ? (
+            <div className="space-y-2 rounded-lg border bg-muted/40 p-3 text-sm">
+              <p>
+                <span className="font-medium">Existing park:</span>{" "}
+                {nearbyParkWarning.nearbyParks[0].name}
+              </p>
+              <p>
+                <span className="font-medium">Distance:</span>{" "}
+                {nearbyParkWarning.nearbyParks[0].distanceMeters} m away
+              </p>
+              {nearbyParkWarning.nearbyParks.length > 1 ? (
+                <p className="text-muted-foreground">
+                  {nearbyParkWarning.nearbyParks.length} existing parks were
+                  found within 100 meters.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              onClick={(event) => {
+                event.preventDefault();
+                void continueWithNearbyPark();
+              }}
+            >
+              Continue Anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={Boolean(locationWarning)}

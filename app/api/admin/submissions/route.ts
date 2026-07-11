@@ -34,6 +34,9 @@ export async function GET() {
           lon: true,
           photoUrl: true,
           photoLocationVerifications: true,
+          nearbyParkWarning: true,
+          closestNearbyParkId: true,
+          closestNearbyParkDistanceMeters: true,
           createdAt: true,
           submittedBy: {
             select: {
@@ -92,6 +95,26 @@ export async function GET() {
     const equipmentById = new Map(
       editEquipment.map((item) => [item.id, item.name])
     );
+    const closestNearbyParkIds = newParkSubmissions
+      .map((submission) => submission.closestNearbyParkId)
+      .filter((parkId): parkId is number => typeof parkId === "number");
+    const closestNearbyParks = closestNearbyParkIds.length
+      ? await prisma.park.findMany({
+          where: {
+            id: {
+              in: closestNearbyParkIds,
+            },
+          },
+          select: {
+            id: true,
+            name: true,
+            title: true,
+          },
+        })
+      : [];
+    const closestNearbyParkById = new Map(
+      closestNearbyParks.map((park) => [park.id, park])
+    );
 
     const submissions = [
       ...newParkSubmissions.map((submission) => ({
@@ -111,6 +134,12 @@ export async function GET() {
           submission.photoLocationVerifications,
           submission.photoUrl ? 1 : 0
         ),
+        nearbyParkWarning: submission.nearbyParkWarning,
+        closestNearbyPark: submission.closestNearbyParkId
+          ? closestNearbyParkById.get(submission.closestNearbyParkId) ?? null
+          : null,
+        closestNearbyParkDistanceMeters:
+          submission.closestNearbyParkDistanceMeters,
         createdAt: submission.createdAt.toISOString(),
         submittedBy: submission.submittedBy,
         equipment: submission.equipment.map((item) => item.equipment.name),
@@ -132,6 +161,9 @@ export async function GET() {
           submission.photoLocationVerifications,
           submission.photoUrls.length
         ),
+        nearbyParkWarning: false,
+        closestNearbyPark: null,
+        closestNearbyParkDistanceMeters: null,
         createdAt: submission.createdAt.toISOString(),
         submittedBy: submission.submittedBy,
         equipment: submission.equipmentIds

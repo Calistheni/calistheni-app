@@ -137,6 +137,9 @@ model Park {
   photoUrl         String?
   photoKey         String?
   photoLocationVerifications Json?
+  nearbyParkWarning Boolean @default(false)
+  closestNearbyParkId Int?
+  closestNearbyParkDistanceMeters Float?
   reviewedAt       DateTime?
   rejectionReason  String?
 
