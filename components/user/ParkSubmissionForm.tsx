@@ -656,6 +656,32 @@ export function ParkSubmissionForm({
     void submitVerifiedPark(locationWarning.data, locationWarning.photos);
   }
 
+  function updateSelectedPhotos(fileList: FileList | null) {
+    const selectedPhotos = Array.from(fileList ?? []);
+
+    if (process.env.NODE_ENV === "development") {
+      console.info(
+        "Selected park photos",
+        selectedPhotos.map((photo) => ({
+          name: photo.name,
+          type: photo.type,
+          size: photo.size,
+          sizeLabel: formatFileSize(photo),
+        }))
+      );
+    }
+
+    setPhotos(
+      selectedPhotos.map((photo, index) => ({
+        id: createPhotoId(photo, index),
+        file: photo,
+        locationVerification: getInitialPhotoVerification(),
+        isLocationVerified: false,
+      }))
+    );
+    clearFieldError("photo");
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -807,45 +833,45 @@ export function ParkSubmissionForm({
         </fieldset>
 
         <div className="space-y-2">
-          <label htmlFor="park-photo" className="text-sm font-medium">
-            {mode === "create" ? "Camera photo" : "Photos"}
-          </label>
-          <Input
-            id="park-photo"
-            type="file"
-            accept="image/*"
-            capture={mode === "create" ? "environment" : undefined}
-            multiple={mode === "suggest-edit"}
-            onChange={(event) => {
-              const selectedPhotos = Array.from(event.target.files ?? []);
+          <p className="text-sm font-medium">
+            {mode === "create" ? "Park photo" : "Photos"}
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label
+              htmlFor="park-photo-library"
+              className="inline-flex h-10 cursor-pointer items-center justify-center rounded-md border px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
+            >
+              Choose from Photos
+            </label>
+            <Input
+              id="park-photo-library"
+              className="sr-only"
+              type="file"
+              accept="image/*"
+              multiple={mode === "suggest-edit"}
+              onChange={(event) => updateSelectedPhotos(event.target.files)}
+              aria-invalid={formErrors.photo ? true : undefined}
+            />
 
-              if (process.env.NODE_ENV === "development") {
-                console.info(
-                  "Selected park photos",
-                  selectedPhotos.map((photo) => ({
-                    name: photo.name,
-                    type: photo.type,
-                    size: photo.size,
-                    sizeLabel: formatFileSize(photo),
-                  }))
-                );
-              }
-
-              setPhotos(
-                selectedPhotos.map((photo, index) => ({
-                  id: createPhotoId(photo, index),
-                  file: photo,
-                  locationVerification: getInitialPhotoVerification(),
-                  isLocationVerified: false,
-                }))
-              );
-              clearFieldError("photo");
-            }}
-            aria-invalid={formErrors.photo ? true : undefined}
-          />
+            <label
+              htmlFor="park-photo-camera"
+              className="inline-flex h-10 cursor-pointer items-center justify-center rounded-md border px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
+            >
+              Use Camera
+            </label>
+            <Input
+              id="park-photo-camera"
+              className="sr-only"
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={(event) => updateSelectedPhotos(event.target.files)}
+              aria-invalid={formErrors.photo ? true : undefined}
+            />
+          </div>
           <p className="text-xs text-muted-foreground">
             {mode === "create"
-              ? "Uses the device camera when supported. Some browsers may still allow gallery selection."
+              ? "Choose from Photos usually preserves GPS better on iPhone. Use Camera if your browser only supports direct capture."
               : "Upload one or more photos to help the admin review this edit."}
             {" "}If photo GPS is unavailable, your browser may ask for location
             permission to help verify that you are near the selected park.
