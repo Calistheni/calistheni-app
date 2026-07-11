@@ -132,7 +132,9 @@ function toCoordinate(value: unknown, ref: unknown) {
   const directValue = toFiniteNumber(value);
 
   if (directValue !== null) {
-    return ref === "S" || ref === "W" ? Math.abs(directValue) * -1 : directValue;
+    return ref === "S" || ref === "W"
+      ? Math.abs(directValue) * -1
+      : directValue;
   }
 
   if (!Array.isArray(value) || value.length < 3) {
@@ -836,7 +838,7 @@ export function ParkSubmissionForm({
           <p className="text-sm font-medium">
             {mode === "create" ? "Park photo" : "Photos"}
           </p>
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div>
             <label
               htmlFor="park-photo-library"
               className="inline-flex h-10 cursor-pointer items-center justify-center rounded-md border px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
@@ -852,28 +854,12 @@ export function ParkSubmissionForm({
               onChange={(event) => updateSelectedPhotos(event.target.files)}
               aria-invalid={formErrors.photo ? true : undefined}
             />
-
-            <label
-              htmlFor="park-photo-camera"
-              className="inline-flex h-10 cursor-pointer items-center justify-center rounded-md border px-4 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
-            >
-              Use Camera
-            </label>
-            <Input
-              id="park-photo-camera"
-              className="sr-only"
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={(event) => updateSelectedPhotos(event.target.files)}
-              aria-invalid={formErrors.photo ? true : undefined}
-            />
           </div>
           <p className="text-xs text-muted-foreground">
             {mode === "create"
-              ? "Choose from Photos usually preserves GPS better on iPhone. Use Camera if your browser only supports direct capture."
-              : "Upload one or more photos to help the admin review this edit."}
-            {" "}If photo GPS is unavailable, your browser may ask for location
+              ? "Take the photo with your phone camera first, then choose it from Photos for maximum quality."
+              : "Upload one or more photos to help the admin review this edit."}{" "}
+            If photo GPS is unavailable, your browser may ask for location
             permission to help verify that you are near the selected park.
           </p>
           {formErrors.photo ? (
