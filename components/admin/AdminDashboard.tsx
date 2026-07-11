@@ -39,6 +39,7 @@ import {
 } from "@/lib/validation/parks";
 import {
   formatPhotoLocationDistance,
+  type PhotoLocationSource,
   type PhotoLocationStatus,
   type StoredPhotoLocationVerification,
 } from "@/lib/photo-location-verification";
@@ -187,13 +188,20 @@ function findDuplicatePark(parks: ParkSummary[], payload: ParkMutationPayload) {
   return closestCandidate;
 }
 
-function getPhotoLocationBadgeLabel(status: PhotoLocationStatus) {
+function getPhotoLocationBadgeLabel(
+  status: PhotoLocationStatus,
+  source: PhotoLocationSource
+) {
   if (status === "MATCHED") {
-    return "Location match";
+    return source === "BROWSER_GEOLOCATION"
+      ? "Device location match"
+      : "Photo GPS match";
   }
 
   if (status === "MISMATCH") {
-    return "Location mismatch";
+    return source === "BROWSER_GEOLOCATION"
+      ? "Device location mismatch"
+      : "Photo GPS mismatch";
   }
 
   return "No GPS metadata";
@@ -1027,6 +1035,7 @@ export default function AdminDashboard() {
                             submission.photoLocationVerifications[index] ?? {
                               locationStatus: "NO_GPS_DATA" as const,
                               locationDistanceMeters: null,
+                              locationSource: "NONE" as const,
                             };
 
                           return (
@@ -1049,13 +1058,22 @@ export default function AdminDashboard() {
                                   )}
                                 >
                                   {getPhotoLocationBadgeLabel(
-                                    verification.locationStatus
+                                    verification.locationStatus,
+                                    verification.locationSource
                                   )}
                                 </Badge>
                               </div>
+                              {verification.locationSource ===
+                              "BROWSER_GEOLOCATION" ? (
+                                <p className="text-xs text-muted-foreground">
+                                  Photo GPS was unavailable, so this used the
+                                  submitter&apos;s browser location at submission
+                                  time.
+                                </p>
+                              ) : null}
                               {verification.locationStatus === "MISMATCH" ? (
                                 <p className="text-xs text-destructive">
-                                  Photo location is approximately{" "}
+                                  Location signal is approximately{" "}
                                   {formatPhotoLocationDistance(
                                     verification.locationDistanceMeters
                                   )}{" "}

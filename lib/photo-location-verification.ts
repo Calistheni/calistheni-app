@@ -3,21 +3,29 @@ export const PHOTO_LOCATION_MATCH_RADIUS_METERS = 500;
 const EARTH_RADIUS_METERS = 6_371_000;
 
 export type PhotoLocationStatus = "MATCHED" | "MISMATCH" | "NO_GPS_DATA";
+export type PhotoLocationSource =
+  | "PHOTO_EXIF"
+  | "BROWSER_GEOLOCATION"
+  | "NONE";
 
 export type StoredPhotoLocationVerification = {
   locationStatus: PhotoLocationStatus;
   locationDistanceMeters: number | null;
+  locationSource: PhotoLocationSource;
 };
 
 export type PhotoLocationVerificationDraft =
   StoredPhotoLocationVerification & {
     photoLatitude?: number | null;
     photoLongitude?: number | null;
+    deviceLatitude?: number | null;
+    deviceLongitude?: number | null;
   };
 
 type VerifyPhotoLocationInput = {
   photoLatitude?: unknown;
   photoLongitude?: unknown;
+  locationSource?: PhotoLocationSource;
   parkLatitude: number;
   parkLongitude: number;
 };
@@ -42,6 +50,14 @@ function isPhotoLocationStatus(value: unknown): value is PhotoLocationStatus {
   return value === "MATCHED" || value === "MISMATCH" || value === "NO_GPS_DATA";
 }
 
+function isPhotoLocationSource(value: unknown): value is PhotoLocationSource {
+  return (
+    value === "PHOTO_EXIF" ||
+    value === "BROWSER_GEOLOCATION" ||
+    value === "NONE"
+  );
+}
+
 function normalizeStoredVerification(
   value: unknown
 ): StoredPhotoLocationVerification {
@@ -49,6 +65,7 @@ function normalizeStoredVerification(
     return {
       locationStatus: "NO_GPS_DATA",
       locationDistanceMeters: null,
+      locationSource: "NONE",
     };
   }
 
@@ -63,6 +80,11 @@ function normalizeStoredVerification(
     locationStatus: value.locationStatus,
     locationDistanceMeters:
       value.locationStatus === "NO_GPS_DATA" ? null : locationDistanceMeters,
+    locationSource: isPhotoLocationSource(value.locationSource)
+      ? value.locationSource
+      : value.locationStatus === "NO_GPS_DATA"
+      ? "NONE"
+      : "PHOTO_EXIF",
   };
 }
 
@@ -89,6 +111,7 @@ export function calculatePhotoLocationDistanceMeters(
 export function verifyPhotoLocation({
   photoLatitude,
   photoLongitude,
+  locationSource = "PHOTO_EXIF",
   parkLatitude,
   parkLongitude,
 }: VerifyPhotoLocationInput): StoredPhotoLocationVerification {
@@ -101,6 +124,7 @@ export function verifyPhotoLocation({
     return {
       locationStatus: "NO_GPS_DATA",
       locationDistanceMeters: null,
+      locationSource: "NONE",
     };
   }
 
@@ -119,6 +143,7 @@ export function verifyPhotoLocation({
         ? "MATCHED"
         : "MISMATCH",
     locationDistanceMeters,
+    locationSource,
   };
 }
 
@@ -141,12 +166,27 @@ export function normalizePhotoLocationVerifications(
       return {
         locationStatus: "NO_GPS_DATA",
         locationDistanceMeters: null,
+        locationSource: "NONE",
       };
     }
 
+    if (
+      isValidLatitude(item.photoLatitude) &&
+      isValidLongitude(item.photoLongitude)
+    ) {
+      return verifyPhotoLocation({
+        photoLatitude: item.photoLatitude,
+        photoLongitude: item.photoLongitude,
+        locationSource: "PHOTO_EXIF",
+        parkLatitude,
+        parkLongitude,
+      });
+    }
+
     return verifyPhotoLocation({
-      photoLatitude: item.photoLatitude,
-      photoLongitude: item.photoLongitude,
+      photoLatitude: item.deviceLatitude,
+      photoLongitude: item.deviceLongitude,
+      locationSource: "BROWSER_GEOLOCATION",
       parkLatitude,
       parkLongitude,
     });

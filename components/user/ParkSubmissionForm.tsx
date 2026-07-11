@@ -33,6 +33,7 @@ import {
 import {
   formatPhotoLocationDistance,
   verifyPhotoLocation,
+  type PhotoLocationSource,
   type PhotoLocationStatus,
   type PhotoLocationVerificationDraft,
 } from "@/lib/photo-location-verification";
@@ -112,21 +113,63 @@ function getInitialPhotoVerification(): PhotoLocationVerificationDraft {
   return {
     locationStatus: "NO_GPS_DATA",
     locationDistanceMeters: null,
+    locationSource: "NONE",
     photoLatitude: null,
     photoLongitude: null,
+    deviceLatitude: null,
+    deviceLongitude: null,
   };
 }
 
-function getPhotoStatusLabel(status: PhotoLocationStatus) {
+function getPhotoStatusLabel(
+  status: PhotoLocationStatus,
+  source: PhotoLocationSource
+) {
   if (status === "MATCHED") {
-    return "Location match";
+    return source === "BROWSER_GEOLOCATION"
+      ? "Device location match"
+      : "Photo GPS match";
   }
 
   if (status === "MISMATCH") {
-    return "Location mismatch";
+    return source === "BROWSER_GEOLOCATION"
+      ? "Device location mismatch"
+      : "Photo GPS mismatch";
   }
 
   return "No GPS metadata";
+}
+
+function getBrowserGeolocation() {
+  return new Promise<{ latitude: number; longitude: number } | null>(
+    (resolve) => {
+      if (!("geolocation" in navigator)) {
+        resolve(null);
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          resolve({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          });
+        },
+        (error) => {
+          if (process.env.NODE_ENV === "development") {
+            console.info("Unable to read browser geolocation.", error);
+          }
+
+          resolve(null);
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 60_000,
+          timeout: 10_000,
+        }
+      );
+    }
+  );
 }
 
 async function parseApiError(response: Response) {
@@ -321,29 +364,51 @@ export function ParkSubmissionForm({
     setIsVerifyingPhotos(true);
 
     try {
-      return await Promise.all(
-        photos.map(async (photo) => {
-          const gps = await readPhotoGps(photo.file);
-          const locationVerification = gps
-            ? {
-                ...verifyPhotoLocation({
-                  photoLatitude: gps.latitude,
-                  photoLongitude: gps.longitude,
-                  parkLatitude: data.lat,
-                  parkLongitude: data.lon,
-                }),
+      const photoGpsResults = await Promise.all(
+        photos.map((photo) => readPhotoGps(photo.file))
+      );
+      const deviceGps = photoGpsResults.some((gps) => !gps)
+        ? await getBrowserGeolocation()
+        : null;
+
+      return photos.map((photo, index) => {
+        const gps = photoGpsResults[index] ?? null;
+        const locationVerification = gps
+          ? {
+              ...verifyPhotoLocation({
                 photoLatitude: gps.latitude,
                 photoLongitude: gps.longitude,
-              }
-            : getInitialPhotoVerification();
+                locationSource: "PHOTO_EXIF",
+                parkLatitude: data.lat,
+                parkLongitude: data.lon,
+              }),
+              photoLatitude: gps.latitude,
+              photoLongitude: gps.longitude,
+              deviceLatitude: null,
+              deviceLongitude: null,
+            }
+          : deviceGps
+          ? {
+              ...verifyPhotoLocation({
+                photoLatitude: deviceGps.latitude,
+                photoLongitude: deviceGps.longitude,
+                locationSource: "BROWSER_GEOLOCATION",
+                parkLatitude: data.lat,
+                parkLongitude: data.lon,
+              }),
+              photoLatitude: null,
+              photoLongitude: null,
+              deviceLatitude: deviceGps.latitude,
+              deviceLongitude: deviceGps.longitude,
+            }
+          : getInitialPhotoVerification();
 
-          return {
-            ...photo,
-            isLocationVerified: true,
-            locationVerification,
-          };
-        })
-      );
+        return {
+          ...photo,
+          isLocationVerified: true,
+          locationVerification,
+        };
+      });
     } finally {
       setIsVerifyingPhotos(false);
     }
@@ -675,6 +740,8 @@ export function ParkSubmissionForm({
             {mode === "create"
               ? "Uses the device camera when supported. Some browsers may still allow gallery selection."
               : "Upload one or more photos to help the admin review this edit."}
+            {" "}If photo GPS is unavailable, your browser may ask for location
+            permission to help verify that you are near the selected park.
           </p>
           {formErrors.photo ? (
             <p className="text-xs text-destructive">{formErrors.photo}</p>
@@ -697,7 +764,8 @@ export function ParkSubmissionForm({
                   >
                     {photo.isLocationVerified
                       ? getPhotoStatusLabel(
-                          photo.locationVerification.locationStatus
+                          photo.locationVerification.locationStatus,
+                          photo.locationVerification.locationSource
                         )
                       : "Checked on submit"}
                   </Badge>
@@ -733,11 +801,12 @@ export function ParkSubmissionForm({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Photo location does not match</AlertDialogTitle>
+            <AlertDialogTitle>Location does not match</AlertDialogTitle>
             <AlertDialogDescription>
-              One or more selected photos appear to be far from the selected
-              park location. Submitting unrelated or intentionally misleading
-              park photos may result in restrictions or a ban from Calistheni.
+              One or more selected photos or location checks appear to be far
+              from the selected park location. Submitting unrelated or
+              intentionally misleading park photos may result in restrictions or
+              a ban from Calistheni.
             </AlertDialogDescription>
           </AlertDialogHeader>
 
