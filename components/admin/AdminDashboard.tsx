@@ -37,6 +37,11 @@ import {
   getParkFormErrors,
   validateParkMutation,
 } from "@/lib/validation/parks";
+import {
+  formatPhotoLocationDistance,
+  type PhotoLocationStatus,
+  type StoredPhotoLocationVerification,
+} from "@/lib/photo-location-verification";
 import type {
   ParkDetail,
   ParkFormErrors,
@@ -80,6 +85,7 @@ type AdminSubmission = {
   lat: number;
   lon: number;
   photoUrls: string[];
+  photoLocationVerifications: StoredPhotoLocationVerification[];
   createdAt: string;
   submittedBy: {
     name: string | null;
@@ -179,6 +185,30 @@ function findDuplicatePark(parks: ParkSummary[], payload: ParkMutationPayload) {
   }
 
   return closestCandidate;
+}
+
+function getPhotoLocationBadgeLabel(status: PhotoLocationStatus) {
+  if (status === "MATCHED") {
+    return "Location match";
+  }
+
+  if (status === "MISMATCH") {
+    return "Location mismatch";
+  }
+
+  return "No GPS metadata";
+}
+
+function getPhotoLocationBadgeVariant(status: PhotoLocationStatus) {
+  if (status === "MISMATCH") {
+    return "destructive";
+  }
+
+  if (status === "NO_GPS_DATA") {
+    return "outline";
+  }
+
+  return "default";
 }
 
 function toParkSummary(park: ParkDetail): ParkSummary {
@@ -992,17 +1022,49 @@ export default function AdminDashboard() {
                     </div>
                     {submission.photoUrls.length > 0 ? (
                       <div className="flex flex-wrap gap-3">
-                        {submission.photoUrls.map((photoUrl, index) => (
-                          <a
-                            key={photoUrl}
-                            href={photoUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-sm font-medium underline underline-offset-4"
-                          >
-                            View photo {index + 1}
-                          </a>
-                        ))}
+                        {submission.photoUrls.map((photoUrl, index) => {
+                          const verification =
+                            submission.photoLocationVerifications[index] ?? {
+                              locationStatus: "NO_GPS_DATA" as const,
+                              locationDistanceMeters: null,
+                            };
+
+                          return (
+                            <div
+                              key={photoUrl}
+                              className="space-y-1 rounded-lg border p-3"
+                            >
+                              <div className="flex flex-wrap items-center gap-2">
+                                <a
+                                  href={photoUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-sm font-medium underline underline-offset-4"
+                                >
+                                  View photo {index + 1}
+                                </a>
+                                <Badge
+                                  variant={getPhotoLocationBadgeVariant(
+                                    verification.locationStatus
+                                  )}
+                                >
+                                  {getPhotoLocationBadgeLabel(
+                                    verification.locationStatus
+                                  )}
+                                </Badge>
+                              </div>
+                              {verification.locationStatus === "MISMATCH" ? (
+                                <p className="text-xs text-destructive">
+                                  Photo location is approximately{" "}
+                                  {formatPhotoLocationDistance(
+                                    verification.locationDistanceMeters
+                                  )}{" "}
+                                  from the selected park.
+                                </p>
+                              ) : null}
+                            </div>
+                          );
+                        })}
                       </div>
                     ) : (
                       <p className="text-xs text-muted-foreground">

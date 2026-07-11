@@ -1,9 +1,21 @@
 "use client";
 
+import * as exifr from "exifr";
 import imageCompression from "browser-image-compression";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { CoordinatePicker } from "@/components/CoordinatePicker";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -18,7 +30,17 @@ import {
   getParkFormErrors,
   validateParkMutation,
 } from "@/lib/validation/parks";
-import type { ParkFormErrors, ParkFormValues } from "@/types/park";
+import {
+  formatPhotoLocationDistance,
+  verifyPhotoLocation,
+  type PhotoLocationStatus,
+  type PhotoLocationVerificationDraft,
+} from "@/lib/photo-location-verification";
+import type {
+  ParkFormErrors,
+  ParkFormValues,
+  ParkMutationPayload,
+} from "@/types/park";
 
 type Equipment = {
   id: number;
@@ -40,6 +62,19 @@ type ApiErrorPayload = {
 type UploadedPhoto = {
   photoUrl: string;
   key: string;
+  locationVerification: PhotoLocationVerificationDraft;
+};
+
+type SelectedPhoto = {
+  id: string;
+  file: File;
+  isLocationVerified: boolean;
+  locationVerification: PhotoLocationVerificationDraft;
+};
+
+type LocationWarning = {
+  data: ParkMutationPayload;
+  photos: SelectedPhoto[];
 };
 
 const EMPTY_FORM_VALUES: ParkFormValues = {
@@ -69,6 +104,31 @@ function formatFileSize(file: File) {
   return `${(file.size / 1024 / 1024).toFixed(2)} MB`;
 }
 
+function createPhotoId(file: File, index: number) {
+  return `${file.name}-${file.size}-${file.lastModified}-${index}`;
+}
+
+function getInitialPhotoVerification(): PhotoLocationVerificationDraft {
+  return {
+    locationStatus: "NO_GPS_DATA",
+    locationDistanceMeters: null,
+    photoLatitude: null,
+    photoLongitude: null,
+  };
+}
+
+function getPhotoStatusLabel(status: PhotoLocationStatus) {
+  if (status === "MATCHED") {
+    return "Location match";
+  }
+
+  if (status === "MISMATCH") {
+    return "Location mismatch";
+  }
+
+  return "No GPS metadata";
+}
+
 async function parseApiError(response: Response) {
   try {
     const payload = (await response.json()) as ApiErrorPayload;
@@ -95,8 +155,11 @@ export function ParkSubmissionForm({
   const router = useRouter();
   const [formValues, setFormValues] = useState<ParkFormValues>(initialValues);
   const [formErrors, setFormErrors] = useState<ParkFormErrors>({});
-  const [photos, setPhotos] = useState<File[]>([]);
+  const [photos, setPhotos] = useState<SelectedPhoto[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isVerifyingPhotos, setIsVerifyingPhotos] = useState(false);
+  const [locationWarning, setLocationWarning] =
+    useState<LocationWarning | null>(null);
 
   function clearFieldError(field: keyof ParkFormErrors) {
     setFormErrors((current) => {
@@ -221,24 +284,91 @@ export function ParkSubmissionForm({
       key: payload.key,
     };
   }
-  async function handleSubmit() {
-    const validationResult = validateParkMutation(formValues);
 
-    if (!validationResult.success) {
-      setFormErrors(validationResult.errors);
-      return;
+  async function readPhotoGps(photo: File) {
+    try {
+      const gps = await exifr.gps(photo);
+
+      if (
+        typeof gps?.latitude !== "number" ||
+        typeof gps?.longitude !== "number"
+      ) {
+        return null;
+      }
+
+      return {
+        latitude: gps.latitude,
+        longitude: gps.longitude,
+      };
+    } catch (error) {
+      if (process.env.NODE_ENV === "development") {
+        console.info("Unable to parse photo GPS metadata.", {
+          name: photo.name,
+          type: photo.type,
+          error,
+        });
+      }
+
+      return null;
+    }
+  }
+
+  async function verifyPhotosForPark(data: ParkMutationPayload) {
+    if (!photos.length) {
+      return [];
     }
 
-    setFormErrors({});
+    setIsVerifyingPhotos(true);
+
+    try {
+      return await Promise.all(
+        photos.map(async (photo) => {
+          const gps = await readPhotoGps(photo.file);
+          const locationVerification = gps
+            ? {
+                ...verifyPhotoLocation({
+                  photoLatitude: gps.latitude,
+                  photoLongitude: gps.longitude,
+                  parkLatitude: data.lat,
+                  parkLongitude: data.lon,
+                }),
+                photoLatitude: gps.latitude,
+                photoLongitude: gps.longitude,
+              }
+            : getInitialPhotoVerification();
+
+          return {
+            ...photo,
+            isLocationVerified: true,
+            locationVerification,
+          };
+        })
+      );
+    } finally {
+      setIsVerifyingPhotos(false);
+    }
+  }
+
+  async function submitVerifiedPark(
+    data: ParkMutationPayload,
+    verifiedPhotos: SelectedPhoto[]
+  ) {
     setIsSubmitting(true);
 
     try {
       const uploadedPhotos: UploadedPhoto[] = [];
 
-      for (const selectedPhoto of photos) {
-        const uploadedPhoto = await uploadParkPhoto(selectedPhoto);
-        uploadedPhotos.push(uploadedPhoto);
+      for (const selectedPhoto of verifiedPhotos) {
+        const uploadedPhoto = await uploadParkPhoto(selectedPhoto.file);
+        uploadedPhotos.push({
+          ...uploadedPhoto,
+          locationVerification: selectedPhoto.locationVerification,
+        });
       }
+
+      const photoLocationVerifications = uploadedPhotos.map(
+        (photo) => photo.locationVerification
+      );
 
       const response =
         mode === "create"
@@ -248,9 +378,12 @@ export function ParkSubmissionForm({
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
-                ...validationResult.data,
+                ...data,
                 photoUrl: uploadedPhotos[0]?.photoUrl ?? null,
                 photoKey: uploadedPhotos[0]?.key ?? null,
+                photoLocationVerifications: uploadedPhotos[0]
+                  ? [uploadedPhotos[0].locationVerification]
+                  : [],
               }),
             })
           : await fetch(`/api/user/parks/${parkId}/edits`, {
@@ -259,9 +392,10 @@ export function ParkSubmissionForm({
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
-                ...validationResult.data,
+                ...data,
                 photoUrls: uploadedPhotos.map((photo) => photo.photoUrl),
                 photoKeys: uploadedPhotos.map((photo) => photo.key),
+                photoLocationVerifications,
               }),
             });
 
@@ -291,6 +425,63 @@ export function ParkSubmissionForm({
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  async function handleSubmit() {
+    const validationResult = validateParkMutation(formValues);
+
+    if (!validationResult.success) {
+      setFormErrors(validationResult.errors);
+      return;
+    }
+
+    setFormErrors({});
+
+    try {
+      const verifiedPhotos = await verifyPhotosForPark(validationResult.data);
+      setPhotos(verifiedPhotos);
+
+      if (
+        verifiedPhotos.some(
+          (photo) => photo.locationVerification.locationStatus === "MISMATCH"
+        )
+      ) {
+        setLocationWarning({
+          data: validationResult.data,
+          photos: verifiedPhotos,
+        });
+        return;
+      }
+
+      await submitVerifiedPark(validationResult.data, verifiedPhotos);
+    } catch (error) {
+      toast.error(
+        getErrorMessage(error, "Unable to check photo location metadata.")
+      );
+    }
+  }
+
+  function submitWithoutMismatchedPhotos() {
+    if (!locationWarning) {
+      return;
+    }
+
+    const remainingPhotos = locationWarning.photos.filter(
+      (photo) => photo.locationVerification.locationStatus !== "MISMATCH"
+    );
+
+    setPhotos(remainingPhotos);
+    setLocationWarning(null);
+    void submitVerifiedPark(locationWarning.data, remainingPhotos);
+  }
+
+  function continueWithMismatchedPhotos() {
+    if (!locationWarning) {
+      return;
+    }
+
+    setLocationWarning(null);
+    void submitVerifiedPark(locationWarning.data, locationWarning.photos);
   }
 
   return (
@@ -468,7 +659,14 @@ export function ParkSubmissionForm({
                 );
               }
 
-              setPhotos(selectedPhotos);
+              setPhotos(
+                selectedPhotos.map((photo, index) => ({
+                  id: createPhotoId(photo, index),
+                  file: photo,
+                  locationVerification: getInitialPhotoVerification(),
+                  isLocationVerified: false,
+                }))
+              );
               clearFieldError("photo");
             }}
             aria-invalid={formErrors.photo ? true : undefined}
@@ -481,10 +679,41 @@ export function ParkSubmissionForm({
           {formErrors.photo ? (
             <p className="text-xs text-destructive">{formErrors.photo}</p>
           ) : null}
+          {photos.length > 0 ? (
+            <div className="space-y-2 rounded-lg border p-3 text-xs">
+              {photos.map((photo) => (
+                <div
+                  key={photo.id}
+                  className="flex flex-wrap items-center justify-between gap-2"
+                >
+                  <span className="truncate">{photo.file.name}</span>
+                  <Badge
+                    variant={
+                      photo.isLocationVerified &&
+                      photo.locationVerification.locationStatus === "MISMATCH"
+                        ? "destructive"
+                        : "outline"
+                    }
+                  >
+                    {photo.isLocationVerified
+                      ? getPhotoStatusLabel(
+                          photo.locationVerification.locationStatus
+                        )
+                      : "Checked on submit"}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
 
-        <Button onClick={handleSubmit} disabled={isSubmitting}>
-          {isSubmitting
+        <Button
+          onClick={handleSubmit}
+          disabled={isSubmitting || isVerifyingPhotos}
+        >
+          {isVerifyingPhotos
+            ? "Checking photos..."
+            : isSubmitting
             ? mode === "create"
               ? "Submitting..."
               : "Saving..."
@@ -493,6 +722,64 @@ export function ParkSubmissionForm({
             : "Submit Edit for Review"}
         </Button>
       </CardContent>
+
+      <AlertDialog
+        open={Boolean(locationWarning)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setLocationWarning(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Photo location does not match</AlertDialogTitle>
+            <AlertDialogDescription>
+              One or more selected photos appear to be far from the selected
+              park location. Submitting unrelated or intentionally misleading
+              park photos may result in restrictions or a ban from Calistheni.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="space-y-2 text-sm">
+            {locationWarning?.photos
+              .filter(
+                (photo) =>
+                  photo.locationVerification.locationStatus === "MISMATCH"
+              )
+              .map((photo) => (
+                <div key={photo.id} className="rounded-lg border p-3">
+                  <p className="font-medium">{photo.file.name}</p>
+                  <p className="text-muted-foreground">
+                    Approximately{" "}
+                    {formatPhotoLocationDistance(
+                      photo.locationVerification.locationDistanceMeters
+                    )}{" "}
+                    from the selected park.
+                  </p>
+                </div>
+              ))}
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              variant="outline"
+              onClick={submitWithoutMismatchedPhotos}
+            >
+              Remove Photo
+            </AlertDialogAction>
+            <AlertDialogAction
+              type="button"
+              variant="destructive"
+              onClick={continueWithMismatchedPhotos}
+            >
+              Continue Anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

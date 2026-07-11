@@ -4,6 +4,7 @@ import {
   isAdminAuthenticated,
 } from "@/lib/admin-auth";
 import { createInternalServerErrorResponse } from "@/lib/api-response";
+import { readStoredPhotoLocationVerifications } from "@/lib/photo-location-verification";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
@@ -32,6 +33,7 @@ export async function GET() {
           lat: true,
           lon: true,
           photoUrl: true,
+          photoLocationVerifications: true,
           createdAt: true,
           submittedBy: {
             select: {
@@ -105,6 +107,10 @@ export async function GET() {
         lat: submission.lat,
         lon: submission.lon,
         photoUrls: submission.photoUrl ? [submission.photoUrl] : [],
+        photoLocationVerifications: readStoredPhotoLocationVerifications(
+          submission.photoLocationVerifications,
+          submission.photoUrl ? 1 : 0
+        ),
         createdAt: submission.createdAt.toISOString(),
         submittedBy: submission.submittedBy,
         equipment: submission.equipment.map((item) => item.equipment.name),
@@ -122,6 +128,10 @@ export async function GET() {
         lat: submission.lat,
         lon: submission.lon,
         photoUrls: submission.photoUrls,
+        photoLocationVerifications: readStoredPhotoLocationVerifications(
+          submission.photoLocationVerifications,
+          submission.photoUrls.length
+        ),
         createdAt: submission.createdAt.toISOString(),
         submittedBy: submission.submittedBy,
         equipment: submission.equipmentIds

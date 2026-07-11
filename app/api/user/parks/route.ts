@@ -9,6 +9,7 @@ import {
   getAuthenticatedUserId,
 } from "@/lib/user-auth";
 import { PENDING_PARK_PHOTO_PREFIX } from "@/lib/park-photo-storage";
+import { normalizePhotoLocationVerifications } from "@/lib/photo-location-verification";
 import { prisma } from "@/lib/prisma";
 import { parkMutationSchema } from "@/lib/validation/parks";
 
@@ -21,6 +22,7 @@ type CreateParkBody = {
   equipmentIds?: unknown;
   photoUrl?: unknown;
   photoKey?: unknown;
+  photoLocationVerifications?: unknown;
 };
 
 function parsePendingPhotoKey(value: unknown, userId: string) {
@@ -82,6 +84,13 @@ export async function POST(request: Request) {
     return createJsonErrorResponse("Uploaded photo key is required.", 400);
   }
 
+  const photoLocationVerifications = normalizePhotoLocationVerifications(
+    body.photoLocationVerifications,
+    photoUrl ? 1 : 0,
+    parsedBody.data.lat,
+    parsedBody.data.lon
+  );
+
   try {
     const park = await prisma.park.create({
       data: {
@@ -94,6 +103,9 @@ export async function POST(request: Request) {
         submittedById: userId,
         photoUrl,
         photoKey,
+        photoLocationVerifications: photoLocationVerifications.length
+          ? photoLocationVerifications
+          : undefined,
         equipment: {
           create: parsedBody.data.equipmentIds.map((equipmentId) => ({
             equipmentId,

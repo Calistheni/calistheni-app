@@ -7,6 +7,7 @@ import {
 } from "@/lib/api-response";
 import { publicParkWhere } from "@/lib/parks";
 import { PENDING_PARK_PHOTO_PREFIX } from "@/lib/park-photo-storage";
+import { normalizePhotoLocationVerifications } from "@/lib/photo-location-verification";
 import { prisma } from "@/lib/prisma";
 import {
   createUserUnauthorizedResponse,
@@ -23,6 +24,7 @@ type ParkEditBody = {
   equipmentIds?: unknown;
   photoUrls?: unknown;
   photoKeys?: unknown;
+  photoLocationVerifications?: unknown;
 };
 
 function parsePhotoUrls(value: unknown) {
@@ -100,6 +102,13 @@ export async function POST(
     );
   }
 
+  const photoLocationVerifications = normalizePhotoLocationVerifications(
+    body.photoLocationVerifications,
+    photoUrls.length,
+    parsedBody.data.lat,
+    parsedBody.data.lon
+  );
+
   try {
     const [park, equipmentCount] = await Promise.all([
       prisma.park.findFirst({
@@ -140,6 +149,9 @@ export async function POST(
         equipmentIds: parsedBody.data.equipmentIds,
         photoUrls,
         photoKeys,
+        photoLocationVerifications: photoLocationVerifications.length
+          ? photoLocationVerifications
+          : undefined,
       },
       select: {
         id: true,
