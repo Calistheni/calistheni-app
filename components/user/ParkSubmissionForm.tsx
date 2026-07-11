@@ -2,6 +2,7 @@
 
 import * as exifr from "exifr";
 import imageCompression from "browser-image-compression";
+import { AlertTriangle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { CoordinatePicker } from "@/components/CoordinatePicker";
@@ -91,6 +92,8 @@ const EMPTY_FORM_VALUES: ParkFormValues = {
   lon: "",
   equipmentIds: [],
 };
+const PHOTO_LIBRARY_ACCEPT_TYPES =
+  ".jpg,.jpeg,.png,.heic,.heif,image/jpeg,image/png,image/heic,image/heif";
 
 function getErrorMessage(error: unknown, fallbackMessage: string) {
   if (error instanceof Error && error.message) {
@@ -838,6 +841,19 @@ export function ParkSubmissionForm({
           <p className="text-sm font-medium">
             {mode === "create" ? "Park photo" : "Photos"}
           </p>
+          {mode === "create" ? (
+            <div className="flex gap-3 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-950 dark:text-amber-100">
+              <AlertTriangle className="mt-0.5 size-5 shrink-0" aria-hidden />
+              <div className="space-y-1">
+                <p className="font-semibold">Use Photo Library for GPS check</p>
+                <p>
+                  On iPhone, choose <strong>Photo Library</strong>. Avoid{" "}
+                  <strong>Take Photo</strong> because Safari may remove GPS
+                  metadata from direct camera photos.
+                </p>
+              </div>
+            </div>
+          ) : null}
           <div>
             <label
               htmlFor="park-photo-library"
@@ -849,7 +865,7 @@ export function ParkSubmissionForm({
               id="park-photo-library"
               className="sr-only"
               type="file"
-              accept="image/*"
+              accept={PHOTO_LIBRARY_ACCEPT_TYPES}
               multiple={mode === "suggest-edit"}
               onChange={(event) => updateSelectedPhotos(event.target.files)}
               aria-invalid={formErrors.photo ? true : undefined}
@@ -857,7 +873,7 @@ export function ParkSubmissionForm({
           </div>
           <p className="text-xs text-muted-foreground">
             {mode === "create"
-              ? "On iPhone, tap Photo Library in the picker. Avoid Take Photo because Safari may lower photo quality."
+              ? "This picker is configured for saved photo files, but iOS may still show camera options."
               : "Upload one or more photos to help the admin review this edit."}{" "}
             If photo GPS is unavailable, your browser may ask for location
             permission to help verify that you are near the selected park.
