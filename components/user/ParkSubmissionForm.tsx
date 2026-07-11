@@ -78,6 +78,11 @@ type LocationWarning = {
   photos: SelectedPhoto[];
 };
 
+type GpsCoordinates = {
+  latitude: number;
+  longitude: number;
+};
+
 const EMPTY_FORM_VALUES: ParkFormValues = {
   name: "",
   title: "",
@@ -103,6 +108,77 @@ function getCompressedFileName(file: File) {
 
 function formatFileSize(file: File) {
   return `${(file.size / 1024 / 1024).toFixed(2)} MB`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function toFiniteNumber(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
+function toCoordinate(value: unknown, ref: unknown) {
+  const directValue = toFiniteNumber(value);
+
+  if (directValue !== null) {
+    return ref === "S" || ref === "W" ? Math.abs(directValue) * -1 : directValue;
+  }
+
+  if (!Array.isArray(value) || value.length < 3) {
+    return null;
+  }
+
+  const degrees = toFiniteNumber(value[0]);
+  const minutes = toFiniteNumber(value[1]);
+  const seconds = toFiniteNumber(value[2]);
+
+  if (degrees === null || minutes === null || seconds === null) {
+    return null;
+  }
+
+  const decimalDegrees = Math.abs(degrees) + minutes / 60 + seconds / 3600;
+
+  return ref === "S" || ref === "W" ? decimalDegrees * -1 : decimalDegrees;
+}
+
+function getGpsFromMetadata(metadata: unknown): GpsCoordinates | null {
+  if (!isRecord(metadata)) {
+    return null;
+  }
+
+  const latitude =
+    toCoordinate(metadata.latitude, null) ??
+    toCoordinate(metadata.GPSLatitude, metadata.GPSLatitudeRef);
+  const longitude =
+    toCoordinate(metadata.longitude, null) ??
+    toCoordinate(metadata.GPSLongitude, metadata.GPSLongitudeRef);
+
+  if (
+    latitude === null ||
+    longitude === null ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
+  ) {
+    return null;
+  }
+
+  return {
+    latitude,
+    longitude,
+  };
 }
 
 function createPhotoId(file: File, index: number) {
@@ -328,7 +404,7 @@ export function ParkSubmissionForm({
     };
   }
 
-  async function readPhotoGps(photo: File) {
+  async function readPhotoGps(photo: File): Promise<GpsCoordinates | null> {
     try {
       const gps = await exifr.gps(photo);
 
@@ -345,7 +421,38 @@ export function ParkSubmissionForm({
       };
     } catch (error) {
       if (process.env.NODE_ENV === "development") {
-        console.info("Unable to parse photo GPS metadata.", {
+        console.info("Fast photo GPS parse failed.", {
+          name: photo.name,
+          type: photo.type,
+          error,
+        });
+      }
+    }
+
+    try {
+      const metadata = (await exifr.parse(photo, {
+        gps: true,
+        xmp: true,
+        mergeOutput: true,
+        reviveValues: true,
+        translateKeys: true,
+      })) as unknown;
+      const gps = getGpsFromMetadata(metadata);
+
+      if (process.env.NODE_ENV === "development") {
+        console.info("Fallback photo metadata parse result.", {
+          name: photo.name,
+          type: photo.type,
+          size: photo.size,
+          hasGps: Boolean(gps),
+          metadataKeys: isRecord(metadata) ? Object.keys(metadata).sort() : [],
+        });
+      }
+
+      return gps;
+    } catch (error) {
+      if (process.env.NODE_ENV === "development") {
+        console.info("Fallback photo metadata parse failed.", {
           name: photo.name,
           type: photo.type,
           error,
