@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { ExerciseForm } from "@/components/exercises/ExerciseForm";
 import { BackButton } from "@/components/navigation/BackButton";
+import { prisma } from "@/lib/prisma";
 
 export const metadata: Metadata = {
   title: "Create Custom Exercise",
@@ -12,11 +13,20 @@ export const metadata: Metadata = {
 export default async function NewCustomExercisePage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
+  const muscles = await prisma.exercise.findMany({
+    where: { createdByUserId: null },
+    distinct: ["muscle"],
+    orderBy: { muscle: "asc" },
+    select: { muscle: true },
+  });
 
   return (
     <main className="mx-auto w-full max-w-2xl p-4 sm:p-6 lg:p-8">
       <BackButton fallbackHref="/exercises" />
-      <ExerciseForm mode="custom-create" />
+      <ExerciseForm
+        mode="custom-create"
+        muscleOptions={muscles.map((exercise) => exercise.muscle)}
+      />
     </main>
   );
 }

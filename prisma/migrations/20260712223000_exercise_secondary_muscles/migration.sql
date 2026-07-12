@@ -1,0 +1,2 @@
+ALTER TABLE "Exercise"
+ADD COLUMN "secondaryMuscles" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

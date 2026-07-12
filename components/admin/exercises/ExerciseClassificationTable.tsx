@@ -8,6 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -23,10 +29,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { ExerciseTrackingType } from "@/types/workout";
+import { EXERCISE_MUSCLE_GROUPS } from "@/lib/exercise-muscles";
 export type AdminExerciseClassification = {
   id: string;
   name: string;
   muscle: string;
+  secondaryMuscles: string[];
   thumbnailUrl: string | null;
   trackingType: ExerciseTrackingType;
   bodyweightLoadFactor: number | null;
@@ -112,6 +120,7 @@ export function ExerciseClassificationTable({
             usesBodyweightLoadFactor(exercise.trackingType)
               ? exercise.bodyweightLoadFactor
               : null,
+          secondaryMuscles: exercise.secondaryMuscles,
         }),
       });
 
@@ -155,6 +164,7 @@ export function ExerciseClassificationTable({
             <TableRow>
               <TableHead>Exercise</TableHead>
               <TableHead>Muscle</TableHead>
+              <TableHead>Secondary muscles</TableHead>
               <TableHead>Tracking type</TableHead>
               <TableHead>Bodyweight load</TableHead>
               <TableHead className="text-right">Action</TableHead>
@@ -192,6 +202,48 @@ export function ExerciseClassificationTable({
                 </TableCell>
                 <TableCell>
                   <Badge variant="secondary">{exercise.muscle}</Badge>
+                </TableCell>
+                <TableCell className="min-w-56">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button type="button" variant="outline" className="w-full justify-start">
+                        {exercise.secondaryMuscles.length > 0
+                          ? `${exercise.secondaryMuscles.length} selected`
+                          : "Select muscles"}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="start"
+                      className="max-h-72 w-56 overflow-y-auto"
+                    >
+                      {EXERCISE_MUSCLE_GROUPS.filter(
+                        (muscle) => muscle !== exercise.muscle
+                      ).map((muscle) => (
+                        <DropdownMenuCheckboxItem
+                          key={muscle}
+                          checked={exercise.secondaryMuscles.includes(muscle)}
+                          onCheckedChange={(checked) =>
+                            updateExercise(exercise.id, {
+                              secondaryMuscles:
+                                checked === true
+                                  ? [...new Set([...exercise.secondaryMuscles, muscle])]
+                                  : exercise.secondaryMuscles.filter(
+                                      (item) => item !== muscle
+                                    ),
+                            })
+                          }
+                          onSelect={(event) => event.preventDefault()}
+                        >
+                          {muscle}
+                        </DropdownMenuCheckboxItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  {exercise.secondaryMuscles.length > 0 ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {exercise.secondaryMuscles.join(", ")}
+                    </p>
+                  ) : null}
                 </TableCell>
                 <TableCell>
                   <Select

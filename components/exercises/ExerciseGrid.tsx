@@ -30,9 +30,14 @@ import type { ExerciseListItem } from "@/types/workout";
 type ExerciseGridProps = {
   exercises: ExerciseListItem[];
   currentUserId?: string | null;
+  customOnly?: boolean;
 };
 
-export function ExerciseGrid({ exercises, currentUserId }: ExerciseGridProps) {
+export function ExerciseGrid({
+  exercises,
+  currentUserId,
+  customOnly = false,
+}: ExerciseGridProps) {
   const router = useRouter();
   const [deleteCandidate, setDeleteCandidate] =
     useState<ExerciseListItem | null>(null);
@@ -72,9 +77,22 @@ export function ExerciseGrid({ exercises, currentUserId }: ExerciseGridProps) {
       <Card>
         <CardContent className="space-y-2 p-6 text-sm text-muted-foreground">
           <p className="font-medium text-foreground">
-            No exercises matched your filters.
+            {customOnly
+              ? "You haven't created any custom exercises yet."
+              : "No exercises matched your filters."}
           </p>
-          <p>Try a broader search or select another muscle group.</p>
+          <p>
+            {customOnly
+              ? "Create your first private exercise to use it in workouts and routines."
+              : "Try a broader search or select another muscle group."}
+          </p>
+          {customOnly ? (
+            <Button asChild className="mt-2">
+              <Link href="/exercises/custom/new">
+                Create Custom Exercise
+              </Link>
+            </Button>
+          ) : null}
         </CardContent>
       </Card>
     );
@@ -90,14 +108,26 @@ export function ExerciseGrid({ exercises, currentUserId }: ExerciseGridProps) {
           return (
             <Card key={exercise.id} className="h-full overflow-hidden">
               <Link href={`/exercises/${exercise.id}`}>
-                <Image
-                  src={exercise.thumbnailUrl ?? "/icons/icon.png"}
-                  alt=""
-                  width={480}
-                  height={270}
-                  unoptimized
-                  className="aspect-video w-full bg-muted object-cover transition hover:opacity-90"
-                />
+                {exercise.thumbnailUrl ? (
+                  <Image
+                    src={exercise.thumbnailUrl}
+                    alt=""
+                    width={480}
+                    height={270}
+                    unoptimized
+                    className="aspect-video w-full bg-muted object-cover transition hover:opacity-90"
+                  />
+                ) : (
+                  <div className="flex aspect-video w-full items-center justify-center bg-gradient-to-br from-primary/10 via-muted to-primary/5 transition hover:opacity-90">
+                    <Image
+                      src="/icons/icon.png"
+                      alt=""
+                      width={96}
+                      height={96}
+                      className="size-20 rounded-2xl object-contain shadow-sm sm:size-24"
+                    />
+                  </div>
+                )}
               </Link>
               <CardContent className="space-y-3 p-4">
                 <div className="flex items-start justify-between gap-2">
@@ -135,6 +165,11 @@ export function ExerciseGrid({ exercises, currentUserId }: ExerciseGridProps) {
                     </DropdownMenu>
                   ) : null}
                 </div>
+                {exercise.secondaryMuscles.length > 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Also trains {exercise.secondaryMuscles.join(", ")}
+                  </p>
+                ) : null}
                 <Link
                   href={`/exercises/${exercise.id}`}
                   className="block font-semibold hover:underline"

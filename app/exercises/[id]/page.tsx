@@ -74,6 +74,11 @@ export default async function ExerciseDetailPage({
               Custom
             </Badge>
           ) : null}
+          {exercise.secondaryMuscles.length > 0 ? (
+            <p className="mt-2 text-sm text-muted-foreground">
+              Secondary: {exercise.secondaryMuscles.join(", ")}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline">

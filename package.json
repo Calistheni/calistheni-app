@@ -9,6 +9,8 @@
     "lint": "eslint",
     "seed:exercises": "node scripts/seed-exercises.mjs",
     "seed:rewards": "node scripts/seed-rewards.mjs",
+    "preview:secondary-muscles": "node --env-file=.env.local scripts/classify-secondary-muscles.mjs --dry-run",
+    "classify:secondary-muscles": "node --env-file=.env.local scripts/classify-secondary-muscles.mjs",
     "cleanup:pending-park-photos": "node scripts/cleanup-pending-park-photos.mjs"
   },
   "dependencies": {

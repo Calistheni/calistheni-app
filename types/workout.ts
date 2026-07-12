@@ -14,6 +14,7 @@ export type ExerciseListItem = {
   slug: string;
   name: string;
   muscle: string;
+  secondaryMuscles: string[];
   thumbnailUrl: string | null;
   videoUrl: string | null;
   trackingType: ExerciseTrackingType;

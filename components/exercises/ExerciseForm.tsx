@@ -4,7 +4,14 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -23,6 +30,7 @@ type ExerciseFormProps = {
   initialValues?: {
     name: string;
     muscle: string;
+    secondaryMuscles: string[];
     trackingType: CreatableExerciseTrackingType;
     bodyweightLoadFactor: number | null;
   };
@@ -57,6 +65,9 @@ export function ExerciseForm({
   const router = useRouter();
   const [name, setName] = useState(initialValues?.name ?? "");
   const [muscle, setMuscle] = useState(initialValues?.muscle ?? "");
+  const [secondaryMuscles, setSecondaryMuscles] = useState<string[]>(
+    initialValues?.secondaryMuscles ?? []
+  );
   const [trackingType, setTrackingType] =
     useState<CreatableExerciseTrackingType>(
       initialValues?.trackingType ?? "EXTERNAL_WEIGHT"
@@ -75,6 +86,24 @@ export function ExerciseForm({
   const suggestedSlug = createExerciseSlug(name) || "exercise-slug";
   const suggestedThumbnailUrl = `https://assets.calistheni.app/exercise-assets/${suggestedSlug}/thumbnail.jpg`;
   const suggestedVideoUrl = `https://assets.calistheni.app/exercise-assets/${suggestedSlug}/video.mp4`;
+  const secondaryMuscleOptions = muscleOptions.filter(
+    (option) => option !== muscle
+  );
+
+  function updatePrimaryMuscle(value: string) {
+    setMuscle(value);
+    setSecondaryMuscles((current) =>
+      current.filter((secondaryMuscle) => secondaryMuscle !== value)
+    );
+  }
+
+  function toggleSecondaryMuscle(value: string, checked: boolean) {
+    setSecondaryMuscles((current) =>
+      checked
+        ? [...new Set([...current, value])]
+        : current.filter((muscleGroup) => muscleGroup !== value)
+    );
+  }
 
   async function submit() {
     if (name.trim().length < 2 || muscle.trim().length < 2) {
@@ -91,6 +120,7 @@ export function ExerciseForm({
       const commonPayload = {
         name: name.trim(),
         muscle: muscle.trim(),
+        secondaryMuscles,
         trackingType,
         bodyweightLoadFactor:
           usesBodyweight && bodyweightLoadFactor.trim()
@@ -176,8 +206,8 @@ export function ExerciseForm({
           <label htmlFor="exercise-muscle" className="text-sm font-medium">
             Muscle group
           </label>
-          {isAdmin ? (
-            <Select value={muscle} onValueChange={setMuscle}>
+          {muscleOptions.length > 0 ? (
+            <Select value={muscle} onValueChange={updatePrimaryMuscle}>
               <SelectTrigger id="exercise-muscle" className="w-full">
                 <SelectValue placeholder="Select a muscle group" />
               </SelectTrigger>
@@ -197,6 +227,53 @@ export function ExerciseForm({
               maxLength={80}
               required
             />
+          )}
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Secondary muscle groups</label>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-auto min-h-9 w-full justify-start whitespace-normal"
+                disabled={!muscle || secondaryMuscleOptions.length === 0}
+              >
+                {secondaryMuscles.length > 0
+                  ? `${secondaryMuscles.length} selected`
+                  : "Select secondary muscles"}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="start"
+              className="max-h-72 w-[var(--radix-dropdown-menu-trigger-width)] overflow-y-auto"
+            >
+              {secondaryMuscleOptions.map((option) => (
+                <DropdownMenuCheckboxItem
+                  key={option}
+                  checked={secondaryMuscles.includes(option)}
+                  onCheckedChange={(checked) =>
+                    toggleSecondaryMuscle(option, checked === true)
+                  }
+                  onSelect={(event) => event.preventDefault()}
+                >
+                  {option}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {secondaryMuscles.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {secondaryMuscles.map((secondaryMuscle) => (
+                <Badge key={secondaryMuscle} variant="outline">
+                  {secondaryMuscle}
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Optional. Choose only muscles meaningfully involved in the movement.
+            </p>
           )}
         </div>
         <div className="space-y-2">

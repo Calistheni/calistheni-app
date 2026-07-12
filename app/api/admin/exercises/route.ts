@@ -66,6 +66,7 @@ export async function POST(request: Request) {
         slug,
         name: data.name,
         muscle: data.muscle,
+        secondaryMuscles: data.secondaryMuscles,
         trackingType: data.trackingType,
         bodyweightLoadFactor: data.bodyweightLoadFactor,
         thumbnailUrl: data.thumbnailUrl,

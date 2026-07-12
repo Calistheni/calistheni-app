@@ -5,6 +5,13 @@ import { BackButton } from "@/components/navigation/BackButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { prisma } from "@/lib/prisma";
 import type { ExerciseListItem, ExerciseTrackingType } from "@/types/workout";
 import { auth } from "@/auth";
@@ -24,6 +31,7 @@ function mapExercise(exercise: {
   slug: string;
   name: string;
   muscle: string;
+  secondaryMuscles: string[];
   thumbnailUrl: string | null;
   videoUrl: string | null;
   trackingType: ExerciseTrackingType;
@@ -35,6 +43,7 @@ function mapExercise(exercise: {
     slug: exercise.slug,
     name: exercise.name,
     muscle: exercise.muscle,
+    secondaryMuscles: exercise.secondaryMuscles,
     thumbnailUrl: exercise.thumbnailUrl,
     videoUrl: exercise.videoUrl,
     trackingType: exercise.trackingType,
@@ -46,18 +55,32 @@ function mapExercise(exercise: {
 export default async function ExercisesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; muscle?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    muscle?: string;
+    library?: string;
+  }>;
 }) {
   const params = await searchParams;
   const session = await auth();
   const userId = session?.user?.id ?? null;
   const q = (params.q ?? "").trim();
   const muscle = (params.muscle ?? "").trim();
+  const library =
+    userId && (params.library === "custom" || params.library === "global")
+      ? params.library
+      : "all";
+  const libraryWhere =
+    library === "custom"
+      ? { createdByUserId: userId! }
+      : library === "global"
+        ? { createdByUserId: null }
+        : exerciseVisibilityWhere(userId);
 
   const [exercises, muscles, customExerciseCount] = await Promise.all([
     prisma.exercise.findMany({
       where: {
-        AND: [exerciseVisibilityWhere(userId)],
+        AND: [libraryWhere],
         ...(q
           ? {
               OR: [
@@ -85,6 +108,7 @@ export default async function ExercisesPage({
         slug: true,
         name: true,
         muscle: true,
+        secondaryMuscles: true,
         thumbnailUrl: true,
         videoUrl: true,
         trackingType: true,
@@ -93,7 +117,7 @@ export default async function ExercisesPage({
       },
     }),
     prisma.exercise.findMany({
-      where: exerciseVisibilityWhere(userId),
+      where: libraryWhere,
       distinct: ["muscle"],
       orderBy: {
         muscle: "asc",
@@ -124,7 +148,13 @@ export default async function ExercisesPage({
         ) : null}
       </div>
 
-      <form className="mb-6 grid gap-3 rounded-xl border bg-card p-4 sm:grid-cols-[minmax(0,1fr)_auto]">
+      <form
+        className={`mb-6 grid gap-3 rounded-xl border bg-card p-4 ${
+          userId
+            ? "sm:grid-cols-[minmax(0,1fr)_220px_auto]"
+            : "sm:grid-cols-[minmax(0,1fr)_auto]"
+        }`}
+      >
         <label className="sr-only" htmlFor="exercise-search">
           Search exercises
         </label>
@@ -134,20 +164,43 @@ export default async function ExercisesPage({
           defaultValue={q}
           placeholder="Search exercises or muscles"
         />
+        {userId ? (
+          <div>
+            <label className="sr-only" htmlFor="exercise-library">
+              Exercise library
+            </label>
+            <Select name="library" defaultValue={library}>
+              <SelectTrigger id="exercise-library" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All exercises</SelectItem>
+                <SelectItem value="global">Global exercises</SelectItem>
+                <SelectItem value="custom">My custom exercises</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
         {muscle ? <input type="hidden" name="muscle" value={muscle} /> : null}
         <Button type="submit">Search</Button>
       </form>
 
       <div className="mb-6 flex flex-wrap gap-2">
         <Button asChild variant={muscle ? "outline" : "secondary"} size="sm">
-          <a href={q ? `/exercises?q=${encodeURIComponent(q)}` : "/exercises"}>
+          <Link
+            href={`/exercises?${new URLSearchParams({
+              ...(q ? { q } : {}),
+              ...(library !== "all" ? { library } : {}),
+            })}`}
+          >
             All
-          </a>
+          </Link>
         </Button>
         {muscles.map((item) => {
           const href = `/exercises?${new URLSearchParams({
             ...(q ? { q } : {}),
             muscle: item.muscle,
+            ...(library !== "all" ? { library } : {}),
           })}`;
 
           return (
@@ -157,7 +210,7 @@ export default async function ExercisesPage({
               variant={muscle === item.muscle ? "secondary" : "outline"}
               size="sm"
             >
-              <a href={href}>{item.muscle}</a>
+              <Link href={href}>{item.muscle}</Link>
             </Button>
           );
         })}
@@ -178,6 +231,7 @@ export default async function ExercisesPage({
       <ExerciseGrid
         exercises={exercises.map(mapExercise)}
         currentUserId={userId}
+        customOnly={library === "custom"}
       />
     </main>
   );

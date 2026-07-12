@@ -22,6 +22,7 @@ function mapExercise(exercise: {
   slug: string;
   name: string;
   muscle: string;
+  secondaryMuscles: string[];
   thumbnailUrl: string | null;
   videoUrl: string | null;
   trackingType: ExerciseTrackingType;
@@ -33,6 +34,7 @@ function mapExercise(exercise: {
     slug: exercise.slug,
     name: exercise.name,
     muscle: exercise.muscle,
+    secondaryMuscles: exercise.secondaryMuscles,
     thumbnailUrl: exercise.thumbnailUrl,
     videoUrl: exercise.videoUrl,
     trackingType: exercise.trackingType,
@@ -75,6 +77,7 @@ export default async function EditWorkoutPage({
         slug: true,
         name: true,
         muscle: true,
+        secondaryMuscles: true,
         thumbnailUrl: true,
         videoUrl: true,
         trackingType: true,

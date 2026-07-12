@@ -36,6 +36,7 @@ function mapExercise(exercise: {
   slug: string;
   name: string;
   muscle: string;
+  secondaryMuscles: string[];
   thumbnailUrl: string | null;
   videoUrl: string | null;
   trackingType: ExerciseTrackingType;
@@ -47,6 +48,7 @@ function mapExercise(exercise: {
     slug: exercise.slug,
     name: exercise.name,
     muscle: exercise.muscle,
+    secondaryMuscles: exercise.secondaryMuscles,
     thumbnailUrl: exercise.thumbnailUrl,
     videoUrl: exercise.videoUrl,
     trackingType: exercise.trackingType,
@@ -76,6 +78,7 @@ export function mapWorkoutDetail(workout: {
       slug: string;
       name: string;
       muscle: string;
+      secondaryMuscles: string[];
       thumbnailUrl: string | null;
       videoUrl: string | null;
       trackingType: ExerciseTrackingType;

@@ -8,11 +8,16 @@ import {
   createJsonErrorResponse,
 } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
+import {
+  EXERCISE_MUSCLE_GROUPS,
+  normalizeSecondaryMuscles,
+} from "@/lib/exercise-muscles";
 import type { ExerciseTrackingType } from "@/types/workout";
 
 type ExerciseClassificationPayload = {
   trackingType?: unknown;
   bodyweightLoadFactor?: unknown;
+  secondaryMuscles?: unknown;
 };
 
 const TRACKING_TYPES: ExerciseTrackingType[] = [
@@ -76,6 +81,19 @@ export async function PATCH(
   if (!isTrackingType(body.trackingType)) {
     return createJsonErrorResponse("Invalid tracking type.", 400);
   }
+  if (
+    !Array.isArray(body.secondaryMuscles) ||
+    body.secondaryMuscles.length > 8 ||
+    !body.secondaryMuscles.every(
+      (muscle) =>
+        typeof muscle === "string" &&
+        EXERCISE_MUSCLE_GROUPS.includes(
+          muscle as (typeof EXERCISE_MUSCLE_GROUPS)[number]
+        )
+    )
+  ) {
+    return createJsonErrorResponse("Invalid secondary muscle groups.", 400);
+  }
 
   const bodyweightLoadFactor = parseBodyweightLoadFactor(
     body.bodyweightLoadFactor
@@ -101,6 +119,7 @@ export async function PATCH(
       },
       select: {
         id: true,
+        muscle: true,
       },
     });
 
@@ -118,11 +137,16 @@ export async function PATCH(
           usesBodyweightLoadFactor(body.trackingType)
             ? bodyweightLoadFactor ?? 1
             : null,
+        secondaryMuscles: normalizeSecondaryMuscles(
+          existingExercise.muscle,
+          body.secondaryMuscles
+        ),
       },
       select: {
         id: true,
         name: true,
         muscle: true,
+        secondaryMuscles: true,
         trackingType: true,
         bodyweightLoadFactor: true,
       },

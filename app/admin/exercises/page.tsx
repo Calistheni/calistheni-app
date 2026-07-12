@@ -118,6 +118,7 @@ export default async function AdminExercisesPage({
       id: true,
       name: true,
       muscle: true,
+      secondaryMuscles: true,
       thumbnailUrl: true,
       trackingType: true,
       bodyweightLoadFactor: true,

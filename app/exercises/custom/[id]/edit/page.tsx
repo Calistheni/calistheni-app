@@ -19,9 +19,17 @@ export default async function EditCustomExercisePage({
   const session = await auth();
   if (!session?.user) redirect("/login");
   const { id } = await params;
-  const exercise = await prisma.exercise.findFirst({
-    where: { id, createdByUserId: session.user.id },
-  });
+  const [exercise, muscles] = await Promise.all([
+    prisma.exercise.findFirst({
+      where: { id, createdByUserId: session.user.id },
+    }),
+    prisma.exercise.findMany({
+      where: { createdByUserId: null },
+      distinct: ["muscle"],
+      orderBy: { muscle: "asc" },
+      select: { muscle: true },
+    }),
+  ]);
   if (!exercise) notFound();
 
   return (
@@ -30,9 +38,11 @@ export default async function EditCustomExercisePage({
       <ExerciseForm
         mode="custom-edit"
         exerciseId={exercise.id}
+        muscleOptions={muscles.map((item) => item.muscle)}
         initialValues={{
           name: exercise.name,
           muscle: exercise.muscle,
+          secondaryMuscles: exercise.secondaryMuscles,
           trackingType:
             exercise.trackingType as CreatableExerciseTrackingType,
           bodyweightLoadFactor: exercise.bodyweightLoadFactor,

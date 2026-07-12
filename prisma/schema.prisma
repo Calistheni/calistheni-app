@@ -243,6 +243,7 @@ model Exercise {
   slug                 String               @unique
   name                 String
   muscle               String
+  secondaryMuscles     String[]             @default([])
   thumbnailUrl         String?
   videoUrl             String?
   trackingType         ExerciseTrackingType @default(NOT_SELECTED)
