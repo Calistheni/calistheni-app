@@ -3,10 +3,21 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -80,6 +91,9 @@ export function RewardsAdminClient({
     useState<RewardFormValues>(EMPTY_FORM_VALUES);
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deleteCandidate, setDeleteCandidate] = useState<AdminReward | null>(
+    null
+  );
 
   function updateField<Field extends keyof RewardFormValues>(
     field: Field,
@@ -144,10 +158,6 @@ export function RewardsAdminClient({
   }
 
   async function deleteReward(reward: AdminReward) {
-    if (!window.confirm(`Delete ${reward.title}?`)) {
-      return;
-    }
-
     setDeletingId(reward.id);
 
     try {
@@ -166,6 +176,7 @@ export function RewardsAdminClient({
       }
 
       toast.success("Reward deleted.");
+      setDeleteCandidate(null);
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -222,14 +233,14 @@ export function RewardsAdminClient({
             >
               Description
             </label>
-            <textarea
+            <Textarea
               id="reward-description"
               value={formValues.description}
               onChange={(event) =>
                 updateField("description", event.target.value)
               }
               placeholder="Demo reward placeholder for launch planning."
-              className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="min-h-24"
             />
           </div>
 
@@ -303,62 +314,101 @@ export function RewardsAdminClient({
               No rewards have been created yet.
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Reward</TableHead>
-                  <TableHead>Partner</TableHead>
-                  <TableHead>Cost</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((reward) => (
-                  <TableRow key={reward.id}>
-                    <TableCell className="min-w-72">
-                      <div className="font-medium">{reward.title}</div>
-                      <div className="max-w-md whitespace-normal text-sm text-muted-foreground">
-                        {reward.description}
-                      </div>
-                    </TableCell>
-                    <TableCell>{reward.partnerName}</TableCell>
-                    <TableCell>
-                      {reward.pointsCost.toLocaleString()} points
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={reward.active ? "secondary" : "outline"}>
-                        {reward.active ? "Active" : "Inactive"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => startEditing(reward)}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => void deleteReward(reward)}
-                          disabled={deletingId === reward.id}
-                        >
-                          {deletingId === reward.id ? "Deleting..." : "Delete"}
-                        </Button>
-                      </div>
-                    </TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Reward</TableHead>
+                    <TableHead>Partner</TableHead>
+                    <TableHead>Cost</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {items.map((reward) => (
+                    <TableRow key={reward.id}>
+                      <TableCell className="min-w-72">
+                        <div className="font-medium">{reward.title}</div>
+                        <div className="max-w-md whitespace-normal text-sm text-muted-foreground">
+                          {reward.description}
+                        </div>
+                      </TableCell>
+                      <TableCell>{reward.partnerName}</TableCell>
+                      <TableCell>
+                        {reward.pointsCost.toLocaleString()} points
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={reward.active ? "secondary" : "outline"}
+                        >
+                          {reward.active ? "Active" : "Inactive"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => startEditing(reward)}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => setDeleteCandidate(reward)}
+                            disabled={deletingId === reward.id}
+                          >
+                            {deletingId === reward.id
+                              ? "Deleting..."
+                              : "Delete"}
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog
+        open={deleteCandidate !== null}
+        onOpenChange={(open) => {
+          if (!open && deletingId === null) setDeleteCandidate(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this reward?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteCandidate
+                ? `“${deleteCandidate.title}” will be permanently removed.`
+                : "This reward will be permanently removed."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingId !== null}>
+              Keep reward
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={!deleteCandidate || deletingId !== null}
+              onClick={(event) => {
+                event.preventDefault();
+                if (deleteCandidate) void deleteReward(deleteCandidate);
+              }}
+            >
+              {deletingId !== null ? "Deleting..." : "Delete reward"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

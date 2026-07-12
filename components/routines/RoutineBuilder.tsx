@@ -365,7 +365,7 @@ export function RoutineBuilder({
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-3">
                       <Image
-                        src={exercise.thumbnailUrl ?? "/icon.svg"}
+                        src={exercise.thumbnailUrl ?? "/icons/icon.png"}
                         alt=""
                         width={160}
                         height={128}
@@ -535,7 +535,7 @@ export function RoutineBuilder({
                     className="flex w-full items-center gap-3 rounded-lg border p-2 text-left transition hover:border-primary disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <Image
-                      src={exercise.thumbnailUrl ?? "/icon.svg"}
+                      src={exercise.thumbnailUrl ?? "/icons/icon.png"}
                       alt=""
                       width={128}
                       height={112}

@@ -52,7 +52,7 @@ export default async function ExerciseDetailPage({
     notFound();
   }
 
-  const thumbnailUrl = exercise.thumbnailUrl ?? "/icon.svg";
+  const thumbnailUrl = exercise.thumbnailUrl ?? "/icons/icon.png";
 
   return (
     <main className="mx-auto w-full max-w-5xl p-4 sm:p-6 lg:p-8">

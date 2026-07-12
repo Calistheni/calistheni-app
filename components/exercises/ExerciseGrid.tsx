@@ -28,7 +28,7 @@ export function ExerciseGrid({ exercises }: ExerciseGridProps) {
         <Link key={exercise.id} href={`/exercises/${exercise.id}`}>
           <Card className="h-full overflow-hidden transition hover:border-primary/50">
             <Image
-              src={exercise.thumbnailUrl ?? "/icon.svg"}
+              src={exercise.thumbnailUrl ?? "/icons/icon.png"}
               alt=""
               width={480}
               height={270}

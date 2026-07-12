@@ -174,7 +174,7 @@ export function ActiveWorkoutDock() {
           >
             <Link href="/workouts/new">
               <Image
-                src="/icons/icon.svg"
+                src="/icons/icon.png"
                 alt=""
                 width={24}
                 height={24}

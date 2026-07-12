@@ -3,6 +3,17 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 
 type RoutineDeleteButtonProps = {
@@ -28,10 +39,6 @@ export function RoutineDeleteButton({ routineId }: RoutineDeleteButtonProps) {
   const [isDeleting, setIsDeleting] = useState(false);
 
   async function deleteRoutine() {
-    if (!window.confirm("Delete this routine?")) {
-      return;
-    }
-
     setIsDeleting(true);
 
     try {
@@ -58,14 +65,31 @@ export function RoutineDeleteButton({ routineId }: RoutineDeleteButtonProps) {
   }
 
   return (
-    <Button
-      type="button"
-      variant="destructive"
-      onClick={() => void deleteRoutine()}
-      disabled={isDeleting}
-    >
-      {isDeleting ? "Deleting..." : "Delete Routine"}
-    </Button>
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button type="button" variant="destructive" disabled={isDeleting}>
+          {isDeleting ? "Deleting..." : "Delete Routine"}
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete this routine?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This permanently removes the routine. Your completed workouts will
+            not be affected.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Keep routine</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            onClick={() => void deleteRoutine()}
+          >
+            Delete routine
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 

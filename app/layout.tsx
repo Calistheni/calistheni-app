@@ -38,9 +38,9 @@ export const metadata: Metadata = {
       "Browse calisthenics parks worldwide, explore equipment, and discover places to train outdoors.",
     images: [
       {
-        url: "/icon.svg",
-        width: 512,
-        height: 512,
+        url: "/icons/icon.png",
+        width: 600,
+        height: 600,
         alt: "Calistheni icon",
       },
     ],
@@ -50,15 +50,12 @@ export const metadata: Metadata = {
     title: "Calistheni | Worldwide Calisthenics Park Finder",
     description:
       "Discover calisthenics parks worldwide and find your next outdoor training spot.",
-    images: ["/icon.svg"],
+    images: ["/icons/icon.png"],
   },
   icons: {
-    icon: [
-      { url: "/icon.svg", type: "image/svg+xml" },
-      { url: "/favicon.ico" },
-    ],
-    apple: "/icons/dumbbell.png",
-    shortcut: "/favicon.ico",
+    icon: [{ url: "/icons/icon.png", type: "image/png" }],
+    apple: "/icons/icon.png",
+    shortcut: "/icons/icon.png",
   },
 };
 

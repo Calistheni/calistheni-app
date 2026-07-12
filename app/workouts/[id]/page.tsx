@@ -207,7 +207,9 @@ export default async function WorkoutDetailPage({
             <CardHeader>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <Image
-                  src={workoutExercise.exercise.thumbnailUrl ?? "/icon.svg"}
+                  src={
+                    workoutExercise.exercise.thumbnailUrl ?? "/icons/icon.png"
+                  }
                   alt=""
                   width={224}
                   height={160}

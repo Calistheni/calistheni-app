@@ -802,7 +802,7 @@ export function WorkoutBuilder({
                 className="flex w-full items-center gap-3 rounded-lg border p-2 text-left transition hover:border-primary disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Image
-                  src={exercise.thumbnailUrl ?? "/icon.svg"}
+                  src={exercise.thumbnailUrl ?? "/icons/icon.png"}
                   alt=""
                   width={128}
                   height={112}
@@ -1130,7 +1130,7 @@ export function WorkoutBuilder({
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       <div className="flex min-w-0 items-center gap-3">
                         <Image
-                          src={exercise.thumbnailUrl ?? "/icon.svg"}
+                          src={exercise.thumbnailUrl ?? "/icons/icon.png"}
                           alt=""
                           width={160}
                           height={128}
