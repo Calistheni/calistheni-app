@@ -27,11 +27,8 @@ export const adminExerciseCreationSchema = z
     muscle: z.string().trim().min(2).max(80),
     trackingType: trackingTypeSchema,
     bodyweightLoadFactor: z.number().positive().max(5).nullable().optional(),
-    slug: z.string().trim().min(1).max(140),
     thumbnailUrl: z.string().url().max(1000),
-    thumbnailKey: z.string().trim().min(1).max(500),
     videoUrl: z.string().url().max(1000).nullable().optional(),
-    videoKey: z.string().trim().min(1).max(500).nullable().optional(),
   })
   .transform((value) => ({
     ...value,
@@ -41,5 +38,4 @@ export const adminExerciseCreationSchema = z
         ? value.bodyweightLoadFactor ?? 1
         : null,
     videoUrl: value.videoUrl ?? null,
-    videoKey: value.videoKey ?? null,
   }));

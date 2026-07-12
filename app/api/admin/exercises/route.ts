@@ -1,4 +1,3 @@
-import { HeadObjectCommand } from "@aws-sdk/client-s3";
 import { NextResponse } from "next/server";
 import {
   createInternalServerErrorResponse,
@@ -6,12 +5,8 @@ import {
   createJsonValidationErrorResponse,
 } from "@/lib/api-response";
 import { isAdminAuthenticated } from "@/lib/admin-auth";
+import { createUniqueExerciseSlug } from "@/lib/exercises";
 import { prisma } from "@/lib/prisma";
-import {
-  R2_ASSETS_BUCKET_NAME,
-  getExerciseAssetPublicUrl,
-  r2,
-} from "@/lib/r2";
 import { adminExerciseCreationSchema } from "@/lib/validation/exercises";
 
 export async function POST(request: Request) {
@@ -35,42 +30,27 @@ export async function POST(request: Request) {
   }
 
   const data = parsed.data;
+  const assetsBaseUrl = (process.env.NEXT_PUBLIC_ASSETS_URL ?? "").replace(
+    /\/$/,
+    ""
+  );
+  const isExerciseAssetUrl = (value: string) =>
+    assetsBaseUrl.length > 0 &&
+    value.startsWith(`${assetsBaseUrl}/exercise-assets/`);
   if (
-    data.thumbnailKey !== `exercises/${data.slug}/thumbnail.webp` ||
-    data.thumbnailUrl !== getExerciseAssetPublicUrl(data.thumbnailKey) ||
-    (data.videoKey !== null &&
-      (data.videoKey !== `exercises/${data.slug}/video.mp4` ||
-        data.videoUrl !== getExerciseAssetPublicUrl(data.videoKey))) ||
-    (data.videoKey === null && data.videoUrl !== null)
+    !isExerciseAssetUrl(data.thumbnailUrl) ||
+    (data.videoUrl !== null && !isExerciseAssetUrl(data.videoUrl))
   ) {
-    return createJsonErrorResponse("Invalid exercise media paths.", 400);
+    return createJsonErrorResponse(
+      "Exercise media URLs must use the configured assets domain and exercise-assets path.",
+      400
+    );
   }
 
   try {
-    const mediaKeys = [data.thumbnailKey, data.videoKey].filter(
-      (key): key is string => key !== null
-    );
-    const mediaChecks = await Promise.all(
-      mediaKeys.map(async (key) => {
-        try {
-          await r2.send(
-            new HeadObjectCommand({ Bucket: R2_ASSETS_BUCKET_NAME, Key: key })
-          );
-          return true;
-        } catch {
-          return false;
-        }
-      })
-    );
-    if (mediaChecks.some((exists) => !exists)) {
-      return createJsonErrorResponse(
-        "Exercise media upload was not found. Please upload the files again.",
-        400
-      );
-    }
-
+    const slug = await createUniqueExerciseSlug(data.name);
     const existing = await prisma.exercise.findUnique({
-      where: { slug: data.slug },
+      where: { slug },
       select: { id: true },
     });
     if (existing) {
@@ -82,8 +62,8 @@ export async function POST(request: Request) {
 
     const exercise = await prisma.exercise.create({
       data: {
-        id: data.slug,
-        slug: data.slug,
+        id: slug,
+        slug,
         name: data.name,
         muscle: data.muscle,
         trackingType: data.trackingType,

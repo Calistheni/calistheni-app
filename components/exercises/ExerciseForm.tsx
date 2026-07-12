@@ -1,6 +1,5 @@
 "use client";
 
-import imageCompression from "browser-image-compression";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -15,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { CreatableExerciseTrackingType } from "@/lib/exercises";
+import { createExerciseSlug } from "@/lib/exercise-slug";
 
 type ExerciseFormProps = {
   mode: "admin-create" | "custom-create" | "custom-edit";
@@ -64,76 +64,25 @@ export function ExerciseForm({
   const [bodyweightLoadFactor, setBodyweightLoadFactor] = useState(
     initialValues?.bodyweightLoadFactor?.toString() ?? ""
   );
-  const [thumbnail, setThumbnail] = useState<File | null>(null);
-  const [video, setVideo] = useState<File | null>(null);
+  const [thumbnailUrl, setThumbnailUrl] = useState("");
+  const [videoUrl, setVideoUrl] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   const isAdmin = mode === "admin-create";
   const usesBodyweight =
     trackingType === "BODYWEIGHT_REPS" ||
     trackingType === "WEIGHTED_BODYWEIGHT";
-
-  async function createUpload(kind: "thumbnail" | "video", file: File) {
-    const response = await fetch("/api/admin/exercises/uploads", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name,
-        kind,
-        contentType: file.type,
-        size: file.size,
-      }),
-    });
-    if (!response.ok) throw new Error(await getResponseError(response));
-    return (await response.json()) as {
-      uploadUrl: string;
-      slug: string;
-      key: string;
-      publicUrl: string;
-    };
-  }
-
-  async function uploadFile(uploadUrl: string, file: File) {
-    let response: Response;
-    try {
-      response = await fetch(uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": file.type },
-        body: file,
-      });
-    } catch {
-      throw new Error(
-        "The video could not reach R2. Check the assets bucket CORS policy and try again."
-      );
-    }
-    if (!response.ok) {
-      throw new Error("The video upload failed. Please try again.");
-    }
-  }
-
-  async function uploadThumbnail(file: File) {
-    const formData = new FormData();
-    formData.set("name", name.trim());
-    formData.set("file", file);
-    const response = await fetch("/api/admin/exercises/uploads", {
-      method: "POST",
-      body: formData,
-    });
-    if (!response.ok) throw new Error(await getResponseError(response));
-    return (await response.json()) as {
-      slug: string;
-      key: string;
-      publicUrl: string;
-    };
-  }
+  const suggestedSlug = createExerciseSlug(name) || "exercise-slug";
+  const suggestedThumbnailUrl = `https://assets.calistheni.app/exercise-assets/${suggestedSlug}/thumbnail.jpg`;
+  const suggestedVideoUrl = `https://assets.calistheni.app/exercise-assets/${suggestedSlug}/video.mp4`;
 
   async function submit() {
     if (name.trim().length < 2 || muscle.trim().length < 2) {
       toast.error("Enter an exercise name and muscle group.");
       return;
     }
-    if (isAdmin && !thumbnail) {
-      toast.error("A thumbnail is required for global exercises.");
+    if (isAdmin && !thumbnailUrl.trim()) {
+      toast.error("A thumbnail URL is required for global exercises.");
       return;
     }
 
@@ -150,34 +99,14 @@ export function ExerciseForm({
       };
 
       let response: Response;
-      if (isAdmin && thumbnail) {
-        const compressedThumbnail = await imageCompression(thumbnail, {
-          maxSizeMB: 1.5,
-          maxWidthOrHeight: 1600,
-          useWebWorker: true,
-          fileType: "image/webp",
-        });
-        const thumbnailUpload = await uploadThumbnail(compressedThumbnail);
-
-        let videoUpload: Awaited<ReturnType<typeof createUpload>> | null = null;
-        if (video) {
-          videoUpload = await createUpload("video", video);
-          if (videoUpload.slug !== thumbnailUpload.slug) {
-            throw new Error("The exercise name changed during upload. Try again.");
-          }
-          await uploadFile(videoUpload.uploadUrl, video);
-        }
-
+      if (isAdmin) {
         response = await fetch("/api/admin/exercises", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             ...commonPayload,
-            slug: thumbnailUpload.slug,
-            thumbnailKey: thumbnailUpload.key,
-            thumbnailUrl: thumbnailUpload.publicUrl,
-            videoKey: videoUpload?.key ?? null,
-            videoUrl: videoUpload?.publicUrl ?? null,
+            thumbnailUrl: thumbnailUrl.trim(),
+            videoUrl: videoUrl.trim() || null,
           }),
         });
       } else {
@@ -317,31 +246,51 @@ export function ExerciseForm({
           <>
             <div className="space-y-2">
               <label htmlFor="exercise-thumbnail" className="text-sm font-medium">
-                Thumbnail
+                Thumbnail URL
               </label>
               <Input
                 id="exercise-thumbnail"
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                onChange={(event) =>
-                  setThumbnail(event.target.files?.[0] ?? null)
-                }
+                type="url"
+                value={thumbnailUrl}
+                onChange={(event) => setThumbnailUrl(event.target.value)}
+                placeholder={suggestedThumbnailUrl}
                 required
               />
+              <p className="text-xs text-muted-foreground">
+                Upload the file to calistheni-assets first, then paste its
+                public URL. Expected path: exercise-assets/&lt;slug&gt;/thumbnail.jpg
+              </p>
             </div>
             <div className="space-y-2">
               <label htmlFor="exercise-video" className="text-sm font-medium">
-                Demo video (optional)
+                Demo video URL (optional)
               </label>
               <Input
                 id="exercise-video"
-                type="file"
-                accept="video/mp4,video/webm,video/quicktime"
-                onChange={(event) => setVideo(event.target.files?.[0] ?? null)}
+                type="url"
+                value={videoUrl}
+                onChange={(event) => setVideoUrl(event.target.value)}
+                placeholder={suggestedVideoUrl}
               />
               <p className="text-xs text-muted-foreground">
-                MP4, WebM, or QuickTime up to 150 MB. Uploads directly to R2.
+                Upload manually in Cloudflare or use Wrangler. The app does not
+                write exercise media to R2.
               </p>
+            </div>
+            <div className="space-y-2 rounded-lg border bg-muted/40 p-4 text-sm">
+              <p className="font-medium">Wrangler upload commands</p>
+              <p className="text-xs text-muted-foreground">
+                Run these after replacing the local file paths, then paste the
+                matching public URLs above.
+              </p>
+              <code className="block overflow-x-auto rounded bg-background p-2 text-xs">
+                npx wrangler r2 object put
+                {` calistheni-assets/exercise-assets/${suggestedSlug}/thumbnail.jpg --file ./thumbnail.jpg --content-type image/jpeg --remote`}
+              </code>
+              <code className="block overflow-x-auto rounded bg-background p-2 text-xs">
+                npx wrangler r2 object put
+                {` calistheni-assets/exercise-assets/${suggestedSlug}/video.mp4 --file ./video.mp4 --content-type video/mp4 --remote`}
+              </code>
             </div>
           </>
         ) : null}
