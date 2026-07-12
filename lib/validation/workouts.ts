@@ -72,6 +72,13 @@ const nullableInteger = (min: number, max: number) =>
     return value;
   });
 
+const allowedRpeValues = [6, 7, 7.5, 8, 8.5, 9, 9.5, 10];
+
+const nullableRpe = nullableNumber(6, 10).refine(
+  (value) => value === null || allowedRpeValues.includes(value),
+  "RPE must be 6, 7, 7.5, 8, 8.5, 9, 9.5, or 10."
+);
+
 export const workoutMutationSchema = z.object({
   title: nullableText(140),
   notes: nullableText(1000),
@@ -93,6 +100,7 @@ export const workoutMutationSchema = z.object({
               distanceMeters: nullableNumber(0, 1000000),
               steps: nullableInteger(0, 1000000),
               floors: nullableInteger(0, 1000000),
+              rpe: nullableRpe,
               notes: nullableText(500),
               completed: z.boolean().default(false),
             })

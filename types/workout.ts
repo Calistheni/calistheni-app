@@ -27,6 +27,7 @@ export type WorkoutSetInput = {
   distanceMeters: number | null;
   steps: number | null;
   floors: number | null;
+  rpe: number | null;
   notes: string | null;
   completed: boolean;
 };
@@ -68,6 +69,7 @@ export type WorkoutDetail = {
       distanceMeters: number | null;
       steps: number | null;
       floors: number | null;
+      rpe: number | null;
       notes: string | null;
       completed: boolean;
     }>;

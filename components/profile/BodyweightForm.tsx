@@ -5,9 +5,11 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 
 type BodyweightFormProps = {
   initialBodyweightKg: number | null;
+  initialRpeTrackingEnabled: boolean;
 };
 
 async function getApiErrorMessage(response: Response) {
@@ -22,12 +24,16 @@ async function getApiErrorMessage(response: Response) {
 
 export function BodyweightForm({
   initialBodyweightKg,
+  initialRpeTrackingEnabled,
 }: BodyweightFormProps) {
   const router = useRouter();
   const [bodyweightKg, setBodyweightKg] = useState(
     initialBodyweightKg?.toString() ?? ""
   );
   const [isSaving, setIsSaving] = useState(false);
+  const [rpeTrackingEnabled, setRpeTrackingEnabled] = useState(
+    initialRpeTrackingEnabled
+  );
 
   async function saveBodyweight() {
     const trimmedBodyweight = bodyweightKg.trim();
@@ -54,6 +60,7 @@ export function BodyweightForm({
         },
         body: JSON.stringify({
           bodyweightKg: nextBodyweightKg,
+          rpeTrackingEnabled,
         }),
       });
 
@@ -63,9 +70,11 @@ export function BodyweightForm({
 
       const payload = (await response.json()) as {
         bodyweightKg: number | null;
+        rpeTrackingEnabled: boolean;
       };
       setBodyweightKg(payload.bodyweightKg?.toString() ?? "");
-      toast.success("Bodyweight saved.");
+      setRpeTrackingEnabled(payload.rpeTrackingEnabled);
+      toast.success("Workout settings saved.");
       router.refresh();
     } catch (error) {
       toast.error(
@@ -77,7 +86,7 @@ export function BodyweightForm({
   }
 
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+    <div className="space-y-4">
       <div className="space-y-2">
         <label htmlFor="profile-bodyweight" className="text-sm font-medium">
           Bodyweight
@@ -97,8 +106,24 @@ export function BodyweightForm({
           Used for bodyweight and weighted-bodyweight workout volume.
         </p>
       </div>
+      <div className="flex items-start justify-between gap-4 rounded-lg border p-3">
+        <div className="space-y-1">
+          <label htmlFor="profile-rpe-tracking" className="text-sm font-medium">
+            RPE Tracking
+          </label>
+          <p className="text-xs text-muted-foreground">
+            Show an optional effort rating for completed workout sets.
+          </p>
+        </div>
+        <Switch
+          id="profile-rpe-tracking"
+          checked={rpeTrackingEnabled}
+          onCheckedChange={setRpeTrackingEnabled}
+          aria-label="Enable RPE tracking"
+        />
+      </div>
       <Button type="button" onClick={() => void saveBodyweight()} disabled={isSaving}>
-        {isSaving ? "Saving..." : "Save Bodyweight"}
+        {isSaving ? "Saving..." : "Save Workout Settings"}
       </Button>
     </div>
   );

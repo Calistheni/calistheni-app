@@ -226,6 +226,10 @@ export function useRestTimer() {
           };
         }),
       skipRestTimer: () => setActiveTimer(null),
+      clearRestTimer: () => {
+        notifiedTimerRef.current = null;
+        setActiveTimer(null);
+      },
       toggleMuted: () => setIsMuted((current) => !current),
     }),
     [activeTimer, isMuted, remainingSeconds]

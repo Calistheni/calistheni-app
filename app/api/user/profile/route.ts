@@ -14,6 +14,7 @@ type ProfileUpdatePayload = {
   trainingStyle?: unknown;
   primaryGoal?: unknown;
   onboardingCompleted?: unknown;
+  rpeTrackingEnabled?: unknown;
 };
 
 const TRAINING_STYLES = ["CALISTHENICS", "GYM", "BOTH"] as const;
@@ -83,6 +84,7 @@ export async function PATCH(request: Request) {
     trainingStyle?: (typeof TRAINING_STYLES)[number] | null;
     primaryGoal?: (typeof PRIMARY_GOALS)[number] | null;
     onboardingCompleted?: boolean;
+    rpeTrackingEnabled?: boolean;
   } = {};
 
   if (hasField(body, "bodyweightKg")) {
@@ -126,6 +128,14 @@ export async function PATCH(request: Request) {
     data.onboardingCompleted = body.onboardingCompleted;
   }
 
+  if (hasField(body, "rpeTrackingEnabled")) {
+    if (typeof body.rpeTrackingEnabled !== "boolean") {
+      return createJsonErrorResponse("Invalid RPE tracking preference.", 400);
+    }
+
+    data.rpeTrackingEnabled = body.rpeTrackingEnabled;
+  }
+
   try {
     const user = await prisma.user.update({
       where: {
@@ -137,6 +147,7 @@ export async function PATCH(request: Request) {
         trainingStyle: true,
         primaryGoal: true,
         onboardingCompleted: true,
+        rpeTrackingEnabled: true,
       },
     });
 

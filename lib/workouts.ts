@@ -86,6 +86,7 @@ export function mapWorkoutDetail(workout: {
       distanceMeters: number | null;
       steps: number | null;
       floors: number | null;
+      rpe: number | null;
       notes: string | null;
       completed: boolean;
     }>;
@@ -131,6 +132,7 @@ export function mapWorkoutDetail(workout: {
         distanceMeters: set.distanceMeters,
         steps: set.steps,
         floors: set.floors,
+        rpe: set.rpe,
         notes: set.notes,
         completed: set.completed,
       })),
@@ -232,6 +234,7 @@ function buildWorkoutData(payload: ValidWorkoutMutation) {
             distanceMeters: set.distanceMeters,
             steps: set.steps,
             floors: set.floors,
+            rpe: set.rpe,
             notes: set.notes,
             completed: set.completed,
           })),

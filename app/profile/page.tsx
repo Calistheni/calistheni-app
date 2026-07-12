@@ -162,6 +162,7 @@ export default async function ProfilePage() {
       },
       select: {
         bodyweightKg: true,
+        rpeTrackingEnabled: true,
         rewardPoints: true,
       },
     }),
@@ -350,6 +351,9 @@ export default async function ProfilePage() {
         <CardContent>
           <BodyweightForm
             initialBodyweightKg={profile?.bodyweightKg ?? null}
+            initialRpeTrackingEnabled={
+              profile?.rpeTrackingEnabled ?? false
+            }
           />
         </CardContent>
       </Card>

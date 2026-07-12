@@ -64,14 +64,25 @@ export function formatElapsedTime(totalSeconds: number) {
   return hours > 0 ? `${String(hours).padStart(2, "0")}:${shortTime}` : shortTime;
 }
 
-export function useWorkoutTimer(storageKey: string) {
-  const [timerState, setTimerState] = useState<WorkoutTimerState>(
-    () =>
-      typeof window === "undefined"
-        ? EMPTY_TIMER_STATE
-        : readStoredTimer(storageKey)
-  );
-  const [nowMs, setNowMs] = useState(0);
+export function useWorkoutTimer(storageKey: string, autoStart = false) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [timerState, setTimerState] = useState<WorkoutTimerState>(() => {
+    if (typeof window === "undefined") {
+      return EMPTY_TIMER_STATE;
+    }
+
+    const storedTimer = readStoredTimer(storageKey);
+
+    if (!autoStart || storedTimer.status !== "idle") {
+      return storedTimer;
+    }
+
+    return {
+      status: "running",
+      startedAtMs: Date.now(),
+      accumulatedMs: 0,
+    };
+  });
 
   useEffect(() => {
     if (timerState.status !== "running") {
@@ -142,7 +153,12 @@ export function useWorkoutTimer(storageKey: string) {
         );
       },
       reset: () => setTimerState(EMPTY_TIMER_STATE),
+      clear: () => {
+        window.localStorage.removeItem(storageKey);
+        setNowMs(Date.now());
+        setTimerState(EMPTY_TIMER_STATE);
+      },
     }),
-    [elapsedSeconds, timerState.status]
+    [elapsedSeconds, storageKey, timerState.status]
   );
 }
