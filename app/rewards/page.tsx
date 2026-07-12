@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { auth } from "@/auth";
+import { BackButton } from "@/components/navigation/BackButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -40,6 +41,7 @@ export default async function RewardsPage() {
 
   return (
     <main className="mx-auto w-full max-w-6xl p-4 sm:p-6 lg:p-8">
+      <BackButton fallbackHref="/home" />
       <section className="mb-6 rounded-3xl border bg-card p-6 sm:p-8">
         <Badge className="mb-4" variant="secondary">
           Coming Soon

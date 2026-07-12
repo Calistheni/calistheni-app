@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
+import { BackButton } from "@/components/navigation/BackButton";
 import { FollowButton } from "@/components/social/FollowButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -93,6 +94,7 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
 
   return (
     <main className="mx-auto w-full max-w-4xl p-4 sm:p-6 lg:p-8">
+      <BackButton fallbackHref="/feed" />
       <div className="mb-6 space-y-2">
         <h1 className="text-3xl font-bold">Find Users</h1>
         <p className="text-sm text-muted-foreground">

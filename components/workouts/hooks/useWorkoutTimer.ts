@@ -1,57 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-
-type WorkoutTimerState = {
-  status: "idle" | "running" | "paused";
-  startedAtMs: number | null;
-  accumulatedMs: number;
-};
-
-const EMPTY_TIMER_STATE: WorkoutTimerState = {
-  status: "idle",
-  startedAtMs: null,
-  accumulatedMs: 0,
-};
-
-function getElapsedMs(state: WorkoutTimerState, nowMs = Date.now()) {
-  return (
-    state.accumulatedMs +
-    (state.status === "running" && state.startedAtMs !== null
-      ? nowMs - state.startedAtMs
-      : 0)
-  );
-}
-
-function readStoredTimer(storageKey: string): WorkoutTimerState {
-  try {
-    const value = window.localStorage.getItem(storageKey);
-
-    if (!value) {
-      return EMPTY_TIMER_STATE;
-    }
-
-    const parsed = JSON.parse(value) as Partial<WorkoutTimerState>;
-
-    if (
-      parsed.status !== "idle" &&
-      parsed.status !== "running" &&
-      parsed.status !== "paused"
-    ) {
-      return EMPTY_TIMER_STATE;
-    }
-
-    return {
-      status: parsed.status,
-      startedAtMs:
-        typeof parsed.startedAtMs === "number" ? parsed.startedAtMs : null,
-      accumulatedMs:
-        typeof parsed.accumulatedMs === "number" ? parsed.accumulatedMs : 0,
-    };
-  } catch {
-    return EMPTY_TIMER_STATE;
-  }
-}
+import {
+  ACTIVE_WORKOUT_TIMER_EVENT,
+  EMPTY_WORKOUT_TIMER_STATE,
+  getElapsedMs,
+  readStoredWorkoutTimer,
+  writeStoredWorkoutTimer,
+  type StoredWorkoutTimerState,
+} from "@/lib/active-workout-session";
 
 export function formatElapsedTime(totalSeconds: number) {
   const hours = Math.floor(totalSeconds / 3600);
@@ -66,12 +23,12 @@ export function formatElapsedTime(totalSeconds: number) {
 
 export function useWorkoutTimer(storageKey: string, autoStart = false) {
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const [timerState, setTimerState] = useState<WorkoutTimerState>(() => {
+  const [timerState, setTimerState] = useState<StoredWorkoutTimerState>(() => {
     if (typeof window === "undefined") {
-      return EMPTY_TIMER_STATE;
+      return EMPTY_WORKOUT_TIMER_STATE;
     }
 
-    const storedTimer = readStoredTimer(storageKey);
+    const storedTimer = readStoredWorkoutTimer(storageKey);
 
     if (!autoStart || storedTimer.status !== "idle") {
       return storedTimer;
@@ -85,6 +42,29 @@ export function useWorkoutTimer(storageKey: string, autoStart = false) {
   });
 
   useEffect(() => {
+    function syncTimer(event: Event) {
+      if (
+        event instanceof CustomEvent &&
+        event.detail?.storageKey &&
+        event.detail.storageKey !== storageKey
+      ) {
+        return;
+      }
+
+      setNowMs(Date.now());
+      setTimerState(readStoredWorkoutTimer(storageKey));
+    }
+
+    window.addEventListener(ACTIVE_WORKOUT_TIMER_EVENT, syncTimer);
+    window.addEventListener("storage", syncTimer);
+
+    return () => {
+      window.removeEventListener(ACTIVE_WORKOUT_TIMER_EVENT, syncTimer);
+      window.removeEventListener("storage", syncTimer);
+    };
+  }, [storageKey]);
+
+  useEffect(() => {
     if (timerState.status !== "running") {
       return;
     }
@@ -95,12 +75,7 @@ export function useWorkoutTimer(storageKey: string, autoStart = false) {
   }, [timerState.status]);
 
   useEffect(() => {
-    if (timerState.status === "idle") {
-      window.localStorage.removeItem(storageKey);
-      return;
-    }
-
-    window.localStorage.setItem(storageKey, JSON.stringify(timerState));
+    writeStoredWorkoutTimer(storageKey, timerState, false);
   }, [storageKey, timerState]);
 
   const elapsedSeconds = Math.floor(
@@ -123,21 +98,20 @@ export function useWorkoutTimer(storageKey: string, autoStart = false) {
           accumulatedMs: 0,
         });
       },
-      pause: () =>
-        {
-          const pausedAtMs = Date.now();
+      pause: () => {
+        const pausedAtMs = Date.now();
 
-          setNowMs(pausedAtMs);
-          setTimerState((current) =>
-            current.status === "running"
-              ? {
-                  status: "paused",
-                  startedAtMs: null,
-                  accumulatedMs: getElapsedMs(current, pausedAtMs),
-                }
-              : current
-          );
-        },
+        setNowMs(pausedAtMs);
+        setTimerState((current) =>
+          current.status === "running"
+            ? {
+                status: "paused",
+                startedAtMs: null,
+                accumulatedMs: getElapsedMs(current, pausedAtMs),
+              }
+            : current
+        );
+      },
       resume: () => {
         const startedAtMs = Date.now();
 
@@ -152,11 +126,11 @@ export function useWorkoutTimer(storageKey: string, autoStart = false) {
             : current
         );
       },
-      reset: () => setTimerState(EMPTY_TIMER_STATE),
+      reset: () => setTimerState(EMPTY_WORKOUT_TIMER_STATE),
       clear: () => {
         window.localStorage.removeItem(storageKey);
         setNowMs(Date.now());
-        setTimerState(EMPTY_TIMER_STATE);
+        setTimerState(EMPTY_WORKOUT_TIMER_STATE);
       },
     }),
     [elapsedSeconds, storageKey, timerState.status]

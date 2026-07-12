@@ -4,6 +4,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { Toaster } from "@/components/ui/sonner";
+import { ActiveWorkoutDock } from "@/components/workouts/ActiveWorkoutDock";
 import { getSiteUrl } from "@/lib/site-url";
 
 const spaceGrotesk = Space_Grotesk({
@@ -84,6 +85,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <ThemeProvider>
           {children}
+          <ActiveWorkoutDock />
           <Toaster />
         </ThemeProvider>
       </body>

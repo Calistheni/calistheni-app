@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { ExerciseGrid } from "@/components/exercises/ExerciseGrid";
+import { BackButton } from "@/components/navigation/BackButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -94,6 +95,7 @@ export default async function ExercisesPage({
 
   return (
     <main className="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">
+      <BackButton fallbackHref="/home" />
       <div className="mb-6 space-y-3">
         <h1 className="text-3xl font-bold">Exercises</h1>
         <p className="text-sm text-muted-foreground">

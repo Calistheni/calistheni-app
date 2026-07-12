@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { MoreVertical, TimerIcon } from "lucide-react";
+import { Check, TimerIcon } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,7 +17,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Collapsible,
   CollapsibleContent,
@@ -30,12 +29,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -57,6 +50,12 @@ import {
 } from "@/components/workouts/hooks/useWorkoutTimer";
 import { useRestTimer } from "@/components/workouts/hooks/useRestTimer";
 import { toast } from "sonner";
+import {
+  clearActiveWorkoutSessionStorage,
+  getOrCreateActiveWorkoutSessionId,
+  getWorkoutDraftStorageKey,
+  getWorkoutTimerStorageKey,
+} from "@/lib/active-workout-session";
 import { calculateWorkoutVolumeKg } from "@/lib/workout-volume";
 import type {
   ExerciseListItem,
@@ -78,9 +77,15 @@ type LocalWorkoutExercise = WorkoutExerciseInput & {
   localId: string;
 };
 
+type ActiveWorkoutDraft = {
+  title: string;
+  notes: string;
+  visibility: "PRIVATE" | "PUBLIC";
+  selectedExercises: LocalWorkoutExercise[];
+};
+
 const DEFAULT_REST_SECONDS = 90;
 const REST_PRESETS = [30, 60, 90, 120];
-const ACTIVE_WORKOUT_SESSION_ID_KEY = "calistheni-active-workout-session-id";
 const RPE_VALUES = [6, 7, 7.5, 8, 8.5, 9, 9.5, 10];
 
 const TRACKING_TYPE_LABELS = {
@@ -186,31 +191,41 @@ function getActiveWorkoutSessionId(isEditing: boolean, workoutId?: number) {
       : "server-active-workout";
   }
 
-  if (isEditing && workoutId) {
-    return `edit-${workoutId}`;
-  }
-
-  const existingSessionId = window.localStorage.getItem(
-    ACTIVE_WORKOUT_SESSION_ID_KEY
-  );
-
-  if (existingSessionId) {
-    return existingSessionId;
-  }
-
-  const nextSessionId = crypto.randomUUID();
-  window.localStorage.setItem(ACTIVE_WORKOUT_SESSION_ID_KEY, nextSessionId);
-
-  return nextSessionId;
+  return isEditing && workoutId
+    ? `edit-${workoutId}`
+    : getOrCreateActiveWorkoutSessionId();
 }
 
-function clearActiveWorkoutSessionStorage(sessionId: string) {
+function readActiveWorkoutDraft(sessionId: string) {
   if (typeof window === "undefined") {
-    return;
+    return null;
   }
 
-  window.localStorage.removeItem(ACTIVE_WORKOUT_SESSION_ID_KEY);
-  window.localStorage.removeItem(`calistheni-workout-timer:${sessionId}`);
+  try {
+    const value = window.localStorage.getItem(getWorkoutDraftStorageKey(sessionId));
+
+    if (!value) {
+      return null;
+    }
+
+    const parsed = JSON.parse(value) as Partial<ActiveWorkoutDraft>;
+
+    if (!Array.isArray(parsed.selectedExercises)) {
+      return null;
+    }
+
+    return {
+      title: typeof parsed.title === "string" ? parsed.title : "",
+      notes: typeof parsed.notes === "string" ? parsed.notes : "",
+      visibility:
+        parsed.visibility === "PRIVATE" || parsed.visibility === "PUBLIC"
+          ? parsed.visibility
+          : "PUBLIC",
+      selectedExercises: parsed.selectedExercises,
+    } satisfies ActiveWorkoutDraft;
+  } catch {
+    return null;
+  }
 }
 
 function getRpeDescription(rpe: number) {
@@ -313,21 +328,28 @@ export function WorkoutBuilder({
   const [activeWorkoutSessionId] = useState(() =>
     getActiveWorkoutSessionId(isEditing, initialWorkout?.id)
   );
+  const activeWorkoutDraft = !isEditing
+    ? readActiveWorkoutDraft(activeWorkoutSessionId)
+    : null;
   const workoutTimer = useWorkoutTimer(
-    `calistheni-workout-timer:${activeWorkoutSessionId}`,
+    getWorkoutTimerStorageKey(activeWorkoutSessionId),
     !isEditing
   );
   const restTimer = useRestTimer();
-  const [title, setTitle] = useState(initialWorkout?.title ?? "");
-  const [notes, setNotes] = useState(initialWorkout?.notes ?? "");
+  const [title, setTitle] = useState(
+    activeWorkoutDraft?.title ?? initialWorkout?.title ?? ""
+  );
+  const [notes, setNotes] = useState(
+    activeWorkoutDraft?.notes ?? initialWorkout?.notes ?? ""
+  );
   const [visibility, setVisibility] = useState<"PRIVATE" | "PUBLIC">(
-    initialWorkout?.visibility ?? "PUBLIC"
+    activeWorkoutDraft?.visibility ?? initialWorkout?.visibility ?? "PUBLIC"
   );
   const [search, setSearch] = useState("");
   const [muscleFilter, setMuscleFilter] = useState("all");
   const [selectedExercises, setSelectedExercises] = useState<
     LocalWorkoutExercise[]
-  >(buildInitialExercises(initialWorkout));
+  >(activeWorkoutDraft?.selectedExercises ?? buildInitialExercises(initialWorkout));
   const [isSaving, setIsSaving] = useState(false);
   const [isWorkoutDetailsOpen, setIsWorkoutDetailsOpen] = useState(false);
   const [isExercisePickerOpen, setIsExercisePickerOpen] = useState(false);
@@ -419,6 +441,29 @@ export function WorkoutBuilder({
       void restTimer.initializeAudio();
     }
   }, [isEditing, restTimer]);
+
+  useEffect(() => {
+    if (isEditing || typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(
+      getWorkoutDraftStorageKey(activeWorkoutSessionId),
+      JSON.stringify({
+        title,
+        notes,
+        visibility,
+        selectedExercises,
+      } satisfies ActiveWorkoutDraft)
+    );
+  }, [
+    activeWorkoutSessionId,
+    isEditing,
+    notes,
+    selectedExercises,
+    title,
+    visibility,
+  ]);
 
   function addExercise(exerciseId: string) {
     if (selectedExercises.some((item) => item.exerciseId === exerciseId)) {
@@ -1081,8 +1126,8 @@ export function WorkoutBuilder({
 
               return (
                 <Card key={selectedExercise.localId} className="overflow-hidden">
-                  <CardHeader className="space-y-3">
-                    <div className="flex items-start justify-between gap-3">
+                  <CardHeader className="space-y-4">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       <div className="flex min-w-0 items-center gap-3">
                         <Image
                           src={exercise.thumbnailUrl ?? "/icon.svg"}
@@ -1109,87 +1154,72 @@ export function WorkoutBuilder({
                           </div>
                         </div>
                       </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            aria-label={`${exercise.name} actions`}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-11 w-full sm:w-auto"
+                        onClick={() => removeExercise(selectedExercise.localId)}
+                      >
+                        Remove Exercise
+                      </Button>
+                    </div>
+                    <div className="grid gap-3 rounded-xl border bg-muted/30 p-3 sm:grid-cols-[minmax(160px,220px)_minmax(120px,160px)] sm:items-end">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Rest time</label>
+                        <Select
+                          value={
+                            REST_PRESETS.includes(restSeconds)
+                              ? String(restSeconds)
+                              : "custom"
+                          }
+                          onValueChange={(value) => {
+                            if (value !== "custom") {
+                              updateExerciseRestSeconds(
+                                selectedExercise.localId,
+                                Number(value)
+                              );
+                            }
+                          }}
+                        >
+                          <SelectTrigger
+                            className="h-11"
+                            aria-label={`${exercise.name} rest preset`}
                           >
-                            <MoreVertical className="size-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-72 p-3">
-                          <div className="space-y-3">
-                            <div className="space-y-2">
-                              <p className="text-sm font-medium">Rest time</p>
-                              <Select
-                                value={
-                                  REST_PRESETS.includes(restSeconds)
-                                    ? String(restSeconds)
-                                    : "custom"
-                                }
-                                onValueChange={(value) => {
-                                  if (value !== "custom") {
-                                    updateExerciseRestSeconds(
-                                      selectedExercise.localId,
-                                      Number(value)
-                                    );
-                                  }
-                                }}
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {REST_PRESETS.map((presetSeconds) => (
+                              <SelectItem
+                                key={presetSeconds}
+                                value={String(presetSeconds)}
                               >
-                                <SelectTrigger
-                                  aria-label={`${exercise.name} rest preset`}
-                                >
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {REST_PRESETS.map((presetSeconds) => (
-                                    <SelectItem
-                                      key={presetSeconds}
-                                      value={String(presetSeconds)}
-                                    >
-                                      {formatRestOption(presetSeconds)}
-                                    </SelectItem>
-                                  ))}
-                                  <SelectItem value="custom">Custom</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="space-y-2">
-                              <label className="text-sm font-medium">
-                                Custom seconds
-                              </label>
-                              <Input
-                                type="number"
-                                min="0"
-                                max="3600"
-                                step="5"
-                                aria-label={`${exercise.name} custom rest seconds`}
-                                value={restSeconds}
-                                onChange={(event) =>
-                                  updateExerciseRestSeconds(
-                                    selectedExercise.localId,
-                                    Math.max(
-                                      0,
-                                      Number(event.target.value) || 0
-                                    )
-                                  )
-                                }
-                              />
-                            </div>
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              onClick={() =>
-                                removeExercise(selectedExercise.localId)
-                              }
-                            >
-                              Remove exercise
-                            </DropdownMenuItem>
-                          </div>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                                {formatRestOption(presetSeconds)}
+                              </SelectItem>
+                            ))}
+                            <SelectItem value="custom">Custom</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">
+                          Custom seconds
+                        </label>
+                        <Input
+                          className="h-11"
+                          type="number"
+                          min="0"
+                          max="3600"
+                          step="5"
+                          aria-label={`${exercise.name} custom rest seconds`}
+                          value={restSeconds}
+                          onChange={(event) =>
+                            updateExerciseRestSeconds(
+                              selectedExercise.localId,
+                              Math.max(0, Number(event.target.value) || 0)
+                            )
+                          }
+                        />
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -1197,155 +1227,176 @@ export function WorkoutBuilder({
                       {selectedExercise.sets.map((set, setIndex) => (
                         <div
                           key={setIndex}
-                          className="rounded-xl border bg-background/70 p-3"
+                          className="rounded-xl border bg-background/70 p-3 sm:p-4"
                         >
-                          <div className="grid gap-2 md:grid-cols-[88px_repeat(4,minmax(0,1fr))_auto] md:items-center">
-                            <div className="flex items-center justify-between gap-2 md:block">
-                              <p className="text-sm font-medium">
+                          <div className="grid gap-3 xl:grid-cols-[96px_minmax(0,1fr)_auto] xl:items-start">
+                            <div className="flex items-center justify-between gap-2 xl:block">
+                              <p className="text-base font-semibold xl:text-sm">
                                 Set {setIndex + 1}
                               </p>
-                              <label className="flex items-center gap-2 text-xs font-medium md:mt-2">
-                                <Checkbox
-                                  checked={set.completed}
-                                  onCheckedChange={(checked) =>
-                                    updateSetCompleted(
+                              <Button
+                                type="button"
+                                variant={set.completed ? "secondary" : "outline"}
+                                className="h-11 min-w-24 gap-2"
+                                onClick={() =>
+                                  updateSetCompleted(
+                                    selectedExercise.localId,
+                                    setIndex,
+                                    !set.completed,
+                                    exercise.name,
+                                    selectedExercise.restSeconds
+                                  )
+                                }
+                              >
+                                <span
+                                  aria-hidden="true"
+                                  className="flex size-4 items-center justify-center rounded-sm border text-[10px] font-bold"
+                                >
+                                  {set.completed ? (
+                                    <Check className="size-3" />
+                                  ) : null}
+                                </span>
+                                {set.completed ? "Done" : "Mark Done"}
+                              </Button>
+                            </div>
+                            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                              {isRepsFieldVisible(exercise.trackingType) ? (
+                                <Input
+                                  className="h-11"
+                                  type="number"
+                                  min="0"
+                                  placeholder="Reps"
+                                  aria-label={`Set ${setIndex + 1} reps`}
+                                  value={set.reps ?? ""}
+                                  onChange={(event) =>
+                                    updateSet(
                                       selectedExercise.localId,
                                       setIndex,
-                                      checked === true,
-                                      exercise.name,
-                                      selectedExercise.restSeconds
+                                      "reps",
+                                      event.target.value
                                     )
                                   }
                                 />
-                                Done
-                              </label>
+                              ) : null}
+                              {isWeightFieldVisible(exercise.trackingType) ? (
+                                <Input
+                                  className="h-11"
+                                  type="number"
+                                  min="0"
+                                  step="0.5"
+                                  placeholder={
+                                    exercise.trackingType ===
+                                    "WEIGHTED_BODYWEIGHT"
+                                      ? "Added kg"
+                                      : "Weight kg"
+                                  }
+                                  aria-label={
+                                    exercise.trackingType ===
+                                    "WEIGHTED_BODYWEIGHT"
+                                      ? `Set ${setIndex + 1} added weight`
+                                      : `Set ${setIndex + 1} weight`
+                                  }
+                                  value={set.weight ?? ""}
+                                  onChange={(event) =>
+                                    updateSet(
+                                      selectedExercise.localId,
+                                      setIndex,
+                                      "weight",
+                                      event.target.value
+                                    )
+                                  }
+                                />
+                              ) : null}
+                              {isDurationFieldVisible(
+                                exercise.trackingType
+                              ) ? (
+                                <Input
+                                  className="h-11"
+                                  type="number"
+                                  min="0"
+                                  step="0.25"
+                                  placeholder="Minutes"
+                                  aria-label={`Set ${setIndex + 1} duration minutes`}
+                                  value={getDurationMinutesValue(
+                                    set.durationSeconds
+                                  )}
+                                  onChange={(event) =>
+                                    updateSetDurationMinutes(
+                                      selectedExercise.localId,
+                                      setIndex,
+                                      event.target.value
+                                    )
+                                  }
+                                />
+                              ) : null}
+                              {isDistanceFieldVisible(
+                                exercise.trackingType
+                              ) ? (
+                                <Input
+                                  className="h-11"
+                                  type="number"
+                                  min="0"
+                                  step="1"
+                                  placeholder="Meters"
+                                  aria-label={`Set ${setIndex + 1} distance meters`}
+                                  value={set.distanceMeters ?? ""}
+                                  onChange={(event) =>
+                                    updateSet(
+                                      selectedExercise.localId,
+                                      setIndex,
+                                      "distanceMeters",
+                                      event.target.value
+                                    )
+                                  }
+                                />
+                              ) : null}
+                              {exercise.trackingType ===
+                              "STEPS_DISTANCE_DURATION" ? (
+                                <Input
+                                  className="h-11"
+                                  type="number"
+                                  min="0"
+                                  step="1"
+                                  placeholder="Steps"
+                                  aria-label={`Set ${setIndex + 1} steps`}
+                                  value={set.steps ?? ""}
+                                  onChange={(event) =>
+                                    updateSet(
+                                      selectedExercise.localId,
+                                      setIndex,
+                                      "steps",
+                                      event.target.value
+                                    )
+                                  }
+                                />
+                              ) : null}
+                              {exercise.trackingType ===
+                              "FLOORS_DISTANCE_DURATION" ? (
+                                <Input
+                                  className="h-11"
+                                  type="number"
+                                  min="0"
+                                  step="1"
+                                  placeholder="Floors"
+                                  aria-label={`Set ${setIndex + 1} floors`}
+                                  value={set.floors ?? ""}
+                                  onChange={(event) =>
+                                    updateSet(
+                                      selectedExercise.localId,
+                                      setIndex,
+                                      "floors",
+                                      event.target.value
+                                    )
+                                  }
+                                />
+                              ) : null}
                             </div>
-                            {isRepsFieldVisible(exercise.trackingType) ? (
-                              <Input
-                                type="number"
-                                min="0"
-                                placeholder="Reps"
-                                aria-label={`Set ${setIndex + 1} reps`}
-                                value={set.reps ?? ""}
-                                onChange={(event) =>
-                                  updateSet(
-                                    selectedExercise.localId,
-                                    setIndex,
-                                    "reps",
-                                    event.target.value
-                                  )
-                                }
-                              />
-                            ) : null}
-                            {isWeightFieldVisible(exercise.trackingType) ? (
-                              <Input
-                                type="number"
-                                min="0"
-                                step="0.5"
-                                placeholder={
-                                  exercise.trackingType ===
-                                  "WEIGHTED_BODYWEIGHT"
-                                    ? "Added kg"
-                                    : "Weight kg"
-                                }
-                                aria-label={
-                                  exercise.trackingType ===
-                                  "WEIGHTED_BODYWEIGHT"
-                                    ? `Set ${setIndex + 1} added weight`
-                                    : `Set ${setIndex + 1} weight`
-                                }
-                                value={set.weight ?? ""}
-                                onChange={(event) =>
-                                  updateSet(
-                                    selectedExercise.localId,
-                                    setIndex,
-                                    "weight",
-                                    event.target.value
-                                  )
-                                }
-                              />
-                            ) : null}
-                            {isDurationFieldVisible(exercise.trackingType) ? (
-                              <Input
-                                type="number"
-                                min="0"
-                                step="0.25"
-                                placeholder="Minutes"
-                                aria-label={`Set ${setIndex + 1} duration minutes`}
-                                value={getDurationMinutesValue(
-                                  set.durationSeconds
-                                )}
-                                onChange={(event) =>
-                                  updateSetDurationMinutes(
-                                    selectedExercise.localId,
-                                    setIndex,
-                                    event.target.value
-                                  )
-                                }
-                              />
-                            ) : null}
-                            {isDistanceFieldVisible(exercise.trackingType) ? (
-                              <Input
-                                type="number"
-                                min="0"
-                                step="1"
-                                placeholder="Meters"
-                                aria-label={`Set ${setIndex + 1} distance meters`}
-                                value={set.distanceMeters ?? ""}
-                                onChange={(event) =>
-                                  updateSet(
-                                    selectedExercise.localId,
-                                    setIndex,
-                                    "distanceMeters",
-                                    event.target.value
-                                  )
-                                }
-                              />
-                            ) : null}
-                            {exercise.trackingType ===
-                            "STEPS_DISTANCE_DURATION" ? (
-                              <Input
-                                type="number"
-                                min="0"
-                                step="1"
-                                placeholder="Steps"
-                                aria-label={`Set ${setIndex + 1} steps`}
-                                value={set.steps ?? ""}
-                                onChange={(event) =>
-                                  updateSet(
-                                    selectedExercise.localId,
-                                    setIndex,
-                                    "steps",
-                                    event.target.value
-                                  )
-                                }
-                              />
-                            ) : null}
-                            {exercise.trackingType ===
-                            "FLOORS_DISTANCE_DURATION" ? (
-                              <Input
-                                type="number"
-                                min="0"
-                                step="1"
-                                placeholder="Floors"
-                                aria-label={`Set ${setIndex + 1} floors`}
-                                value={set.floors ?? ""}
-                                onChange={(event) =>
-                                  updateSet(
-                                    selectedExercise.localId,
-                                    setIndex,
-                                    "floors",
-                                    event.target.value
-                                  )
-                                }
-                              />
-                            ) : null}
-                            <div className="flex gap-2">
+                            <div className="grid gap-2 sm:grid-cols-2 xl:flex xl:justify-end">
                               {rpeTrackingEnabled ? (
                                 <Button
                                   type="button"
                                   variant={set.rpe ? "secondary" : "outline"}
-                                  className="shrink-0"
+                                  className="h-11 shrink-0"
                                   onClick={() =>
                                     setActiveRpeTarget({
                                       localId: selectedExercise.localId,
@@ -1364,8 +1415,8 @@ export function WorkoutBuilder({
                               ) : null}
                               <Button
                                 type="button"
-                                variant="ghost"
-                                size="sm"
+                                variant="outline"
+                                className="h-11 shrink-0"
                                 onClick={() =>
                                   removeSet(
                                     selectedExercise.localId,
@@ -1374,12 +1425,12 @@ export function WorkoutBuilder({
                                 }
                                 disabled={selectedExercise.sets.length <= 1}
                               >
-                                Remove
+                                Remove Set
                               </Button>
                             </div>
                           </div>
                           <Input
-                            className="mt-2"
+                            className="mt-3 h-11"
                             placeholder="Set notes"
                             aria-label={`Set ${setIndex + 1} notes`}
                             value={set.notes ?? ""}
