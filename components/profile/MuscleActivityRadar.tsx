@@ -29,7 +29,7 @@ type MuscleActivityRadarProps = {
 const chartConfig = {
   sets: {
     label: "Completed Sets",
-    color: "var(--chart-1)",
+    color: "#2563eb",
   },
 } satisfies ChartConfig;
 
@@ -46,17 +46,25 @@ export function MuscleActivityRadar({ data }: MuscleActivityRadarProps) {
       <CardHeader className="items-center pb-4 text-center">
         <CardTitle>Muscle Activity</CardTitle>
         <CardDescription>
-          Completed sets by muscle group over the last 30 days.
+          Completed sets by primary and secondary muscle group over the last 30
+          days.
         </CardDescription>
       </CardHeader>
       <CardContent className="pb-0">
         <ChartContainer
           config={chartConfig}
-          className="mx-auto aspect-square max-h-[280px]"
+          className="mx-auto aspect-square w-full max-w-[440px]"
         >
-          <RadarChart data={data}>
+          <RadarChart
+            data={data}
+            outerRadius="70%"
+            margin={{ top: 24, right: 42, bottom: 24, left: 42 }}
+          >
             <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
-            <PolarAngleAxis dataKey="muscle" />
+            <PolarAngleAxis
+              dataKey="muscle"
+              tick={{ fontSize: 11 }}
+            />
             <PolarGrid />
             <Radar
               dataKey="sets"
