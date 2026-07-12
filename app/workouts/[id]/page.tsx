@@ -106,26 +106,40 @@ export default async function WorkoutDetailPage({
 
   const detail = mapWorkoutDetail(workout);
   const isOwner = session?.user?.id === workout.userId;
-  const personalRecords = isOwner
+  const exerciseIds = detail.exercises.map(
+    (workoutExercise) => workoutExercise.exercise.id
+  );
+  const allTimePersonalRecords = isOwner
     ? await prisma.personalRecord.findMany({
         where: {
           userId: workout.userId,
-          workoutId: workout.id,
+          exerciseId: {
+            in: exerciseIds,
+          },
         },
+        orderBy: [{ exerciseId: "asc" }, { type: "asc" }],
       })
     : [];
-  const recordsBySetId = new Map<number, typeof personalRecords>();
-  const recordsByWorkoutExerciseId = new Map<string, typeof personalRecords>();
+  const recordsAchievedInWorkout = allTimePersonalRecords.filter(
+    (record) => record.workoutId === workout.id
+  );
+  const recordsBySetId = new Map<number, typeof recordsAchievedInWorkout>();
+  const allTimeRecordsByExerciseId = new Map<
+    string,
+    typeof allTimePersonalRecords
+  >();
 
-  for (const record of personalRecords) {
+  for (const record of allTimePersonalRecords) {
+    allTimeRecordsByExerciseId.set(record.exerciseId, [
+      ...(allTimeRecordsByExerciseId.get(record.exerciseId) ?? []),
+      record,
+    ]);
+  }
+
+  for (const record of recordsAchievedInWorkout) {
     if (record.workoutSetId !== null) {
       recordsBySetId.set(record.workoutSetId, [
         ...(recordsBySetId.get(record.workoutSetId) ?? []),
-        record,
-      ]);
-    } else {
-      recordsByWorkoutExerciseId.set(record.exerciseId, [
-        ...(recordsByWorkoutExerciseId.get(record.exerciseId) ?? []),
         record,
       ]);
     }
@@ -200,7 +214,7 @@ export default async function WorkoutDetailPage({
                   unoptimized
                   className="h-20 w-28 rounded-lg bg-muted object-cover"
                 />
-                <div>
+                <div className="min-w-0">
                   <h2 className="text-xl font-semibold">
                     {workoutExercise.exercise.name}
                   </h2>
@@ -208,47 +222,75 @@ export default async function WorkoutDetailPage({
                     <Badge variant="secondary">
                       {workoutExercise.exercise.muscle}
                     </Badge>
-                    {(
-                      recordsByWorkoutExerciseId.get(
-                        workoutExercise.exercise.id
-                      ) ?? []
-                    ).map((record) => (
-                      <Badge key={record.id} variant="outline">
-                        PR:{" "}
-                        {
-                          PERSONAL_RECORD_LABELS[
-                            record.type as PersonalRecordType
-                          ]
-                        }{" "}
-                        {formatPersonalRecordValue(
-                          record.type as PersonalRecordType,
-                          record.value
-                        )}
-                      </Badge>
-                    ))}
                   </div>
                 </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
+              {(allTimeRecordsByExerciseId.get(workoutExercise.exercise.id) ??
+                []).length > 0 ? (
+                <div className="rounded-lg border bg-muted/30 p-3">
+                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    All-time PRs
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {(
+                      allTimeRecordsByExerciseId.get(
+                        workoutExercise.exercise.id
+                      ) ?? []
+                    ).map((record) => (
+                      <Badge
+                        key={record.id}
+                        variant={
+                          record.workoutId === workout.id
+                            ? "secondary"
+                            : "outline"
+                        }
+                        className="h-auto max-w-full whitespace-normal py-1 leading-snug"
+                      >
+                        {PERSONAL_RECORD_LABELS[
+                          record.type as PersonalRecordType
+                        ]}{" "}
+                        {formatPersonalRecordValue(
+                          record.type as PersonalRecordType,
+                          record.value
+                        )}
+                        {record.workoutId === workout.id
+                          ? " · achieved here"
+                          : ""}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               {workoutExercise.sets.map((set, index) => (
                 <div
                   key={set.id}
-                  className="grid gap-2 rounded-lg border p-3 text-sm sm:grid-cols-5"
+                  className="grid gap-3 rounded-lg border p-3 text-sm sm:grid-cols-5 sm:items-start"
                 >
-                  <div className="flex items-center gap-2 font-medium">
-                    <span>Set {index + 1}</span>
-                    {set.completed ? <Badge>Done</Badge> : null}
-                    {(recordsBySetId.get(set.id) ?? []).map((record) => (
-                      <Badge key={record.id} variant="secondary">
-                        PR:{" "}
-                        {
-                          PERSONAL_RECORD_LABELS[
-                            record.type as PersonalRecordType
-                          ]
-                        }
-                      </Badge>
-                    ))}
+                  <div className="space-y-2 font-medium">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span>Set {index + 1}</span>
+                      {set.completed ? <Badge>Done</Badge> : null}
+                    </div>
+                    {(recordsBySetId.get(set.id) ?? []).length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {(recordsBySetId.get(set.id) ?? []).map((record) => (
+                          <Badge
+                            key={record.id}
+                            variant="secondary"
+                            className="h-auto whitespace-normal py-1 leading-snug"
+                          >
+                            New PR:{" "}
+                            {
+                              PERSONAL_RECORD_LABELS[
+                                record.type as PersonalRecordType
+                              ]
+                            }
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                   {workoutExercise.exercise.trackingType ===
                     "NOT_SELECTED" ||

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { redirectIfOnboardingRequired } from "@/lib/onboarding";
 
 export const metadata: Metadata = {
   title: "Home",
@@ -45,6 +46,8 @@ export default async function HomeHubPage() {
   if (!session?.user) {
     redirect("/login");
   }
+
+  await redirectIfOnboardingRequired(session.user.id);
 
   return (
     <main className="mx-auto w-full max-w-5xl p-4 sm:p-6 lg:p-8">

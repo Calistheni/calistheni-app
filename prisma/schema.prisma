@@ -61,6 +61,18 @@ enum WorkoutTemplateVisibility {
   PUBLIC
 }
 
+enum TrainingStyle {
+  CALISTHENICS
+  GYM
+  BOTH
+}
+
+enum PrimaryGoal {
+  FIND_PARKS
+  TRACK_WORKOUTS
+  BOTH
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -69,6 +81,11 @@ model User {
   image         String?
   bodyweightKg  Float?
   rewardPoints  Int       @default(0)
+  onboardingCompleted Boolean @default(false)
+  trainingStyle TrainingStyle?
+  primaryGoal PrimaryGoal?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   accounts Account[]
   sessions Session[]

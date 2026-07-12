@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { auth, signIn } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { getPostLoginRedirect } from "@/lib/onboarding";
 
 export const metadata: Metadata = {
   title: "Login",
@@ -17,7 +18,7 @@ export default async function LoginPage() {
   const session = await auth();
 
   if (session?.user) {
-    redirect("/profile");
+    redirect(await getPostLoginRedirect(session.user.id));
   }
 
   const isGoogleConfigured =
@@ -28,7 +29,7 @@ export default async function LoginPage() {
     "use server";
 
     await signIn("google", {
-      redirectTo: "/profile",
+      redirectTo: "/onboarding",
     });
   }
 
