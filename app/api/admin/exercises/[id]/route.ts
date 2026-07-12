@@ -94,9 +94,10 @@ export async function PATCH(
   }
 
   try {
-    const existingExercise = await prisma.exercise.findUnique({
+    const existingExercise = await prisma.exercise.findFirst({
       where: {
         id,
+        createdByUserId: null,
       },
       select: {
         id: true,

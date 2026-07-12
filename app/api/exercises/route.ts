@@ -4,8 +4,11 @@ import {
   createJsonErrorResponse,
 } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
+import { getAuthenticatedUserId } from "@/lib/user-auth";
+import { exerciseVisibilityWhere } from "@/lib/exercise-access";
 
 export async function GET(request: Request) {
+  const userId = await getAuthenticatedUserId();
   const { searchParams } = new URL(request.url);
   const q = (searchParams.get("q") ?? "").trim();
   const muscle = (searchParams.get("muscle") ?? "").trim();
@@ -17,6 +20,7 @@ export async function GET(request: Request) {
   try {
     const exercises = await prisma.exercise.findMany({
       where: {
+        AND: [exerciseVisibilityWhere(userId)],
         ...(q
           ? {
               OR: [
@@ -59,6 +63,7 @@ export async function GET(request: Request) {
         videoUrl: true,
         trackingType: true,
         bodyweightLoadFactor: true,
+        createdByUserId: true,
       },
     });
 
@@ -72,6 +77,7 @@ export async function GET(request: Request) {
         videoUrl: exercise.videoUrl,
         trackingType: exercise.trackingType,
         bodyweightLoadFactor: exercise.bodyweightLoadFactor,
+        createdByUserId: exercise.createdByUserId,
       }))
     );
   } catch (error) {

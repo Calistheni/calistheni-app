@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type { ValidRoutineMutation } from "@/lib/validation/routines";
 import type { RoutineDetail } from "@/types/routine";
 import type { ExerciseListItem, ExerciseTrackingType } from "@/types/workout";
+import { exerciseVisibilityWhere } from "@/lib/exercise-access";
 
 export const FREE_ROUTINE_LIMIT = 4;
 
@@ -30,6 +31,7 @@ function mapExercise(exercise: {
   videoUrl: string | null;
   trackingType: ExerciseTrackingType;
   bodyweightLoadFactor: number | null;
+  createdByUserId: string | null;
 }): ExerciseListItem {
   return {
     id: exercise.id,
@@ -40,6 +42,7 @@ function mapExercise(exercise: {
     videoUrl: exercise.videoUrl,
     trackingType: exercise.trackingType,
     bodyweightLoadFactor: exercise.bodyweightLoadFactor,
+    createdByUserId: exercise.createdByUserId,
   };
 }
 
@@ -85,13 +88,14 @@ export function mapRoutineDetail(template: {
   };
 }
 
-async function assertExercisesExist(exerciseIds: string[]) {
+async function assertExercisesExist(userId: string, exerciseIds: string[]) {
   const uniqueExerciseIds = [...new Set(exerciseIds)];
   const existingCount = await prisma.exercise.count({
     where: {
       id: {
         in: uniqueExerciseIds,
       },
+      ...exerciseVisibilityWhere(userId),
     },
   });
 
@@ -126,7 +130,7 @@ export async function createUserRoutine(
   userId: string,
   payload: ValidRoutineMutation
 ) {
-  if (!(await assertExercisesExist(payload.exercises.map((item) => item.exerciseId)))) {
+  if (!(await assertExercisesExist(userId, payload.exercises.map((item) => item.exerciseId)))) {
     return { error: "One or more exercises were not found." } as const;
   }
 
@@ -156,7 +160,7 @@ export async function updateUserRoutine(
   routineId: number,
   payload: ValidRoutineMutation
 ) {
-  if (!(await assertExercisesExist(payload.exercises.map((item) => item.exerciseId)))) {
+  if (!(await assertExercisesExist(userId, payload.exercises.map((item) => item.exerciseId)))) {
     return { error: "One or more exercises were not found." } as const;
   }
 

@@ -18,6 +18,7 @@ export type ExerciseListItem = {
   videoUrl: string | null;
   trackingType: ExerciseTrackingType;
   bodyweightLoadFactor: number | null;
+  createdByUserId?: string | null;
 };
 
 export type WorkoutSetInput = {

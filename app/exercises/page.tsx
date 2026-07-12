@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { ExerciseGrid } from "@/components/exercises/ExerciseGrid";
 import { BackButton } from "@/components/navigation/BackButton";
 import { Badge } from "@/components/ui/badge";
@@ -6,6 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { prisma } from "@/lib/prisma";
 import type { ExerciseListItem, ExerciseTrackingType } from "@/types/workout";
+import { auth } from "@/auth";
+import { exerciseVisibilityWhere } from "@/lib/exercise-access";
+import { FREE_CUSTOM_EXERCISE_LIMIT } from "@/lib/custom-exercise-entitlements";
 
 export const metadata: Metadata = {
   title: "Exercises",
@@ -24,6 +28,7 @@ function mapExercise(exercise: {
   videoUrl: string | null;
   trackingType: ExerciseTrackingType;
   bodyweightLoadFactor: number | null;
+  createdByUserId: string | null;
 }): ExerciseListItem {
   return {
     id: exercise.id,
@@ -34,6 +39,7 @@ function mapExercise(exercise: {
     videoUrl: exercise.videoUrl,
     trackingType: exercise.trackingType,
     bodyweightLoadFactor: exercise.bodyweightLoadFactor,
+    createdByUserId: exercise.createdByUserId,
   };
 }
 
@@ -43,12 +49,15 @@ export default async function ExercisesPage({
   searchParams: Promise<{ q?: string; muscle?: string }>;
 }) {
   const params = await searchParams;
+  const session = await auth();
+  const userId = session?.user?.id ?? null;
   const q = (params.q ?? "").trim();
   const muscle = (params.muscle ?? "").trim();
 
-  const [exercises, muscles] = await Promise.all([
+  const [exercises, muscles, customExerciseCount] = await Promise.all([
     prisma.exercise.findMany({
       where: {
+        AND: [exerciseVisibilityWhere(userId)],
         ...(q
           ? {
               OR: [
@@ -80,9 +89,11 @@ export default async function ExercisesPage({
         videoUrl: true,
         trackingType: true,
         bodyweightLoadFactor: true,
+        createdByUserId: true,
       },
     }),
     prisma.exercise.findMany({
+      where: exerciseVisibilityWhere(userId),
       distinct: ["muscle"],
       orderBy: {
         muscle: "asc",
@@ -91,16 +102,26 @@ export default async function ExercisesPage({
         muscle: true,
       },
     }),
+    userId
+      ? prisma.exercise.count({ where: { createdByUserId: userId } })
+      : Promise.resolve(0),
   ]);
 
   return (
     <main className="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">
       <BackButton fallbackHref="/home" />
-      <div className="mb-6 space-y-3">
-        <h1 className="text-3xl font-bold">Exercises</h1>
-        <p className="text-sm text-muted-foreground">
-          Search the exercise library and preview movement media from R2.
-        </p>
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Exercises</h1>
+          <p className="text-sm text-muted-foreground">
+            Search the exercise library and preview movement media from R2.
+          </p>
+        </div>
+        {userId ? (
+          <Button asChild>
+            <Link href="/exercises/custom/new">Create Custom Exercise</Link>
+          </Button>
+        ) : null}
       </div>
 
       <form className="mb-6 grid gap-3 rounded-xl border bg-card p-4 sm:grid-cols-[minmax(0,1fr)_auto]">
@@ -147,9 +168,17 @@ export default async function ExercisesPage({
           {exercises.length.toLocaleString()} exercise
           {exercises.length === 1 ? "" : "s"}
         </Badge>
+        {userId ? (
+          <Badge variant="outline" className="ml-2">
+            {customExerciseCount}/{FREE_CUSTOM_EXERCISE_LIMIT} custom
+          </Badge>
+        ) : null}
       </div>
 
-      <ExerciseGrid exercises={exercises.map(mapExercise)} />
+      <ExerciseGrid
+        exercises={exercises.map(mapExercise)}
+        currentUserId={userId}
+      />
     </main>
   );
 }

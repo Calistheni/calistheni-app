@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check, TimerIcon } from "lucide-react";
 import {
@@ -765,6 +766,9 @@ export function WorkoutBuilder({
   function renderExercisePicker() {
     return (
       <div className="space-y-4">
+        <Button asChild variant="outline" className="w-full">
+          <Link href="/exercises/custom/new">Create Custom Exercise</Link>
+        </Button>
         <Input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
@@ -817,6 +821,11 @@ export function WorkoutBuilder({
                   <span className="text-xs text-muted-foreground">
                     {exercise.muscle}
                   </span>
+                  {exercise.createdByUserId ? (
+                    <Badge variant="outline" className="ml-2">
+                      Custom
+                    </Badge>
+                  ) : null}
                 </span>
                 <Badge variant={selected ? "secondary" : "outline"}>
                   {selected ? "Added" : "Add"}
@@ -1145,6 +1154,9 @@ export function WorkoutBuilder({
                             <Badge variant="secondary">
                               {exercise.muscle}
                             </Badge>
+                            {exercise.createdByUserId ? (
+                              <Badge variant="outline">Custom</Badge>
+                            ) : null}
                             <Badge variant="outline">
                               {TRACKING_TYPE_LABELS[exercise.trackingType]}
                             </Badge>

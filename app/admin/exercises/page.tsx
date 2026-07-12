@@ -82,6 +82,7 @@ export default async function AdminExercisesPage({
     : null;
   const defaultOnly = params.defaultOnly === "1";
   const where: Prisma.ExerciseWhereInput = {
+    createdByUserId: null,
     ...(q
       ? {
           OR: [
@@ -134,6 +135,9 @@ export default async function AdminExercisesPage({
             the right fields and calculates volume safely.
           </p>
         </div>
+        <Button asChild>
+          <Link href="/admin/exercises/new">Add Exercise</Link>
+        </Button>
       </div>
 
       <Card className="mb-6">

@@ -38,6 +38,11 @@ export async function GET() {
         completedAt: {
           not: null,
         },
+        exercises: {
+          none: {
+            exercise: { createdByUserId: { not: null } },
+          },
+        },
       },
       orderBy: {
         completedAt: "desc",

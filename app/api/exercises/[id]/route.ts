@@ -4,17 +4,21 @@ import {
   createJsonErrorResponse,
 } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
+import { getAuthenticatedUserId } from "@/lib/user-auth";
+import { exerciseVisibilityWhere } from "@/lib/exercise-access";
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const userId = await getAuthenticatedUserId();
 
   try {
-    const exercise = await prisma.exercise.findUnique({
+    const exercise = await prisma.exercise.findFirst({
       where: {
         id,
+        ...exerciseVisibilityWhere(userId),
       },
       select: {
         id: true,
@@ -25,6 +29,7 @@ export async function GET(
         videoUrl: true,
         trackingType: true,
         bodyweightLoadFactor: true,
+        createdByUserId: true,
       },
     });
 
@@ -41,6 +46,7 @@ export async function GET(
       videoUrl: exercise.videoUrl,
       trackingType: exercise.trackingType,
       bodyweightLoadFactor: exercise.bodyweightLoadFactor,
+      createdByUserId: exercise.createdByUserId,
     });
   } catch (error) {
     console.error(error);

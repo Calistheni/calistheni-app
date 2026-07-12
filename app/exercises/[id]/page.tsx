@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/auth";
+import { exerciseVisibilityWhere } from "@/lib/exercise-access";
 
 export async function generateMetadata({
   params,
@@ -14,9 +16,11 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
-  const exercise = await prisma.exercise.findUnique({
+  const session = await auth();
+  const exercise = await prisma.exercise.findFirst({
     where: {
       id,
+      ...exerciseVisibilityWhere(session?.user?.id),
     },
     select: {
       name: true,
@@ -42,9 +46,11 @@ export default async function ExerciseDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const exercise = await prisma.exercise.findUnique({
+  const session = await auth();
+  const exercise = await prisma.exercise.findFirst({
     where: {
       id,
+      ...exerciseVisibilityWhere(session?.user?.id),
     },
   });
 
@@ -63,6 +69,11 @@ export default async function ExerciseDetailPage({
           <Badge className="mt-2" variant="secondary">
             {exercise.muscle}
           </Badge>
+          {exercise.createdByUserId ? (
+            <Badge className="mt-2 ml-2" variant="outline">
+              Custom
+            </Badge>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline">
@@ -73,6 +84,11 @@ export default async function ExerciseDetailPage({
           <Button asChild>
             <Link href="/workouts/new">Use in Workout</Link>
           </Button>
+          {exercise.createdByUserId === session?.user?.id ? (
+            <Button asChild variant="outline">
+              <Link href={`/exercises/custom/${exercise.id}/edit`}>Edit</Link>
+            </Button>
+          ) : null}
         </div>
       </div>
 

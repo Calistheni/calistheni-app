@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -374,7 +375,12 @@ export function RoutineBuilder({
                       />
                       <div>
                         <h2 className="font-semibold">{exercise.name}</h2>
-                        <Badge variant="secondary">{exercise.muscle}</Badge>
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant="secondary">{exercise.muscle}</Badge>
+                          {exercise.createdByUserId ? (
+                            <Badge variant="outline">Custom</Badge>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
                     <Button
@@ -521,6 +527,9 @@ export function RoutineBuilder({
               </SelectContent>
             </Select>
             <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
+              <Button asChild variant="outline" className="mb-2 w-full">
+                <Link href="/exercises/custom/new">Create Custom Exercise</Link>
+              </Button>
               {filteredExercises.map((exercise) => {
                 const selected = selectedExercises.some(
                   (item) => item.exerciseId === exercise.id
@@ -549,6 +558,11 @@ export function RoutineBuilder({
                       <span className="text-xs text-muted-foreground">
                         {exercise.muscle}
                       </span>
+                      {exercise.createdByUserId ? (
+                        <Badge variant="outline" className="ml-2">
+                          Custom
+                        </Badge>
+                      ) : null}
                     </span>
                     <Badge variant={selected ? "secondary" : "outline"}>
                       {selected ? "Added" : "Add"}

@@ -81,9 +81,6 @@ export default async function WorkoutDetailPage({
     where: {
       id: workoutId,
       OR: [
-        {
-          visibility: "PUBLIC",
-        },
         ...(session?.user?.id
           ? [
               {
@@ -91,6 +88,14 @@ export default async function WorkoutDetailPage({
               },
             ]
           : []),
+        {
+          visibility: "PUBLIC",
+          exercises: {
+            none: {
+              exercise: { createdByUserId: { not: null } },
+            },
+          },
+        },
       ],
     },
     include: userWorkoutInclude,

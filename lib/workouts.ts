@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { recomputeUserPersonalRecords } from "@/lib/personal-records";
 import type { ValidWorkoutMutation } from "@/lib/validation/workouts";
 import { calculateWorkoutVolumeKg } from "@/lib/workout-volume";
+import { exerciseVisibilityWhere } from "@/lib/exercise-access";
 import type {
   ExerciseListItem,
   ExerciseTrackingType,
@@ -39,6 +40,7 @@ function mapExercise(exercise: {
   videoUrl: string | null;
   trackingType: ExerciseTrackingType;
   bodyweightLoadFactor: number | null;
+  createdByUserId: string | null;
 }): ExerciseListItem {
   return {
     id: exercise.id,
@@ -49,6 +51,7 @@ function mapExercise(exercise: {
     videoUrl: exercise.videoUrl,
     trackingType: exercise.trackingType,
     bodyweightLoadFactor: exercise.bodyweightLoadFactor,
+    createdByUserId: exercise.createdByUserId,
   };
 }
 
@@ -77,6 +80,7 @@ export function mapWorkoutDetail(workout: {
       videoUrl: string | null;
       trackingType: ExerciseTrackingType;
       bodyweightLoadFactor: number | null;
+      createdByUserId: string | null;
     };
     sets: Array<{
       id: number;
@@ -199,13 +203,14 @@ export function mapWorkoutSummary(workout: {
   };
 }
 
-async function assertExercisesExist(exerciseIds: string[]) {
+async function assertExercisesExist(userId: string, exerciseIds: string[]) {
   const uniqueExerciseIds = [...new Set(exerciseIds)];
   const existingCount = await prisma.exercise.count({
     where: {
       id: {
         in: uniqueExerciseIds,
       },
+      ...exerciseVisibilityWhere(userId),
     },
   });
 
@@ -248,7 +253,7 @@ export async function createUserWorkout(
   userId: string,
   payload: ValidWorkoutMutation
 ) {
-  if (!(await assertExercisesExist(payload.exercises.map((item) => item.exerciseId)))) {
+  if (!(await assertExercisesExist(userId, payload.exercises.map((item) => item.exerciseId)))) {
     return null;
   }
 
@@ -270,7 +275,7 @@ export async function updateUserWorkout(
   workoutId: number,
   payload: ValidWorkoutMutation
 ) {
-  if (!(await assertExercisesExist(payload.exercises.map((item) => item.exerciseId)))) {
+  if (!(await assertExercisesExist(userId, payload.exercises.map((item) => item.exerciseId)))) {
     return null;
   }
 

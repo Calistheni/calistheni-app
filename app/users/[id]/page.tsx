@@ -46,6 +46,11 @@ export default async function UserProfilePage({
           completedAt: {
             not: null,
           },
+          exercises: {
+            none: {
+              exercise: { createdByUserId: { not: null } },
+            },
+          },
         },
         orderBy: {
           completedAt: "desc",

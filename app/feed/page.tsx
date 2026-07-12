@@ -44,6 +44,11 @@ export default async function FeedPage() {
           completedAt: {
             not: null,
           },
+          exercises: {
+            none: {
+              exercise: { createdByUserId: { not: null } },
+            },
+          },
         },
         orderBy: {
           completedAt: "desc",

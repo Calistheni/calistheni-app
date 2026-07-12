@@ -7,6 +7,7 @@ import { parsePositiveInteger } from "@/lib/api-response";
 import { mapRoutineDetail, routineInclude } from "@/lib/routines";
 import { prisma } from "@/lib/prisma";
 import type { ExerciseListItem, ExerciseTrackingType } from "@/types/workout";
+import { exerciseVisibilityWhere } from "@/lib/exercise-access";
 
 export const metadata: Metadata = {
   title: "Edit Routine",
@@ -25,6 +26,7 @@ function mapExercise(exercise: {
   videoUrl: string | null;
   trackingType: ExerciseTrackingType;
   bodyweightLoadFactor: number | null;
+  createdByUserId: string | null;
 }): ExerciseListItem {
   return exercise;
 }
@@ -56,6 +58,7 @@ export default async function EditRoutinePage({
       include: routineInclude,
     }),
     prisma.exercise.findMany({
+      where: exerciseVisibilityWhere(session.user.id),
       orderBy: [{ muscle: "asc" }, { name: "asc" }],
       select: {
         id: true,
@@ -66,6 +69,7 @@ export default async function EditRoutinePage({
         videoUrl: true,
         trackingType: true,
         bodyweightLoadFactor: true,
+        createdByUserId: true,
       },
     }),
   ]);

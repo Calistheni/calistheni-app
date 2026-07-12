@@ -101,6 +101,7 @@ model User {
   rewardRedemptions   RewardRedemption[]
   personalRecords      PersonalRecord[]
   workoutTemplates     WorkoutTemplate[]
+  customExercises      Exercise[]            @relation("CustomExerciseOwner")
 }
 
 model Account {
@@ -246,6 +247,8 @@ model Exercise {
   videoUrl             String?
   trackingType         ExerciseTrackingType @default(NOT_SELECTED)
   bodyweightLoadFactor Float?
+  createdByUserId      String?
+  createdByUser        User?                @relation("CustomExerciseOwner", fields: [createdByUserId], references: [id], onDelete: Restrict)
 
   workoutExercises WorkoutExercise[]
   personalRecords  PersonalRecord[]
@@ -257,6 +260,7 @@ model Exercise {
   @@index([muscle])
   @@index([name])
   @@index([trackingType])
+  @@index([createdByUserId])
 }
 
 model Workout {

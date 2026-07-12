@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { routineInclude } from "@/lib/routines";
 import type { ExerciseListItem, ExerciseTrackingType } from "@/types/workout";
 import type { WorkoutDetail } from "@/types/workout";
+import { exerciseVisibilityWhere } from "@/lib/exercise-access";
 
 export const metadata: Metadata = {
   title: "New Workout",
@@ -26,6 +27,7 @@ function mapExercise(exercise: {
   videoUrl: string | null;
   trackingType: ExerciseTrackingType;
   bodyweightLoadFactor: number | null;
+  createdByUserId: string | null;
 }): ExerciseListItem {
   return {
     id: exercise.id,
@@ -36,6 +38,7 @@ function mapExercise(exercise: {
     videoUrl: exercise.videoUrl,
     trackingType: exercise.trackingType,
     bodyweightLoadFactor: exercise.bodyweightLoadFactor,
+    createdByUserId: exercise.createdByUserId,
   };
 }
 
@@ -56,6 +59,7 @@ export default async function NewWorkoutPage({
     : null;
   const [exercises, user, routine] = await Promise.all([
     prisma.exercise.findMany({
+      where: exerciseVisibilityWhere(session.user.id),
       orderBy: [{ muscle: "asc" }, { name: "asc" }],
       select: {
         id: true,
@@ -66,6 +70,7 @@ export default async function NewWorkoutPage({
         videoUrl: true,
         trackingType: true,
         bodyweightLoadFactor: true,
+        createdByUserId: true,
       },
     }),
     prisma.user.findUnique({

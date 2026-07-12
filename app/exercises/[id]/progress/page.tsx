@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
 import { calculateSetVolumeKg } from "@/lib/workout-volume";
+import { exerciseVisibilityWhere } from "@/lib/exercise-access";
 
 export const metadata: Metadata = {
   title: "Exercise Progress",
@@ -52,6 +53,7 @@ export default async function ExerciseProgressPage({
   const { id } = await params;
   const exercise = await prisma.exercise.findFirst({
     where: {
+      AND: [exerciseVisibilityWhere(session.user.id)],
       OR: [{ id }, { slug: id }],
     },
   });
