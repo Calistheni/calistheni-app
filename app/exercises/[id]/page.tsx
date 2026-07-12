@@ -134,7 +134,7 @@ export default async function ExerciseDetailPage({
               className="aspect-video w-full rounded-xl bg-muted object-cover"
             />
             <p className="text-sm text-muted-foreground">
-              Media is loaded from the configured public R2 assets base URL.
+              {/* Media is loaded from the configured public R2 assets base URL. */}
             </p>
           </CardContent>
         </Card>

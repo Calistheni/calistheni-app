@@ -74,8 +74,8 @@ export default async function ExercisesPage({
     library === "custom"
       ? { createdByUserId: userId! }
       : library === "global"
-        ? { createdByUserId: null }
-        : exerciseVisibilityWhere(userId);
+      ? { createdByUserId: null }
+      : exerciseVisibilityWhere(userId);
 
   const [exercises, muscles, customExerciseCount] = await Promise.all([
     prisma.exercise.findMany({
@@ -138,7 +138,7 @@ export default async function ExercisesPage({
         <div>
           <h1 className="text-3xl font-bold">Exercises</h1>
           <p className="text-sm text-muted-foreground">
-            Search the exercise library and preview movement media from R2.
+            {/* Search the exercise library and preview movement media from R2. */}
           </p>
         </div>
         {userId ? (

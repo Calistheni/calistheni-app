@@ -40,7 +40,9 @@ const MAIN_MUSCLE_GROUPS = [
   "Cardio",
 ] as const;
 
-function getMainMuscleGroup(muscle: string) {
+type MainMuscleGroup = (typeof MAIN_MUSCLE_GROUPS)[number];
+
+function getMainMuscleGroup(muscle: string): MainMuscleGroup | null {
   const normalized = muscle.toLowerCase();
 
   if (
@@ -98,6 +100,8 @@ function getMainMuscleGroup(muscle: string) {
   if (normalized.includes("chest") || normalized.includes("pec")) {
     return "Chest";
   }
+
+  return null;
 }
 
 export default async function ProfilePage() {
@@ -210,9 +214,15 @@ export default async function ProfilePage() {
 
   for (const set of recentMuscleSets) {
     const exercise = set.workoutExercise.exercise;
-    const trainedGroups = new Set(
-      [exercise.muscle, ...exercise.secondaryMuscles].map(getMainMuscleGroup)
-    );
+    const trainedGroups = new Set<MainMuscleGroup>();
+
+    for (const muscle of [exercise.muscle, ...exercise.secondaryMuscles]) {
+      const mainMuscleGroup = getMainMuscleGroup(muscle);
+
+      if (mainMuscleGroup) {
+        trainedGroups.add(mainMuscleGroup);
+      }
+    }
 
     for (const muscle of trainedGroups) {
       muscleActivityMap.set(muscle, (muscleActivityMap.get(muscle) ?? 0) + 1);
