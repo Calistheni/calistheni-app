@@ -73,13 +73,16 @@ function buildInitialExercises(
   }));
 }
 
-async function getApiErrorMessage(response: Response) {
+async function getApiError(response: Response) {
   try {
-    const payload = (await response.json()) as { error?: string };
+    const payload = (await response.json()) as { code?: string; error?: string };
 
-    return payload.error || "We couldn't save this routine. Please try again.";
+    return {
+      code: payload.code,
+      message: payload.error || "We couldn't save this routine. Please try again.",
+    };
   } catch {
-    return "We couldn't save this routine. Please try again.";
+    return { message: "We couldn't save this routine. Please try again." };
   }
 }
 
@@ -263,7 +266,14 @@ export function RoutineBuilder({
       );
 
       if (!response.ok) {
-        throw new Error(await getApiErrorMessage(response));
+        const apiError = await getApiError(response);
+        if (apiError.code === "ROUTINE_LIMIT_REACHED") {
+          toast.error(apiError.message, {
+            action: { label: "Upgrade", onClick: () => router.push("/pro") },
+          });
+          return;
+        }
+        throw new Error(apiError.message);
       }
 
       const routine = (await response.json()) as RoutineDetail;

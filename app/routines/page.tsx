@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { FREE_ROUTINE_LIMIT, routineInclude } from "@/lib/routines";
+import { getUserEntitlements } from "@/lib/entitlements";
 import { prisma } from "@/lib/prisma";
 
 export const metadata: Metadata = {
@@ -24,16 +25,16 @@ export default async function RoutinesPage() {
     redirect("/login");
   }
 
-  const routines = await prisma.workoutTemplate.findMany({
-    where: {
-      userId: session.user.id,
-    },
-    orderBy: {
-      updatedAt: "desc",
-    },
-    include: routineInclude,
-  });
-  const atFreeLimit = routines.length >= FREE_ROUTINE_LIMIT;
+  const [routines, { entitlements }] = await Promise.all([
+    prisma.workoutTemplate.findMany({
+      where: { userId: session.user.id },
+      orderBy: { updatedAt: "desc" },
+      include: routineInclude,
+    }),
+    getUserEntitlements(session.user.id),
+  ]);
+  const atFreeLimit =
+    !entitlements.isPro && routines.length >= FREE_ROUTINE_LIMIT;
 
   return (
     <main className="mx-auto w-full max-w-5xl p-4 sm:p-6 lg:p-8">
@@ -46,7 +47,9 @@ export default async function RoutinesPage() {
           </p>
         </div>
         {atFreeLimit ? (
-          <Button disabled>New Routine</Button>
+          <Button asChild>
+            <Link href="/pro">Upgrade to Pro</Link>
+          </Button>
         ) : (
           <Button asChild>
             <Link href="/routines/new">New Routine</Link>
@@ -57,7 +60,11 @@ export default async function RoutinesPage() {
       {atFreeLimit ? (
         <Card className="mb-6 border-primary/20">
           <CardContent className="p-4 text-sm text-muted-foreground">
-            Upgrade to Pro for unlimited routines.
+            You&apos;ve reached the Free limit of {FREE_ROUTINE_LIMIT} routines. {" "}
+            <Link href="/pro" className="font-medium text-primary underline">
+              Upgrade to Pro
+            </Link>{" "}
+            for unlimited routines.
           </CardContent>
         </Card>
       ) : null}

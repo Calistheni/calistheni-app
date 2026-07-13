@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
+import { getUserEntitlements } from "@/lib/entitlements";
 
 export const metadata: Metadata = {
   title: "Rewards",
@@ -18,7 +19,7 @@ export const metadata: Metadata = {
 
 export default async function RewardsPage() {
   const session = await auth();
-  const [user, rewards] = await Promise.all([
+  const [user, rewards, entitlementResult] = await Promise.all([
     session?.user?.id
       ? prisma.user.findUnique({
           where: {
@@ -36,8 +37,13 @@ export default async function RewardsPage() {
       orderBy: [{ pointsCost: "asc" }, { title: "asc" }],
       take: 6,
     }),
+    session?.user?.id
+      ? getUserEntitlements(session.user.id)
+      : Promise.resolve(null),
   ]);
   const rewardPoints = user?.rewardPoints ?? 0;
+  const canEarnRewardPoints =
+    entitlementResult?.entitlements.canEarnRewardPoints ?? false;
 
   return (
     <main className="mx-auto w-full max-w-6xl p-4 sm:p-6 lg:p-8">
@@ -58,7 +64,9 @@ export default async function RewardsPage() {
             </p>
             {session?.user ? (
               <p className="rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground">
-                Become a Pro member to start earning Calis Points.
+                {canEarnRewardPoints
+                  ? "You'll be eligible to earn Calis Points when earning rules launch."
+                  : "Upgrade to Pro to start earning Calis Points when earning rules launch."}
               </p>
             ) : (
               <div className="flex flex-wrap gap-2">
@@ -141,6 +149,11 @@ export default async function RewardsPage() {
             <p>Earn Calis Points from eligible activity once rules launch.</p>
             <p>Unlock partner reward access when redemption goes live.</p>
             <p>Support better park data, workouts, and community tooling.</p>
+            {!canEarnRewardPoints && session?.user ? (
+              <Button asChild>
+                <Link href="/pro">Upgrade to Pro</Link>
+              </Button>
+            ) : null}
           </CardContent>
         </Card>
       </div>

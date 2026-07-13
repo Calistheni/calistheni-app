@@ -6,9 +6,10 @@ import {
   createJsonValidationErrorResponse,
 } from "@/lib/api-response";
 import {
+  canCreateCustomExercise,
   FREE_CUSTOM_EXERCISE_LIMIT,
-  hasUnlimitedCustomExercises,
-} from "@/lib/custom-exercise-entitlements";
+  getUserEntitlements,
+} from "@/lib/entitlements";
 import { createUniqueExerciseSlug } from "@/lib/exercises";
 import { prisma } from "@/lib/prisma";
 import {
@@ -37,16 +38,14 @@ export async function POST(request: Request) {
   }
 
   try {
-    const hasUnlimited = await hasUnlimitedCustomExercises(userId);
+    const { entitlements } = await getUserEntitlements(userId);
     const slug = await createUniqueExerciseSlug(parsed.data.name);
     const exercise = await prisma.$transaction(
       async (tx) => {
-        if (!hasUnlimited) {
-          const customExerciseCount = await tx.exercise.count({
-            where: { createdByUserId: userId },
-          });
-          if (customExerciseCount >= FREE_CUSTOM_EXERCISE_LIMIT) return null;
-        }
+        const customExerciseCount = await tx.exercise.count({
+          where: { createdByUserId: userId },
+        });
+        if (!canCreateCustomExercise(entitlements, customExerciseCount)) return null;
 
         return tx.exercise.create({
           data: {

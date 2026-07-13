@@ -164,6 +164,11 @@ export default async function AdminAnalyticsPage() {
     rewardTransactionCount,
     redemptionCount,
     onboardingCompletedCount,
+    proUsers,
+    monthlyProUsers,
+    yearlyProUsers,
+    lifetimeProUsers,
+    cancelAtPeriodEndCount,
   ] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { createdAt: { gte: today } } }),
@@ -231,6 +236,28 @@ export default async function AdminAnalyticsPage() {
     prisma.rewardTransaction.count(),
     prisma.rewardRedemption.count(),
     prisma.user.count({ where: { onboardingCompleted: true } }),
+    prisma.subscription.count({
+      where: {
+        plan: { in: ["PRO_MONTHLY", "PRO_YEARLY"] },
+        status: { in: ["ACTIVE", "TRIALING"] },
+      },
+    }),
+    prisma.subscription.count({
+      where: { plan: "PRO_MONTHLY", status: { in: ["ACTIVE", "TRIALING"] } },
+    }),
+    prisma.subscription.count({
+      where: { plan: "PRO_YEARLY", status: { in: ["ACTIVE", "TRIALING"] } },
+    }),
+    prisma.subscription.count({
+      where: { lifetimePurchasedAt: { not: null } },
+    }),
+    prisma.subscription.count({
+      where: {
+        plan: { in: ["PRO_MONTHLY", "PRO_YEARLY"] },
+        status: { in: ["ACTIVE", "TRIALING"] },
+        cancelAtPeriodEnd: true,
+      },
+    }),
   ]);
 
   const onboardingCompletionPercent =
@@ -242,6 +269,12 @@ export default async function AdminAnalyticsPage() {
     rejectedNewParksLast30 + rejectedParkEditsLast30;
   const averageWorkoutsPerActiveUserLast30 =
     mau > 0 ? workoutsLast30 / mau : 0;
+  const totalProUsers = proUsers + lifetimeProUsers;
+  const freeUsers = totalUsers - totalProUsers;
+  const freeToProConversion =
+    totalUsers > 0 ? (totalProUsers / totalUsers) * 100 : 0;
+  const estimatedMrr = monthlyProUsers * 4.99 + yearlyProUsers * (39.99 / 12);
+  const estimatedLifetimeGrossSales = lifetimeProUsers * 79.99;
 
   return (
     <main className="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">
@@ -263,6 +296,51 @@ export default async function AdminAnalyticsPage() {
           <MetricCard label="DAU" value={formatNumber(dau)} />
           <MetricCard label="WAU" value={formatNumber(wau)} />
           <MetricCard label="MAU" value={formatNumber(mau)} />
+        </div>
+      </section>
+
+      <section className="mb-8 space-y-4">
+        <div>
+          <h2 className="text-xl font-semibold">Subscriptions</h2>
+          <p className="text-sm text-muted-foreground">
+            Local webhook-synced state. Estimated MRR is a product metric, not
+            financial or accounting revenue truth.
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <MetricCard label="Pro users" value={formatNumber(totalProUsers)} />
+          <MetricCard label="Free users" value={formatNumber(freeUsers)} />
+          <MetricCard
+            label="Free → Pro conversion"
+            value={formatPercent(freeToProConversion)}
+          />
+          <MetricCard label="Monthly Pro users" value={formatNumber(monthlyProUsers)} />
+          <MetricCard label="Yearly Pro users" value={formatNumber(yearlyProUsers)} />
+          <MetricCard label="Lifetime Pro users" value={formatNumber(lifetimeProUsers)} />
+          <MetricCard
+            label="Lifetime purchases"
+            value={formatNumber(lifetimeProUsers)}
+          />
+          <MetricCard
+            label="Estimated lifetime gross sales"
+            value={new Intl.NumberFormat("en", {
+              style: "currency",
+              currency: "EUR",
+            }).format(estimatedLifetimeGrossSales)}
+            description="Locally synchronized successful purchases × €79.99. Excluded from MRR."
+          />
+          <MetricCard
+            label="Cancel at period end"
+            value={formatNumber(cancelAtPeriodEndCount)}
+          />
+          <MetricCard
+            label="Estimated MRR"
+            value={new Intl.NumberFormat("en", {
+              style: "currency",
+              currency: "EUR",
+            }).format(estimatedMrr)}
+            description="€4.99 monthly + €39.99 / 12 yearly; active/trialing only."
+          />
         </div>
       </section>
 
@@ -455,30 +533,6 @@ export default async function AdminAnalyticsPage() {
         </Card>
       </section>
 
-      <Card className="border-dashed">
-        <CardHeader>
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-xl font-semibold">Available after Pro launch</h2>
-            <Badge variant="outline">Disabled</Badge>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            These metrics need payments and subscription state before they can
-            be measured.
-          </p>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {["Pro users", "Free to Pro conversion", "MRR", "Churn"].map(
-              (label) => (
-                <div key={label} className="rounded-lg border p-3 text-sm">
-                  <p className="font-medium">{label}</p>
-                  <p className="text-muted-foreground">Not available yet</p>
-                </div>
-              )
-            )}
-          </div>
-        </CardContent>
-      </Card>
     </main>
   );
 }

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { BackButton } from "@/components/navigation/BackButton";
 import { BodyweightForm } from "@/components/profile/BodyweightForm";
+import { ManageSubscriptionButton } from "@/components/billing/ManageSubscriptionButton";
 import {
   MuscleActivityRadar,
   type MuscleActivityPoint,
@@ -18,6 +19,10 @@ import {
   type PersonalRecordType,
 } from "@/lib/personal-records";
 import { prisma } from "@/lib/prisma";
+import {
+  getFriendlySubscriptionPlan,
+  getUserEntitlements,
+} from "@/lib/entitlements";
 
 export const metadata: Metadata = {
   title: "Profile",
@@ -123,6 +128,7 @@ export default async function ProfilePage() {
     profile,
     recentPersonalRecords,
     recentMuscleSets,
+    entitlementResult,
   ] = await Promise.all([
     prisma.workout.count({
       where: {
@@ -209,7 +215,9 @@ export default async function ProfilePage() {
         },
       },
     }),
+    getUserEntitlements(session.user.id),
   ]);
+  const { entitlements, subscription } = entitlementResult;
   const muscleActivityMap = new Map<string, number>();
 
   for (const set of recentMuscleSets) {
@@ -263,8 +271,28 @@ export default async function ProfilePage() {
               {session.user.email ?? "Signed in user"}
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
-              <Badge variant="secondary">Calistheni member</Badge>
+              <Badge variant={entitlements.isPro ? "default" : "secondary"}>
+                {entitlements.isPro ? "Pro" : "Free"}
+              </Badge>
+              {entitlements.isPro && subscription ? (
+                <Badge variant="outline">
+                  {getFriendlySubscriptionPlan(subscription.plan)}
+                </Badge>
+              ) : null}
               <Badge variant="outline">Workout tracker</Badge>
+            </div>
+            <div className="mt-3">
+              {subscription?.lifetimePurchasedAt ? (
+                <p className="text-sm text-muted-foreground">
+                  Lifetime Pro · Paid once — no renewal
+                </p>
+              ) : entitlements.isPro && subscription?.stripeCustomerId ? (
+                <ManageSubscriptionButton variant="outline" />
+              ) : (
+                <Button asChild>
+                  <Link href="/pro">Upgrade to Pro</Link>
+                </Button>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -294,7 +322,9 @@ export default async function ProfilePage() {
         <CardHeader>
           <h2 className="text-2xl font-bold">Rewards</h2>
           <p className="text-sm text-muted-foreground">
-            Upgrade to Pro to begin earning reward points.
+            {entitlements.canEarnRewardPoints
+              ? "You'll be eligible to earn Calis Points when earning rules launch."
+              : "Upgrade to Pro to start earning Calis Points when earning rules launch."}
           </p>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-3">

@@ -95,6 +95,10 @@ export function UserMenu({
                 <Link href="/rewards">Rewards</Link>
               </DropdownMenuItem>
 
+              <DropdownMenuItem asChild>
+                <Link href="/pro">Calistheni Pro</Link>
+              </DropdownMenuItem>
+
               <DropdownMenuItem
                 onClick={() => void signOut({ callbackUrl: "/" })}
               >

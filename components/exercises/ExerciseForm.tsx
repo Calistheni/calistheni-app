@@ -49,10 +49,13 @@ const TRACKING_TYPES: Array<{
 async function getResponseError(response: Response) {
   const text = await response.text();
   try {
-    const payload = JSON.parse(text) as { error?: string };
-    return payload.error || "Something went wrong. Please try again.";
+    const payload = JSON.parse(text) as { code?: string; error?: string };
+    return {
+      code: payload.code,
+      message: payload.error || "Something went wrong. Please try again.",
+    };
   } catch {
-    return text || "Something went wrong. Please try again.";
+    return { message: text || "Something went wrong. Please try again." };
   }
 }
 
@@ -152,7 +155,16 @@ export function ExerciseForm({
         );
       }
 
-      if (!response.ok) throw new Error(await getResponseError(response));
+      if (!response.ok) {
+        const apiError = await getResponseError(response);
+        if (apiError.code === "CUSTOM_EXERCISE_LIMIT_REACHED") {
+          toast.error(apiError.message, {
+            action: { label: "Upgrade", onClick: () => router.push("/pro") },
+          });
+          return;
+        }
+        throw new Error(apiError.message);
+      }
       toast.success(
         isAdmin
           ? "Global exercise created."

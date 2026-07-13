@@ -4,6 +4,7 @@ import { ExerciseGrid } from "@/components/exercises/ExerciseGrid";
 import { BackButton } from "@/components/navigation/BackButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -16,7 +17,10 @@ import { prisma } from "@/lib/prisma";
 import type { ExerciseListItem, ExerciseTrackingType } from "@/types/workout";
 import { auth } from "@/auth";
 import { exerciseVisibilityWhere } from "@/lib/exercise-access";
-import { FREE_CUSTOM_EXERCISE_LIMIT } from "@/lib/custom-exercise-entitlements";
+import {
+  FREE_CUSTOM_EXERCISE_LIMIT,
+  getUserEntitlements,
+} from "@/lib/entitlements";
 
 export const metadata: Metadata = {
   title: "Exercises",
@@ -77,7 +81,7 @@ export default async function ExercisesPage({
       ? { createdByUserId: null }
       : exerciseVisibilityWhere(userId);
 
-  const [exercises, muscles, customExerciseCount] = await Promise.all([
+  const [exercises, muscles, customExerciseCount, entitlementResult] = await Promise.all([
     prisma.exercise.findMany({
       where: {
         AND: [libraryWhere],
@@ -129,7 +133,11 @@ export default async function ExercisesPage({
     userId
       ? prisma.exercise.count({ where: { createdByUserId: userId } })
       : Promise.resolve(0),
+    userId ? getUserEntitlements(userId) : Promise.resolve(null),
   ]);
+  const isPro = entitlementResult?.entitlements.isPro ?? false;
+  const atCustomExerciseLimit =
+    !isPro && customExerciseCount >= FREE_CUSTOM_EXERCISE_LIMIT;
 
   return (
     <main className="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">
@@ -141,9 +149,13 @@ export default async function ExercisesPage({
             {/* Search the exercise library and preview movement media from R2. */}
           </p>
         </div>
-        {userId ? (
+        {userId && !atCustomExerciseLimit ? (
           <Button asChild>
             <Link href="/exercises/custom/new">Create Custom Exercise</Link>
+          </Button>
+        ) : userId ? (
+          <Button asChild>
+            <Link href="/pro">Upgrade to Pro</Link>
           </Button>
         ) : null}
       </div>
@@ -223,10 +235,25 @@ export default async function ExercisesPage({
         </Badge>
         {userId ? (
           <Badge variant="outline" className="ml-2">
-            {customExerciseCount}/{FREE_CUSTOM_EXERCISE_LIMIT} custom
+            {isPro
+              ? `${customExerciseCount} custom · unlimited`
+              : `${customExerciseCount}/${FREE_CUSTOM_EXERCISE_LIMIT} custom`}
           </Badge>
         ) : null}
       </div>
+
+      {atCustomExerciseLimit ? (
+        <Card className="mb-6 border-primary/20">
+          <CardContent className="p-4 text-sm text-muted-foreground">
+            Free accounts can create up to {FREE_CUSTOM_EXERCISE_LIMIT} custom
+            exercises. {" "}
+            <Link href="/pro" className="font-medium text-primary underline">
+              Upgrade to Pro
+            </Link>{" "}
+            for unlimited custom exercises.
+          </CardContent>
+        </Card>
+      ) : null}
 
       <ExerciseGrid
         exercises={exercises.map(mapExercise)}

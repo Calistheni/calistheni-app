@@ -47,7 +47,17 @@ export function RoutineDeleteButton({ routineId }: RoutineDeleteButtonProps) {
       });
 
       if (!response.ok) {
-        throw new Error(await getApiErrorMessage(response));
+        const payload = (await response.json()) as {
+          code?: string;
+          error?: string;
+        };
+        if (payload.code === "ROUTINE_LIMIT_REACHED") {
+          toast.error(payload.error || "You've reached the Free routine limit.", {
+            action: { label: "Upgrade", onClick: () => router.push("/pro") },
+          });
+          return;
+        }
+        throw new Error(payload.error || "Something went wrong. Please try again.");
       }
 
       toast.success("Routine deleted.");

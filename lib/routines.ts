@@ -3,8 +3,13 @@ import type { ValidRoutineMutation } from "@/lib/validation/routines";
 import type { RoutineDetail } from "@/types/routine";
 import type { ExerciseListItem, ExerciseTrackingType } from "@/types/workout";
 import { exerciseVisibilityWhere } from "@/lib/exercise-access";
+import {
+  canCreateRoutine,
+  FREE_ROUTINE_LIMIT,
+  getUserEntitlements,
+} from "@/lib/entitlements";
 
-export const FREE_ROUTINE_LIMIT = 4;
+export { FREE_ROUTINE_LIMIT } from "@/lib/entitlements";
 
 export const routineInclude = {
   exercises: {
@@ -136,23 +141,30 @@ export async function createUserRoutine(
     return { error: "One or more exercises were not found." } as const;
   }
 
-  const routineCount = await prisma.workoutTemplate.count({
-    where: {
-      userId,
-    },
-  });
+  const { entitlements } = await getUserEntitlements(userId);
+  const routine = await prisma.$transaction(
+    async (tx) => {
+      const routineCount = await tx.workoutTemplate.count({ where: { userId } });
 
-  if (routineCount >= FREE_ROUTINE_LIMIT) {
-    return { error: "Upgrade to Pro for unlimited routines." } as const;
+      if (!canCreateRoutine(entitlements, routineCount)) return null;
+
+      return tx.workoutTemplate.create({
+        data: {
+          userId,
+          ...buildRoutineData(payload),
+        },
+        include: routineInclude,
+      });
+    },
+    { isolationLevel: "Serializable" }
+  );
+
+  if (!routine) {
+    return {
+      code: "ROUTINE_LIMIT_REACHED",
+      error: `You've reached the Free limit of ${FREE_ROUTINE_LIMIT} routines.`,
+    } as const;
   }
-
-  const routine = await prisma.workoutTemplate.create({
-    data: {
-      userId,
-      ...buildRoutineData(payload),
-    },
-    include: routineInclude,
-  });
 
   return { routine: mapRoutineDetail(routine) } as const;
 }

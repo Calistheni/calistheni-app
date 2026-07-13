@@ -73,20 +73,39 @@ enum PrimaryGoal {
   BOTH
 }
 
+enum SubscriptionPlan {
+  FREE
+  PRO_MONTHLY
+  PRO_YEARLY
+  PRO_LIFETIME
+}
+
+enum SubscriptionStatus {
+  INACTIVE
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  PAUSED
+}
+
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String?   @unique
-  emailVerified DateTime?
-  image         String?
-  bodyweightKg  Float?
-  rewardPoints  Int       @default(0)
-  onboardingCompleted Boolean @default(false)
-  trainingStyle TrainingStyle?
-  primaryGoal PrimaryGoal?
-  rpeTrackingEnabled Boolean @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                  String         @id @default(cuid())
+  name                String?
+  email               String?        @unique
+  emailVerified       DateTime?
+  image               String?
+  bodyweightKg        Float?
+  rewardPoints        Int            @default(0)
+  onboardingCompleted Boolean        @default(false)
+  trainingStyle       TrainingStyle?
+  primaryGoal         PrimaryGoal?
+  rpeTrackingEnabled  Boolean        @default(false)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
 
   accounts Account[]
   sessions Session[]
@@ -99,9 +118,28 @@ model User {
   followers           UserFollow[]         @relation("UserFollowers")
   rewardTransactions  RewardTransaction[]
   rewardRedemptions   RewardRedemption[]
-  personalRecords      PersonalRecord[]
-  workoutTemplates     WorkoutTemplate[]
-  customExercises      Exercise[]            @relation("CustomExerciseOwner")
+  personalRecords     PersonalRecord[]
+  workoutTemplates    WorkoutTemplate[]
+  customExercises     Exercise[]           @relation("CustomExerciseOwner")
+  subscription        Subscription?
+}
+
+model Subscription {
+  id                              String             @id @default(cuid())
+  userId                          String             @unique
+  stripeCustomerId                String?            @unique
+  stripeSubscriptionId            String?            @unique
+  stripePriceId                   String?
+  plan                            SubscriptionPlan   @default(FREE)
+  status                          SubscriptionStatus @default(INACTIVE)
+  currentPeriodEnd                DateTime?
+  cancelAtPeriodEnd               Boolean            @default(false)
+  lifetimePurchasedAt             DateTime?
+  stripeLifetimeCheckoutSessionId String?            @unique
+  createdAt                       DateTime           @default(now())
+  updatedAt                       DateTime           @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Account {
@@ -150,17 +188,17 @@ model Park {
   photos    ParkPhoto[]
   edits     ParkEditSubmission[]
 
-  submissionStatus ParkSubmissionStatus @default(APPROVED)
-  submittedById    String?
-  submittedBy      User?                @relation("ParkSubmitter", fields: [submittedById], references: [id], onDelete: SetNull)
-  photoUrl         String?
-  photoKey         String?
-  photoLocationVerifications Json?
-  nearbyParkWarning Boolean @default(false)
-  closestNearbyParkId Int?
+  submissionStatus                ParkSubmissionStatus @default(APPROVED)
+  submittedById                   String?
+  submittedBy                     User?                @relation("ParkSubmitter", fields: [submittedById], references: [id], onDelete: SetNull)
+  photoUrl                        String?
+  photoKey                        String?
+  photoLocationVerifications      Json?
+  nearbyParkWarning               Boolean              @default(false)
+  closestNearbyParkId             Int?
   closestNearbyParkDistanceMeters Float?
-  reviewedAt       DateTime?
-  rejectionReason  String?
+  reviewedAt                      DateTime?
+  rejectionReason                 String?
 
   deletedAt DateTime?
 
@@ -214,14 +252,14 @@ model ParkEditSubmission {
   submittedById String
   status        ParkSubmissionStatus @default(PENDING)
 
-  name         String
-  title        String?
-  address      String?
-  lat          Float
-  lon          Float
-  equipmentIds Int[]    @default([])
-  photoUrls    String[] @default([])
-  photoKeys    String[] @default([])
+  name                       String
+  title                      String?
+  address                    String?
+  lat                        Float
+  lon                        Float
+  equipmentIds               Int[]    @default([])
+  photoUrls                  String[] @default([])
+  photoKeys                  String[] @default([])
   photoLocationVerifications Json?
 
   reviewedAt      DateTime?
@@ -251,8 +289,8 @@ model Exercise {
   createdByUserId      String?
   createdByUser        User?                @relation("CustomExerciseOwner", fields: [createdByUserId], references: [id], onDelete: Restrict)
 
-  workoutExercises WorkoutExercise[]
-  personalRecords  PersonalRecord[]
+  workoutExercises  WorkoutExercise[]
+  personalRecords   PersonalRecord[]
   templateExercises WorkoutTemplateExercise[]
 
   createdAt DateTime @default(now())
@@ -273,8 +311,8 @@ model Workout {
   completedAt DateTime?
   visibility  WorkoutVisibility @default(PUBLIC)
 
-  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  exercises WorkoutExercise[]
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercises       WorkoutExercise[]
   personalRecords PersonalRecord[]
 
   createdAt DateTime @default(now())
@@ -285,11 +323,11 @@ model Workout {
 }
 
 model WorkoutExercise {
-  id         Int     @id @default(autoincrement())
-  workoutId  Int
-  exerciseId String
-  order      Int
-  notes      String?
+  id          Int     @id @default(autoincrement())
+  workoutId   Int
+  exerciseId  String
+  order       Int
+  notes       String?
   restSeconds Int?
 
   workout  Workout      @relation(fields: [workoutId], references: [id], onDelete: Cascade)
@@ -317,7 +355,7 @@ model WorkoutSet {
   notes             String?
   completed         Boolean @default(false)
 
-  workoutExercise WorkoutExercise @relation(fields: [workoutExerciseId], references: [id], onDelete: Cascade)
+  workoutExercise WorkoutExercise  @relation(fields: [workoutExerciseId], references: [id], onDelete: Cascade)
   personalRecords PersonalRecord[]
 
   createdAt DateTime @default(now())
@@ -428,7 +466,7 @@ model WorkoutTemplate {
 }
 
 model WorkoutTemplateExercise {
-  id          Int     @id @default(autoincrement())
+  id          Int      @id @default(autoincrement())
   templateId  Int
   exerciseId  String
   order       Int

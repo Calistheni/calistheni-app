@@ -87,6 +87,13 @@ export async function POST(request: Request) {
       return NextResponse.json(result.routine, { status: 201 });
     }
 
+    if ("code" in result && result.code === "ROUTINE_LIMIT_REACHED") {
+      return NextResponse.json(
+        { code: result.code, error: result.error },
+        { status: 403 }
+      );
+    }
+
     return createJsonErrorResponse(result.error, 400);
   } catch (error) {
     console.error(error);
