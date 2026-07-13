@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
@@ -8,6 +9,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { parsePositiveInteger } from "@/lib/api-response";
+import {
+  getExerciseThumbnailSrc,
+  getExerciseTrackingTypeLabel,
+  getRestBadgeLabel,
+} from "@/lib/exercise-display";
 import { routineInclude } from "@/lib/routines";
 import { prisma } from "@/lib/prisma";
 
@@ -76,18 +82,33 @@ export default async function RoutineDetailPage({
         {routine.exercises.map((routineExercise) => (
           <Card key={routineExercise.id}>
             <CardHeader>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold">
+              <div className="flex min-w-0 items-center gap-3">
+                <Image
+                  src={getExerciseThumbnailSrc(
+                    routineExercise.exercise.thumbnailUrl
+                  )}
+                  alt=""
+                  width={112}
+                  height={96}
+                  unoptimized
+                  className="h-14 w-16 shrink-0 rounded-md bg-muted object-cover"
+                />
+                <div className="min-w-0">
+                  <h2 className="truncate text-base font-semibold sm:text-lg">
                     {routineExercise.exercise.name}
                   </h2>
-                  <div className="mt-2 flex flex-wrap gap-2">
+                  <div className="mt-1 flex min-w-0 flex-wrap gap-1">
                     <Badge variant="secondary">
                       {routineExercise.exercise.muscle}
                     </Badge>
+                    <Badge variant="outline" className="max-w-full truncate">
+                      {getExerciseTrackingTypeLabel(
+                        routineExercise.exercise.trackingType
+                      )}
+                    </Badge>
                     {routineExercise.restSeconds !== null ? (
                       <Badge variant="outline">
-                        Rest {routineExercise.restSeconds}s
+                        {getRestBadgeLabel(routineExercise.restSeconds)}
                       </Badge>
                     ) : null}
                   </div>
