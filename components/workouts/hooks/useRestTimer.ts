@@ -192,6 +192,10 @@ export function useRestTimer() {
         exerciseName: string;
         restSeconds: number;
       }) => {
+        if (restSeconds <= 0) {
+          return;
+        }
+
         const durationSeconds = Math.max(0, restSeconds);
 
         notifiedTimerRef.current = null;
