@@ -4,7 +4,24 @@ import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, TimerIcon } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Circle,
+  EllipsisVertical,
+  Gauge,
+  MessageSquare,
+  Plus,
+  TimerIcon,
+  Trash2,
+} from "lucide-react";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,11 +43,24 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -57,6 +87,13 @@ import {
   getWorkoutDraftStorageKey,
   getWorkoutTimerStorageKey,
 } from "@/lib/active-workout-session";
+import {
+  formatRestDuration,
+  getExerciseThumbnailSrc,
+  getExerciseTrackingTypeLabel,
+  getRestBadgeLabel,
+  REST_SELECTOR_SECONDS,
+} from "@/lib/exercise-display";
 import { calculateWorkoutVolumeKg } from "@/lib/workout-volume";
 import type {
   ExerciseListItem,
@@ -86,20 +123,9 @@ type ActiveWorkoutDraft = {
 };
 
 const DEFAULT_REST_SECONDS = 90;
-const REST_PRESETS = [30, 60, 90, 120];
 const RPE_VALUES = [6, 7, 7.5, 8, 8.5, 9, 9.5, 10];
-
-const TRACKING_TYPE_LABELS = {
-  NOT_SELECTED: "Not selected",
-  BODYWEIGHT_REPS: "Bodyweight reps",
-  WEIGHTED_BODYWEIGHT: "Weighted bodyweight",
-  EXTERNAL_WEIGHT: "External weight",
-  DURATION: "Duration",
-  DISTANCE_DURATION: "Distance + time",
-  STEPS_DISTANCE_DURATION: "Steps + distance + time",
-  FLOORS_DISTANCE_DURATION: "Floors + distance + time",
-  WEIGHT_DISTANCE_DURATION: "Weight + distance + time",
-} as const;
+const COMPACT_WORKOUT_NUMBER_INPUT_CLASS =
+  "h-9 min-w-0 rounded-md bg-background/80 px-1.5 text-center text-sm font-semibold tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
 
 const EMPTY_SET: WorkoutSetInput = {
   reps: null,
@@ -125,10 +151,6 @@ function getTextValue(value: string) {
 
 function getDurationMinutesValue(durationSeconds: number | null) {
   return durationSeconds === null ? "" : durationSeconds / 60;
-}
-
-function formatRestOption(seconds: number) {
-  return `${seconds} sec`;
 }
 
 function isRepsFieldVisible(trackingType: ExerciseListItem["trackingType"]) {
@@ -181,20 +203,31 @@ function usesBodyweightVolume(trackingType: ExerciseListItem["trackingType"]) {
   );
 }
 
-function formatVolumeKg(volumeKg: number) {
-  return `${Math.round(volumeKg).toLocaleString()} kg`;
+function getSetRowGridClass(showRpeAction: boolean) {
+  return showRpeAction
+    ? "grid-cols-[1.25rem_minmax(0,1fr)_auto_auto_auto]"
+    : "grid-cols-[1.25rem_minmax(0,1fr)_auto_auto]";
 }
 
-function getActiveWorkoutSessionId(isEditing: boolean, workoutId?: number) {
-  if (typeof window === "undefined") {
-    return isEditing && workoutId
-      ? `edit-${workoutId}`
-      : "server-active-workout";
+function getSetFieldsGridClass(
+  trackingType: ExerciseListItem["trackingType"]
+) {
+  if (trackingType === "BODYWEIGHT_REPS" || trackingType === "DURATION") {
+    return "grid-cols-1";
   }
 
-  return isEditing && workoutId
-    ? `edit-${workoutId}`
-    : getOrCreateActiveWorkoutSessionId();
+  if (
+    trackingType === "WEIGHTED_BODYWEIGHT" ||
+    trackingType === "EXTERNAL_WEIGHT"
+  ) {
+    return "grid-cols-2";
+  }
+
+  return "grid-cols-[repeat(auto-fit,minmax(3rem,1fr))]";
+}
+
+function formatVolumeKg(volumeKg: number) {
+  return `${Math.round(volumeKg).toLocaleString()} kg`;
 }
 
 function readActiveWorkoutDraft(sessionId: string) {
@@ -281,13 +314,16 @@ function getErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
-async function getApiErrorMessage(response: Response) {
+async function getApiErrorMessage(
+  response: Response,
+  fallback = "We couldn't save your workout. Please try again."
+) {
   try {
     const payload = (await response.json()) as { error?: string };
 
-    return payload.error || "We couldn't save your workout. Please try again.";
+    return payload.error || fallback;
   } catch {
-    return "We couldn't save your workout. Please try again.";
+    return fallback;
   }
 }
 
@@ -326,31 +362,56 @@ export function WorkoutBuilder({
 }: WorkoutBuilderProps) {
   const router = useRouter();
   const isEditing = saveMode ? saveMode === "edit" : Boolean(initialWorkout);
-  const [activeWorkoutSessionId] = useState(() =>
-    getActiveWorkoutSessionId(isEditing, initialWorkout?.id)
+  const [activeWorkoutSessionId, setActiveWorkoutSessionId] = useState(
+    isEditing && initialWorkout?.id
+      ? `edit-${initialWorkout.id}`
+      : "server-active-workout"
   );
-  const activeWorkoutDraft = !isEditing
-    ? readActiveWorkoutDraft(activeWorkoutSessionId)
-    : null;
+  const [isActiveWorkoutSessionReady, setIsActiveWorkoutSessionReady] =
+    useState(isEditing);
+  const initialSelectedExercises = buildInitialExercises(initialWorkout);
   const workoutTimer = useWorkoutTimer(
     getWorkoutTimerStorageKey(activeWorkoutSessionId),
-    !isEditing
+    !isEditing && isActiveWorkoutSessionReady
   );
   const restTimer = useRestTimer();
-  const [title, setTitle] = useState(
-    activeWorkoutDraft?.title ?? initialWorkout?.title ?? ""
-  );
-  const [notes, setNotes] = useState(
-    activeWorkoutDraft?.notes ?? initialWorkout?.notes ?? ""
-  );
+  const [title, setTitle] = useState(initialWorkout?.title ?? "");
+  const [notes, setNotes] = useState(initialWorkout?.notes ?? "");
   const [visibility, setVisibility] = useState<"PRIVATE" | "PUBLIC">(
-    activeWorkoutDraft?.visibility ?? initialWorkout?.visibility ?? "PUBLIC"
+    initialWorkout?.visibility ?? "PUBLIC"
   );
   const [search, setSearch] = useState("");
   const [muscleFilter, setMuscleFilter] = useState("all");
   const [selectedExercises, setSelectedExercises] = useState<
     LocalWorkoutExercise[]
-  >(activeWorkoutDraft?.selectedExercises ?? buildInitialExercises(initialWorkout));
+  >(initialSelectedExercises);
+  const [openExerciseIds, setOpenExerciseIds] = useState<string[]>(() =>
+    initialSelectedExercises[0] ? [initialSelectedExercises[0].localId] : []
+  );
+  const [customRestExerciseIds, setCustomRestExerciseIds] = useState<string[]>(
+    () =>
+      initialSelectedExercises
+        .filter(
+          (exercise) =>
+            exercise.restSeconds !== null &&
+            !REST_SELECTOR_SECONDS.some(
+              (presetSeconds) => presetSeconds === exercise.restSeconds
+            )
+        )
+        .map((exercise) => exercise.localId)
+  );
+  const [currentUserBodyweightKg, setCurrentUserBodyweightKg] = useState(
+    userBodyweightKg
+  );
+  const [bodyweightInput, setBodyweightInput] = useState(
+    userBodyweightKg?.toString() ?? ""
+  );
+  const [isBodyweightDialogOpen, setIsBodyweightDialogOpen] = useState(false);
+  const [isSavingBodyweight, setIsSavingBodyweight] = useState(false);
+  const [exercisePendingRemoval, setExercisePendingRemoval] = useState<{
+    localId: string;
+    exerciseName: string;
+  } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isWorkoutDetailsOpen, setIsWorkoutDetailsOpen] = useState(false);
   const [isExercisePickerOpen, setIsExercisePickerOpen] = useState(false);
@@ -422,12 +483,12 @@ export function WorkoutBuilder({
             })),
           })
         ),
-        userBodyweightKg,
+        userBodyweightKg: currentUserBodyweightKg,
       }),
-    [selectedExercisesWithMetadata, userBodyweightKg]
+    [currentUserBodyweightKg, selectedExercisesWithMetadata]
   );
   const needsBodyweightForVolume =
-    userBodyweightKg === null &&
+    currentUserBodyweightKg === null &&
     selectedExercisesWithMetadata.some(({ exercise }) =>
       usesBodyweightVolume(exercise.trackingType)
     );
@@ -438,13 +499,54 @@ export function WorkoutBuilder({
   );
 
   useEffect(() => {
+    if (isEditing) {
+      return;
+    }
+
+    const restoreActiveWorkout = window.setTimeout(() => {
+      const sessionId = getOrCreateActiveWorkoutSessionId();
+      const draft = readActiveWorkoutDraft(sessionId);
+
+      setActiveWorkoutSessionId(sessionId);
+
+      if (draft) {
+        setTitle(draft.title);
+        setNotes(draft.notes);
+        setVisibility(draft.visibility);
+        setSelectedExercises(draft.selectedExercises);
+        setOpenExerciseIds(
+          draft.selectedExercises[0]
+            ? [draft.selectedExercises[0].localId]
+            : []
+        );
+        setCustomRestExerciseIds(
+          draft.selectedExercises
+            .filter(
+              (exercise) =>
+                exercise.restSeconds !== null &&
+                !REST_SELECTOR_SECONDS.some(
+                  (presetSeconds) =>
+                    presetSeconds === exercise.restSeconds
+                )
+            )
+            .map((exercise) => exercise.localId)
+        );
+      }
+
+      setIsActiveWorkoutSessionReady(true);
+    }, 0);
+
+    return () => window.clearTimeout(restoreActiveWorkout);
+  }, [isEditing]);
+
+  useEffect(() => {
     if (!isEditing) {
       void restTimer.initializeAudio();
     }
   }, [isEditing, restTimer]);
 
   useEffect(() => {
-    if (isEditing || typeof window === "undefined") {
+    if (isEditing || !isActiveWorkoutSessionReady) {
       return;
     }
 
@@ -459,6 +561,7 @@ export function WorkoutBuilder({
     );
   }, [
     activeWorkoutSessionId,
+    isActiveWorkoutSessionReady,
     isEditing,
     notes,
     selectedExercises,
@@ -471,22 +574,34 @@ export function WorkoutBuilder({
       return;
     }
 
+    const localId = crypto.randomUUID();
+
     setSelectedExercises((current) => [
       ...current,
       {
-        localId: crypto.randomUUID(),
+        localId,
         exerciseId,
         notes: null,
         restSeconds: DEFAULT_REST_SECONDS,
         sets: [{ ...EMPTY_SET }],
       },
     ]);
+    setOpenExerciseIds((current) =>
+      current.includes(localId) ? current : [...current, localId]
+    );
   }
 
   function removeExercise(localId: string) {
     setSelectedExercises((current) =>
       current.filter((item) => item.localId !== localId)
     );
+    setOpenExerciseIds((current) =>
+      current.filter((item) => item !== localId)
+    );
+    setCustomRestExerciseIds((current) =>
+      current.filter((item) => item !== localId)
+    );
+    setExercisePendingRemoval(null);
   }
 
   function addSet(localId: string) {
@@ -528,6 +643,33 @@ export function WorkoutBuilder({
     );
   }
 
+  function updateExerciseNotes(localId: string, value: string) {
+    setSelectedExercises((current) =>
+      current.map((item) =>
+        item.localId === localId
+          ? {
+              ...item,
+              notes: getTextValue(value),
+            }
+          : item
+      )
+    );
+  }
+
+  function setExerciseRestMode(localId: string, value: string) {
+    if (value === "custom") {
+      setCustomRestExerciseIds((current) =>
+        current.includes(localId) ? current : [...current, localId]
+      );
+      return;
+    }
+
+    setCustomRestExerciseIds((current) =>
+      current.filter((item) => item !== localId)
+    );
+    updateExerciseRestSeconds(localId, Number(value));
+  }
+
   function updateSet(
     localId: string,
     setIndex: number,
@@ -565,34 +707,18 @@ export function WorkoutBuilder({
     exerciseName: string,
     restSeconds: number | null
   ) {
-    void restTimer.initializeAudio();
     updateSet(localId, setIndex, "completed", completed);
 
     if (completed) {
-      restTimer.startRestTimer({
-        exerciseLocalId: localId,
-        exerciseName,
-        restSeconds: restSeconds ?? DEFAULT_REST_SECONDS,
-      });
+      const durationSeconds = restSeconds ?? DEFAULT_REST_SECONDS;
 
-      if (rpeTrackingEnabled) {
-        const targetExercise = selectedExercises.find(
-          (exercise) => exercise.localId === localId
-        );
-        const set = targetExercise?.sets[setIndex];
-        const exercise = exercises.find(
-          (item) => item.id === targetExercise?.exerciseId
-        );
-
-        if (set && exercise) {
-          setActiveRpeTarget({
-            localId,
-            setIndex,
-            exerciseName,
-            summary: formatSetSummary(set, exercise.trackingType),
-            value: set.rpe,
-          });
-        }
+      if (durationSeconds > 0) {
+        void restTimer.initializeAudio();
+        restTimer.startRestTimer({
+          exerciseLocalId: localId,
+          exerciseName,
+          restSeconds: durationSeconds,
+        });
       }
     }
   }
@@ -688,6 +814,56 @@ export function WorkoutBuilder({
       "durationSeconds",
       minutes === null ? "" : String(Math.round(minutes * 60))
     );
+  }
+
+  async function saveBodyweight() {
+    const nextBodyweightKg = Number(bodyweightInput);
+
+    if (
+      !Number.isFinite(nextBodyweightKg) ||
+      nextBodyweightKg < 20 ||
+      nextBodyweightKg > 300
+    ) {
+      toast.error("Bodyweight must be between 20 and 300 kg.");
+      return;
+    }
+
+    setIsSavingBodyweight(true);
+
+    try {
+      const response = await fetch("/api/user/profile", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ bodyweightKg: nextBodyweightKg }),
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          await getApiErrorMessage(response, "Unable to save bodyweight.")
+        );
+      }
+
+      const payload = (await response.json()) as {
+        bodyweightKg: number | null;
+      };
+
+      if (payload.bodyweightKg === null) {
+        throw new Error("Unable to save bodyweight.");
+      }
+
+      setCurrentUserBodyweightKg(payload.bodyweightKg);
+      setBodyweightInput(payload.bodyweightKg.toString());
+      setIsBodyweightDialogOpen(false);
+      toast.success("Bodyweight saved. Workout volume updated.");
+    } catch (error) {
+      toast.error(
+        getErrorMessage(error, "Unable to save bodyweight. Please try again.")
+      );
+    } finally {
+      setIsSavingBodyweight(false);
+    }
   }
 
   async function saveWorkout() {
@@ -806,7 +982,7 @@ export function WorkoutBuilder({
                 className="flex w-full items-center gap-3 rounded-lg border p-2 text-left transition hover:border-primary disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Image
-                  src={exercise.thumbnailUrl ?? "/icons/icon.png"}
+                  src={getExerciseThumbnailSrc(exercise.thumbnailUrl)}
                   alt=""
                   width={128}
                   height={112}
@@ -840,7 +1016,7 @@ export function WorkoutBuilder({
 
   return (
     <>
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
+      <div className="grid gap-6 pb-28 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)] lg:pb-24">
         <section className="space-y-4">
           <div className="sticky top-0 z-30 -mx-4 border-b bg-background/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-xl sm:border sm:shadow-sm">
             <div className="mb-3 flex items-center justify-between gap-3">
@@ -872,9 +1048,11 @@ export function WorkoutBuilder({
                 </p>
               </div>
               <div className="rounded-lg bg-muted/60 p-2">
-                <p className="text-[11px] text-muted-foreground">Volume</p>
+                <p className="text-[11px] text-muted-foreground">Total volume</p>
                 <p className="truncate font-semibold">
-                  {liveVolumeKg === null ? "-" : formatVolumeKg(liveVolumeKg)}
+                  {needsBodyweightForVolume || liveVolumeKg === null
+                    ? "-"
+                    : formatVolumeKg(liveVolumeKg)}
                 </p>
               </div>
               <div className="rounded-lg bg-muted/60 p-2">
@@ -883,6 +1061,31 @@ export function WorkoutBuilder({
               </div>
             </div>
           </div>
+
+          {needsBodyweightForVolume ? (
+            <Alert className="border-amber-500/40 bg-amber-500/10">
+              <AlertTriangle aria-hidden="true" />
+              <AlertTitle>Bodyweight required</AlertTitle>
+              <AlertDescription>
+                <p>
+                  Some exercises in this workout need your bodyweight to
+                  calculate volume. Total volume is unavailable until it is
+                  set.
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setBodyweightInput("");
+                    setIsBodyweightDialogOpen(true);
+                  }}
+                >
+                  Set bodyweight
+                </Button>
+              </AlertDescription>
+            </Alert>
+          ) : null}
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <Sheet open={isTimerSheetOpen} onOpenChange={setIsTimerSheetOpen}>
@@ -1103,12 +1306,6 @@ export function WorkoutBuilder({
                       public profile.
                     </p>
                   </div>
-                  {needsBodyweightForVolume ? (
-                    <p className="text-xs text-muted-foreground">
-                      Set your bodyweight in your profile to calculate
-                      bodyweight exercise volume.
-                    </p>
-                  ) : null}
                 </CardContent>
               </CollapsibleContent>
             </Card>
@@ -1121,294 +1318,368 @@ export function WorkoutBuilder({
               </CardContent>
             </Card>
           ) : (
-            selectedExercises.map((selectedExercise) => {
-              const exercise = exercises.find(
-                (item) => item.id === selectedExercise.exerciseId
-              );
+            <Accordion
+              type="multiple"
+              value={openExerciseIds}
+              onValueChange={setOpenExerciseIds}
+              className="space-y-2"
+            >
+              {selectedExercises.map((selectedExercise) => {
+                const exercise = exercises.find(
+                  (item) => item.id === selectedExercise.exerciseId
+                );
 
-              if (!exercise) {
-                return null;
-              }
+                if (!exercise) {
+                  return null;
+                }
 
-              const restSeconds =
-                selectedExercise.restSeconds ?? DEFAULT_REST_SECONDS;
+                const restSeconds =
+                  selectedExercise.restSeconds ?? DEFAULT_REST_SECONDS;
+                const isCustomRest =
+                  customRestExerciseIds.includes(selectedExercise.localId) ||
+                  !REST_SELECTOR_SECONDS.some(
+                    (presetSeconds) => presetSeconds === restSeconds
+                  );
+                const completedSets = selectedExercise.sets.filter(
+                  (set) => set.completed
+                ).length;
 
-              return (
-                <Card key={selectedExercise.localId} className="overflow-hidden">
-                  <CardHeader className="space-y-4">
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="flex min-w-0 items-center gap-3">
-                        <Image
-                          src={exercise.thumbnailUrl ?? "/icons/icon.png"}
-                          alt=""
-                          width={160}
-                          height={128}
-                          unoptimized
-                          className="h-16 w-20 shrink-0 rounded-md bg-muted object-cover"
-                        />
-                        <div className="min-w-0">
-                          <h2 className="truncate font-semibold">
-                            {exercise.name}
-                          </h2>
-                          <div className="mt-1 flex flex-wrap gap-2">
-                            <Badge variant="secondary">
-                              {exercise.muscle}
-                            </Badge>
-                            {exercise.createdByUserId ? (
-                              <Badge variant="outline">Custom</Badge>
-                            ) : null}
-                            <Badge variant="outline">
-                              {TRACKING_TYPE_LABELS[exercise.trackingType]}
-                            </Badge>
-                            <Badge variant="outline">
-                              Rest {formatRestOption(restSeconds)}
-                            </Badge>
+                return (
+                  <AccordionItem
+                    key={selectedExercise.localId}
+                    value={selectedExercise.localId}
+                    className="overflow-hidden rounded-xl border bg-card shadow-xs"
+                  >
+                    <div className="flex min-w-0 items-stretch">
+                      <AccordionTrigger className="min-w-0 px-3 py-2.5 hover:no-underline">
+                        <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                          <Image
+                            src={getExerciseThumbnailSrc(exercise.thumbnailUrl)}
+                            alt=""
+                            width={96}
+                            height={96}
+                            unoptimized
+                            className="size-12 shrink-0 rounded-md bg-muted object-cover"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <h2 className="truncate text-sm font-semibold sm:text-base">
+                              {exercise.name}
+                            </h2>
+                            <div className="mt-1 flex min-w-0 flex-wrap gap-1">
+                              <Badge variant="secondary" className="max-w-full truncate">
+                                {exercise.muscle}
+                              </Badge>
+                              <Badge variant="outline" className="max-w-full truncate">
+                                {getExerciseTrackingTypeLabel(
+                                  exercise.trackingType
+                                )}
+                              </Badge>
+                              <Badge variant="outline">
+                                {getRestBadgeLabel(restSeconds)}
+                              </Badge>
+                              {exercise.createdByUserId ? (
+                                <Badge variant="outline">Custom</Badge>
+                              ) : null}
+                            </div>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {completedSets} / {selectedExercise.sets.length} sets done
+                            </p>
                           </div>
                         </div>
+                      </AccordionTrigger>
+                      <div className="flex shrink-0 items-start py-2 pr-2">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              type="button"
+                              size="icon-lg"
+                              variant="ghost"
+                              aria-label={`Manage ${exercise.name}`}
+                            >
+                              <EllipsisVertical />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onSelect={() =>
+                                setExercisePendingRemoval({
+                                  localId: selectedExercise.localId,
+                                  exerciseName: exercise.name,
+                                })
+                              }
+                            >
+                              <Trash2 />
+                              Remove exercise
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="h-11 w-full sm:w-auto"
-                        onClick={() => removeExercise(selectedExercise.localId)}
-                      >
-                        Remove Exercise
-                      </Button>
                     </div>
-                    <div className="grid gap-3 rounded-xl border bg-muted/30 p-3 sm:grid-cols-[minmax(160px,220px)_minmax(120px,160px)] sm:items-end">
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Rest time</label>
-                        <Select
-                          value={
-                            REST_PRESETS.includes(restSeconds)
-                              ? String(restSeconds)
-                              : "custom"
-                          }
-                          onValueChange={(value) => {
-                            if (value !== "custom") {
-                              updateExerciseRestSeconds(
-                                selectedExercise.localId,
-                                Number(value)
-                              );
+
+                    <AccordionContent className="space-y-3 border-t px-3 pt-3">
+                      <div className="flex flex-wrap items-end gap-2 rounded-lg bg-muted/40 p-2">
+                        <div className="space-y-1">
+                          <Label htmlFor={`rest-${selectedExercise.localId}`}>
+                            Rest
+                          </Label>
+                          <Select
+                            value={isCustomRest ? "custom" : String(restSeconds)}
+                            onValueChange={(value) =>
+                              setExerciseRestMode(selectedExercise.localId, value)
                             }
-                          }}
-                        >
-                          <SelectTrigger
-                            className="h-11"
-                            aria-label={`${exercise.name} rest preset`}
                           >
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {REST_PRESETS.map((presetSeconds) => (
-                              <SelectItem
-                                key={presetSeconds}
-                                value={String(presetSeconds)}
-                              >
-                                {formatRestOption(presetSeconds)}
-                              </SelectItem>
-                            ))}
-                            <SelectItem value="custom">Custom</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">
-                          Custom seconds
-                        </label>
-                        <Input
-                          className="h-11"
-                          type="number"
-                          min="0"
-                          max="3600"
-                          step="5"
-                          aria-label={`${exercise.name} custom rest seconds`}
-                          value={restSeconds}
-                          onChange={(event) =>
-                            updateExerciseRestSeconds(
-                              selectedExercise.localId,
-                              Math.max(0, Number(event.target.value) || 0)
-                            )
-                          }
-                        />
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                      {selectedExercise.sets.map((set, setIndex) => (
-                        <div
-                          key={setIndex}
-                          className="rounded-xl border bg-background/70 p-3 sm:p-4"
-                        >
-                          <div className="grid gap-3 xl:grid-cols-[96px_minmax(0,1fr)_auto] xl:items-start">
-                            <div className="flex items-center justify-between gap-2 xl:block">
-                              <p className="text-base font-semibold xl:text-sm">
-                                Set {setIndex + 1}
-                              </p>
-                              <Button
-                                type="button"
-                                variant={set.completed ? "secondary" : "outline"}
-                                className="h-11 min-w-24 gap-2"
-                                onClick={() =>
-                                  updateSetCompleted(
+                            <SelectTrigger
+                              id={`rest-${selectedExercise.localId}`}
+                              size="sm"
+                              aria-label={`${exercise.name} rest time`}
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {REST_SELECTOR_SECONDS.map((presetSeconds) => (
+                                <SelectItem
+                                  key={presetSeconds}
+                                  value={String(presetSeconds)}
+                                >
+                                  {formatRestDuration(presetSeconds)}
+                                </SelectItem>
+                              ))}
+                              <SelectItem value="custom">Custom</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        {isCustomRest ? (
+                          <div className="min-w-24 flex-1 space-y-1 sm:max-w-36">
+                            <Label htmlFor={`custom-rest-${selectedExercise.localId}`}>
+                              Seconds
+                            </Label>
+                            <Input
+                              id={`custom-rest-${selectedExercise.localId}`}
+                              className="h-7 min-w-0"
+                              type="number"
+                              min="0"
+                              max="3600"
+                              step="5"
+                              value={restSeconds}
+                              onChange={(event) =>
+                                updateExerciseRestSeconds(
+                                  selectedExercise.localId,
+                                  Math.max(0, Number(event.target.value) || 0)
+                                )
+                              }
+                            />
+                          </div>
+                        ) : null}
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant={
+                                selectedExercise.notes ? "secondary" : "outline"
+                              }
+                              aria-label={`Edit notes for ${exercise.name}`}
+                            >
+                              <MessageSquare />
+                              Exercise notes
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent
+                            align="end"
+                            className="w-[min(18rem,calc(100vw-2rem))]"
+                          >
+                            <div className="space-y-2">
+                              <Label htmlFor={`exercise-notes-${selectedExercise.localId}`}>
+                                Notes for {exercise.name}
+                              </Label>
+                              <Input
+                                id={`exercise-notes-${selectedExercise.localId}`}
+                                value={selectedExercise.notes ?? ""}
+                                onChange={(event) =>
+                                  updateExerciseNotes(
                                     selectedExercise.localId,
-                                    setIndex,
-                                    !set.completed,
-                                    exercise.name,
-                                    selectedExercise.restSeconds
+                                    event.target.value
                                   )
                                 }
+                                placeholder="Exercise notes"
+                              />
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+
+                      <div className="space-y-2">
+                        {selectedExercise.sets.map((set, setIndex) => (
+                          <div
+                            key={setIndex}
+                            className={`rounded-md border border-border/70 p-1.5 transition-colors ${
+                              set.completed
+                                ? "border-primary/40 bg-primary/10"
+                                : "bg-muted/20"
+                            }`}
+                          >
+                            <div
+                              className={`grid w-full min-w-0 items-center gap-1 ${getSetRowGridClass(
+                                rpeTrackingEnabled
+                              )}`}
+                            >
+                              <span
+                                className="w-5 text-center text-xs font-semibold tabular-nums text-muted-foreground"
+                                aria-label={`Set ${setIndex + 1}${set.completed ? ", completed" : ""}`}
                               >
-                                <span
-                                  aria-hidden="true"
-                                  className="flex size-4 items-center justify-center rounded-sm border text-[10px] font-bold"
-                                >
-                                  {set.completed ? (
-                                    <Check className="size-3" />
-                                  ) : null}
-                                </span>
-                                {set.completed ? "Done" : "Mark Done"}
-                              </Button>
-                            </div>
-                            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                              {isRepsFieldVisible(exercise.trackingType) ? (
-                                <Input
-                                  className="h-11"
-                                  type="number"
-                                  min="0"
-                                  placeholder="Reps"
-                                  aria-label={`Set ${setIndex + 1} reps`}
-                                  value={set.reps ?? ""}
-                                  onChange={(event) =>
-                                    updateSet(
-                                      selectedExercise.localId,
-                                      setIndex,
-                                      "reps",
-                                      event.target.value
-                                    )
-                                  }
-                                />
-                              ) : null}
-                              {isWeightFieldVisible(exercise.trackingType) ? (
-                                <Input
-                                  className="h-11"
-                                  type="number"
-                                  min="0"
-                                  step="0.5"
-                                  placeholder={
-                                    exercise.trackingType ===
-                                    "WEIGHTED_BODYWEIGHT"
-                                      ? "Added kg"
-                                      : "Weight kg"
-                                  }
-                                  aria-label={
-                                    exercise.trackingType ===
-                                    "WEIGHTED_BODYWEIGHT"
-                                      ? `Set ${setIndex + 1} added weight`
-                                      : `Set ${setIndex + 1} weight`
-                                  }
-                                  value={set.weight ?? ""}
-                                  onChange={(event) =>
-                                    updateSet(
-                                      selectedExercise.localId,
-                                      setIndex,
-                                      "weight",
-                                      event.target.value
-                                    )
-                                  }
-                                />
-                              ) : null}
-                              {isDurationFieldVisible(
-                                exercise.trackingType
-                              ) ? (
-                                <Input
-                                  className="h-11"
-                                  type="number"
-                                  min="0"
-                                  step="0.25"
-                                  placeholder="Minutes"
-                                  aria-label={`Set ${setIndex + 1} duration minutes`}
-                                  value={getDurationMinutesValue(
-                                    set.durationSeconds
-                                  )}
-                                  onChange={(event) =>
-                                    updateSetDurationMinutes(
-                                      selectedExercise.localId,
-                                      setIndex,
-                                      event.target.value
-                                    )
-                                  }
-                                />
-                              ) : null}
-                              {isDistanceFieldVisible(
-                                exercise.trackingType
-                              ) ? (
-                                <Input
-                                  className="h-11"
-                                  type="number"
-                                  min="0"
-                                  step="1"
-                                  placeholder="Meters"
-                                  aria-label={`Set ${setIndex + 1} distance meters`}
-                                  value={set.distanceMeters ?? ""}
-                                  onChange={(event) =>
-                                    updateSet(
-                                      selectedExercise.localId,
-                                      setIndex,
-                                      "distanceMeters",
-                                      event.target.value
-                                    )
-                                  }
-                                />
-                              ) : null}
-                              {exercise.trackingType ===
-                              "STEPS_DISTANCE_DURATION" ? (
-                                <Input
-                                  className="h-11"
-                                  type="number"
-                                  min="0"
-                                  step="1"
-                                  placeholder="Steps"
-                                  aria-label={`Set ${setIndex + 1} steps`}
-                                  value={set.steps ?? ""}
-                                  onChange={(event) =>
-                                    updateSet(
-                                      selectedExercise.localId,
-                                      setIndex,
-                                      "steps",
-                                      event.target.value
-                                    )
-                                  }
-                                />
-                              ) : null}
-                              {exercise.trackingType ===
-                              "FLOORS_DISTANCE_DURATION" ? (
-                                <Input
-                                  className="h-11"
-                                  type="number"
-                                  min="0"
-                                  step="1"
-                                  placeholder="Floors"
-                                  aria-label={`Set ${setIndex + 1} floors`}
-                                  value={set.floors ?? ""}
-                                  onChange={(event) =>
-                                    updateSet(
-                                      selectedExercise.localId,
-                                      setIndex,
-                                      "floors",
-                                      event.target.value
-                                    )
-                                  }
-                                />
-                              ) : null}
-                            </div>
-                            <div className="grid gap-2 sm:grid-cols-2 xl:flex xl:justify-end">
+                                {setIndex + 1}
+                              </span>
+                              <div
+                                className={`grid min-w-0 gap-1 ${getSetFieldsGridClass(
+                                  exercise.trackingType
+                                )}`}
+                              >
+                                {isWeightFieldVisible(exercise.trackingType) ? (
+                                  <Input
+                                    className={COMPACT_WORKOUT_NUMBER_INPUT_CLASS}
+                                    type="number"
+                                    inputMode="decimal"
+                                    min="0"
+                                    step="0.5"
+                                    placeholder={
+                                      exercise.trackingType === "WEIGHTED_BODYWEIGHT"
+                                        ? "+kg"
+                                        : "kg"
+                                    }
+                                    aria-label={
+                                      exercise.trackingType === "WEIGHTED_BODYWEIGHT"
+                                        ? `Set ${setIndex + 1} added weight`
+                                        : `Set ${setIndex + 1} weight`
+                                    }
+                                    value={set.weight ?? ""}
+                                    onChange={(event) =>
+                                      updateSet(
+                                        selectedExercise.localId,
+                                        setIndex,
+                                        "weight",
+                                        event.target.value
+                                      )
+                                    }
+                                  />
+                                ) : null}
+                                {isRepsFieldVisible(exercise.trackingType) ? (
+                                  <Input
+                                    className={COMPACT_WORKOUT_NUMBER_INPUT_CLASS}
+                                    type="number"
+                                    inputMode="numeric"
+                                    min="0"
+                                    step="1"
+                                    placeholder="Reps"
+                                    aria-label={`Set ${setIndex + 1} reps`}
+                                    value={set.reps ?? ""}
+                                    onChange={(event) =>
+                                      updateSet(
+                                        selectedExercise.localId,
+                                        setIndex,
+                                        "reps",
+                                        event.target.value
+                                      )
+                                    }
+                                  />
+                                ) : null}
+                                {isDurationFieldVisible(exercise.trackingType) ? (
+                                  <Input
+                                    className={COMPACT_WORKOUT_NUMBER_INPUT_CLASS}
+                                    type="number"
+                                    inputMode="decimal"
+                                    min="0"
+                                    step="0.25"
+                                    placeholder="Min"
+                                    aria-label={`Set ${setIndex + 1} duration minutes`}
+                                    value={getDurationMinutesValue(
+                                      set.durationSeconds
+                                    )}
+                                    onChange={(event) =>
+                                      updateSetDurationMinutes(
+                                        selectedExercise.localId,
+                                        setIndex,
+                                        event.target.value
+                                      )
+                                    }
+                                  />
+                                ) : null}
+                                {isDistanceFieldVisible(exercise.trackingType) ? (
+                                  <Input
+                                    className={COMPACT_WORKOUT_NUMBER_INPUT_CLASS}
+                                    type="number"
+                                    inputMode="decimal"
+                                    min="0"
+                                    step="1"
+                                    placeholder="Meters"
+                                    aria-label={`Set ${setIndex + 1} distance meters`}
+                                    value={set.distanceMeters ?? ""}
+                                    onChange={(event) =>
+                                      updateSet(
+                                        selectedExercise.localId,
+                                        setIndex,
+                                        "distanceMeters",
+                                        event.target.value
+                                      )
+                                    }
+                                  />
+                                ) : null}
+                                {exercise.trackingType === "STEPS_DISTANCE_DURATION" ? (
+                                  <Input
+                                    className={COMPACT_WORKOUT_NUMBER_INPUT_CLASS}
+                                    type="number"
+                                    inputMode="numeric"
+                                    min="0"
+                                    step="1"
+                                    placeholder="Steps"
+                                    aria-label={`Set ${setIndex + 1} steps`}
+                                    value={set.steps ?? ""}
+                                    onChange={(event) =>
+                                      updateSet(
+                                        selectedExercise.localId,
+                                        setIndex,
+                                        "steps",
+                                        event.target.value
+                                      )
+                                    }
+                                  />
+                                ) : null}
+                                {exercise.trackingType === "FLOORS_DISTANCE_DURATION" ? (
+                                  <Input
+                                    className={COMPACT_WORKOUT_NUMBER_INPUT_CLASS}
+                                    type="number"
+                                    inputMode="numeric"
+                                    min="0"
+                                    step="1"
+                                    placeholder="Floors"
+                                    aria-label={`Set ${setIndex + 1} floors`}
+                                    value={set.floors ?? ""}
+                                    onChange={(event) =>
+                                      updateSet(
+                                        selectedExercise.localId,
+                                        setIndex,
+                                        "floors",
+                                        event.target.value
+                                      )
+                                    }
+                                  />
+                                ) : null}
+                              </div>
                               {rpeTrackingEnabled ? (
                                 <Button
                                   type="button"
+                                  size="icon-lg"
                                   variant={set.rpe ? "secondary" : "outline"}
-                                  className="h-11 shrink-0"
+                                  className={
+                                    set.rpe
+                                      ? "w-12 rounded-md px-1 text-[11px] tabular-nums"
+                                      : "p-0"
+                                  }
+                                  aria-label={
+                                    set.rpe
+                                      ? `Edit set ${setIndex + 1} RPE, currently ${set.rpe}`
+                                      : `Set RPE for set ${setIndex + 1}`
+                                  }
                                   onClick={() =>
                                     setActiveRpeTarget({
                                       localId: selectedExercise.localId,
@@ -1422,53 +1693,61 @@ export function WorkoutBuilder({
                                     })
                                   }
                                 >
-                                  RPE {set.rpe ?? "-"}
+                                  {set.rpe ? `RPE ${set.rpe}` : <Gauge />}
                                 </Button>
                               ) : null}
                               <Button
                                 type="button"
-                                variant="outline"
-                                className="h-11 shrink-0"
+                                size="icon-lg"
+                                variant={set.completed ? "default" : "outline"}
+                                aria-label={
+                                  set.completed
+                                    ? `Mark set ${setIndex + 1} incomplete`
+                                    : `Mark set ${setIndex + 1} complete`
+                                }
+                                aria-pressed={set.completed}
                                 onClick={() =>
-                                  removeSet(
+                                  updateSetCompleted(
                                     selectedExercise.localId,
-                                    setIndex
+                                    setIndex,
+                                    !set.completed,
+                                    exercise.name,
+                                    selectedExercise.restSeconds
                                   )
+                                }
+                              >
+                                {set.completed ? <CheckCircle2 /> : <Circle />}
+                              </Button>
+                              <Button
+                                type="button"
+                                size="icon-lg"
+                                variant="destructive"
+                                aria-label={`Remove set ${setIndex + 1}`}
+                                onClick={() =>
+                                  removeSet(selectedExercise.localId, setIndex)
                                 }
                                 disabled={selectedExercise.sets.length <= 1}
                               >
-                                Remove Set
+                                <Trash2 />
                               </Button>
                             </div>
                           </div>
-                          <Input
-                            className="mt-3 h-11"
-                            placeholder="Set notes"
-                            aria-label={`Set ${setIndex + 1} notes`}
-                            value={set.notes ?? ""}
-                            onChange={(event) =>
-                              updateSet(
-                                selectedExercise.localId,
-                                setIndex,
-                                "notes",
-                                event.target.value
-                              )
-                            }
-                          />
-                        </div>
-                      ))}
-                    </div>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => addSet(selectedExercise.localId)}
-                    >
-                      Add Set
-                    </Button>
-                  </CardContent>
-                </Card>
-              );
-            })
+                        ))}
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => addSet(selectedExercise.localId)}
+                      >
+                        <Plus />
+                        Add set
+                      </Button>
+                    </AccordionContent>
+                  </AccordionItem>
+                );
+              })}
+            </Accordion>
           )}
         </section>
 
@@ -1486,6 +1765,60 @@ export function WorkoutBuilder({
       </div>
 
       <Dialog
+        open={isBodyweightDialogOpen}
+        onOpenChange={setIsBodyweightDialogOpen}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Set your bodyweight</DialogTitle>
+            <DialogDescription>
+              Your bodyweight is used to calculate volume for bodyweight and
+              weighted-bodyweight exercises.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void saveBodyweight();
+            }}
+          >
+            <div className="space-y-2">
+              <Label htmlFor="workout-bodyweight">Bodyweight</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="workout-bodyweight"
+                  type="number"
+                  inputMode="decimal"
+                  min="20"
+                  max="300"
+                  step="0.1"
+                  value={bodyweightInput}
+                  onChange={(event) => setBodyweightInput(event.target.value)}
+                  disabled={isSavingBodyweight}
+                  autoFocus
+                />
+                <span className="shrink-0 text-sm text-muted-foreground">kg</span>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsBodyweightDialogOpen(false)}
+                disabled={isSavingBodyweight}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSavingBodyweight}>
+                {isSavingBodyweight ? "Saving..." : "Save bodyweight"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
         open={Boolean(activeRpeTarget)}
         onOpenChange={(open) => {
           if (!open) {
@@ -1496,6 +1829,9 @@ export function WorkoutBuilder({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>How hard was this set?</DialogTitle>
+            <DialogDescription>
+              Choose an optional rate of perceived exertion for this set.
+            </DialogDescription>
           </DialogHeader>
           {activeRpeTarget ? (
             <div className="space-y-4">
@@ -1539,6 +1875,38 @@ export function WorkoutBuilder({
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={Boolean(exercisePendingRemoval)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setExercisePendingRemoval(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove this exercise?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {exercisePendingRemoval?.exerciseName ?? "This exercise"} and all
+              of its entered sets will be removed from this workout.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep exercise</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (exercisePendingRemoval) {
+                  removeExercise(exercisePendingRemoval.localId);
+                }
+              }}
+            >
+              Remove exercise
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={showDiscardDialog}
