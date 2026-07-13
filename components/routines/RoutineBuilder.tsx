@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -16,6 +17,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  formatRestDuration,
+  getExerciseThumbnailSrc,
+  getExerciseTrackingTypeLabel,
+  getRestBadgeLabel,
+  REST_SELECTOR_SECONDS,
+} from "@/lib/exercise-display";
 import type {
   RoutineDetail,
   RoutineExerciseInput,
@@ -104,6 +112,18 @@ export function RoutineBuilder({
   const [selectedExercises, setSelectedExercises] = useState<
     LocalRoutineExercise[]
   >(buildInitialExercises(initialRoutine));
+  const [customRestExerciseIds, setCustomRestExerciseIds] = useState<string[]>(
+    () =>
+      buildInitialExercises(initialRoutine)
+        .filter(
+          (exercise) =>
+            exercise.restSeconds === null ||
+            !REST_SELECTOR_SECONDS.some(
+              (presetSeconds) => presetSeconds === exercise.restSeconds
+            )
+        )
+        .map((exercise) => exercise.localId)
+  );
   const [isSaving, setIsSaving] = useState(false);
   const muscles = useMemo(
     () => [...new Set(exercises.map((exercise) => exercise.muscle))].sort(),
@@ -147,6 +167,9 @@ export function RoutineBuilder({
     setSelectedExercises((current) =>
       current.filter((item) => item.localId !== localId)
     );
+    setCustomRestExerciseIds((current) =>
+      current.filter((item) => item !== localId)
+    );
   }
 
   function addSet(localId: string) {
@@ -184,6 +207,20 @@ export function RoutineBuilder({
         item.localId === localId ? { ...item, ...updates } : item
       )
     );
+  }
+
+  function setExerciseRestMode(localId: string, value: string) {
+    if (value === "custom") {
+      setCustomRestExerciseIds((current) =>
+        current.includes(localId) ? current : [...current, localId]
+      );
+      return;
+    }
+
+    setCustomRestExerciseIds((current) =>
+      current.filter((item) => item !== localId)
+    );
+    updateExercise(localId, { restSeconds: Number(value) });
   }
 
   function updateSet(
@@ -370,23 +407,39 @@ export function RoutineBuilder({
               return null;
             }
 
+            const restSeconds = selectedExercise.restSeconds;
+            const isCustomRest =
+              customRestExerciseIds.includes(selectedExercise.localId) ||
+              restSeconds === null ||
+              !REST_SELECTOR_SECONDS.some(
+                (presetSeconds) => presetSeconds === restSeconds
+              );
+
             return (
               <Card key={selectedExercise.localId}>
                 <CardHeader className="space-y-3">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-center gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
                       <Image
-                        src={exercise.thumbnailUrl ?? "/icons/icon.png"}
+                        src={getExerciseThumbnailSrc(exercise.thumbnailUrl)}
                         alt=""
                         width={160}
                         height={128}
                         unoptimized
-                        className="h-16 w-20 rounded-md bg-muted object-cover"
+                        className="h-16 w-20 shrink-0 rounded-md bg-muted object-cover"
                       />
-                      <div>
-                        <h2 className="font-semibold">{exercise.name}</h2>
-                        <div className="flex flex-wrap gap-2">
+                      <div className="min-w-0">
+                        <h2 className="truncate font-semibold">{exercise.name}</h2>
+                        <div className="flex min-w-0 flex-wrap gap-1">
                           <Badge variant="secondary">{exercise.muscle}</Badge>
+                          <Badge variant="outline">
+                            {getExerciseTrackingTypeLabel(exercise.trackingType)}
+                          </Badge>
+                          {restSeconds !== null ? (
+                            <Badge variant="outline">
+                              {getRestBadgeLabel(restSeconds)}
+                            </Badge>
+                          ) : null}
                           {exercise.createdByUserId ? (
                             <Badge variant="outline">Custom</Badge>
                           ) : null}
@@ -402,21 +455,57 @@ export function RoutineBuilder({
                     </Button>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-[160px_minmax(0,1fr)]">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">
-                        Rest seconds
-                      </label>
-                      <Input
-                        type="number"
-                        min="0"
-                        max="3600"
-                        value={selectedExercise.restSeconds ?? ""}
-                        onChange={(event) =>
-                          updateExercise(selectedExercise.localId, {
-                            restSeconds: getNumberValue(event.target.value),
-                          })
-                        }
-                      />
+                    <div className="flex flex-wrap items-end gap-2">
+                      <div className="space-y-2">
+                        <Label htmlFor={`routine-rest-${selectedExercise.localId}`}>
+                          Rest
+                        </Label>
+                        <Select
+                          value={isCustomRest ? "custom" : String(restSeconds)}
+                          onValueChange={(value) =>
+                            setExerciseRestMode(selectedExercise.localId, value)
+                          }
+                        >
+                          <SelectTrigger
+                            id={`routine-rest-${selectedExercise.localId}`}
+                            aria-label={`${exercise.name} rest time`}
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {REST_SELECTOR_SECONDS.map((presetSeconds) => (
+                              <SelectItem
+                                key={presetSeconds}
+                                value={String(presetSeconds)}
+                              >
+                                {formatRestDuration(presetSeconds)}
+                              </SelectItem>
+                            ))}
+                            <SelectItem value="custom">Custom</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {isCustomRest ? (
+                        <div className="min-w-24 flex-1 space-y-2">
+                          <Label
+                            htmlFor={`routine-custom-rest-${selectedExercise.localId}`}
+                          >
+                            Seconds
+                          </Label>
+                          <Input
+                            id={`routine-custom-rest-${selectedExercise.localId}`}
+                            type="number"
+                            min="0"
+                            max="3600"
+                            value={restSeconds ?? ""}
+                            onChange={(event) =>
+                              updateExercise(selectedExercise.localId, {
+                                restSeconds: getNumberValue(event.target.value),
+                              })
+                            }
+                          />
+                        </div>
+                      ) : null}
                     </div>
                     <div className="space-y-2">
                       <label className="text-sm font-medium">
@@ -554,7 +643,7 @@ export function RoutineBuilder({
                     className="flex w-full items-center gap-3 rounded-lg border p-2 text-left transition hover:border-primary disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <Image
-                      src={exercise.thumbnailUrl ?? "/icons/icon.png"}
+                      src={getExerciseThumbnailSrc(exercise.thumbnailUrl)}
                       alt=""
                       width={128}
                       height={112}
