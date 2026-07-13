@@ -22,24 +22,34 @@ export function formatElapsedTime(totalSeconds: number) {
 }
 
 export function useWorkoutTimer(storageKey: string, autoStart = false) {
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  const [timerState, setTimerState] = useState<StoredWorkoutTimerState>(() => {
-    if (typeof window === "undefined") {
-      return EMPTY_WORKOUT_TIMER_STATE;
-    }
+  const [nowMs, setNowMs] = useState(0);
+  const [timerState, setTimerState] = useState<StoredWorkoutTimerState>(
+    EMPTY_WORKOUT_TIMER_STATE
+  );
+  const [initializedStorageKey, setInitializedStorageKey] = useState<
+    string | null
+  >(null);
 
-    const storedTimer = readStoredWorkoutTimer(storageKey);
+  useEffect(() => {
+    const initializeTimer = window.setTimeout(() => {
+      const storedTimer = readStoredWorkoutTimer(storageKey);
+      const initializedAtMs = Date.now();
 
-    if (!autoStart || storedTimer.status !== "idle") {
-      return storedTimer;
-    }
+      setNowMs(initializedAtMs);
+      setTimerState(
+        autoStart && storedTimer.status === "idle"
+          ? {
+              status: "running",
+              startedAtMs: initializedAtMs,
+              accumulatedMs: 0,
+            }
+          : storedTimer
+      );
+      setInitializedStorageKey(storageKey);
+    }, 0);
 
-    return {
-      status: "running",
-      startedAtMs: Date.now(),
-      accumulatedMs: 0,
-    };
-  });
+    return () => window.clearTimeout(initializeTimer);
+  }, [autoStart, storageKey]);
 
   useEffect(() => {
     function syncTimer(event: Event) {
@@ -75,8 +85,12 @@ export function useWorkoutTimer(storageKey: string, autoStart = false) {
   }, [timerState.status]);
 
   useEffect(() => {
+    if (initializedStorageKey !== storageKey) {
+      return;
+    }
+
     writeStoredWorkoutTimer(storageKey, timerState, false);
-  }, [storageKey, timerState]);
+  }, [initializedStorageKey, storageKey, timerState]);
 
   const elapsedSeconds = Math.floor(
     (nowMs === 0 ? timerState.accumulatedMs : getElapsedMs(timerState, nowMs)) /
