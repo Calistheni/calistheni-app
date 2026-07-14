@@ -1398,7 +1398,7 @@ export default function ParksMap({
   };
 
   return (
-    <>
+    <div className="relative h-full min-h-0 w-full overflow-hidden">
       <Dialog
         open={showLocationDialog && !showLoadingDialog}
         onOpenChange={setShowLocationDialog}
@@ -1476,7 +1476,7 @@ export default function ParksMap({
         </DialogContent>
       </Dialog>
       {activeRoute && (
-        <div className="fixed right-4 bottom-4 left-4 z-50 sm:right-auto sm:bottom-6 sm:left-1/2 sm:max-w-md sm:-translate-x-1/2">
+        <div className="absolute right-4 bottom-4 left-4 z-30 sm:right-auto sm:bottom-6 sm:left-1/2 sm:max-w-md sm:-translate-x-1/2">
           <div className="flex flex-col gap-2 rounded-xl border border-border bg-card p-2 shadow-lg sm:flex-row sm:items-center">
             <span className="text-sm break-words">
               Navigating to {activeRoute.name}
@@ -1488,8 +1488,8 @@ export default function ParksMap({
           </div>
         </div>
       )}
-      <div className="relative">
-        <div className="fixed inset-0">
+      <div className="absolute inset-0">
+        <div className="absolute inset-0">
           <div ref={mapContainer} className="h-full w-full" />
 
           {isMapInitializing && (
@@ -1498,7 +1498,9 @@ export default function ParksMap({
         </div>
 
         {viewportError ? (
-          <div className="fixed right-4 bottom-4 left-4 z-50 rounded-md border border-border bg-popover p-3 shadow-lg sm:right-auto sm:max-w-sm">
+          <div
+            className="absolute right-4 bottom-4 left-4 z-30 rounded-md border border-border bg-popover p-3 shadow-lg sm:right-auto sm:max-w-sm"
+          >
             <p className="text-sm text-muted-foreground">{viewportError}</p>
             <Button
               className="mt-2"
@@ -1512,6 +1514,6 @@ export default function ParksMap({
           </div>
         ) : null}
       </div>
-    </>
+    </div>
   );
 }
