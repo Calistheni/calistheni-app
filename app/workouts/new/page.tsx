@@ -137,7 +137,7 @@ export default async function NewWorkoutPage({
     : undefined;
 
   return (
-    <main className="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">
+    <main className="mx-auto w-full max-w-7xl px-4 pb-4 pt-0 sm:p-6 lg:p-8">
       <WorkoutBuilder
         exercises={exercises.map(mapExercise)}
         initialWorkout={initialWorkoutFromRoutine}

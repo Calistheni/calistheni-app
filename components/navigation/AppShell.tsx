@@ -51,9 +51,13 @@ export function AppShell({ children, user }: AppShellProps) {
         isFullBleed && "h-dvh overflow-hidden"
       )}
     >
-      {usesWorkoutBuilderHeader ? null : (
-        <header className="sticky top-0 z-40 h-14 shrink-0 border-b bg-background">
-          <div className="mx-auto flex h-full max-w-7xl items-center gap-4 px-3 sm:px-6">
+      <header
+        className={cn(
+          "sticky top-0 z-40 h-14 shrink-0 border-b bg-background",
+          usesWorkoutBuilderHeader && "hidden md:block"
+        )}
+      >
+        <div className="mx-auto flex h-full max-w-7xl items-center gap-4 px-3 sm:px-6">
             <Link
               href="/home"
               aria-label="Calistheni home"
@@ -98,9 +102,8 @@ export function AppShell({ children, user }: AppShellProps) {
             <div className="ml-auto md:ml-0">
               <AccountMenu user={user} />
             </div>
-          </div>
-        </header>
-      )}
+        </div>
+      </header>
 
       <div
         className={cn(

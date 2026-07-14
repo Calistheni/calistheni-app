@@ -12,9 +12,7 @@ import {
   Gauge,
   MessageSquare,
   Plus,
-  TimerIcon,
   Trash2,
-  UserRound,
 } from "lucide-react";
 import {
   Accordion,
@@ -57,6 +55,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Popover,
   PopoverContent,
@@ -71,7 +70,9 @@ import {
 } from "@/components/ui/select";
 import {
   Sheet,
+  SheetDescription,
   SheetContent,
+  SheetFooter,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
@@ -96,6 +97,10 @@ import {
   REST_SELECTOR_SECONDS,
 } from "@/lib/exercise-display";
 import { calculateWorkoutVolumeKg } from "@/lib/workout-volume";
+import {
+  DEFAULT_WORKOUT_TITLE,
+  getFinalWorkoutTitle,
+} from "@/lib/workout-title";
 import type {
   ExerciseListItem,
   WorkoutDetail,
@@ -417,6 +422,7 @@ export function WorkoutBuilder({
   const [isWorkoutDetailsOpen, setIsWorkoutDetailsOpen] = useState(false);
   const [isExercisePickerOpen, setIsExercisePickerOpen] = useState(false);
   const [isTimerSheetOpen, setIsTimerSheetOpen] = useState(false);
+  const [isFinishSheetOpen, setIsFinishSheetOpen] = useState(false);
   const [showDiscardDialog, setShowDiscardDialog] = useState(false);
   const [activeRpeTarget, setActiveRpeTarget] = useState<{
     localId: string;
@@ -877,6 +883,10 @@ export function WorkoutBuilder({
   }
 
   async function saveWorkout() {
+    if (isSaving) {
+      return;
+    }
+
     if (selectedExercises.length === 0) {
       toast.error("Select at least one exercise.");
       return;
@@ -887,8 +897,16 @@ export function WorkoutBuilder({
       return;
     }
 
+    const finalTitle = isEditing
+      ? getTextValue(title)
+      : getFinalWorkoutTitle(title);
+
+    if (!isEditing && title.trim() === "") {
+      setTitle(finalTitle ?? DEFAULT_WORKOUT_TITLE);
+    }
+
     const payload: WorkoutMutationPayload = {
-      title: getTextValue(title),
+      title: finalTitle,
       notes: getTextValue(notes),
       startedAt: isEditing
         ? initialWorkout?.startedAt ?? new Date().toISOString()
@@ -1032,12 +1050,12 @@ export function WorkoutBuilder({
   return (
     <>
       <div className="grid gap-6 pb-28 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)] lg:pb-24">
-        <section className="space-y-4">
+        <section className="space-y-2.5 sm:space-y-4">
           <div
             className={`sticky z-30 -mx-4 border-b bg-background/95 px-4 backdrop-blur sm:mx-0 sm:rounded-xl sm:border sm:shadow-sm ${
               isEditing
                 ? "top-14 py-3"
-                : "top-0 pt-[calc(env(safe-area-inset-top)+0.5rem)] pb-2"
+                : "top-0 pt-[calc(env(safe-area-inset-top)+0.375rem)] pb-1.5 md:top-14 md:pt-2 md:pb-2"
             }`}
           >
             {isEditing ? (
@@ -1059,55 +1077,117 @@ export function WorkoutBuilder({
                 </Button>
               </div>
             ) : (
-              <div className="mb-2 flex min-w-0 items-center gap-2">
-                <Link
-                  href="/home"
-                  aria-label="Calistheni home"
-                  className="flex size-8 shrink-0 items-center justify-center rounded-md"
-                >
-                  <Image
-                    src="/icons/icon.png"
-                    alt=""
-                    width={28}
-                    height={28}
-                    className="size-7 rounded-md"
-                    priority
-                  />
-                </Link>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-base font-semibold leading-tight">
+              <div className="mb-1.5 flex min-w-0 items-center gap-1.5">
+                <div className="hidden min-w-0 flex-1 md:block">
+                  <p className="truncate text-base font-semibold">
                     {title.trim() || "Workout"}
-                  </p>
-                  <p className="text-[11px] leading-tight text-muted-foreground">
-                    {visibility === "PUBLIC" ? "Public" : "Private"}
                   </p>
                 </div>
                 <Button
-                  asChild
-                  size="icon"
-                  variant="ghost"
-                  className="size-9 rounded-full border bg-card"
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-9 px-2"
+                  aria-label={`Rest sounds ${restTimer.isMuted ? "muted" : "on"}`}
+                  onClick={toggleRestSound}
                 >
-                  <Link href="/profile" aria-label="Open profile">
-                    <UserRound className="size-4" />
-                  </Link>
+                  Rest: {restTimer.isMuted ? "Muted" : "On"}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-9 min-w-0 flex-1 md:flex-none lg:hidden"
+                  onClick={() => setIsExercisePickerOpen(true)}
+                >
+                  Add Exercise
+                </Button>
+                <Button
+                  type="button"
+                  className="h-9 px-3"
+                  onClick={() => setIsFinishSheetOpen(true)}
+                  disabled={isSaving}
+                >
+                  {isSaving ? "Finishing..." : "Finish"}
                 </Button>
               </div>
             )}
-            <div
-              className={`grid items-stretch gap-1.5 text-center ${
-                isEditing
-                  ? "grid-cols-3"
-                  : "grid-cols-[repeat(3,minmax(0,1fr))_auto]"
-              }`}
-            >
-              <div className="rounded-lg bg-muted/60 p-2">
-                <p className="text-[11px] text-muted-foreground">Duration</p>
-                <p className="font-semibold tabular-nums">
-                  {workoutTimer.formattedElapsed}
-                </p>
-              </div>
-              <div className="rounded-lg bg-muted/60 p-2">
+            <div className="grid grid-cols-3 divide-x overflow-hidden rounded-lg border bg-muted/50 text-center">
+              <Sheet
+                open={isTimerSheetOpen}
+                onOpenChange={setIsTimerSheetOpen}
+              >
+                <SheetTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="h-auto min-w-0 flex-col gap-0 rounded-none px-1.5 py-1.5 font-normal"
+                    aria-label={`Workout duration ${workoutTimer.formattedElapsed}. Open timer controls.`}
+                  >
+                    <span className="text-[10px] leading-tight text-muted-foreground">
+                      Duration
+                    </span>
+                    <span className="truncate font-semibold tabular-nums">
+                      {workoutTimer.formattedElapsed}
+                    </span>
+                  </Button>
+                </SheetTrigger>
+                <SheetContent
+                  side="bottom"
+                  className="max-h-[85vh] rounded-t-2xl"
+                >
+                  <SheetHeader>
+                    <SheetTitle>Workout time</SheetTitle>
+                  </SheetHeader>
+                  <div className="space-y-4 p-4">
+                    <p className="text-4xl font-bold tabular-nums">
+                      {workoutTimer.formattedElapsed}
+                    </p>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {workoutTimer.status === "running" ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={pauseWorkout}
+                        >
+                          Pause
+                        </Button>
+                      ) : workoutTimer.status === "paused" ? (
+                        <Button type="button" onClick={resumeWorkout}>
+                          Resume
+                        </Button>
+                      ) : (
+                        <Button type="button" onClick={startWorkout}>
+                          Start
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={resetWorkoutTimer}
+                      >
+                        Reset timer
+                      </Button>
+                      {restTimer.showTestSoundButton ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => void testRestSound()}
+                        >
+                          Test sound
+                        </Button>
+                      ) : null}
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        onClick={() => setShowDiscardDialog(true)}
+                      >
+                        Discard workout
+                      </Button>
+                    </div>
+                  </div>
+                </SheetContent>
+              </Sheet>
+              <div className="min-w-0 px-1.5 py-1.5">
                 <p className="text-[11px] text-muted-foreground">Volume</p>
                 <p className="truncate font-semibold">
                   {needsBodyweightForVolume || liveVolumeKg === null
@@ -1115,20 +1195,10 @@ export function WorkoutBuilder({
                     : formatVolumeKg(liveVolumeKg)}
                 </p>
               </div>
-              <div className="rounded-lg bg-muted/60 p-2">
+              <div className="min-w-0 px-1.5 py-1.5">
                 <p className="text-[11px] text-muted-foreground">Done sets</p>
                 <p className="font-semibold">{completedSetCount}</p>
               </div>
-              {!isEditing ? (
-                <Button
-                  type="button"
-                  className="h-auto self-stretch px-3"
-                  onClick={() => void saveWorkout()}
-                  disabled={isSaving}
-                >
-                  {isSaving ? "Finishing..." : "Finish"}
-                </Button>
-              ) : null}
             </div>
           </div>
 
@@ -1157,105 +1227,67 @@ export function WorkoutBuilder({
             </Alert>
           ) : null}
 
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <Sheet open={isTimerSheetOpen} onOpenChange={setIsTimerSheetOpen}>
-              <SheetTrigger asChild>
-                <Button type="button" variant="outline" size="sm">
-                  <TimerIcon className="size-4" />
-                  {workoutTimer.formattedElapsed}
-                </Button>
-              </SheetTrigger>
-              <SheetContent
-                side="bottom"
-                className="max-h-[85vh] rounded-t-2xl"
+          {isEditing ? (
+            <div className="grid grid-cols-[auto_auto_minmax(0,1fr)] gap-1.5 lg:grid-cols-[auto_auto]">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="px-2"
+                onClick={toggleRestSound}
               >
-                <SheetHeader>
-                  <SheetTitle>Workout time</SheetTitle>
-                </SheetHeader>
-                <div className="space-y-4 p-4">
-                  <p className="text-4xl font-bold tabular-nums">
-                    {workoutTimer.formattedElapsed}
-                  </p>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {workoutTimer.status === "running" ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={pauseWorkout}
-                      >
-                        Pause
-                      </Button>
-                    ) : workoutTimer.status === "paused" ? (
-                      <Button type="button" onClick={resumeWorkout}>
-                        Resume
-                      </Button>
-                    ) : (
-                      <Button type="button" onClick={startWorkout}>
-                        Start
-                      </Button>
-                    )}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={resetWorkoutTimer}
-                    >
-                      Reset timer
-                    </Button>
-                    {restTimer.showTestSoundButton ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => void testRestSound()}
-                      >
-                        Test sound
-                      </Button>
-                    ) : null}
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      onClick={() => setShowDiscardDialog(true)}
-                    >
-                      Discard workout
-                    </Button>
-                  </div>
-                </div>
-              </SheetContent>
-            </Sheet>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={toggleRestSound}
-            >
-              Rest sounds: {restTimer.isMuted ? "Muted" : "On"}
-            </Button>
-            <Sheet
-              open={isExercisePickerOpen}
-              onOpenChange={handleExercisePickerOpenChange}
-            >
-              <SheetTrigger asChild>
-                <Button type="button" size="sm" className="lg:hidden">
-                  Add Exercise
-                </Button>
-              </SheetTrigger>
-              <SheetContent
-                side="bottom"
-                className="max-h-[90vh] overflow-y-auto rounded-t-2xl"
+                Rest: {restTimer.isMuted ? "Muted" : "On"}
+              </Button>
+              <Select
+                value={visibility}
+                onValueChange={(value) =>
+                  setVisibility(value as "PRIVATE" | "PUBLIC")
+                }
               >
-                <SheetHeader>
-                  <SheetTitle>Add Exercise</SheetTitle>
-                </SheetHeader>
-                <div className="p-4">{renderExercisePicker()}</div>
-              </SheetContent>
-            </Sheet>
-          </div>
+                <SelectTrigger
+                  size="sm"
+                  className="w-auto min-w-[4.5rem] px-2"
+                  aria-label="Workout visibility"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="PUBLIC">Public</SelectItem>
+                  <SelectItem value="PRIVATE">Private</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                size="sm"
+                className="w-full min-w-0 lg:hidden"
+                onClick={() => setIsExercisePickerOpen(true)}
+              >
+                Add Exercise
+              </Button>
+            </div>
+          ) : null}
+
+          <Sheet
+            open={isExercisePickerOpen}
+            onOpenChange={handleExercisePickerOpenChange}
+          >
+            <SheetContent
+              side="bottom"
+              className="max-h-[90vh] overflow-y-auto rounded-t-2xl"
+            >
+              <SheetHeader>
+                <SheetTitle>Add Exercise</SheetTitle>
+              </SheetHeader>
+              <div className="p-4">{renderExercisePicker()}</div>
+            </SheetContent>
+          </Sheet>
 
           {restTimer.activeTimer ? (
             <div
               className={`sticky z-20 rounded-lg border bg-card p-3 shadow-lg ${
                 isEditing
                   ? "top-[172px]"
-                  : "top-[calc(env(safe-area-inset-top)+6rem)]"
+                  : "top-[calc(env(safe-area-inset-top)+5.75rem)] md:top-[156px]"
               }`}
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1305,11 +1337,12 @@ export function WorkoutBuilder({
             </div>
           ) : null}
 
-          <Collapsible
-            open={isWorkoutDetailsOpen}
-            onOpenChange={setIsWorkoutDetailsOpen}
-          >
-            <Card>
+          {isEditing ? (
+            <Collapsible
+              open={isWorkoutDetailsOpen}
+              onOpenChange={setIsWorkoutDetailsOpen}
+            >
+              <Card>
               <CardHeader className="flex flex-row items-center justify-between gap-3">
                 <div className="min-w-0">
                   <h1 className="text-xl font-bold">
@@ -1384,8 +1417,9 @@ export function WorkoutBuilder({
                   </div>
                 </CardContent>
               </CollapsibleContent>
-            </Card>
-          </Collapsible>
+              </Card>
+            </Collapsible>
+          ) : null}
 
           {selectedExercises.length === 0 ? (
             <Card>
@@ -1850,6 +1884,133 @@ export function WorkoutBuilder({
           </Card>
         </aside>
       </div>
+
+      {!isEditing ? (
+        <Sheet
+          open={isFinishSheetOpen}
+          onOpenChange={(open) => {
+            if (!isSaving) {
+              setIsFinishSheetOpen(open);
+            }
+          }}
+        >
+          <SheetContent
+            side="bottom"
+            className="max-h-[90dvh] overflow-y-auto rounded-t-2xl pb-[calc(env(safe-area-inset-bottom)+1rem)]"
+          >
+            <SheetHeader>
+              <SheetTitle>Finish workout</SheetTitle>
+              <SheetDescription>
+                Review your session and add any optional details.
+              </SheetDescription>
+            </SheetHeader>
+            <form
+              className="space-y-4 px-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void saveWorkout();
+              }}
+            >
+              <div className="grid grid-cols-4 divide-x overflow-hidden rounded-lg border bg-muted/40 text-center">
+                <div className="min-w-0 px-1 py-2">
+                  <p className="text-[10px] text-muted-foreground">Duration</p>
+                  <p className="truncate text-sm font-semibold tabular-nums">
+                    {workoutTimer.formattedElapsed}
+                  </p>
+                </div>
+                <div className="min-w-0 px-1 py-2">
+                  <p className="text-[10px] text-muted-foreground">Sets</p>
+                  <p className="text-sm font-semibold">{completedSetCount}</p>
+                </div>
+                <div className="min-w-0 px-1 py-2">
+                  <p className="text-[10px] text-muted-foreground">Volume</p>
+                  <p className="truncate text-sm font-semibold">
+                    {needsBodyweightForVolume || liveVolumeKg === null
+                      ? "—"
+                      : formatVolumeKg(liveVolumeKg)}
+                  </p>
+                </div>
+                <div className="min-w-0 px-1 py-2">
+                  <p className="text-[10px] text-muted-foreground">Exercises</p>
+                  <p className="text-sm font-semibold">
+                    {selectedExercises.length}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="finish-workout-title">
+                  Workout title <span className="font-normal">(optional)</span>
+                </Label>
+                <Input
+                  id="finish-workout-title"
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  placeholder={DEFAULT_WORKOUT_TITLE}
+                  maxLength={140}
+                  disabled={isSaving}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {initialWorkout
+                    ? "Your routine title is pre-filled and can be edited."
+                    : `Leave blank to save as “${DEFAULT_WORKOUT_TITLE}”.`}
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="finish-workout-notes">
+                  How did the workout feel?{" "}
+                  <span className="font-normal">(optional)</span>
+                </Label>
+                <Textarea
+                  id="finish-workout-notes"
+                  value={notes}
+                  onChange={(event) => setNotes(event.target.value)}
+                  placeholder="Add a post-workout note"
+                  maxLength={1000}
+                  disabled={isSaving}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="finish-workout-visibility">Visibility</Label>
+                <Select
+                  value={visibility}
+                  onValueChange={(value) =>
+                    setVisibility(value as "PRIVATE" | "PUBLIC")
+                  }
+                  disabled={isSaving}
+                >
+                  <SelectTrigger
+                    id="finish-workout-visibility"
+                    className="w-full"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="PUBLIC">Public</SelectItem>
+                    <SelectItem value="PRIVATE">Private</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <SheetFooter className="px-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsFinishSheetOpen(false)}
+                  disabled={isSaving}
+                >
+                  Back
+                </Button>
+                <Button type="submit" disabled={isSaving}>
+                  {isSaving ? "Finishing..." : "Finish Workout"}
+                </Button>
+              </SheetFooter>
+            </form>
+          </SheetContent>
+        </Sheet>
+      ) : null}
 
       <Dialog
         open={isBodyweightDialogOpen}
