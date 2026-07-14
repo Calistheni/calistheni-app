@@ -1018,7 +1018,7 @@ export function WorkoutBuilder({
     <>
       <div className="grid gap-6 pb-28 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)] lg:pb-24">
         <section className="space-y-4">
-          <div className="sticky top-0 z-30 -mx-4 border-b bg-background/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-xl sm:border sm:shadow-sm">
+          <div className="sticky top-14 z-30 -mx-4 border-b bg-background/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-xl sm:border sm:shadow-sm">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="truncate text-lg font-semibold">
@@ -1181,7 +1181,7 @@ export function WorkoutBuilder({
           </div>
 
           {restTimer.activeTimer ? (
-            <div className="sticky top-[116px] z-20 rounded-lg border bg-card p-3 shadow-lg">
+            <div className="sticky top-[172px] z-20 rounded-lg border bg-card p-3 shadow-lg">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-medium">

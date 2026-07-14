@@ -27,6 +27,7 @@ import {
   writeStoredWorkoutTimer,
   type StoredWorkoutTimerState,
 } from "@/lib/active-workout-session";
+import { isWorkoutBuilderRoute } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { formatElapsedTime } from "./hooks/useWorkoutTimer";
 
@@ -93,7 +94,11 @@ export function ActiveWorkoutDock() {
     return Math.floor(getElapsedMs(dockState.timer, nowMs) / 1000);
   }, [dockState, nowMs]);
 
-  if (!dockState || pathname.startsWith("/admin")) {
+  if (
+    !dockState ||
+    pathname.startsWith("/admin") ||
+    isWorkoutBuilderRoute(pathname)
+  ) {
     return null;
   }
 
@@ -155,14 +160,13 @@ export function ActiveWorkoutDock() {
   }
 
   const isRunning = dockState.timer.status === "running";
-  const isMapPage = pathname === "/";
-
   return (
     <>
       <div
+        data-active-workout-dock
         className={cn(
-          "pointer-events-none fixed inset-x-0 z-50 mx-auto flex w-[calc(100%-1rem)] max-w-xl justify-center px-2 pb-[env(safe-area-inset-bottom)]",
-          isMapPage ? "bottom-24 sm:bottom-28" : "bottom-4"
+          "pointer-events-none fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-50 mx-auto flex w-[calc(100%-1rem)] max-w-xl justify-center px-2",
+          "md:bottom-4"
         )}
       >
         <div className="pointer-events-auto flex w-full items-center justify-between gap-2 rounded-2xl border border-border bg-popover p-2 shadow-lg sm:w-auto">
@@ -180,7 +184,7 @@ export function ActiveWorkoutDock() {
                 height={24}
                 className="size-6 rounded-md"
               />
-              <span className="hidden sm:inline">Workout</span>
+              <span>Return</span>
               <span className="font-semibold tabular-nums">
                 {formatElapsedTime(elapsedSeconds)}
               </span>
