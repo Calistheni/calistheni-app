@@ -84,7 +84,7 @@ export default async function RoutinesPage() {
         <div className="grid gap-4">
           {routines.map((routine) => (
             <Link key={routine.id} href={`/routines/${routine.id}`}>
-              <Card className="transition hover:border-primary/50">
+              <Card className="transition-colors hover:border-primary/50">
                 <CardHeader>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>

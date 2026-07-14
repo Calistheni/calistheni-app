@@ -122,16 +122,16 @@ export default async function ProPage() {
           </CardHeader>
           <CardContent className="space-y-5">
             <div className="grid gap-4 sm:grid-cols-3">
-              <div className="rounded-xl border p-4">
+              <div className="rounded-xl border bg-muted/20 p-4">
                 <p className="font-semibold">Monthly</p>
                 <p className="text-3xl font-bold">€4.99 <span className="text-sm font-normal text-muted-foreground">/ month</span></p>
               </div>
-              <div className="rounded-xl border border-primary/30 p-4">
+              <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
                 <p className="font-semibold">Yearly</p>
                 <p className="text-3xl font-bold">€39.99 <span className="text-sm font-normal text-muted-foreground">/ year</span></p>
                 <p className="mt-1 text-xs text-muted-foreground">Save €19.89 per year (about 33%) versus monthly.</p>
               </div>
-              <div className="rounded-xl border border-primary/50 p-4">
+              <div className="rounded-xl border border-primary/50 bg-primary/5 p-4">
                 <Badge className="mb-2" variant="secondary">
                   Founding lifetime offer
                 </Badge>

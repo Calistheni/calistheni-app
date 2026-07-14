@@ -66,7 +66,10 @@ export default async function HomeHubPage() {
 
       <div className="grid gap-4 md:grid-cols-3">
         {sections.map((section) => (
-          <Card key={section.title} className="h-full">
+          <Card
+            key={section.title}
+            className="h-full transition-colors hover:border-primary/30"
+          >
             <CardHeader>
               <h2 className="text-2xl font-bold">{section.title}</h2>
               <p className="text-sm text-muted-foreground">

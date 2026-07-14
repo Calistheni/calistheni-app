@@ -112,7 +112,10 @@ export default async function FeedPage() {
             const workoutRecord = workouts[index];
 
             return (
-              <Card key={workout.id}>
+              <Card
+                key={workout.id}
+                className="transition-colors hover:border-primary/30"
+              >
                 <CardHeader className="space-y-3">
                   <div className="flex items-center gap-3">
                     {workout.user?.image ? (

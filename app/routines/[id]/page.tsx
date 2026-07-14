@@ -119,7 +119,7 @@ export default async function RoutineDetailPage({
               {routineExercise.sets.map((set, index) => (
                 <div
                   key={set.id}
-                  className="grid gap-2 rounded-lg border p-3 text-sm sm:grid-cols-4"
+                  className="grid gap-2 rounded-lg border bg-muted/20 p-3 text-sm sm:grid-cols-4"
                 >
                   <div className="font-medium">Set {index + 1}</div>
                   <div>Reps: {set.reps ?? "-"}</div>

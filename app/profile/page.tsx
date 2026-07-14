@@ -359,7 +359,7 @@ export default async function ProfilePage() {
                 <Link
                   key={record.id}
                   href={`/workouts/${record.workoutId}`}
-                  className="rounded-xl border p-4 transition hover:border-primary/50"
+                  className="rounded-xl border bg-muted/20 p-4 transition hover:border-primary/50"
                 >
                   <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                     <div>

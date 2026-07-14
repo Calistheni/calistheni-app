@@ -1477,7 +1477,7 @@ export default function ParksMap({
       </Dialog>
       {activeRoute && (
         <div className="fixed right-4 bottom-4 left-4 z-50 sm:right-auto sm:bottom-6 sm:left-1/2 sm:max-w-md sm:-translate-x-1/2">
-          <div className="flex flex-col gap-2 rounded-xl border bg-card p-2 shadow-lg sm:flex-row sm:items-center">
+          <div className="flex flex-col gap-2 rounded-xl border border-border bg-card p-2 shadow-lg sm:flex-row sm:items-center">
             <span className="text-sm break-words">
               Navigating to {activeRoute.name}
             </span>
@@ -1498,7 +1498,7 @@ export default function ParksMap({
         </div>
 
         {viewportError ? (
-          <div className="fixed right-4 bottom-4 left-4 z-50 rounded-md bg-background/95 p-3 shadow-sm sm:right-auto sm:max-w-sm">
+          <div className="fixed right-4 bottom-4 left-4 z-50 rounded-md border border-border bg-popover p-3 shadow-lg sm:right-auto sm:max-w-sm">
             <p className="text-sm text-muted-foreground">{viewportError}</p>
             <Button
               className="mt-2"

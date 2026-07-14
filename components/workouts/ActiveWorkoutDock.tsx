@@ -165,12 +165,12 @@ export function ActiveWorkoutDock() {
           isMapPage ? "bottom-24 sm:bottom-28" : "bottom-4"
         )}
       >
-        <div className="pointer-events-auto flex w-full items-center justify-between gap-2 rounded-full border bg-background/95 p-2 shadow-2xl backdrop-blur sm:w-auto">
+        <div className="pointer-events-auto flex w-full items-center justify-between gap-2 rounded-2xl border border-border bg-popover p-2 shadow-lg sm:w-auto">
           <Button
             asChild
             size="sm"
             variant="ghost"
-            className="h-11 min-w-0 rounded-full"
+            className="h-11 min-w-0 rounded-xl"
           >
             <Link href="/workouts/new">
               <Image

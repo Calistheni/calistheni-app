@@ -40,7 +40,7 @@ export function UserMenu({
           <Button
             variant="outline"
             size="icon-lg"
-            className="h-10 w-10 rounded-full bg-card shadow-xl"
+            className="h-10 w-10 rounded-full bg-card shadow-md"
             aria-label="Open account menu"
           >
             <CircleUserRound className="h-5 w-5" />

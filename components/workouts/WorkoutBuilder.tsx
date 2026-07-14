@@ -1348,7 +1348,7 @@ export function WorkoutBuilder({
                   <AccordionItem
                     key={selectedExercise.localId}
                     value={selectedExercise.localId}
-                    className="overflow-hidden rounded-xl border bg-card shadow-xs"
+                    className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
                   >
                     <div className="flex min-w-0 items-stretch">
                       <AccordionTrigger className="min-w-0 px-3 py-2.5 hover:no-underline">
@@ -1672,7 +1672,7 @@ export function WorkoutBuilder({
                                   variant={set.rpe ? "secondary" : "outline"}
                                   className={
                                     set.rpe
-                                      ? "w-12 rounded-md px-1 text-[11px] tabular-nums"
+                                      ? "w-12 rounded-md border-primary/40 bg-primary/10 px-1 text-[11px] text-primary tabular-nums shadow-none"
                                       : "p-0"
                                   }
                                   aria-label={
@@ -1699,7 +1699,12 @@ export function WorkoutBuilder({
                               <Button
                                 type="button"
                                 size="icon-lg"
-                                variant={set.completed ? "default" : "outline"}
+                                variant={set.completed ? "secondary" : "outline"}
+                                className={
+                                  set.completed
+                                    ? "border-primary/40 bg-primary/10 text-primary shadow-none"
+                                    : undefined
+                                }
                                 aria-label={
                                   set.completed
                                     ? `Mark set ${setIndex + 1} incomplete`
