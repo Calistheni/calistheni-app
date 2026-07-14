@@ -155,3 +155,56 @@
     @apply font-sans;
   }
 }
+
+@layer components {
+  .app-desktop-nav {
+    display: none;
+  }
+
+  .app-mobile-nav {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 40;
+    display: block;
+    width: 100%;
+  }
+
+  .app-mobile-nav-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    height: calc(4rem + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .app-shell-content {
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom));
+  }
+
+  .app-shell-content-full-bleed {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .app-shell:has([data-active-workout-dock]) .app-shell-content {
+    padding-bottom: calc(8.75rem + env(safe-area-inset-bottom));
+  }
+
+  @media (min-width: 48rem) {
+    .app-desktop-nav {
+      display: flex;
+    }
+
+    .app-mobile-nav {
+      display: none;
+    }
+
+    .app-shell-content {
+      padding-bottom: 0;
+    }
+
+    .app-shell:has([data-active-workout-dock]) .app-shell-content {
+      padding-bottom: 5rem;
+    }
+  }
+}
