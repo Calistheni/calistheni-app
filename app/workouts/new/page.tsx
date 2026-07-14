@@ -1,7 +1,6 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { BackButton } from "@/components/navigation/BackButton";
 import { WorkoutBuilder } from "@/components/workouts/WorkoutBuilder";
 import { parsePositiveInteger } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
@@ -16,6 +15,12 @@ export const metadata: Metadata = {
     index: false,
     follow: false,
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 function mapExercise(exercise: {
@@ -133,7 +138,6 @@ export default async function NewWorkoutPage({
 
   return (
     <main className="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">
-      <BackButton fallbackHref="/workouts" />
       <WorkoutBuilder
         exercises={exercises.map(mapExercise)}
         initialWorkout={initialWorkoutFromRoutine}

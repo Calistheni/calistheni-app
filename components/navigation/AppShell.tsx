@@ -42,6 +42,7 @@ export function AppShell({ children, user }: AppShellProps) {
 
   const activeKey = getActivePrimaryNavigation(pathname);
   const isFullBleed = isFullBleedAppRoute(pathname);
+  const usesWorkoutBuilderHeader = pathname === "/workouts/new";
 
   return (
     <div
@@ -50,53 +51,56 @@ export function AppShell({ children, user }: AppShellProps) {
         isFullBleed && "h-dvh overflow-hidden"
       )}
     >
-      <header className="sticky top-0 z-40 h-14 shrink-0 border-b bg-background">
-        <div className="mx-auto flex h-full max-w-7xl items-center gap-4 px-3 sm:px-6">
-          <Link
-            href="/home"
-            aria-label="Calistheni home"
-            className="flex shrink-0 items-center gap-2 font-semibold tracking-tight"
-          >
-            <Image
-              src="/icons/icon.png"
-              alt=""
-              width={28}
-              height={28}
-              className="size-7 rounded-md"
-              priority
-            />
-            <span className="hidden sm:inline">Calistheni</span>
-          </Link>
+      {usesWorkoutBuilderHeader ? null : (
+        <header className="sticky top-0 z-40 h-14 shrink-0 border-b bg-background">
+          <div className="mx-auto flex h-full max-w-7xl items-center gap-4 px-3 sm:px-6">
+            <Link
+              href="/home"
+              aria-label="Calistheni home"
+              className="flex shrink-0 items-center gap-2 font-semibold tracking-tight"
+            >
+              <Image
+                src="/icons/icon.png"
+                alt=""
+                width={28}
+                height={28}
+                className="size-7 rounded-md"
+                priority
+              />
+              <span className="hidden sm:inline">Calistheni</span>
+            </Link>
 
-          <nav
-            aria-label="Primary navigation"
-            className="app-desktop-nav min-w-0 flex-1 items-center justify-center gap-1"
-          >
-            {primaryNavigation.map((item) => {
-              const Icon = navigationIcons[item.key];
-              const active = activeKey === item.key;
-              return (
-                <Link
-                  key={item.key}
-                  href={item.href}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
-                    active && "border border-primary/30 bg-primary/10 text-primary"
-                  )}
-                >
-                  <Icon className="size-4" aria-hidden="true" />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
+            <nav
+              aria-label="Primary navigation"
+              className="app-desktop-nav min-w-0 flex-1 items-center justify-center gap-1"
+            >
+              {primaryNavigation.map((item) => {
+                const Icon = navigationIcons[item.key];
+                const active = activeKey === item.key;
+                return (
+                  <Link
+                    key={item.key}
+                    href={item.href}
+                    aria-current={active ? "page" : undefined}
+                    className={cn(
+                      "flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
+                      active &&
+                        "border border-primary/30 bg-primary/10 text-primary"
+                    )}
+                  >
+                    <Icon className="size-4" aria-hidden="true" />
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
 
-          <div className="ml-auto md:ml-0">
-            <AccountMenu user={user} />
+            <div className="ml-auto md:ml-0">
+              <AccountMenu user={user} />
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       <div
         className={cn(

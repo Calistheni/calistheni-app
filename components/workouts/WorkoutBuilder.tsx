@@ -14,6 +14,7 @@ import {
   Plus,
   TimerIcon,
   Trash2,
+  UserRound,
 } from "lucide-react";
 import {
   Accordion,
@@ -617,6 +618,15 @@ export function WorkoutBuilder({
     );
   }
 
+  function handleExercisePickerOpenChange(open: boolean) {
+    setIsExercisePickerOpen(open);
+
+    if (!open) {
+      setSearch("");
+      setMuscleFilter("all");
+    }
+  }
+
   function removeSet(localId: string, setIndex: number) {
     setSelectedExercises((current) =>
       current.map((item) =>
@@ -976,7 +986,7 @@ export function WorkoutBuilder({
                 type="button"
                 onClick={() => {
                   addExercise(exercise.id);
-                  setIsExercisePickerOpen(false);
+                  handleExercisePickerOpenChange(false);
                 }}
                 disabled={selected}
                 className="flex w-full items-center gap-3 rounded-lg border p-2 text-left transition hover:border-primary disabled:cursor-not-allowed disabled:opacity-60"
@@ -1009,6 +1019,11 @@ export function WorkoutBuilder({
               </button>
             );
           })}
+          {search.trim() && filteredExercises.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              No exercises match your search.
+            </p>
+          ) : null}
         </div>
       </div>
     );
@@ -1018,29 +1033,74 @@ export function WorkoutBuilder({
     <>
       <div className="grid gap-6 pb-28 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)] lg:pb-24">
         <section className="space-y-4">
-          <div className="sticky top-14 z-30 -mx-4 border-b bg-background/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-xl sm:border sm:shadow-sm">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="truncate text-lg font-semibold">
-                  {title.trim() || (isEditing ? "Edit Workout" : "Workout")}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {visibility === "PUBLIC" ? "Public" : "Private"}
-                </p>
+          <div
+            className={`sticky z-30 -mx-4 border-b bg-background/95 px-4 backdrop-blur sm:mx-0 sm:rounded-xl sm:border sm:shadow-sm ${
+              isEditing
+                ? "top-14 py-3"
+                : "top-0 pt-[calc(env(safe-area-inset-top)+0.5rem)] pb-2"
+            }`}
+          >
+            {isEditing ? (
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-lg font-semibold">
+                    {title.trim() || "Edit Workout"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {visibility === "PUBLIC" ? "Public" : "Private"}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  onClick={() => void saveWorkout()}
+                  disabled={isSaving}
+                >
+                  {isSaving ? "Saving..." : "Save Changes"}
+                </Button>
               </div>
-              <Button
-                type="button"
-                onClick={() => void saveWorkout()}
-                disabled={isSaving}
-              >
-                {isSaving
-                  ? "Finishing..."
-                  : isEditing
-                    ? "Save Changes"
-                    : "Finish"}
-              </Button>
-            </div>
-            <div className="grid grid-cols-3 gap-2 text-center">
+            ) : (
+              <div className="mb-2 flex min-w-0 items-center gap-2">
+                <Link
+                  href="/home"
+                  aria-label="Calistheni home"
+                  className="flex size-8 shrink-0 items-center justify-center rounded-md"
+                >
+                  <Image
+                    src="/icons/icon.png"
+                    alt=""
+                    width={28}
+                    height={28}
+                    className="size-7 rounded-md"
+                    priority
+                  />
+                </Link>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-base font-semibold leading-tight">
+                    {title.trim() || "Workout"}
+                  </p>
+                  <p className="text-[11px] leading-tight text-muted-foreground">
+                    {visibility === "PUBLIC" ? "Public" : "Private"}
+                  </p>
+                </div>
+                <Button
+                  asChild
+                  size="icon"
+                  variant="ghost"
+                  className="size-9 rounded-full border bg-card"
+                >
+                  <Link href="/profile" aria-label="Open profile">
+                    <UserRound className="size-4" />
+                  </Link>
+                </Button>
+              </div>
+            )}
+            <div
+              className={`grid items-stretch gap-1.5 text-center ${
+                isEditing
+                  ? "grid-cols-3"
+                  : "grid-cols-[repeat(3,minmax(0,1fr))_auto]"
+              }`}
+            >
               <div className="rounded-lg bg-muted/60 p-2">
                 <p className="text-[11px] text-muted-foreground">Duration</p>
                 <p className="font-semibold tabular-nums">
@@ -1048,7 +1108,7 @@ export function WorkoutBuilder({
                 </p>
               </div>
               <div className="rounded-lg bg-muted/60 p-2">
-                <p className="text-[11px] text-muted-foreground">Total volume</p>
+                <p className="text-[11px] text-muted-foreground">Volume</p>
                 <p className="truncate font-semibold">
                   {needsBodyweightForVolume || liveVolumeKg === null
                     ? "-"
@@ -1059,6 +1119,16 @@ export function WorkoutBuilder({
                 <p className="text-[11px] text-muted-foreground">Done sets</p>
                 <p className="font-semibold">{completedSetCount}</p>
               </div>
+              {!isEditing ? (
+                <Button
+                  type="button"
+                  className="h-auto self-stretch px-3"
+                  onClick={() => void saveWorkout()}
+                  disabled={isSaving}
+                >
+                  {isSaving ? "Finishing..." : "Finish"}
+                </Button>
+              ) : null}
             </div>
           </div>
 
@@ -1161,7 +1231,7 @@ export function WorkoutBuilder({
             </Button>
             <Sheet
               open={isExercisePickerOpen}
-              onOpenChange={setIsExercisePickerOpen}
+              onOpenChange={handleExercisePickerOpenChange}
             >
               <SheetTrigger asChild>
                 <Button type="button" size="sm" className="lg:hidden">
@@ -1181,7 +1251,13 @@ export function WorkoutBuilder({
           </div>
 
           {restTimer.activeTimer ? (
-            <div className="sticky top-[172px] z-20 rounded-lg border bg-card p-3 shadow-lg">
+            <div
+              className={`sticky z-20 rounded-lg border bg-card p-3 shadow-lg ${
+                isEditing
+                  ? "top-[172px]"
+                  : "top-[calc(env(safe-area-inset-top)+6rem)]"
+              }`}
+            >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-medium">
@@ -1348,7 +1424,7 @@ export function WorkoutBuilder({
                   <AccordionItem
                     key={selectedExercise.localId}
                     value={selectedExercise.localId}
-                    className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+                    className="overflow-hidden rounded-xl border border-border bg-card shadow-sm [overflow-anchor:none]"
                   >
                     <div className="flex min-w-0 items-stretch">
                       <AccordionTrigger className="min-w-0 px-3 py-2.5 hover:no-underline">
@@ -1743,7 +1819,13 @@ export function WorkoutBuilder({
                         type="button"
                         size="sm"
                         variant="secondary"
-                        onClick={() => addSet(selectedExercise.localId)}
+                        onClick={(event) => {
+                          if (event.detail > 0) {
+                            event.currentTarget.blur();
+                          }
+
+                          addSet(selectedExercise.localId);
+                        }}
                       >
                         <Plus />
                         Add set
