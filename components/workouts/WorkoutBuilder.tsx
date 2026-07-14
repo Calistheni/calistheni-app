@@ -125,7 +125,7 @@ type ActiveWorkoutDraft = {
 const DEFAULT_REST_SECONDS = 90;
 const RPE_VALUES = [6, 7, 7.5, 8, 8.5, 9, 9.5, 10];
 const COMPACT_WORKOUT_NUMBER_INPUT_CLASS =
-  "h-9 min-w-0 rounded-md bg-background/80 px-1.5 text-center text-sm font-semibold tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
+  "h-9 min-w-0 rounded-md bg-background/80 px-1.5 text-center font-semibold tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
 
 const EMPTY_SET: WorkoutSetInput = {
   reps: null,
