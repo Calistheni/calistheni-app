@@ -42,7 +42,7 @@ export default async function MyParksPage() {
 
   return (
     <main className="mx-auto w-full max-w-5xl p-4 sm:p-6 lg:p-8">
-      <BackButton fallbackHref="/" />
+      <BackButton fallbackHref="/parks" />
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold">My Parks</h1>

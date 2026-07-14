@@ -281,7 +281,7 @@ export default async function ProfilePage() {
               ) : null}
               <Badge variant="outline">Workout tracker</Badge>
             </div>
-            <div className="mt-3">
+            <div className="mt-3 flex flex-wrap gap-2">
               {subscription?.lifetimePurchasedAt ? (
                 <p className="text-sm text-muted-foreground">
                   Lifetime Pro · Paid once — no renewal
@@ -293,6 +293,9 @@ export default async function ProfilePage() {
                   <Link href="/pro">Upgrade to Pro</Link>
                 </Button>
               )}
+              <Button asChild variant="outline">
+                <Link href={`/users/${session.user.id}`}>Public Profile</Link>
+              </Button>
             </div>
           </div>
         </CardHeader>
@@ -401,43 +404,6 @@ export default async function ProfilePage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <h2 className="text-2xl font-bold">Quick Links</h2>
-          <p className="text-sm text-muted-foreground">
-            Jump into map, workout, or profile tools.
-          </p>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-3">
-          <Button asChild>
-            <Link href="/workouts/new">Start Workout</Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link href="/workouts">My Workouts</Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link href="/routines">Routines</Link>
-          </Button>
-          <Button asChild>
-            <Link href="/submit-park">Submit Park</Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link href="/my-parks">My Parks</Link>
-          </Button>
-          <Button asChild variant="secondary">
-            <Link href="/">Open Map</Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link href="/feed">Workout Feed</Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link href="/users">Find Users</Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link href={`/users/${session.user.id}`}>Public Profile</Link>
-          </Button>
-        </CardContent>
-      </Card>
     </main>
   );
 }
