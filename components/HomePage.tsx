@@ -13,15 +13,22 @@ type HomePageProps = {
     name?: string | null;
     email?: string | null;
   } | null;
+  inAppShell?: boolean;
 };
 
-export default function HomePage({ user }: HomePageProps) {
+export default function HomePage({ user, inAppShell = false }: HomePageProps) {
   const [parks, setParks] = useState<ParkSummary[]>([]);
   const [lightPreset, setLightPreset] = useState(getInitialLightPreset);
   const [theme, setTheme] = useState<MapTheme>("default");
 
   return (
-    <main className="h-screen overflow-hidden">
+    <main
+      className={
+        inAppShell
+          ? "relative h-full min-h-0 w-full overflow-hidden"
+          : "relative h-dvh w-full overflow-hidden"
+      }
+    >
       <ParksMap
         parks={parks}
         selectedPark={null}
@@ -35,6 +42,7 @@ export default function HomePage({ user }: HomePageProps) {
         onLightPresetChange={setLightPreset}
         theme={theme}
         onThemeChange={setTheme}
+        inAppShell={inAppShell}
       />
     </main>
   );

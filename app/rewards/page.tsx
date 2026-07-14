@@ -74,7 +74,7 @@ export default async function RewardsPage() {
                   <Link href="/login">Login to View Points</Link>
                 </Button>
                 <Button asChild variant="outline">
-                  <Link href="/">Explore Parks</Link>
+                  <Link href="/parks">Explore Parks</Link>
                 </Button>
               </div>
             )}
