@@ -620,7 +620,7 @@ export function ParkSubmissionForm({
           : "Park edit submitted for admin review."
       );
 
-      router.push(mode === "create" ? "/my-parks" : "/");
+      router.push(mode === "create" ? "/my-parks" : "/parks");
       router.refresh();
     } catch (error) {
       toast.error(
