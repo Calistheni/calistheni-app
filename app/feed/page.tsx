@@ -98,7 +98,7 @@ export default async function FeedPage() {
             </p>
             <div className="flex flex-wrap gap-2">
               <Button asChild>
-                <Link href="/users">Find Users</Link>
+                <Link href="/users">Find Athletes</Link>
               </Button>
               <Button asChild variant="outline">
                 <Link href="/profile">Open Profile</Link>

@@ -2,9 +2,10 @@ import type { Metadata, Viewport } from "next";
 import { Space_Grotesk } from "next/font/google";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "./globals.css";
+import { auth } from "@/auth";
+import { AppShell } from "@/components/navigation/AppShell";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { Toaster } from "@/components/ui/sonner";
-import { ActiveWorkoutDock } from "@/components/workouts/ActiveWorkoutDock";
 import { getSiteUrl } from "@/lib/site-url";
 
 const spaceGrotesk = Space_Grotesk({
@@ -68,11 +69,13 @@ export const viewport: Viewport = {
   ],
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const session = await auth();
+
   return (
     <html
       lang="en"
@@ -81,8 +84,15 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <ThemeProvider>
-          {children}
-          <ActiveWorkoutDock />
+          <AppShell
+            user={
+              session?.user
+                ? { name: session.user.name, email: session.user.email }
+                : null
+            }
+          >
+            {children}
+          </AppShell>
           <Toaster />
         </ThemeProvider>
       </body>

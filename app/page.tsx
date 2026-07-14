@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import HomePage from "@/components/HomePage";
 
@@ -14,16 +15,7 @@ export const metadata: Metadata = {
 export default async function Page() {
   const session = await auth();
 
-  return (
-    <HomePage
-      user={
-        session?.user
-          ? {
-              name: session.user.name,
-              email: session.user.email,
-            }
-          : null
-      }
-    />
-  );
+  if (session?.user) redirect("/home");
+
+  return <HomePage user={null} />;
 }
