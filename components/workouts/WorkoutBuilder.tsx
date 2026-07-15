@@ -98,6 +98,7 @@ import {
   calculateWorkoutVolumeKg,
   isWorkoutVolumeSetIncluded,
 } from "@/lib/workout-volume";
+import { isIncompleteEnteredSet } from "@/lib/workout-set-performance";
 import {
   DEFAULT_WORKOUT_TITLE,
   getFinalWorkoutTitle,
@@ -118,8 +119,13 @@ type WorkoutBuilderProps = {
   saveMode?: "create" | "edit";
 };
 
-type LocalWorkoutExercise = WorkoutExerciseInput & {
+type LocalWorkoutSet = WorkoutSetInput & {
   localId: string;
+};
+
+type LocalWorkoutExercise = Omit<WorkoutExerciseInput, "sets"> & {
+  localId: string;
+  sets: LocalWorkoutSet[];
 };
 
 type ActiveWorkoutDraft = {
@@ -134,7 +140,7 @@ const RPE_VALUES = [6, 7, 7.5, 8, 8.5, 9, 9.5, 10];
 const COMPACT_WORKOUT_NUMBER_INPUT_CLASS =
   "h-9 min-w-0 rounded-md bg-background/80 px-1.5 text-center font-semibold tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
 
-const EMPTY_SET: WorkoutSetInput = {
+const EMPTY_SET_VALUES: WorkoutSetInput = {
   reps: null,
   weight: null,
   durationSeconds: null,
@@ -145,6 +151,27 @@ const EMPTY_SET: WorkoutSetInput = {
   notes: null,
   completed: false,
 };
+
+function createLocalSet(
+  set: WorkoutSetInput = EMPTY_SET_VALUES,
+  localId = crypto.randomUUID()
+): LocalWorkoutSet {
+  return { ...set, localId };
+}
+
+function toWorkoutSetInput(set: LocalWorkoutSet): WorkoutSetInput {
+  return {
+    reps: set.reps,
+    weight: set.weight,
+    durationSeconds: set.durationSeconds,
+    distanceMeters: set.distanceMeters,
+    steps: set.steps,
+    floors: set.floors,
+    rpe: set.rpe,
+    notes: set.notes,
+    completed: set.completed,
+  };
+}
 
 function getNumberValue(value: string) {
   return value.trim() === "" ? null : Number(value);
@@ -255,6 +282,24 @@ function readActiveWorkoutDraft(sessionId: string) {
       return null;
     }
 
+    const selectedExercises = parsed.selectedExercises.map((exercise) => ({
+      ...exercise,
+      localId:
+        typeof exercise.localId === "string"
+          ? exercise.localId
+          : crypto.randomUUID(),
+      sets: Array.isArray(exercise.sets)
+        ? exercise.sets.map((set) =>
+            createLocalSet(
+              toWorkoutSetInput(set as LocalWorkoutSet),
+              typeof (set as Partial<LocalWorkoutSet>).localId === "string"
+                ? (set as LocalWorkoutSet).localId
+                : crypto.randomUUID()
+            )
+          )
+        : [],
+    }));
+
     return {
       title: typeof parsed.title === "string" ? parsed.title : "",
       notes: typeof parsed.notes === "string" ? parsed.notes : "",
@@ -262,7 +307,7 @@ function readActiveWorkoutDraft(sessionId: string) {
         parsed.visibility === "PRIVATE" || parsed.visibility === "PUBLIC"
           ? parsed.visibility
           : "PUBLIC",
-      selectedExercises: parsed.selectedExercises,
+      selectedExercises,
     } satisfies ActiveWorkoutDraft;
   } catch {
     return null;
@@ -346,17 +391,22 @@ function buildInitialExercises(
     exerciseId: workoutExercise.exercise.id,
     notes: workoutExercise.notes,
     restSeconds: workoutExercise.restSeconds ?? DEFAULT_REST_SECONDS,
-    sets: workoutExercise.sets.map((set) => ({
-      reps: set.reps,
-      weight: set.weight,
-      durationSeconds: set.durationSeconds,
-      distanceMeters: set.distanceMeters,
-      steps: set.steps,
-      floors: set.floors,
-      rpe: set.rpe,
-      notes: set.notes,
-      completed: set.completed,
-    })),
+    sets: workoutExercise.sets.map((set) =>
+      createLocalSet(
+        {
+          reps: set.reps,
+          weight: set.weight,
+          durationSeconds: set.durationSeconds,
+          distanceMeters: set.distanceMeters,
+          steps: set.steps,
+          floors: set.floors,
+          rpe: set.rpe,
+          notes: set.notes,
+          completed: set.completed,
+        },
+        `workout-set-${set.id}`
+      )
+    ),
   }));
 }
 
@@ -383,6 +433,7 @@ export function WorkoutBuilder({
   );
   const restTimer = useRestTimer();
   const exercisePickerContentRef = useRef<HTMLDivElement>(null);
+  const setRowRefs = useRef(new Map<string, HTMLDivElement>());
   const [title, setTitle] = useState(initialWorkout?.title ?? "");
   const [notes, setNotes] = useState(initialWorkout?.notes ?? "");
   const [visibility, setVisibility] = useState<"PRIVATE" | "PUBLIC">(
@@ -425,6 +476,12 @@ export function WorkoutBuilder({
   const [isExercisePickerOpen, setIsExercisePickerOpen] = useState(false);
   const [isTimerSheetOpen, setIsTimerSheetOpen] = useState(false);
   const [isFinishSheetOpen, setIsFinishSheetOpen] = useState(false);
+  const [showIncompleteSetsDialog, setShowIncompleteSetsDialog] =
+    useState(false);
+  const [warnedSetIds, setWarnedSetIds] = useState<string[]>([]);
+  const [scrollTargetSetId, setScrollTargetSetId] = useState<string | null>(
+    null
+  );
   const [showDiscardDialog, setShowDiscardDialog] = useState(false);
   const [activeRpeTarget, setActiveRpeTarget] = useState<{
     localId: string;
@@ -509,6 +566,57 @@ export function WorkoutBuilder({
       count + exercise.sets.filter((set) => set.completed).length,
     0
   );
+  const incompleteEnteredSets = useMemo(
+    () =>
+      selectedExercisesWithMetadata.flatMap(
+        ({ selectedExercise, exercise }) =>
+          selectedExercise.sets.flatMap((set, setIndex) =>
+            isIncompleteEnteredSet(set, exercise.trackingType)
+              ? [
+                  {
+                    exerciseLocalId: selectedExercise.localId,
+                    exerciseName: exercise.name,
+                    setLocalId: set.localId,
+                    setNumber: setIndex + 1,
+                  },
+                ]
+              : []
+          )
+      ),
+    [selectedExercisesWithMetadata]
+  );
+  const activeWarnedSetIds = useMemo(() => {
+    const currentIds = new Set(
+      incompleteEnteredSets.map(({ setLocalId }) => setLocalId)
+    );
+
+    return warnedSetIds.filter((setId) => currentIds.has(setId));
+  }, [incompleteEnteredSets, warnedSetIds]);
+
+  useEffect(() => {
+    if (!scrollTargetSetId) {
+      return;
+    }
+
+    const row = setRowRefs.current.get(scrollTargetSetId);
+
+    if (!row) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      row.focus({ preventScroll: true });
+      row.scrollIntoView({
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+        block: "center",
+      });
+      setScrollTargetSetId(null);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [openExerciseIds, scrollTargetSetId]);
 
   useEffect(() => {
     if (isEditing) {
@@ -595,7 +703,7 @@ export function WorkoutBuilder({
         exerciseId,
         notes: null,
         restSeconds: DEFAULT_REST_SECONDS,
-        sets: [{ ...EMPTY_SET }],
+        sets: [createLocalSet()],
       },
     ]);
     setOpenExerciseIds((current) =>
@@ -622,7 +730,7 @@ export function WorkoutBuilder({
         item.localId === localId
           ? {
               ...item,
-              sets: [...item.sets, { ...EMPTY_SET }],
+              sets: [...item.sets, createLocalSet()],
             }
           : item
       )
@@ -837,6 +945,37 @@ export function WorkoutBuilder({
     );
   }
 
+  function requestFinishWorkout() {
+    if (incompleteEnteredSets.length === 0) {
+      setWarnedSetIds([]);
+      setIsFinishSheetOpen(true);
+      return;
+    }
+
+    setWarnedSetIds(
+      incompleteEnteredSets.map(({ setLocalId }) => setLocalId)
+    );
+    setShowIncompleteSetsDialog(true);
+  }
+
+  function reviewIncompleteSets() {
+    const affectedExerciseIds = incompleteEnteredSets.map(
+      ({ exerciseLocalId }) => exerciseLocalId
+    );
+
+    setOpenExerciseIds((current) => [
+      ...current,
+      ...affectedExerciseIds.filter(
+        (exerciseId) => !current.includes(exerciseId)
+      ),
+    ]);
+    setScrollTargetSetId(incompleteEnteredSets[0]?.setLocalId ?? null);
+  }
+
+  function finishWithIncompleteSets() {
+    setIsFinishSheetOpen(true);
+  }
+
   async function saveBodyweight() {
     const nextBodyweightKg = Number(bodyweightInput);
 
@@ -925,7 +1064,7 @@ export function WorkoutBuilder({
           exerciseId,
           notes,
           restSeconds,
-          sets,
+          sets: sets.map(toWorkoutSetInput),
         })
       ),
     };
@@ -1109,7 +1248,7 @@ export function WorkoutBuilder({
                 <Button
                   type="button"
                   className="h-9 px-3"
-                  onClick={() => setIsFinishSheetOpen(true)}
+                  onClick={requestFinishWorkout}
                   disabled={isSaving}
                 >
                   {isSaving ? "Finishing..." : "Finish"}
@@ -1623,31 +1762,53 @@ export function WorkoutBuilder({
                       </div>
 
                       <div className="space-y-1.5">
-                        {selectedExercise.sets.map((set, setIndex) => (
-                          <div
-                            key={setIndex}
-                            className={`rounded-md border border-border/70 p-1.5 transition-colors ${
-                              set.completed
-                                ? "border-primary/40 bg-primary/10"
-                                : "bg-muted/20"
-                            }`}
-                          >
+                        {selectedExercise.sets.map((set, setIndex) => {
+                          const isWarned =
+                            activeWarnedSetIds.includes(set.localId) &&
+                            isIncompleteEnteredSet(
+                              set,
+                              exercise.trackingType
+                            );
+                          const warningId = `set-warning-${set.localId}`;
+
+                          return (
                             <div
-                              className={`grid w-full min-w-0 items-center gap-1 ${getSetRowGridClass(
-                                rpeTrackingEnabled
-                              )}`}
+                              key={set.localId}
+                              ref={(row) => {
+                                if (row) {
+                                  setRowRefs.current.set(set.localId, row);
+                                } else {
+                                  setRowRefs.current.delete(set.localId);
+                                }
+                              }}
+                              tabIndex={isWarned ? -1 : undefined}
+                              aria-describedby={
+                                isWarned ? warningId : undefined
+                              }
+                              className={`rounded-md border p-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                                isWarned
+                                  ? "border-destructive bg-destructive/10"
+                                  : set.completed
+                                    ? "border-primary/40 bg-primary/10"
+                                    : "border-border/70 bg-muted/20"
+                              }`}
                             >
-                              <span
-                                className="w-5 text-center text-xs font-semibold tabular-nums text-muted-foreground"
-                                aria-label={`Set ${setIndex + 1}${set.completed ? ", completed" : ""}`}
-                              >
-                                {setIndex + 1}
-                              </span>
                               <div
-                                className={`grid min-w-0 gap-1 ${getSetFieldsGridClass(
-                                  exercise.trackingType
+                                className={`grid w-full min-w-0 items-center gap-1 ${getSetRowGridClass(
+                                  rpeTrackingEnabled
                                 )}`}
                               >
+                                <span
+                                  className="w-5 text-center text-xs font-semibold tabular-nums text-muted-foreground"
+                                  aria-label={`Set ${setIndex + 1}${set.completed ? ", completed" : ""}`}
+                                >
+                                  {setIndex + 1}
+                                </span>
+                                <div
+                                  className={`grid min-w-0 gap-1 ${getSetFieldsGridClass(
+                                    exercise.trackingType
+                                  )}`}
+                                >
                                 {isWeightFieldVisible(exercise.trackingType) ? (
                                   <Input
                                     className={COMPACT_WORKOUT_NUMBER_INPUT_CLASS}
@@ -1849,8 +2010,22 @@ export function WorkoutBuilder({
                                 <Trash2 />
                               </Button>
                             </div>
+                            {isWarned ? (
+                              <p
+                                id={warningId}
+                                role="status"
+                                className="mt-1 flex items-center gap-1 px-1 text-xs font-medium text-destructive"
+                              >
+                                <AlertTriangle
+                                  className="size-3.5"
+                                  aria-hidden="true"
+                                />
+                                Not marked done
+                              </p>
+                            ) : null}
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                       <Button
                         type="button"
@@ -2126,6 +2301,37 @@ export function WorkoutBuilder({
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={showIncompleteSetsDialog}
+        onOpenChange={setShowIncompleteSetsDialog}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Some sets are not marked done</AlertDialogTitle>
+            <AlertDialogDescription>
+              {activeWarnedSetIds.length === 1
+                ? "1 entered set is not marked done."
+                : `${activeWarnedSetIds.length} entered sets are not marked done.`}{" "}
+              Incomplete sets are not included in workout volume.
+              {incompleteEnteredSets[0] ? (
+                <span className="mt-2 block text-foreground">
+                  First affected: {incompleteEnteredSets[0].exerciseName}, set{" "}
+                  {incompleteEnteredSets[0].setNumber}.
+                </span>
+              ) : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={finishWithIncompleteSets}>
+              Finish anyway
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={reviewIncompleteSets}>
+              Review sets
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={Boolean(exercisePendingRemoval)}
