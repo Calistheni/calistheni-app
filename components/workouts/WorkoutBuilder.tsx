@@ -190,6 +190,16 @@ function getTextValue(value: string) {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function normalizeCustomRestSeconds(value: string) {
+  const parsedValue = Number(value.trim());
+
+  if (!Number.isFinite(parsedValue)) {
+    return 0;
+  }
+
+  return Math.min(3600, Math.max(0, Math.trunc(parsedValue)));
+}
+
 function getDurationMinutesValue(durationSeconds: number | null) {
   return durationSeconds === null ? "" : durationSeconds / 60;
 }
@@ -471,6 +481,21 @@ export function WorkoutBuilder({
         )
         .map((exercise) => exercise.localId)
   );
+  const [customRestInputs, setCustomRestInputs] = useState<
+    Record<string, string>
+  >(() =>
+    Object.fromEntries(
+      initialSelectedExercises
+        .filter(
+          (exercise) =>
+            exercise.restSeconds !== null &&
+            !REST_SELECTOR_SECONDS.some(
+              (presetSeconds) => presetSeconds === exercise.restSeconds
+            )
+        )
+        .map((exercise) => [exercise.localId, String(exercise.restSeconds)])
+    )
+  );
   const [currentUserBodyweightKg, setCurrentUserBodyweightKg] = useState(
     userBodyweightKg
   );
@@ -691,6 +716,23 @@ export function WorkoutBuilder({
             )
             .map((exercise) => exercise.localId)
         );
+        setCustomRestInputs(
+          Object.fromEntries(
+            draft.selectedExercises
+              .filter(
+                (exercise) =>
+                  exercise.restSeconds !== null &&
+                  !REST_SELECTOR_SECONDS.some(
+                    (presetSeconds) =>
+                      presetSeconds === exercise.restSeconds
+                  )
+              )
+              .map((exercise) => [
+                exercise.localId,
+                String(exercise.restSeconds),
+              ])
+          )
+        );
       }
 
       setIsActiveWorkoutSessionReady(true);
@@ -761,6 +803,11 @@ export function WorkoutBuilder({
     setCustomRestExerciseIds((current) =>
       current.filter((item) => item !== localId)
     );
+    setCustomRestInputs((current) => {
+      const remaining = { ...current };
+      delete remaining[localId];
+      return remaining;
+    });
     setExercisePendingRemoval(null);
   }
 
@@ -830,13 +877,32 @@ export function WorkoutBuilder({
       setCustomRestExerciseIds((current) =>
         current.includes(localId) ? current : [...current, localId]
       );
+      setCustomRestInputs((current) => ({
+        ...current,
+        [localId]: "",
+      }));
       return;
     }
 
     setCustomRestExerciseIds((current) =>
       current.filter((item) => item !== localId)
     );
+    setCustomRestInputs((current) => {
+      const remaining = { ...current };
+      delete remaining[localId];
+      return remaining;
+    });
     updateExerciseRestSeconds(localId, Number(value));
+  }
+
+  function commitCustomRestSeconds(localId: string, value: string) {
+    const restSeconds = normalizeCustomRestSeconds(value);
+
+    updateExerciseRestSeconds(localId, restSeconds);
+    setCustomRestInputs((current) => ({
+      ...current,
+      [localId]: value.trim() === "" ? "" : String(restSeconds),
+    }));
   }
 
   function updateSet(
@@ -1809,14 +1875,29 @@ export function WorkoutBuilder({
                             min="0"
                             max="3600"
                             step="5"
-                            value={restSeconds}
+                            value={
+                              customRestInputs[selectedExercise.localId] ??
+                              String(restSeconds)
+                            }
+                            placeholder="Sec"
                             aria-label={`${exercise.name} custom rest seconds`}
                             onChange={(event) =>
-                              updateExerciseRestSeconds(
+                              setCustomRestInputs((current) => ({
+                                ...current,
+                                [selectedExercise.localId]: event.target.value,
+                              }))
+                            }
+                            onBlur={(event) =>
+                              commitCustomRestSeconds(
                                 selectedExercise.localId,
-                                Math.max(0, Number(event.target.value) || 0)
+                                event.target.value
                               )
                             }
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.currentTarget.blur();
+                              }
+                            }}
                           />
                         ) : null}
                         <Popover>
