@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -82,6 +88,7 @@ import {
   useWorkoutTimer,
 } from "@/components/workouts/hooks/useWorkoutTimer";
 import { useRestTimer } from "@/components/workouts/hooks/useRestTimer";
+import { MobileActiveWorkoutHeader } from "@/components/workouts/MobileActiveWorkoutHeader";
 import { toast } from "sonner";
 import {
   clearActiveWorkoutSessionStorage,
@@ -434,6 +441,11 @@ export function WorkoutBuilder({
   const restTimer = useRestTimer();
   const exercisePickerContentRef = useRef<HTMLDivElement>(null);
   const setRowRefs = useRef(new Map<string, HTMLDivElement>());
+  const completionViewportAnchorRef = useRef<{
+    setLocalId: string;
+    top: number;
+    waitForRestTimerExerciseId: string | null;
+  } | null>(null);
   const [title, setTitle] = useState(initialWorkout?.title ?? "");
   const [notes, setNotes] = useState(initialWorkout?.notes ?? "");
   const [visibility, setVisibility] = useState<"PRIVATE" | "PUBLIC">(
@@ -617,6 +629,34 @@ export function WorkoutBuilder({
 
     return () => window.cancelAnimationFrame(frame);
   }, [openExerciseIds, scrollTargetSetId]);
+
+  useLayoutEffect(() => {
+    const anchor = completionViewportAnchorRef.current;
+
+    if (!anchor) {
+      return;
+    }
+
+    if (
+      anchor.waitForRestTimerExerciseId &&
+      restTimer.activeTimer?.exerciseLocalId !==
+        anchor.waitForRestTimerExerciseId
+    ) {
+      return;
+    }
+
+    const row = setRowRefs.current.get(anchor.setLocalId);
+
+    if (row) {
+      const offset = row.getBoundingClientRect().top - anchor.top;
+
+      if (Math.abs(offset) > 0.5) {
+        window.scrollBy({ top: offset, left: 0, behavior: "auto" });
+      }
+    }
+
+    completionViewportAnchorRef.current = null;
+  }, [restTimer.activeTimer, selectedExercises]);
 
   useEffect(() => {
     if (isEditing) {
@@ -836,6 +876,22 @@ export function WorkoutBuilder({
     exerciseName: string,
     restSeconds: number | null
   ) {
+    const setLocalId = selectedExercises
+      .find((exercise) => exercise.localId === localId)
+      ?.sets.at(setIndex)?.localId;
+    const row = setLocalId ? setRowRefs.current.get(setLocalId) : null;
+
+    if (setLocalId && row) {
+      const durationSeconds = restSeconds ?? DEFAULT_REST_SECONDS;
+
+      completionViewportAnchorRef.current = {
+        setLocalId,
+        top: row.getBoundingClientRect().top,
+        waitForRestTimerExerciseId:
+          completed && durationSeconds > 0 ? localId : null,
+      };
+    }
+
     updateSet(localId, setIndex, "completed", completed);
 
     if (completed) {
@@ -1111,9 +1167,15 @@ export function WorkoutBuilder({
     }
   }
 
-  function renderExercisePicker() {
+  function renderExercisePicker(keyboardSafe = false) {
     return (
-      <div className="space-y-4">
+      <div
+        className={
+          keyboardSafe
+            ? "flex min-h-0 flex-1 flex-col gap-3"
+            : "space-y-4"
+        }
+      >
         <Button asChild variant="outline" className="w-full">
           <Link href="/exercises/custom/new">Create Custom Exercise</Link>
         </Button>
@@ -1136,7 +1198,13 @@ export function WorkoutBuilder({
             ))}
           </SelectContent>
         </Select>
-        <div className="max-h-[65vh] space-y-2 overflow-y-auto pr-1">
+        <div
+          className={
+            keyboardSafe
+              ? "min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pr-1 pb-[calc(env(safe-area-inset-bottom)+1rem)]"
+              : "max-h-[65dvh] space-y-2 overflow-y-auto pr-1"
+          }
+        >
           {filteredExercises.map((exercise) => {
             const selected = selectedExercises.some(
               (item) => item.exerciseId === exercise.id
@@ -1193,13 +1261,43 @@ export function WorkoutBuilder({
 
   return (
     <>
-      <div className="grid gap-6 pb-28 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)] lg:pb-24">
+      <div className="grid gap-6 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)] lg:pb-8">
         <section className="space-y-2.5 sm:space-y-4">
+          {!isEditing ? (
+            <MobileActiveWorkoutHeader
+              restMuted={restTimer.isMuted}
+              duration={workoutTimer.formattedElapsed}
+              volume={
+                needsBodyweightForVolume || liveVolumeKg === null
+                  ? "-"
+                  : formatVolumeKg(liveVolumeKg)
+              }
+              completedSetCount={completedSetCount}
+              isSaving={isSaving}
+              activeRestTimer={
+                restTimer.activeTimer
+                  ? {
+                      exerciseName: restTimer.activeTimer.exerciseName,
+                      remainingTime: formatElapsedTime(
+                        restTimer.remainingSeconds
+                      ),
+                    }
+                  : null
+              }
+              onToggleRestSound={toggleRestSound}
+              onAddExercise={() => setIsExercisePickerOpen(true)}
+              onFinish={requestFinishWorkout}
+              onOpenTimerControls={() => setIsTimerSheetOpen(true)}
+              onAddRestSeconds={addRestSeconds}
+              onResetRestTimer={resetRestTimer}
+              onSkipRestTimer={skipRestTimer}
+            />
+          ) : null}
           <div
             className={`sticky z-30 -mx-4 border-b bg-background/95 px-4 backdrop-blur sm:mx-0 sm:rounded-xl sm:border sm:shadow-sm ${
               isEditing
                 ? "top-14 py-3"
-                : "top-0 pt-[calc(env(safe-area-inset-top)+0.375rem)] pb-1.5 md:top-14 md:pt-2 md:pb-2"
+                : "top-14 hidden py-2 md:block"
             }`}
           >
             {isEditing ? (
@@ -1418,16 +1516,18 @@ export function WorkoutBuilder({
             <SheetContent
               ref={exercisePickerContentRef}
               side="bottom"
-              className="max-h-[90vh] overflow-y-auto rounded-t-2xl"
+              className="h-[90dvh] max-h-[calc(100dvh-env(safe-area-inset-top))] gap-0 overflow-hidden rounded-t-2xl"
               onOpenAutoFocus={(event) => {
                 event.preventDefault();
                 exercisePickerContentRef.current?.focus({ preventScroll: true });
               }}
             >
-              <SheetHeader>
+              <SheetHeader className="shrink-0 border-b">
                 <SheetTitle>Add Exercise</SheetTitle>
               </SheetHeader>
-              <div className="p-4">{renderExercisePicker()}</div>
+              <div className="flex min-h-0 flex-1 flex-col px-4 pt-3">
+                {renderExercisePicker(true)}
+              </div>
             </SheetContent>
           </Sheet>
 
@@ -1436,7 +1536,7 @@ export function WorkoutBuilder({
               className={`sticky z-20 rounded-lg border bg-card p-3 shadow-lg ${
                 isEditing
                   ? "top-[172px]"
-                  : "top-[calc(env(safe-area-inset-top)+5.75rem)] md:top-[156px]"
+                  : "top-[156px] hidden md:block"
               }`}
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1985,15 +2085,19 @@ export function WorkoutBuilder({
                                     : `Mark set ${setIndex + 1} complete`
                                 }
                                 aria-pressed={set.completed}
-                                onClick={() =>
+                                onClick={(event) => {
+                                  if (event.detail > 0) {
+                                    event.currentTarget.blur();
+                                  }
+
                                   updateSetCompleted(
                                     selectedExercise.localId,
                                     setIndex,
                                     !set.completed,
                                     exercise.name,
                                     selectedExercise.restSeconds
-                                  )
-                                }
+                                  );
+                                }}
                               >
                                 {set.completed ? <CheckCircle2 /> : <Circle />}
                               </Button>

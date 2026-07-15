@@ -47,7 +47,7 @@ export function AppShell({ children, user }: AppShellProps) {
 
   const activeKey = getActivePrimaryNavigation(pathname);
   const isFullBleed = isFullBleedAppRoute(pathname);
-  const usesWorkoutBuilderHeader = pathname === "/workouts/new";
+  const usesFocusedWorkoutMode = pathname === "/workouts/new";
 
   return (
     <div
@@ -59,7 +59,7 @@ export function AppShell({ children, user }: AppShellProps) {
       <header
         className={cn(
           "sticky top-0 z-40 h-14 shrink-0 border-b bg-background",
-          usesWorkoutBuilderHeader && "hidden md:block"
+          usesFocusedWorkoutMode && "hidden md:block"
         )}
       >
         <div className="mx-auto flex h-full max-w-7xl items-center gap-4 px-3 sm:px-6">
@@ -116,45 +116,48 @@ export function AppShell({ children, user }: AppShellProps) {
       <div
         className={cn(
           "app-shell-content min-h-0",
-          isFullBleed && "app-shell-content-full-bleed"
+          isFullBleed && "app-shell-content-full-bleed",
+          usesFocusedWorkoutMode && "app-shell-content-focused-workout"
         )}
       >
         {children}
       </div>
       <ActiveWorkoutDock />
 
-      <nav
-        aria-label="Primary navigation"
-        className="app-mobile-nav border-t bg-background"
-      >
-        <div className="app-mobile-nav-grid">
-          {mobilePrimaryNavigation.map((item) => {
-            const Icon = navigationIcons[item.key];
-            const active = activeKey === item.key;
-            return (
-              <Link
-                key={item.key}
-                href={item.href}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "flex min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 text-[10px] font-medium text-muted-foreground transition-colors",
-                  active && "text-primary"
-                )}
-              >
-                <span
+      {usesFocusedWorkoutMode ? null : (
+        <nav
+          aria-label="Primary navigation"
+          className="app-mobile-nav border-t bg-background"
+        >
+          <div className="app-mobile-nav-grid">
+            {mobilePrimaryNavigation.map((item) => {
+              const Icon = navigationIcons[item.key];
+              const active = activeKey === item.key;
+              return (
+                <Link
+                  key={item.key}
+                  href={item.href}
+                  aria-current={active ? "page" : undefined}
                   className={cn(
-                    "flex size-8 items-center justify-center rounded-md border border-transparent",
-                    active && "border-primary/25 bg-primary/10"
+                    "flex min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 text-[10px] font-medium text-muted-foreground transition-colors",
+                    active && "text-primary"
                   )}
                 >
-                  <Icon className="size-[18px]" aria-hidden="true" />
-                </span>
-                <span className="max-w-full truncate">{item.label}</span>
-              </Link>
-            );
-          })}
-        </div>
-      </nav>
+                  <span
+                    className={cn(
+                      "flex size-8 items-center justify-center rounded-md border border-transparent",
+                      active && "border-primary/25 bg-primary/10"
+                    )}
+                  >
+                    <Icon className="size-[18px]" aria-hidden="true" />
+                  </span>
+                  <span className="max-w-full truncate">{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+      )}
     </div>
   );
 }
