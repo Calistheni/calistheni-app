@@ -33,6 +33,7 @@ async function playRestCompleteBeep(audioContext: AudioContext) {
 
   const oscillator = audioContext.createOscillator();
   const gain = audioContext.createGain();
+  const startsAt = audioContext.currentTime;
 
   if (process.env.NODE_ENV === "development") {
     console.info("Rest timer AudioContext state before beep", {
@@ -42,13 +43,14 @@ async function playRestCompleteBeep(audioContext: AudioContext) {
 
   oscillator.type = "sine";
   oscillator.frequency.value = 880;
-  gain.gain.setValueAtTime(0.001, audioContext.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.2, audioContext.currentTime + 0.02);
-  gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.35);
+  gain.gain.setValueAtTime(0.001, startsAt);
+  gain.gain.exponentialRampToValueAtTime(0.65, startsAt + 0.008);
+  gain.gain.setValueAtTime(0.65, startsAt + 0.12);
+  gain.gain.exponentialRampToValueAtTime(0.001, startsAt + 0.5);
   oscillator.connect(gain);
   gain.connect(audioContext.destination);
-  oscillator.start();
-  oscillator.stop(audioContext.currentTime + 0.4);
+  oscillator.start(startsAt);
+  oscillator.stop(startsAt + 0.52);
 }
 
 export function useRestTimer() {
