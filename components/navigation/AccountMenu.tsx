@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { signOut } from "next-auth/react";
-import { LogOut, Sparkles, UserRound } from "lucide-react";
+import { LogOut, Settings2 } from "lucide-react";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,10 +24,10 @@ export function AccountMenu({ user }: AccountMenuProps) {
         <Button
           variant="ghost"
           size="icon"
-          className="size-10 shrink-0 rounded-full border bg-card"
-          aria-label="Open account menu"
+          className="size-9 shrink-0 rounded-md border border-border bg-muted/60 text-muted-foreground shadow-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-accent data-[state=open]:text-accent-foreground"
+          aria-label="Open theme and account settings"
         >
-          <UserRound className="size-5" />
+          <Settings2 className="size-4.5" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={8} className="w-60">
@@ -40,17 +39,6 @@ export function AccountMenu({ user }: AccountMenuProps) {
             </span>
           ) : null}
         </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link href="/profile">
-            <UserRound className="size-4" /> Profile
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link href="/pro">
-            <Sparkles className="size-4" /> Calistheni Pro
-          </Link>
-        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuLabel>Theme</DropdownMenuLabel>
         <div className="px-2 py-1">

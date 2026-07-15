@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { BackButton } from "@/components/navigation/BackButton";
 import { BodyweightForm } from "@/components/profile/BodyweightForm";
+import { MobileAccountUtilities } from "@/components/profile/MobileAccountUtilities";
 import { ManageSubscriptionButton } from "@/components/billing/ManageSubscriptionButton";
 import {
   MuscleActivityRadar,
@@ -263,11 +264,11 @@ export default async function ProfilePage() {
               {(session.user.name ?? "U").slice(0, 1)}
             </div>
           )}
-          <div>
-            <h1 className="text-3xl font-bold">
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-3xl font-bold">
               {session.user.name ?? "Profile"}
             </h1>
-            <p className="text-sm text-muted-foreground">
+            <p className="truncate text-sm text-muted-foreground">
               {session.user.email ?? "Signed in user"}
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -401,6 +402,18 @@ export default async function ProfilePage() {
             initialBodyweightKg={profile?.bodyweightKg ?? null}
             initialRpeTrackingEnabled={profile?.rpeTrackingEnabled ?? false}
           />
+        </CardContent>
+      </Card>
+
+      <Card className="mb-6 md:hidden">
+        <CardHeader>
+          <h2 className="text-2xl font-bold">Account settings</h2>
+          <p className="text-sm text-muted-foreground">
+            Appearance and sign-in controls for this account.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <MobileAccountUtilities />
         </CardContent>
       </Card>
 

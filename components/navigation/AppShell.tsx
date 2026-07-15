@@ -4,7 +4,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  BadgeEuro,
   Dumbbell,
+  Gift,
   Home,
   MapPin,
   UserRound,
@@ -14,8 +16,9 @@ import {
 import { ActiveWorkoutDock } from "@/components/workouts/ActiveWorkoutDock";
 import {
   getActivePrimaryNavigation,
+  desktopPrimaryNavigation,
   isFullBleedAppRoute,
-  primaryNavigation,
+  mobilePrimaryNavigation,
   type PrimaryNavigationKey,
   usesSignedInAppShell,
 } from "@/lib/navigation";
@@ -32,6 +35,8 @@ const navigationIcons: Record<PrimaryNavigationKey, LucideIcon> = {
   train: Dumbbell,
   parks: MapPin,
   community: UsersRound,
+  rewards: Gift,
+  pricing: BadgeEuro,
   profile: UserRound,
 };
 
@@ -71,14 +76,14 @@ export function AppShell({ children, user }: AppShellProps) {
                 className="size-7 rounded-md"
                 priority
               />
-              <span className="hidden sm:inline">Calistheni</span>
+              <span className="hidden xl:inline">Calistheni</span>
             </Link>
 
             <nav
               aria-label="Primary navigation"
-              className="app-desktop-nav min-w-0 flex-1 items-center justify-center gap-1"
+              className="app-desktop-nav min-w-0 flex-1 items-center justify-center gap-0.5 lg:gap-1"
             >
-              {primaryNavigation.map((item) => {
+              {desktopPrimaryNavigation.map((item) => {
                 const Icon = navigationIcons[item.key];
                 const active = activeKey === item.key;
                 return (
@@ -87,19 +92,22 @@ export function AppShell({ children, user }: AppShellProps) {
                     href={item.href}
                     aria-current={active ? "page" : undefined}
                     className={cn(
-                      "flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
+                      "flex h-9 items-center gap-2 rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground xl:px-3",
                       active &&
                         "border border-primary/30 bg-primary/10 text-primary"
                     )}
                   >
-                    <Icon className="size-4" aria-hidden="true" />
+                    <Icon
+                      className="hidden size-4 xl:block"
+                      aria-hidden="true"
+                    />
                     {item.label}
                   </Link>
                 );
               })}
             </nav>
 
-            <div className="ml-auto md:ml-0">
+            <div className="ml-auto hidden shrink-0 items-center md:flex md:ml-0">
               <AccountMenu user={user} />
             </div>
         </div>
@@ -120,7 +128,7 @@ export function AppShell({ children, user }: AppShellProps) {
         className="app-mobile-nav border-t bg-background"
       >
         <div className="app-mobile-nav-grid">
-          {primaryNavigation.map((item) => {
+          {mobilePrimaryNavigation.map((item) => {
             const Icon = navigationIcons[item.key];
             const active = activeKey === item.key;
             return (

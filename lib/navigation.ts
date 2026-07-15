@@ -1,12 +1,19 @@
-export const primaryNavigation = [
+export const desktopPrimaryNavigation = [
   { key: "home", label: "Home", href: "/home" },
   { key: "train", label: "Train", href: "/workouts" },
   { key: "parks", label: "Parks", href: "/parks" },
   { key: "community", label: "Community", href: "/feed" },
+  { key: "rewards", label: "Rewards", href: "/rewards" },
+  { key: "pricing", label: "Pricing", href: "/pro" },
   { key: "profile", label: "Profile", href: "/profile" },
 ] as const;
 
-export type PrimaryNavigationKey = (typeof primaryNavigation)[number]["key"];
+export const mobilePrimaryNavigation = desktopPrimaryNavigation.filter(
+  ({ key }) => key !== "community" && key !== "pricing"
+);
+
+export type PrimaryNavigationKey =
+  (typeof desktopPrimaryNavigation)[number]["key"];
 
 function matchesRoute(pathname: string, route: string) {
   return pathname === route || pathname.startsWith(`${route}/`);
@@ -38,13 +45,11 @@ export function getActivePrimaryNavigation(
     return "community";
   }
 
-  if (
-    matchesRoute(pathname, "/profile") ||
-    matchesRoute(pathname, "/rewards") ||
-    matchesRoute(pathname, "/pro")
-  ) {
-    return "profile";
-  }
+  if (matchesRoute(pathname, "/rewards")) return "rewards";
+
+  if (matchesRoute(pathname, "/pro")) return "pricing";
+
+  if (matchesRoute(pathname, "/profile")) return "profile";
 
   return null;
 }
