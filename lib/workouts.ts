@@ -1,7 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { recomputeUserPersonalRecords } from "@/lib/personal-records";
 import type { ValidWorkoutMutation } from "@/lib/validation/workouts";
-import { calculateWorkoutVolumeKg } from "@/lib/workout-volume";
+import {
+  calculateWorkoutVolumeKg,
+  getPersistedVolumeSetCompletion,
+} from "@/lib/workout-volume";
 import { exerciseVisibilityWhere } from "@/lib/exercise-access";
 import type {
   ExerciseListItem,
@@ -110,6 +113,10 @@ export function mapWorkoutDetail(workout: {
       sets: workoutExercise.sets.map((set) => ({
         reps: set.reps,
         weightKg: set.weight,
+        completed: getPersistedVolumeSetCompletion({
+          completed: set.completed,
+          workoutUpdatedAt: workout.updatedAt,
+        }),
       })),
     })),
     userBodyweightKg: workout.user.bodyweightKg,
@@ -152,6 +159,7 @@ export function mapWorkoutSummary(workout: {
   title: string | null;
   startedAt: Date;
   completedAt: Date | null;
+  updatedAt: Date;
   visibility: "PRIVATE" | "PUBLIC";
   user?: {
     id: string;
@@ -168,6 +176,7 @@ export function mapWorkoutSummary(workout: {
       reps: number | null;
       weight: number | null;
       durationSeconds?: number | null;
+      completed?: boolean;
     }>;
   }>;
 }): WorkoutSummary {
@@ -182,6 +191,10 @@ export function mapWorkoutSummary(workout: {
       sets: workoutExercise.sets.map((set) => ({
         reps: set.reps,
         weightKg: set.weight,
+        completed: getPersistedVolumeSetCompletion({
+          completed: set.completed ?? false,
+          workoutUpdatedAt: workout.updatedAt,
+        }),
       })),
     })),
     userBodyweightKg: workout.user?.bodyweightKg ?? null,

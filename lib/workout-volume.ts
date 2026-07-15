@@ -3,6 +3,7 @@ import type { ExerciseTrackingType } from "@/types/workout";
 export type WorkoutVolumeSetInput = {
   reps: number | null;
   weightKg: number | null;
+  completed?: boolean;
 };
 
 export type WorkoutVolumeExerciseInput = {
@@ -10,6 +11,30 @@ export type WorkoutVolumeExerciseInput = {
   bodyweightLoadFactor: number | null;
   sets: WorkoutVolumeSetInput[];
 };
+
+const SET_COMPLETION_TRACKING_ROLLOUT_AT = Date.parse(
+  "2026-07-05T15:48:58.000Z"
+);
+
+export function isWorkoutVolumeSetIncluded(
+  set: Pick<WorkoutVolumeSetInput, "completed">
+) {
+  return set.completed !== false;
+}
+
+export function getPersistedVolumeSetCompletion({
+  completed,
+  workoutUpdatedAt,
+}: {
+  completed: boolean;
+  workoutUpdatedAt: Date;
+}): boolean | undefined {
+  // The completion column was introduced with a false default, so untouched
+  // workouts from before that rollout have no trustworthy completion state.
+  return workoutUpdatedAt.getTime() < SET_COMPLETION_TRACKING_ROLLOUT_AT
+    ? undefined
+    : completed;
+}
 
 export function calculateSetVolumeKg({
   trackingType,
@@ -65,6 +90,10 @@ export function calculateWorkoutVolumeKg({
 
   for (const exercise of exercises) {
     for (const set of exercise.sets) {
+      if (!isWorkoutVolumeSetIncluded(set)) {
+        continue;
+      }
+
       const setVolumeKg = calculateSetVolumeKg({
         trackingType: exercise.trackingType,
         reps: set.reps,

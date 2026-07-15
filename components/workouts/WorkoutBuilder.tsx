@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -92,11 +92,12 @@ import {
 import {
   formatRestDuration,
   getExerciseThumbnailSrc,
-  getExerciseTrackingTypeLabel,
-  getRestBadgeLabel,
   REST_SELECTOR_SECONDS,
 } from "@/lib/exercise-display";
-import { calculateWorkoutVolumeKg } from "@/lib/workout-volume";
+import {
+  calculateWorkoutVolumeKg,
+  isWorkoutVolumeSetIncluded,
+} from "@/lib/workout-volume";
 import {
   DEFAULT_WORKOUT_TITLE,
   getFinalWorkoutTitle,
@@ -381,6 +382,7 @@ export function WorkoutBuilder({
     !isEditing && isActiveWorkoutSessionReady
   );
   const restTimer = useRestTimer();
+  const exercisePickerContentRef = useRef<HTMLDivElement>(null);
   const [title, setTitle] = useState(initialWorkout?.title ?? "");
   const [notes, setNotes] = useState(initialWorkout?.notes ?? "");
   const [visibility, setVisibility] = useState<"PRIVATE" | "PUBLIC">(
@@ -487,6 +489,7 @@ export function WorkoutBuilder({
             sets: selectedExercise.sets.map((set) => ({
               reps: set.reps,
               weightKg: set.weight,
+              completed: set.completed,
             })),
           })
         ),
@@ -496,8 +499,10 @@ export function WorkoutBuilder({
   );
   const needsBodyweightForVolume =
     currentUserBodyweightKg === null &&
-    selectedExercisesWithMetadata.some(({ exercise }) =>
-      usesBodyweightVolume(exercise.trackingType)
+    liveVolumeKg === null &&
+    selectedExercisesWithMetadata.some(({ selectedExercise, exercise }) =>
+      usesBodyweightVolume(exercise.trackingType) &&
+      selectedExercise.sets.some(isWorkoutVolumeSetIncluded)
     );
   const completedSetCount = selectedExercises.reduce(
     (count, exercise) =>
@@ -1272,8 +1277,13 @@ export function WorkoutBuilder({
             onOpenChange={handleExercisePickerOpenChange}
           >
             <SheetContent
+              ref={exercisePickerContentRef}
               side="bottom"
               className="max-h-[90vh] overflow-y-auto rounded-t-2xl"
+              onOpenAutoFocus={(event) => {
+                event.preventDefault();
+                exercisePickerContentRef.current?.focus({ preventScroll: true });
+              }}
             >
               <SheetHeader>
                 <SheetTitle>Add Exercise</SheetTitle>
@@ -1461,43 +1471,36 @@ export function WorkoutBuilder({
                     className="overflow-hidden rounded-xl border border-border bg-card shadow-sm [overflow-anchor:none]"
                   >
                     <div className="flex min-w-0 items-stretch">
-                      <AccordionTrigger className="min-w-0 px-3 py-2.5 hover:no-underline">
-                        <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                      <AccordionTrigger className="min-w-0 px-2 py-1.5 hover:no-underline">
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
                           <Image
                             src={getExerciseThumbnailSrc(exercise.thumbnailUrl)}
                             alt=""
                             width={96}
                             height={96}
                             unoptimized
-                            className="size-12 shrink-0 rounded-md bg-muted object-cover"
+                            className="size-11 shrink-0 rounded-md bg-muted object-cover"
                           />
                           <div className="min-w-0 flex-1">
-                            <h2 className="truncate text-sm font-semibold sm:text-base">
-                              {exercise.name}
+                            <h2
+                              className="line-clamp-2 text-sm leading-tight font-semibold sm:text-base"
+                              title={`${exercise.name} · ${exercise.muscle}`}
+                            >
+                              <span>{exercise.name}</span>
+                              <span className="font-normal text-muted-foreground">
+                                {" "}· {exercise.muscle}
+                              </span>
                             </h2>
-                            <div className="mt-1 flex min-w-0 flex-wrap gap-1">
-                              <Badge variant="secondary" className="max-w-full truncate">
-                                {exercise.muscle}
-                              </Badge>
-                              <Badge variant="outline" className="max-w-full truncate">
-                                {getExerciseTrackingTypeLabel(
-                                  exercise.trackingType
-                                )}
-                              </Badge>
-                              <Badge variant="outline">
-                                {getRestBadgeLabel(restSeconds)}
-                              </Badge>
-                              {exercise.createdByUserId ? (
-                                <Badge variant="outline">Custom</Badge>
-                              ) : null}
-                            </div>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {completedSets} / {selectedExercise.sets.length} sets done
-                            </p>
                           </div>
+                          <span
+                            className="shrink-0 text-xs font-semibold tabular-nums text-muted-foreground"
+                            aria-label={`${completedSets} of ${selectedExercise.sets.length} sets completed`}
+                          >
+                            {completedSets}/{selectedExercise.sets.length}
+                          </span>
                         </div>
                       </AccordionTrigger>
-                      <div className="flex shrink-0 items-start py-2 pr-2">
+                      <div className="flex shrink-0 items-center py-1 pr-1">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
@@ -1527,72 +1530,72 @@ export function WorkoutBuilder({
                       </div>
                     </div>
 
-                    <AccordionContent className="space-y-3 border-t px-3 pt-3">
-                      <div className="flex flex-wrap items-end gap-2 rounded-lg bg-muted/40 p-2">
-                        <div className="space-y-1">
-                          <Label htmlFor={`rest-${selectedExercise.localId}`}>
-                            Rest
-                          </Label>
-                          <Select
-                            value={isCustomRest ? "custom" : String(restSeconds)}
-                            onValueChange={(value) =>
-                              setExerciseRestMode(selectedExercise.localId, value)
-                            }
+                    <AccordionContent className="space-y-2 border-t px-2 pt-2 pb-2">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <Select
+                          value={isCustomRest ? "custom" : String(restSeconds)}
+                          onValueChange={(value) =>
+                            setExerciseRestMode(selectedExercise.localId, value)
+                          }
+                        >
+                          <SelectTrigger
+                            id={`rest-${selectedExercise.localId}`}
+                            size="sm"
+                            className="min-w-0 px-2"
+                            aria-label={`${exercise.name} rest time`}
                           >
-                            <SelectTrigger
-                              id={`rest-${selectedExercise.localId}`}
-                              size="sm"
-                              aria-label={`${exercise.name} rest time`}
-                            >
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {REST_SELECTOR_SECONDS.map((presetSeconds) => (
-                                <SelectItem
-                                  key={presetSeconds}
-                                  value={String(presetSeconds)}
-                                >
-                                  {formatRestDuration(presetSeconds)}
-                                </SelectItem>
-                              ))}
-                              <SelectItem value="custom">Custom</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
+                            <span className="text-xs text-muted-foreground">
+                              Rest
+                            </span>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {REST_SELECTOR_SECONDS.map((presetSeconds) => (
+                              <SelectItem
+                                key={presetSeconds}
+                                value={String(presetSeconds)}
+                              >
+                                {formatRestDuration(presetSeconds)}
+                              </SelectItem>
+                            ))}
+                            <SelectItem value="custom">Custom</SelectItem>
+                          </SelectContent>
+                        </Select>
                         {isCustomRest ? (
-                          <div className="min-w-24 flex-1 space-y-1 sm:max-w-36">
-                            <Label htmlFor={`custom-rest-${selectedExercise.localId}`}>
-                              Seconds
-                            </Label>
-                            <Input
-                              id={`custom-rest-${selectedExercise.localId}`}
-                              className="h-7 min-w-0"
-                              type="number"
-                              min="0"
-                              max="3600"
-                              step="5"
-                              value={restSeconds}
-                              onChange={(event) =>
-                                updateExerciseRestSeconds(
-                                  selectedExercise.localId,
-                                  Math.max(0, Number(event.target.value) || 0)
-                                )
-                              }
-                            />
-                          </div>
+                          <Input
+                            id={`custom-rest-${selectedExercise.localId}`}
+                            className="h-7 w-20 min-w-0"
+                            type="number"
+                            inputMode="numeric"
+                            min="0"
+                            max="3600"
+                            step="5"
+                            value={restSeconds}
+                            aria-label={`${exercise.name} custom rest seconds`}
+                            onChange={(event) =>
+                              updateExerciseRestSeconds(
+                                selectedExercise.localId,
+                                Math.max(0, Number(event.target.value) || 0)
+                              )
+                            }
+                          />
                         ) : null}
                         <Popover>
                           <PopoverTrigger asChild>
                             <Button
                               type="button"
-                              size="sm"
+                              size="icon"
                               variant={
                                 selectedExercise.notes ? "secondary" : "outline"
+                              }
+                              className={
+                                selectedExercise.notes
+                                  ? "border-primary/40 text-primary"
+                                  : undefined
                               }
                               aria-label={`Edit notes for ${exercise.name}`}
                             >
                               <MessageSquare />
-                              Exercise notes
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent
@@ -1619,7 +1622,7 @@ export function WorkoutBuilder({
                         </Popover>
                       </div>
 
-                      <div className="space-y-2">
+                      <div className="space-y-1.5">
                         {selectedExercise.sets.map((set, setIndex) => (
                           <div
                             key={setIndex}
