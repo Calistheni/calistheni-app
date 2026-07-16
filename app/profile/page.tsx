@@ -19,6 +19,7 @@ import {
   PERSONAL_RECORD_LABELS,
   type PersonalRecordType,
 } from "@/lib/personal-records";
+import { aggregateMuscleActivity } from "@/lib/muscle-activity";
 import { prisma } from "@/lib/prisma";
 import {
   getFriendlySubscriptionPlan,
@@ -32,83 +33,6 @@ export const metadata: Metadata = {
     follow: false,
   },
 };
-
-const MAIN_MUSCLE_GROUPS = [
-  "Chest",
-  "Back",
-  "Shoulders",
-  "Biceps",
-  "Triceps",
-  "Forearms",
-  "Core",
-  "Legs",
-  "Glutes",
-  "Cardio",
-] as const;
-
-type MainMuscleGroup = (typeof MAIN_MUSCLE_GROUPS)[number];
-
-function getMainMuscleGroup(muscle: string): MainMuscleGroup | null {
-  const normalized = muscle.toLowerCase();
-
-  if (
-    normalized.includes("lat") ||
-    normalized.includes("back") ||
-    normalized.includes("trap") ||
-    normalized.includes("rhomboid")
-  ) {
-    return "Back";
-  }
-
-  if (normalized.includes("bicep")) {
-    return "Biceps";
-  }
-
-  if (normalized.includes("tricep")) {
-    return "Triceps";
-  }
-
-  if (normalized.includes("forearm")) {
-    return "Forearms";
-  }
-
-  if (
-    normalized.includes("ab") ||
-    normalized.includes("core") ||
-    normalized.includes("oblique")
-  ) {
-    return "Core";
-  }
-
-  if (
-    normalized.includes("quad") ||
-    normalized.includes("hamstring") ||
-    normalized.includes("calf") ||
-    normalized.includes("leg") ||
-    normalized.includes("adductor") ||
-    normalized.includes("abductor")
-  ) {
-    return "Legs";
-  }
-
-  if (normalized.includes("glute")) {
-    return "Glutes";
-  }
-
-  if (normalized.includes("shoulder") || normalized.includes("delt")) {
-    return "Shoulders";
-  }
-
-  if (normalized.includes("cardio")) {
-    return "Cardio";
-  }
-
-  if (normalized.includes("chest") || normalized.includes("pec")) {
-    return "Chest";
-  }
-
-  return null;
-}
 
 export default async function ProfilePage() {
   const session = await auth();
@@ -219,30 +143,11 @@ export default async function ProfilePage() {
     getUserEntitlements(session.user.id),
   ]);
   const { entitlements, subscription } = entitlementResult;
-  const muscleActivityMap = new Map<string, number>();
-
-  for (const set of recentMuscleSets) {
-    const exercise = set.workoutExercise.exercise;
-    const trainedGroups = new Set<MainMuscleGroup>();
-
-    for (const muscle of [exercise.muscle, ...exercise.secondaryMuscles]) {
-      const mainMuscleGroup = getMainMuscleGroup(muscle);
-
-      if (mainMuscleGroup) {
-        trainedGroups.add(mainMuscleGroup);
-      }
-    }
-
-    for (const muscle of trainedGroups) {
-      muscleActivityMap.set(muscle, (muscleActivityMap.get(muscle) ?? 0) + 1);
-    }
-  }
-
-  const muscleActivity: MuscleActivityPoint[] = MAIN_MUSCLE_GROUPS.map(
-    (muscle) => ({
-      muscle,
-      sets: muscleActivityMap.get(muscle) ?? 0,
-    })
+  const muscleActivity: MuscleActivityPoint[] = aggregateMuscleActivity(
+    recentMuscleSets.map((set) => ({
+      primaryMuscle: set.workoutExercise.exercise.muscle,
+      secondaryMuscles: set.workoutExercise.exercise.secondaryMuscles,
+    }))
   );
 
   return (

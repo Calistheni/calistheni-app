@@ -1,80 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Dumbbell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  ACTIVE_WORKOUT_TIMER_EVENT,
-  getElapsedMs,
-  getStoredActiveWorkoutSessionId,
-  getWorkoutDraftStorageKey,
-  getWorkoutTimerStorageKey,
-  readStoredWorkoutTimer,
-  type StoredWorkoutTimerState,
-} from "@/lib/active-workout-session";
 import { formatElapsedTime } from "./hooks/useWorkoutTimer";
-
-type ActiveWorkoutState = {
-  timer: StoredWorkoutTimerState;
-  elapsedSeconds: number;
-  title: string | null;
-};
-
-function readActiveWorkout(): ActiveWorkoutState | null {
-  const sessionId = getStoredActiveWorkoutSessionId();
-  if (!sessionId) return null;
-
-  const timer = readStoredWorkoutTimer(getWorkoutTimerStorageKey(sessionId));
-  let title: string | null = null;
-
-  try {
-    const draftValue = window.localStorage.getItem(
-      getWorkoutDraftStorageKey(sessionId)
-    );
-    if (draftValue) {
-      const draft = JSON.parse(draftValue) as { title?: unknown };
-      title =
-        typeof draft.title === "string" && draft.title.trim()
-          ? draft.title.trim()
-          : null;
-    }
-  } catch {
-    title = null;
-  }
-
-  return {
-    timer,
-    elapsedSeconds: Math.floor(getElapsedMs(timer) / 1000),
-    title,
-  };
-}
+import { useActiveWorkoutSummary } from "./useActiveWorkoutSummary";
 
 export function TrainWorkoutLauncher({
   context = "train",
 }: {
   context?: "home" | "train";
 }) {
-  const [activeWorkout, setActiveWorkout] =
-    useState<ActiveWorkoutState | null>();
-
-  useEffect(() => {
-    function syncActiveWorkout() {
-      setActiveWorkout(readActiveWorkout());
-    }
-
-    syncActiveWorkout();
-    const interval = window.setInterval(syncActiveWorkout, 1000);
-    window.addEventListener(ACTIVE_WORKOUT_TIMER_EVENT, syncActiveWorkout);
-    window.addEventListener("storage", syncActiveWorkout);
-
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener(ACTIVE_WORKOUT_TIMER_EVENT, syncActiveWorkout);
-      window.removeEventListener("storage", syncActiveWorkout);
-    };
-  }, []);
+  const activeWorkout = useActiveWorkoutSummary();
 
   if (activeWorkout === undefined) {
     return <div className="h-24 animate-pulse rounded-xl border bg-muted/20" />;

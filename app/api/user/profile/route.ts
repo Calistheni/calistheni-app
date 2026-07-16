@@ -7,6 +7,7 @@ import {
   createUserUnauthorizedResponse,
   getAuthenticatedUserId,
 } from "@/lib/user-auth";
+import { parseWeeklyWorkoutGoal } from "@/lib/home-dashboard";
 import { prisma } from "@/lib/prisma";
 
 type ProfileUpdatePayload = {
@@ -15,6 +16,7 @@ type ProfileUpdatePayload = {
   primaryGoal?: unknown;
   onboardingCompleted?: unknown;
   rpeTrackingEnabled?: unknown;
+  weeklyWorkoutGoal?: unknown;
 };
 
 const TRAINING_STYLES = ["CALISTHENICS", "GYM", "BOTH"] as const;
@@ -85,6 +87,7 @@ export async function PATCH(request: Request) {
     primaryGoal?: (typeof PRIMARY_GOALS)[number] | null;
     onboardingCompleted?: boolean;
     rpeTrackingEnabled?: boolean;
+    weeklyWorkoutGoal?: number;
   } = {};
 
   if (hasField(body, "bodyweightKg")) {
@@ -136,6 +139,19 @@ export async function PATCH(request: Request) {
     data.rpeTrackingEnabled = body.rpeTrackingEnabled;
   }
 
+  if (hasField(body, "weeklyWorkoutGoal")) {
+    const weeklyWorkoutGoal = parseWeeklyWorkoutGoal(body.weeklyWorkoutGoal);
+
+    if (weeklyWorkoutGoal === null) {
+      return createJsonErrorResponse(
+        "Weekly workout goal must be between 1 and 7.",
+        400
+      );
+    }
+
+    data.weeklyWorkoutGoal = weeklyWorkoutGoal;
+  }
+
   try {
     const user = await prisma.user.update({
       where: {
@@ -148,6 +164,7 @@ export async function PATCH(request: Request) {
         primaryGoal: true,
         onboardingCompleted: true,
         rpeTrackingEnabled: true,
+        weeklyWorkoutGoal: true,
       },
     });
 

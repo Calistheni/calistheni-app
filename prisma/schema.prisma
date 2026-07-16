@@ -104,6 +104,7 @@ model User {
   trainingStyle       TrainingStyle?
   primaryGoal         PrimaryGoal?
   rpeTrackingEnabled  Boolean        @default(false)
+  weeklyWorkoutGoal   Int            @default(3)
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 
