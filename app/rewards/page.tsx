@@ -100,8 +100,7 @@ export default async function RewardsPage() {
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8 lg:py-16">
-      <section className="relative overflow-hidden pb-16 sm:pb-20 lg:pb-24">
-        <div className="absolute top-0 right-0 -z-10 size-96 translate-x-1/3 -translate-y-1/3 rounded-full bg-primary/10 blur-3xl" />
+      <section className="relative isolate pb-16 sm:pb-20 lg:pb-24">
         <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(22rem,0.72fr)] lg:gap-20">
           <div>
             <div className="flex flex-wrap items-center gap-3">
@@ -132,9 +131,16 @@ export default async function RewardsPage() {
             ) : null}
           </div>
 
-          <div className="relative mx-auto w-full max-w-md">
-            <div className="absolute inset-8 -z-10 rounded-full bg-primary/15 blur-3xl" />
-            <div className="rotate-[1.5deg] rounded-3xl border border-primary/25 bg-card p-6 shadow-2xl shadow-black/20 sm:p-7">
+          <div className="relative isolate mx-auto w-full max-w-md">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute top-[44%] left-1/2 -z-20 h-[112%] w-[106%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(ellipse,rgba(37,99,235,0.22)_0%,rgba(59,130,246,0.1)_42%,transparent_72%)] blur-2xl sm:w-[118%]"
+            />
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute top-[8%] right-[10%] -z-10 h-1/2 w-1/2 rounded-full bg-primary/10 blur-3xl"
+            />
+            <div className="relative z-10 rotate-[1.5deg] rounded-3xl border border-primary/25 bg-card p-6 shadow-2xl shadow-black/20 sm:p-7">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Current balance</p>
