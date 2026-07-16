@@ -3,7 +3,6 @@
 import Image from "next/image";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -115,6 +114,7 @@ export function ExerciseClassificationTable({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          muscle: exercise.muscle,
           trackingType: exercise.trackingType,
           bodyweightLoadFactor:
             usesBodyweightLoadFactor(exercise.trackingType)
@@ -163,7 +163,7 @@ export function ExerciseClassificationTable({
           <TableHeader>
             <TableRow>
               <TableHead>Exercise</TableHead>
-              <TableHead>Muscle</TableHead>
+              <TableHead>Primary muscle</TableHead>
               <TableHead>Secondary muscles</TableHead>
               <TableHead>Tracking type</TableHead>
               <TableHead>Bodyweight load</TableHead>
@@ -200,13 +200,41 @@ export function ExerciseClassificationTable({
                     </div>
                   </div>
                 </TableCell>
-                <TableCell>
-                  <Badge variant="secondary">{exercise.muscle}</Badge>
+                <TableCell className="min-w-48">
+                  <Select
+                    value={exercise.muscle}
+                    onValueChange={(muscle) =>
+                      updateExercise(exercise.id, {
+                        muscle,
+                        secondaryMuscles: exercise.secondaryMuscles.filter(
+                          (secondaryMuscle) => secondaryMuscle !== muscle
+                        ),
+                      })
+                    }
+                  >
+                    <SelectTrigger
+                      aria-label={`${exercise.name} primary muscle`}
+                      className="w-44"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {EXERCISE_MUSCLE_GROUPS.map((muscle) => (
+                        <SelectItem key={muscle} value={muscle}>
+                          {muscle}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </TableCell>
                 <TableCell className="min-w-56">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button type="button" variant="outline" className="w-full justify-start">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full justify-start"
+                      >
                         {exercise.secondaryMuscles.length > 0
                           ? `${exercise.secondaryMuscles.length} selected`
                           : "Select muscles"}
@@ -226,7 +254,12 @@ export function ExerciseClassificationTable({
                             updateExercise(exercise.id, {
                               secondaryMuscles:
                                 checked === true
-                                  ? [...new Set([...exercise.secondaryMuscles, muscle])]
+                                  ? [
+                                      ...new Set([
+                                        ...exercise.secondaryMuscles,
+                                        muscle,
+                                      ]),
+                                    ]
                                   : exercise.secondaryMuscles.filter(
                                       (item) => item !== muscle
                                     ),

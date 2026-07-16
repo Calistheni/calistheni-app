@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import {
   createUnauthorizedResponse,
   isAdminAuthenticated,
@@ -15,6 +16,7 @@ import {
 import type { ExerciseTrackingType } from "@/types/workout";
 
 type ExerciseClassificationPayload = {
+  muscle?: unknown;
   trackingType?: unknown;
   bodyweightLoadFactor?: unknown;
   secondaryMuscles?: unknown;
@@ -82,6 +84,14 @@ export async function PATCH(
     return createJsonErrorResponse("Invalid tracking type.", 400);
   }
   if (
+    typeof body.muscle !== "string" ||
+    !EXERCISE_MUSCLE_GROUPS.includes(
+      body.muscle as (typeof EXERCISE_MUSCLE_GROUPS)[number]
+    )
+  ) {
+    return createJsonErrorResponse("Invalid primary muscle group.", 400);
+  }
+  if (
     !Array.isArray(body.secondaryMuscles) ||
     body.secondaryMuscles.length > 8 ||
     !body.secondaryMuscles.every(
@@ -119,7 +129,6 @@ export async function PATCH(
       },
       select: {
         id: true,
-        muscle: true,
       },
     });
 
@@ -132,13 +141,14 @@ export async function PATCH(
         id,
       },
       data: {
+        muscle: body.muscle,
         trackingType: body.trackingType,
         bodyweightLoadFactor:
           usesBodyweightLoadFactor(body.trackingType)
             ? bodyweightLoadFactor ?? 1
             : null,
         secondaryMuscles: normalizeSecondaryMuscles(
-          existingExercise.muscle,
+          body.muscle,
           body.secondaryMuscles
         ),
       },
@@ -147,14 +157,25 @@ export async function PATCH(
         name: true,
         muscle: true,
         secondaryMuscles: true,
+        thumbnailUrl: true,
         trackingType: true,
         bodyweightLoadFactor: true,
       },
     });
 
+    revalidatePath("/admin/exercises");
+    revalidatePath("/exercises");
+    revalidatePath("/exercises/[id]", "page");
+    revalidatePath("/workouts/new");
+    revalidatePath("/routines");
+    revalidatePath("/routines/[id]", "page");
+
     return NextResponse.json(exercise);
   } catch (error) {
-    console.error(error);
+    console.error("Unable to update built-in exercise classification.", {
+      exerciseId: id,
+      message: error instanceof Error ? error.message : "Unknown error",
+    });
     return createInternalServerErrorResponse();
   }
 }
