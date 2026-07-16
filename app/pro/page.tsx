@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { auth } from "@/auth";
 import { CheckoutButtons } from "@/components/billing/CheckoutButtons";
 import { ManageSubscriptionButton } from "@/components/billing/ManageSubscriptionButton";
 import { BackButton } from "@/components/navigation/BackButton";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   getFriendlySubscriptionPlan,
@@ -151,6 +153,19 @@ export default async function ProPage() {
           </CardContent>
         </Card>
       )}
+
+      <div className="mt-8 flex flex-col gap-3 rounded-xl border bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="font-semibold">Represent a fitness or wellness business?</p>
+          <p className="text-sm text-muted-foreground">
+            Learn how Calistheni partner rewards can connect your offer with
+            active users.
+          </p>
+        </div>
+        <Button asChild variant="outline" className="shrink-0">
+          <Link href="/partners">Explore partnerships</Link>
+        </Button>
+      </div>
     </main>
   );
 }

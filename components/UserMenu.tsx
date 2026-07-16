@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CircleUserRound, Settings2 } from "lucide-react";
+import { CircleUserRound, Handshake, Settings2 } from "lucide-react";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { Button } from "@/components/ui/button";
 import {
@@ -61,6 +61,12 @@ export function UserMenu({
               <DropdownMenuLabel>Account</DropdownMenuLabel>
               <DropdownMenuItem asChild>
                 <Link href="/login">Login</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/partners">
+                  <Handshake aria-hidden="true" />
+                  Partners
+                </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
             </>

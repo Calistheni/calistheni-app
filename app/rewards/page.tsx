@@ -157,6 +157,18 @@ export default async function RewardsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <div className="mt-6 flex flex-col gap-3 rounded-xl border bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="font-semibold">Are you a fitness or wellness brand?</p>
+          <p className="text-sm text-muted-foreground">
+            Explore meaningful reward campaigns for active Calistheni users.
+          </p>
+        </div>
+        <Button asChild variant="outline" className="shrink-0">
+          <Link href="/partners">Become a partner</Link>
+        </Button>
+      </div>
     </main>
   );
 }

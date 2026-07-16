@@ -142,6 +142,22 @@ model Subscription {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+model PartnerInquiry {
+  id             Int      @id @default(autoincrement())
+  businessName   String
+  contactName    String
+  email          String
+  website        String
+  category       String
+  cityCountry    String
+  proposedReward String
+  message        String?
+  createdAt      DateTime @default(now())
+
+  @@index([email])
+  @@index([createdAt])
+}
+
 model Account {
   userId            String
   type              String
