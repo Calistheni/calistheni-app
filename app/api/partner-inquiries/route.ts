@@ -4,6 +4,12 @@ import {
   createJsonErrorResponse,
   createJsonValidationErrorResponse,
 } from "@/lib/api-response";
+import {
+  getPartnerInquiryEmailConfiguration,
+  PartnerInquiryEmailConfigurationError,
+  PartnerInquiryEmailDeliveryError,
+  sendPartnerInquiryEmail,
+} from "@/lib/partner-inquiry-email";
 import { partnerInquirySchema } from "@/lib/partner-inquiries";
 import { prisma } from "@/lib/prisma";
 
@@ -64,6 +70,36 @@ function consumeRateLimit(request: Request) {
   return null;
 }
 
+function getEmailIdempotencyKey(data: {
+  businessName: string;
+  contactName: string;
+  email: string;
+  website: string;
+  proposedReward: string;
+  startedAt: number;
+  notificationFrom: string;
+  notificationTo: string;
+}) {
+  const fingerprint = createHash("sha256")
+    .update(
+      JSON.stringify([
+        "partner-inquiry-notification-v2",
+        data.businessName,
+        data.contactName,
+        data.email,
+        data.website,
+        data.proposedReward,
+        data.startedAt,
+        data.notificationFrom,
+        data.notificationTo,
+      ])
+    )
+    .digest("hex")
+    .slice(0, 40);
+
+  return `partner-inquiry-${fingerprint}`;
+}
+
 export async function POST(request: Request) {
   const contentLength = Number(request.headers.get("content-length") ?? "0");
 
@@ -107,8 +143,28 @@ export async function POST(request: Request) {
     );
   }
 
+  let emailConfiguration: ReturnType<
+    typeof getPartnerInquiryEmailConfiguration
+  >;
+
   try {
-    const inquiry = await prisma.partnerInquiry.create({
+    emailConfiguration = getPartnerInquiryEmailConfiguration();
+  } catch (error) {
+    console.error("Partner inquiry email is not configured.", {
+      reason:
+        error instanceof PartnerInquiryEmailConfigurationError
+          ? error.message
+          : "Unknown configuration error",
+    });
+    return createJsonErrorResponse(
+      "Partner requests are temporarily unavailable. Please try again later.",
+      503
+    );
+  }
+
+  let inquiry: { id: number; createdAt: Date };
+  try {
+    inquiry = await prisma.partnerInquiry.create({
       data: {
         businessName: parsed.data.businessName,
         contactName: parsed.data.contactName,
@@ -119,10 +175,8 @@ export async function POST(request: Request) {
         proposedReward: parsed.data.proposedReward,
         message: parsed.data.message,
       },
-      select: { id: true },
+      select: { id: true, createdAt: true },
     });
-
-    return NextResponse.json({ success: true, inquiryId: inquiry.id });
   } catch (error) {
     console.error("Unable to store partner inquiry.", {
       message: error instanceof Error ? error.message : "Unknown error",
@@ -132,4 +186,50 @@ export async function POST(request: Request) {
       500
     );
   }
+
+  try {
+    await sendPartnerInquiryEmail({
+      configuration: emailConfiguration,
+      idempotencyKey: getEmailIdempotencyKey({
+        ...parsed.data,
+        notificationFrom: emailConfiguration.from,
+        notificationTo: emailConfiguration.to,
+      }),
+      inquiry: {
+        inquiryId: inquiry.id,
+        businessName: parsed.data.businessName,
+        contactName: parsed.data.contactName,
+        email: parsed.data.email,
+        website: parsed.data.website,
+        proposedReward: parsed.data.proposedReward,
+        submittedAt: inquiry.createdAt,
+      },
+    });
+  } catch (error) {
+    console.error("Unable to deliver partner inquiry notification.", {
+      inquiryId: inquiry.id,
+      status:
+        error instanceof PartnerInquiryEmailDeliveryError
+          ? error.status
+          : null,
+      providerCode:
+        error instanceof PartnerInquiryEmailDeliveryError
+          ? error.providerCode
+          : null,
+      providerMessage:
+        error instanceof PartnerInquiryEmailDeliveryError
+          ? error.providerMessage
+          : null,
+      retryable:
+        error instanceof PartnerInquiryEmailDeliveryError
+          ? error.retryable
+          : false,
+    });
+    return createJsonErrorResponse(
+      "We couldn't fully deliver your request. Please try again.",
+      502
+    );
+  }
+
+  return NextResponse.json({ success: true, inquiryId: inquiry.id });
 }

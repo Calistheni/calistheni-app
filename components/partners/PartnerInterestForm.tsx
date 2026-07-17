@@ -15,6 +15,7 @@ import {
 type FieldErrors = Partial<Record<keyof PartnerInquiryInput, string>>;
 
 type ApiResponse = {
+  success?: boolean;
   error?: string;
   fieldErrors?: Record<string, string[] | undefined>;
 };
@@ -33,7 +34,11 @@ function FieldError({ id, message }: { id: string; message?: string }) {
 }
 
 export function PartnerInterestForm() {
+  const formRef = useRef<HTMLFormElement>(null);
   const startedAtRef = useRef(0);
+  const submittingRef = useRef(false);
+  const successAlertRef = useRef<HTMLDivElement>(null);
+  const errorAlertRef = useRef<HTMLDivElement>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -43,8 +48,26 @@ export function PartnerInterestForm() {
     startedAtRef.current = Date.now();
   }, []);
 
+  useEffect(() => {
+    if (isSuccess) {
+      successAlertRef.current?.focus();
+    } else if (error) {
+      errorAlertRef.current?.focus();
+    }
+  }, [error, isSuccess]);
+
+  useEffect(() => {
+    if (Object.keys(fieldErrors).length > 0) {
+      formRef.current
+        ?.querySelector<HTMLElement>('[aria-invalid="true"]')
+        ?.focus();
+    }
+  }, [fieldErrors]);
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submittingRef.current) return;
+
     const form = event.currentTarget;
     const formData = new FormData(form);
     const payload = {
@@ -75,7 +98,9 @@ export function PartnerInterestForm() {
     }
 
     setFieldErrors({});
+    submittingRef.current = true;
     setIsSubmitting(true);
+    let failureMessage = "We couldn't send your request. Please try again.";
 
     try {
       const response = await fetch("/api/partner-inquiries", {
@@ -85,7 +110,7 @@ export function PartnerInterestForm() {
       });
       const responseBody = (await response.json()) as ApiResponse;
 
-      if (!response.ok) {
+      if (!response.ok || responseBody.success !== true) {
         if (responseBody.fieldErrors) {
           setFieldErrors(
             Object.fromEntries(
@@ -97,30 +122,31 @@ export function PartnerInterestForm() {
           );
         }
 
-        throw new Error(
-          responseBody.error ??
-            "We couldn't send your request. Please try again."
-        );
+        failureMessage = responseBody.error ?? failureMessage;
+        throw new Error("Partner inquiry request failed.");
       }
 
       form.reset();
       setIsSuccess(true);
       startedAtRef.current = Date.now();
-    } catch (submissionError) {
-      setError(
-        submissionError instanceof Error
-          ? submissionError.message
-          : "We couldn't send your request. Please try again."
-      );
+    } catch {
+      setError(failureMessage);
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   }
 
   return (
-    <form className="space-y-7" noValidate onSubmit={handleSubmit}>
+    <form ref={formRef} className="space-y-7" noValidate onSubmit={handleSubmit}>
       {isSuccess ? (
-        <Alert className="border-primary/40 bg-primary/5">
+        <Alert
+          ref={successAlertRef}
+          className="border-primary/40 bg-primary/5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          role="status"
+          aria-live="polite"
+          tabIndex={-1}
+        >
           <CheckCircle2 className="text-primary" aria-hidden="true" />
           <AlertTitle>Request received</AlertTitle>
           <AlertDescription>
@@ -131,7 +157,13 @@ export function PartnerInterestForm() {
       ) : null}
 
       {error ? (
-        <Alert className="border-destructive/50 bg-destructive/10 text-destructive">
+        <Alert
+          ref={errorAlertRef}
+          className="border-destructive/50 bg-destructive/10 text-destructive outline-none focus-visible:ring-2 focus-visible:ring-destructive/50"
+          role="alert"
+          aria-live="assertive"
+          tabIndex={-1}
+        >
           <AlertTriangle aria-hidden="true" />
           <AlertTitle>Request not sent</AlertTitle>
           <AlertDescription className="text-destructive/90">

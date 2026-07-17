@@ -38,9 +38,10 @@ export const partnerInquirySchema = z.object({
   cityCountry: z.string().trim().max(120, "City and country is too long.").default(""),
   proposedReward: requiredText("Proposed reward or partnership idea", 1000),
   message: z
-    .string()
-    .trim()
-    .max(2000, "Message is too long.")
+    .union([
+      z.string().trim().max(2000, "Message is too long."),
+      z.null(),
+    ])
     .transform((value) => (value === "" ? null : value)),
   companyFax: z.string().max(0, "Invalid submission."),
   startedAt: z.number().int().positive(),
