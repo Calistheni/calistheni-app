@@ -8,14 +8,22 @@ const PENDING_PREFIX = "pending/parks/";
 const maxAgeDays = Number(process.env.PENDING_PARK_PHOTO_MAX_AGE_DAYS ?? "7");
 const dryRun = process.env.DRY_RUN === "1" || process.env.DRY_RUN === "true";
 
-const bucketName = process.env.R2_BUCKET_NAME ?? "";
-const endpoint = process.env.R2_ENDPOINT ?? "";
-const accessKeyId = process.env.R2_ACCESS_KEY_ID ?? "";
-const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY ?? "";
+const bucketName =
+  process.env.PARK_PHOTO_R2_BUCKET_NAME ?? process.env.R2_BUCKET_NAME ?? "";
+const endpoint =
+  process.env.PARK_PHOTO_R2_ENDPOINT ?? process.env.R2_ENDPOINT ?? "";
+const accessKeyId =
+  process.env.PARK_PHOTO_R2_ACCESS_KEY_ID ??
+  process.env.R2_ACCESS_KEY_ID ??
+  "";
+const secretAccessKey =
+  process.env.PARK_PHOTO_R2_SECRET_ACCESS_KEY ??
+  process.env.R2_SECRET_ACCESS_KEY ??
+  "";
 
 if (!bucketName || !endpoint || !accessKeyId || !secretAccessKey) {
   console.error(
-    "Missing R2 configuration. Required: R2_BUCKET_NAME, R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY."
+    "Missing park photo R2 configuration. Use PARK_PHOTO_R2_BUCKET_NAME, PARK_PHOTO_R2_ENDPOINT, PARK_PHOTO_R2_ACCESS_KEY_ID, and PARK_PHOTO_R2_SECRET_ACCESS_KEY (legacy R2_* names remain supported)."
   );
   process.exit(1);
 }

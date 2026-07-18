@@ -1,7 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { CircleUserRound, Handshake, Settings2 } from "lucide-react";
+import {
+  CircleUserRound,
+  Handshake,
+  ListChecks,
+  MapPinPlus,
+  Settings2,
+} from "lucide-react";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { Button } from "@/components/ui/button";
 import {
@@ -66,6 +72,25 @@ export function UserMenu({
                 <Link href="/partners">
                   <Handshake aria-hidden="true" />
                   Partners
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          ) : null}
+
+          {user ? (
+            <>
+              <DropdownMenuLabel>Park contributions</DropdownMenuLabel>
+              <DropdownMenuItem asChild>
+                <Link href="/submit-park">
+                  <MapPinPlus aria-hidden="true" />
+                  Submit a park
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/my-parks">
+                  <ListChecks aria-hidden="true" />
+                  My submissions
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />

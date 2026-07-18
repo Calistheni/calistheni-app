@@ -6,7 +6,11 @@ import {
   parsePositiveInteger,
 } from "@/lib/api-response";
 import { publicParkWhere } from "@/lib/parks";
-import { PENDING_PARK_PHOTO_PREFIX } from "@/lib/park-photo-storage";
+import {
+  getParkPhotoUrlFromKey,
+  isPendingParkPhotoKeyForUser,
+  tryDeletePendingParkPhotoKeys,
+} from "@/lib/park-photo-storage";
 import { normalizePhotoLocationVerifications } from "@/lib/photo-location-verification";
 import { prisma } from "@/lib/prisma";
 import {
@@ -47,7 +51,7 @@ function parsePhotoKeys(value: unknown, userId: string) {
   return value
     .filter((item): item is string => typeof item === "string")
     .map((item) => item.trim())
-    .filter((item) => item.startsWith(`${PENDING_PARK_PHOTO_PREFIX}${userId}/`))
+    .filter((item) => isPendingParkPhotoKeyForUser(item, userId))
     .slice(0, 10);
 }
 
@@ -102,6 +106,14 @@ export async function POST(
     );
   }
 
+  if (
+    photoUrls.some(
+      (photoUrl, index) => photoUrl !== getParkPhotoUrlFromKey(photoKeys[index])
+    )
+  ) {
+    return createJsonErrorResponse("Invalid uploaded photo reference.", 400);
+  }
+
   const photoLocationVerifications = normalizePhotoLocationVerifications(
     body.photoLocationVerifications,
     photoUrls.length,
@@ -130,10 +142,12 @@ export async function POST(
     ]);
 
     if (!park) {
+      await tryDeletePendingParkPhotoKeys(photoKeys);
       return createJsonErrorResponse("Park not found.", 404);
     }
 
     if (equipmentCount !== new Set(parsedBody.data.equipmentIds).size) {
+      await tryDeletePendingParkPhotoKeys(photoKeys);
       return createJsonErrorResponse("One or more equipment items were not found.", 400);
     }
 
@@ -167,7 +181,12 @@ export async function POST(
       { status: 201 }
     );
   } catch (error) {
-    console.error(error);
+    await tryDeletePendingParkPhotoKeys(photoKeys);
+    console.error("Unable to create park edit submission.", {
+      parkId,
+      userId,
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
     return createInternalServerErrorResponse();
   }
 }

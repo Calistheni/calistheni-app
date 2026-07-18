@@ -1,52 +1,9 @@
-import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import {
-  getParkPhotoUrlFromKey,
-  PENDING_PARK_PHOTO_PREFIX,
-} from "@/lib/park-photo-storage";
-import { r2, R2_BUCKET_NAME, R2_PUBLIC_URL } from "@/lib/r2";
+import { uploadParkPhoto } from "@/lib/park-photo-storage";
+import { PARK_PHOTO_MAX_FILE_SIZE } from "@/lib/park-photo-file";
 
-const MAX_FILE_SIZE = 15 * 1024 * 1024;
-
-const ALLOWED_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/heic",
-  "image/heif",
-]);
-
-function getExtension(file: File) {
-  const type = file.type;
-  const name = file.name.toLowerCase();
-
-  if (
-    type === "image/jpeg" ||
-    name.endsWith(".jpg") ||
-    name.endsWith(".jpeg")
-  ) {
-    return "jpg";
-  }
-
-  if (type === "image/png" || name.endsWith(".png")) {
-    return "png";
-  }
-
-  if (type === "image/webp" || name.endsWith(".webp")) {
-    return "webp";
-  }
-
-  if (type === "image/heic" || name.endsWith(".heic")) {
-    return "heic";
-  }
-
-  if (type === "image/heif" || name.endsWith(".heif")) {
-    return "heif";
-  }
-
-  return "jpg";
-}
+const MAX_MULTIPART_REQUEST_SIZE = PARK_PHOTO_MAX_FILE_SIZE + 1024 * 1024;
 
 export async function POST(request: Request) {
   const session = await auth();
@@ -55,10 +12,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  if (!R2_BUCKET_NAME || !R2_PUBLIC_URL) {
+  const contentLength = Number(request.headers.get("content-length") ?? "0");
+  if (contentLength > MAX_MULTIPART_REQUEST_SIZE) {
     return NextResponse.json(
-      { error: "Photo storage is not configured." },
-      { status: 500 }
+      { error: "Image must be 15 MB or smaller." },
+      { status: 413 }
     );
   }
 
@@ -69,78 +27,46 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("Unable to parse park photo upload form data.", error);
     return NextResponse.json(
-      { error: "Unable to read uploaded photo. Please try a smaller image." },
+      { error: "Unable to read the uploaded photo. Please try again." },
       { status: 400 }
     );
   }
 
   const file = formData.get("file");
-
-  if (process.env.NODE_ENV === "development") {
-    console.info("Park photo upload", {
-      isFile: file instanceof File,
-      type: file instanceof File ? file.type : null,
-      size: file instanceof File ? file.size : null,
-      name: file instanceof File ? file.name : null,
-    });
-  }
-
   if (!(file instanceof File)) {
-    return NextResponse.json({ error: "No file uploaded." }, { status: 400 });
+    return NextResponse.json({ error: "No photo was uploaded." }, { status: 400 });
   }
 
-  const fileName = file.name.toLowerCase();
+  try {
+    const uploaded = await uploadParkPhoto({
+      file,
+      owner: session.user.id,
+      pending: true,
+    });
 
-  const isAllowed =
-    ALLOWED_TYPES.has(file.type) ||
-    fileName.endsWith(".jpg") ||
-    fileName.endsWith(".jpeg") ||
-    fileName.endsWith(".png") ||
-    fileName.endsWith(".webp") ||
-    fileName.endsWith(".heic") ||
-    fileName.endsWith(".heif");
+    return NextResponse.json(uploaded);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to upload this photo.";
+    const isValidationError =
+      message.includes("image") ||
+      message.includes("file") ||
+      message.includes("15 MB");
 
-  if (!isAllowed) {
+    if (!isValidationError) {
+      console.error("Unable to upload pending park photo.", {
+        userId: session.user.id,
+        error: message,
+      });
+    }
+
     return NextResponse.json(
       {
-        error: `Unsupported image. Type="${file.type}", Name="${file.name}"`,
+        error: isValidationError
+          ? message
+          : "Photo upload is temporarily unavailable. Please try again.",
       },
-      { status: 400 }
+      { status: isValidationError ? 400 : 500 }
     );
   }
-
-  if (file.size > MAX_FILE_SIZE) {
-    return NextResponse.json(
-      {
-        error: `Image is too large (${(file.size / 1024 / 1024).toFixed(
-          2
-        )} MB). Maximum is 15 MB.`,
-      },
-      { status: 400 }
-    );
-  }
-
-  const bytes = await file.arrayBuffer();
-  const buffer = Buffer.from(bytes);
-
-  const extension = getExtension(file);
-
-  const key = `${PENDING_PARK_PHOTO_PREFIX}${
-    session.user.id
-  }/${crypto.randomUUID()}.${extension}`;
-
-  await r2.send(
-    new PutObjectCommand({
-      Bucket: R2_BUCKET_NAME,
-      Key: key,
-      Body: buffer,
-      ContentType: file.type || "application/octet-stream",
-      CacheControl: "public, max-age=31536000, immutable",
-    })
-  );
-
-  return NextResponse.json({
-    photoUrl: getParkPhotoUrlFromKey(key),
-    key,
-  });
 }

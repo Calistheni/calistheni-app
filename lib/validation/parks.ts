@@ -96,7 +96,11 @@ export const parkMutationSchema = z.object({
   equipmentIds: z
     .array(z.coerce.number().int().positive())
     .min(1, "At least one equipment item must be selected.")
-    .max(50, "Equipment list must contain 50 items or fewer."),
+    .max(50, "Equipment list must contain 50 items or fewer.")
+    .refine(
+      (items) => new Set(items).size === items.length,
+      "Equipment list must not contain duplicates."
+    ),
 });
 
 export function mapParkIssuesToFormErrors(issues: ZodIssue[]) {

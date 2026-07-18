@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { ImagePlus, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CoordinatePicker } from "@/components/CoordinatePicker";
 import {
   AlertDialog,
@@ -41,6 +42,10 @@ import {
   getParkFormErrors,
   validateParkMutation,
 } from "@/lib/validation/parks";
+import {
+  PARK_PHOTO_ACCEPT,
+  validateParkPhotoMetadata,
+} from "@/lib/park-photo-file";
 import {
   formatPhotoLocationDistance,
   type PhotoLocationSource,
@@ -250,6 +255,10 @@ export default function AdminDashboard() {
   const [isParkPhotosLoading, setIsParkPhotosLoading] = useState(false);
   const [updatingPhotoId, setUpdatingPhotoId] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [adminPhoto, setAdminPhoto] = useState<File | null>(null);
+  const [adminPhotoPreview, setAdminPhotoPreview] = useState<string | null>(null);
+  const adminPhotoPreviewRef = useRef<string | null>(null);
+  const reviewingSubmissionRef = useRef(new Set<string>());
   const [isDeletePending, setIsDeletePending] = useState(false);
   const [deleteCandidate, setDeleteCandidate] = useState<ParkDetail | null>(
     null
@@ -287,6 +296,14 @@ export default function AdminDashboard() {
         park.address?.toLowerCase().includes(normalizedSearch)
     );
   }, [parks, search]);
+
+  useEffect(() => {
+    return () => {
+      if (adminPhotoPreviewRef.current) {
+        URL.revokeObjectURL(adminPhotoPreviewRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -441,6 +458,40 @@ export default function AdminDashboard() {
     setFormValues(EMPTY_FORM_VALUES);
     setFormErrors({});
     setEditingParkId(null);
+    setAdminPhoto(null);
+    if (adminPhotoPreviewRef.current) {
+      URL.revokeObjectURL(adminPhotoPreviewRef.current);
+      adminPhotoPreviewRef.current = null;
+    }
+    setAdminPhotoPreview(null);
+  }
+
+  function updateAdminPhoto(file: File | null) {
+    if (adminPhotoPreviewRef.current) {
+      URL.revokeObjectURL(adminPhotoPreviewRef.current);
+      adminPhotoPreviewRef.current = null;
+    }
+
+    if (!file) {
+      setAdminPhoto(null);
+      setAdminPhotoPreview(null);
+      clearFieldError("photo");
+      return;
+    }
+
+    const validation = validateParkPhotoMetadata(file);
+    if (!validation.success) {
+      setAdminPhoto(null);
+      setAdminPhotoPreview(null);
+      setFormErrors((current) => ({ ...current, photo: validation.error }));
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    adminPhotoPreviewRef.current = previewUrl;
+    setAdminPhoto(file);
+    setAdminPhotoPreview(previewUrl);
+    clearFieldError("photo");
   }
 
   function clearFieldError(field: keyof ParkFormErrors) {
@@ -604,12 +655,15 @@ export default function AdminDashboard() {
     setIsSubmitting(true);
 
     try {
+      const formData = new FormData();
+      formData.set("payload", JSON.stringify(payload));
+      if (adminPhoto) {
+        formData.set("photo", adminPhoto);
+      }
+
       const response = await fetch("/api/parks", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
+        body: formData,
       });
 
       if (!response.ok) {
@@ -635,6 +689,7 @@ export default function AdminDashboard() {
 	      setSelectedPark(createdPark);
 	      setParkPhotos([]);
 	      resetForm();
+      void loadParkPhotos(createdPark.id);
       void persistParks(nextParks).catch((error) => {
         console.error(error);
       });
@@ -820,6 +875,11 @@ export default function AdminDashboard() {
     reviewId: string,
     status: "APPROVED" | "REJECTED"
   ) {
+    if (reviewingSubmissionRef.current.has(reviewId)) {
+      return;
+    }
+
+    reviewingSubmissionRef.current.add(reviewId);
     const finalRejectionReason =
       status === "REJECTED" ? rejectionReason.trim() || null : null;
     setReviewingSubmissionId(reviewId);
@@ -861,6 +921,7 @@ export default function AdminDashboard() {
         getErrorMessage(error, "Unable to review this submission right now.")
       );
     } finally {
+      reviewingSubmissionRef.current.delete(reviewId);
       setReviewingSubmissionId(null);
     }
   }
@@ -1042,9 +1103,18 @@ export default function AdminDashboard() {
                           return (
                             <div
                               key={photoUrl}
-                              className="space-y-1 rounded-lg border p-3"
+                              className="w-full max-w-sm overflow-hidden rounded-lg border"
                             >
-                              <div className="flex flex-wrap items-center gap-2">
+                              <a
+                                href={photoUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="block aspect-video bg-muted bg-cover bg-center"
+                                style={{ backgroundImage: `url("${photoUrl}")` }}
+                                aria-label={`Open submitted park photo ${index + 1}`}
+                              />
+                              <div className="space-y-2 p-3">
+                                <div className="flex flex-wrap items-center gap-2">
                                 <a
                                   href={photoUrl}
                                   target="_blank"
@@ -1063,6 +1133,7 @@ export default function AdminDashboard() {
                                     verification.locationSource
                                   )}
                                 </Badge>
+                                </div>
                               </div>
                               {verification.locationSource ===
                               "BROWSER_GEOLOCATION" ? (
@@ -1288,6 +1359,70 @@ export default function AdminDashboard() {
               </p>
             ) : null}
           </fieldset>
+
+          {!editingParkId ? (
+            <div className="space-y-3">
+              <div>
+                <p className="text-sm font-medium">Park photo</p>
+                <p className="text-xs text-muted-foreground">
+                  Admin-created parks publish this photo immediately after the
+                  park is saved.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <label
+                  htmlFor="admin-park-photo"
+                  className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-md border px-4 text-sm font-medium hover:bg-accent focus-within:ring-2 focus-within:ring-ring"
+                >
+                  <ImagePlus className="size-4" aria-hidden />
+                  {adminPhoto ? "Replace photo" : "Choose photo"}
+                </label>
+                <Input
+                  id="admin-park-photo"
+                  type="file"
+                  accept={PARK_PHOTO_ACCEPT}
+                  className="sr-only"
+                  onChange={(event) =>
+                    updateAdminPhoto(event.target.files?.[0] ?? null)
+                  }
+                  aria-invalid={formErrors.photo ? true : undefined}
+                />
+                {adminPhoto ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => updateAdminPhoto(null)}
+                  >
+                    <X aria-hidden />
+                    Remove
+                  </Button>
+                ) : null}
+              </div>
+
+              {formErrors.photo ? (
+                <p className="text-xs text-destructive" role="alert">
+                  {formErrors.photo}
+                </p>
+              ) : null}
+
+              {adminPhotoPreview && adminPhoto ? (
+                <div className="max-w-md overflow-hidden rounded-lg border">
+                  <div
+                    className="aspect-video bg-muted bg-cover bg-center"
+                    style={{
+                      backgroundImage: `url("${adminPhotoPreview}")`,
+                    }}
+                    role="img"
+                    aria-label={`Preview of ${adminPhoto.name}`}
+                  />
+                  <p className="truncate p-3 text-xs text-muted-foreground">
+                    {adminPhoto.name}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 

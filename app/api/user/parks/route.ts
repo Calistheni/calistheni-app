@@ -8,7 +8,13 @@ import {
   createUserUnauthorizedResponse,
   getAuthenticatedUserId,
 } from "@/lib/user-auth";
-import { PENDING_PARK_PHOTO_PREFIX } from "@/lib/park-photo-storage";
+import {
+  getParkPhotoUrlFromKey,
+  isPendingParkPhotoKeyForUser,
+  tryDeletePendingParkPhotoKey,
+  uploadParkPhoto,
+  type UploadedParkPhoto,
+} from "@/lib/park-photo-storage";
 import { normalizePhotoLocationVerifications } from "@/lib/photo-location-verification";
 import {
   findNearbyPublicParks,
@@ -16,6 +22,9 @@ import {
 } from "@/lib/nearby-parks";
 import { prisma } from "@/lib/prisma";
 import { parkMutationSchema } from "@/lib/validation/parks";
+import { PARK_PHOTO_MAX_FILE_SIZE } from "@/lib/park-photo-file";
+
+const MAX_MULTIPART_REQUEST_SIZE = PARK_PHOTO_MAX_FILE_SIZE + 1024 * 1024;
 
 type CreateParkBody = {
   name?: unknown;
@@ -30,44 +39,70 @@ type CreateParkBody = {
   allowNearbyPark?: unknown;
 };
 
-function parsePendingPhotoKey(value: unknown, userId: string) {
-  if (typeof value !== "string" || value.trim().length === 0) {
+async function parseCreateRequest(request: Request) {
+  if (!request.headers.get("content-type")?.includes("multipart/form-data")) {
+    return {
+      body: (await request.json()) as CreateParkBody,
+      photo: null,
+    };
+  }
+
+  const formData = await request.formData();
+  const payload = formData.get("payload");
+  const photo = formData.get("photo");
+
+  if (typeof payload !== "string") {
+    throw new Error("INVALID_PAYLOAD");
+  }
+
+  return {
+    body: JSON.parse(payload) as CreateParkBody,
+    photo: photo instanceof File && photo.size > 0 ? photo : null,
+  };
+}
+
+function parseExistingPendingPhoto(body: CreateParkBody, userId: string) {
+  const key = typeof body.photoKey === "string" ? body.photoKey.trim() : "";
+  const url = typeof body.photoUrl === "string" ? body.photoUrl.trim() : "";
+
+  if (!key && !url) {
     return null;
   }
 
-  const photoKey = value.trim();
-
-  if (!photoKey.startsWith(`${PENDING_PARK_PHOTO_PREFIX}${userId}/`)) {
-    return null;
+  if (!key || !url || !isPendingParkPhotoKeyForUser(key, userId)) {
+    throw new Error("INVALID_PHOTO_REFERENCE");
   }
 
-  return photoKey;
+  if (url !== getParkPhotoUrlFromKey(key)) {
+    throw new Error("INVALID_PHOTO_REFERENCE");
+  }
+
+  return { key, photoUrl: url } satisfies UploadedParkPhoto;
 }
 
 export async function POST(request: Request) {
   const userId = await getAuthenticatedUserId();
-
   if (!userId) {
     return createUserUnauthorizedResponse();
   }
 
-  let body: CreateParkBody;
-
-  try {
-    body = (await request.json()) as CreateParkBody;
-  } catch {
-    return createJsonErrorResponse("Invalid JSON payload.", 400);
+  const contentLength = Number(request.headers.get("content-length") ?? "0");
+  if (contentLength > MAX_MULTIPART_REQUEST_SIZE) {
+    return createJsonValidationErrorResponse("Invalid park photo.", {
+      photo: ["Image must be 15 MB or smaller."],
+    });
   }
 
-  const parsedBody = parkMutationSchema.safeParse({
-    name: body.name,
-    title: body.title,
-    address: body.address,
-    lat: body.lat,
-    lon: body.lon,
-    equipmentIds: body.equipmentIds,
-  });
+  let body: CreateParkBody;
+  let photoFile: File | null;
 
+  try {
+    ({ body, photo: photoFile } = await parseCreateRequest(request));
+  } catch {
+    return createJsonErrorResponse("Invalid park submission payload.", 400);
+  }
+
+  const parsedBody = parkMutationSchema.safeParse(body);
   if (!parsedBody.success) {
     return createJsonValidationErrorResponse(
       "Invalid park payload.",
@@ -75,44 +110,58 @@ export async function POST(request: Request) {
     );
   }
 
-  const photoUrl =
-    typeof body.photoUrl === "string" && body.photoUrl.length > 0
-      ? body.photoUrl
-      : null;
-  const photoKey = parsePendingPhotoKey(body.photoKey, userId);
-
-  if (body.photoKey && !photoKey) {
-    return createJsonErrorResponse("Invalid uploaded photo key.", 400);
+  let existingPendingPhoto: UploadedParkPhoto | null;
+  try {
+    existingPendingPhoto = photoFile
+      ? null
+      : parseExistingPendingPhoto(body, userId);
+  } catch {
+    return createJsonErrorResponse("Invalid uploaded photo reference.", 400);
   }
 
-  if (photoUrl && !photoKey) {
-    return createJsonErrorResponse("Uploaded photo key is required.", 400);
-  }
-
-  const photoLocationVerifications = normalizePhotoLocationVerifications(
-    body.photoLocationVerifications,
-    photoUrl ? 1 : 0,
-    parsedBody.data.lat,
-    parsedBody.data.lon
-  );
+  let uploadedPhoto: UploadedParkPhoto | null = existingPendingPhoto;
 
   try {
-    const nearbyParks = await findNearbyPublicParks({
-      lat: parsedBody.data.lat,
-      lon: parsedBody.data.lon,
-      radiusMeters: PARK_DUPLICATE_WARNING_RADIUS_METERS,
-    });
+    const [nearbyParks, equipmentCount] = await Promise.all([
+      findNearbyPublicParks({
+        lat: parsedBody.data.lat,
+        lon: parsedBody.data.lon,
+        radiusMeters: PARK_DUPLICATE_WARNING_RADIUS_METERS,
+      }),
+      prisma.equipment.count({
+        where: { id: { in: parsedBody.data.equipmentIds } },
+      }),
+    ]);
     const closestNearbyPark = nearbyParks[0] ?? null;
+
+    if (equipmentCount !== new Set(parsedBody.data.equipmentIds).size) {
+      return createJsonErrorResponse(
+        "One or more equipment items were not found.",
+        400
+      );
+    }
 
     if (closestNearbyPark && body.allowNearbyPark !== true) {
       return NextResponse.json(
-        {
-          error: "A park already exists nearby.",
-          nearbyParks,
-        },
+        { error: "A park already exists nearby.", nearbyParks },
         { status: 409 }
       );
     }
+
+    if (photoFile) {
+      uploadedPhoto = await uploadParkPhoto({
+        file: photoFile,
+        owner: userId,
+        pending: true,
+      });
+    }
+
+    const photoLocationVerifications = normalizePhotoLocationVerifications(
+      body.photoLocationVerifications,
+      uploadedPhoto ? 1 : 0,
+      parsedBody.data.lat,
+      parsedBody.data.lon
+    );
 
     const park = await prisma.park.create({
       data: {
@@ -123,8 +172,8 @@ export async function POST(request: Request) {
         lon: parsedBody.data.lon,
         submissionStatus: "PENDING",
         submittedById: userId,
-        photoUrl,
-        photoKey,
+        photoUrl: uploadedPhoto?.photoUrl ?? null,
+        photoKey: uploadedPhoto?.key ?? null,
         photoLocationVerifications: photoLocationVerifications.length
           ? photoLocationVerifications
           : undefined,
@@ -138,9 +187,7 @@ export async function POST(request: Request) {
           })),
         },
       },
-      select: {
-        id: true,
-      },
+      select: { id: true },
     });
 
     return NextResponse.json(
@@ -152,7 +199,26 @@ export async function POST(request: Request) {
       { status: 201 }
     );
   } catch (error) {
-    console.error(error);
+    if (uploadedPhoto && uploadedPhoto !== existingPendingPhoto) {
+      await tryDeletePendingParkPhotoKey(uploadedPhoto.key);
+    }
+
+    const message = error instanceof Error ? error.message : "Unknown error";
+    const isPhotoValidationError =
+      message.includes("image") ||
+      message.includes("file") ||
+      message.includes("15 MB");
+
+    if (isPhotoValidationError) {
+      return createJsonValidationErrorResponse("Invalid park photo.", {
+        photo: [message],
+      });
+    }
+
+    console.error("Unable to create pending park submission.", {
+      userId,
+      error: message,
+    });
     return createInternalServerErrorResponse();
   }
 }

@@ -2,9 +2,10 @@
 
 import * as exifr from "exifr";
 import imageCompression from "browser-image-compression";
-import { AlertTriangle } from "lucide-react";
+import Image from "next/image";
+import { AlertTriangle, ImagePlus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CoordinatePicker } from "@/components/CoordinatePicker";
 import {
   AlertDialog,
@@ -31,6 +32,10 @@ import {
   getParkFormErrors,
   validateParkMutation,
 } from "@/lib/validation/parks";
+import {
+  PARK_PHOTO_ACCEPT,
+  validateParkPhotoMetadata,
+} from "@/lib/park-photo-file";
 import {
   formatPhotoLocationDistance,
   verifyPhotoLocation,
@@ -71,6 +76,7 @@ type UploadedPhoto = {
 type SelectedPhoto = {
   id: string;
   file: File;
+  previewUrl: string;
   isLocationVerified: boolean;
   locationVerification: PhotoLocationVerificationDraft;
 };
@@ -108,9 +114,6 @@ const EMPTY_FORM_VALUES: ParkFormValues = {
   lon: "",
   equipmentIds: [],
 };
-const PHOTO_LIBRARY_ACCEPT_TYPES =
-  ".jpg,.jpeg,.png,.heic,.heif,image/jpeg,image/png,image/heic,image/heif";
-
 function getErrorMessage(error: unknown, fallbackMessage: string) {
   if (error instanceof Error && error.message) {
     return error.message;
@@ -299,12 +302,23 @@ export function ParkSubmissionForm({
   const [formErrors, setFormErrors] = useState<ParkFormErrors>({});
   const [photos, setPhotos] = useState<SelectedPhoto[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  const photoPreviewUrlsRef = useRef(new Set<string>());
   const [isCheckingNearbyParks, setIsCheckingNearbyParks] = useState(false);
   const [isVerifyingPhotos, setIsVerifyingPhotos] = useState(false);
   const [locationWarning, setLocationWarning] =
     useState<LocationWarning | null>(null);
   const [nearbyParkWarning, setNearbyParkWarning] =
     useState<NearbyParkWarning | null>(null);
+
+  useEffect(() => {
+    const previewUrls = photoPreviewUrlsRef.current;
+
+    return () => {
+      previewUrls.forEach((url) => URL.revokeObjectURL(url));
+      previewUrls.clear();
+    };
+  }, []);
 
   function clearFieldError(field: keyof ParkFormErrors) {
     setFormErrors((current) => {
@@ -552,52 +566,61 @@ export function ParkSubmissionForm({
     verifiedPhotos: SelectedPhoto[],
     options: { allowNearbyPark?: boolean } = {}
   ) {
+    if (submittingRef.current) {
+      return;
+    }
+
+    submittingRef.current = true;
     setIsSubmitting(true);
 
     try {
-      const uploadedPhotos: UploadedPhoto[] = [];
+      let response: Response;
 
-      for (const selectedPhoto of verifiedPhotos) {
-        const uploadedPhoto = await uploadParkPhoto(selectedPhoto.file);
-        uploadedPhotos.push({
-          ...uploadedPhoto,
-          locationVerification: selectedPhoto.locationVerification,
-        });
-      }
-
-      const photoLocationVerifications = uploadedPhotos.map(
-        (photo) => photo.locationVerification
-      );
-
-      const response =
-        mode === "create"
-          ? await fetch("/api/user/parks", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
+      if (mode === "create") {
+        const formData = new FormData();
+        const selectedPhoto = verifiedPhotos[0] ?? null;
+        formData.set(
+          "payload",
+          JSON.stringify({
                 ...data,
-                photoUrl: uploadedPhotos[0]?.photoUrl ?? null,
-                photoKey: uploadedPhotos[0]?.key ?? null,
-                photoLocationVerifications: uploadedPhotos[0]
-                  ? [uploadedPhotos[0].locationVerification]
+                photoLocationVerifications: selectedPhoto
+                  ? [selectedPhoto.locationVerification]
                   : [],
                 allowNearbyPark: options.allowNearbyPark === true,
-              }),
-            })
-          : await fetch(`/api/user/parks/${parkId}/edits`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                ...data,
-                photoUrls: uploadedPhotos.map((photo) => photo.photoUrl),
-                photoKeys: uploadedPhotos.map((photo) => photo.key),
-                photoLocationVerifications,
-              }),
-            });
+          })
+        );
+
+        if (selectedPhoto) {
+          formData.set("photo", await compressParkPhoto(selectedPhoto.file));
+        }
+
+        response = await fetch("/api/user/parks", {
+          method: "POST",
+          body: formData,
+        });
+      } else {
+        const uploadedPhotos: UploadedPhoto[] = [];
+        for (const selectedPhoto of verifiedPhotos) {
+          const uploadedPhoto = await uploadParkPhoto(selectedPhoto.file);
+          uploadedPhotos.push({
+            ...uploadedPhoto,
+            locationVerification: selectedPhoto.locationVerification,
+          });
+        }
+
+        response = await fetch(`/api/user/parks/${parkId}/edits`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...data,
+            photoUrls: uploadedPhotos.map((photo) => photo.photoUrl),
+            photoKeys: uploadedPhotos.map((photo) => photo.key),
+            photoLocationVerifications: uploadedPhotos.map(
+              (photo) => photo.locationVerification
+            ),
+          }),
+        });
+      }
 
       if (!response.ok) {
         const apiError = await parseApiError(response);
@@ -632,6 +655,7 @@ export function ParkSubmissionForm({
         )
       );
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   }
@@ -768,6 +792,23 @@ export function ParkSubmissionForm({
   function updateSelectedPhotos(fileList: FileList | null) {
     const selectedPhotos = Array.from(fileList ?? []);
 
+    for (const photo of selectedPhotos) {
+      const validation = validateParkPhotoMetadata(photo);
+      if (!validation.success) {
+        setFormErrors((current) => ({ ...current, photo: validation.error }));
+        return;
+      }
+    }
+
+    const maximumPhotos = mode === "create" ? 1 : 10;
+    if (selectedPhotos.length > maximumPhotos) {
+      setFormErrors((current) => ({
+        ...current,
+        photo: `Choose no more than ${maximumPhotos} photo${maximumPhotos === 1 ? "" : "s"}.`,
+      }));
+      return;
+    }
+
     if (process.env.NODE_ENV === "development") {
       console.info(
         "Selected park photos",
@@ -780,15 +821,37 @@ export function ParkSubmissionForm({
       );
     }
 
+    photos.forEach((photo) => {
+      URL.revokeObjectURL(photo.previewUrl);
+      photoPreviewUrlsRef.current.delete(photo.previewUrl);
+    });
+
     setPhotos(
-      selectedPhotos.map((photo, index) => ({
+      selectedPhotos.map((photo, index) => {
+        const previewUrl = URL.createObjectURL(photo);
+        photoPreviewUrlsRef.current.add(previewUrl);
+
+        return {
         id: createPhotoId(photo, index),
         file: photo,
+        previewUrl,
         locationVerification: getInitialPhotoVerification(),
         isLocationVerified: false,
-      }))
+        };
+      })
     );
     clearFieldError("photo");
+  }
+
+  function removeSelectedPhoto(photoId: string) {
+    setPhotos((current) => {
+      const removed = current.find((photo) => photo.id === photoId);
+      if (removed) {
+        URL.revokeObjectURL(removed.previewUrl);
+        photoPreviewUrlsRef.current.delete(removed.previewUrl);
+      }
+      return current.filter((photo) => photo.id !== photoId);
+    });
   }
 
   return (
@@ -969,7 +1032,7 @@ export function ParkSubmissionForm({
               id="park-photo-library"
               className="sr-only"
               type="file"
-              accept={PHOTO_LIBRARY_ACCEPT_TYPES}
+              accept={PARK_PHOTO_ACCEPT}
               multiple={mode === "suggest-edit"}
               onChange={(event) => updateSelectedPhotos(event.target.files)}
               aria-invalid={formErrors.photo ? true : undefined}
@@ -986,32 +1049,59 @@ export function ParkSubmissionForm({
             <p className="text-xs text-destructive">{formErrors.photo}</p>
           ) : null}
           {photos.length > 0 ? (
-            <div className="space-y-2 rounded-lg border p-3 text-xs">
+            <div className="grid gap-3 sm:grid-cols-2">
               {photos.map((photo) => (
                 <div
                   key={photo.id}
-                  className="flex flex-wrap items-center justify-between gap-2"
+                  className="overflow-hidden rounded-lg border bg-muted/20"
                 >
-                  <span className="truncate">{photo.file.name}</span>
-                  <Badge
-                    variant={
-                      photo.isLocationVerified &&
-                      photo.locationVerification.locationStatus === "MISMATCH"
-                        ? "destructive"
-                        : "outline"
-                    }
-                  >
-                    {photo.isLocationVerified
-                      ? getPhotoStatusLabel(
-                          photo.locationVerification.locationStatus,
-                          photo.locationVerification.locationSource
-                        )
-                      : "Checked on submit"}
-                  </Badge>
+                  <div className="relative aspect-video bg-muted">
+                    <Image
+                      src={photo.previewUrl}
+                      alt={`Preview of ${photo.file.name}`}
+                      fill
+                      unoptimized
+                      className="object-cover"
+                    />
+                    <Button
+                      type="button"
+                      size="icon-sm"
+                      variant="secondary"
+                      className="absolute right-2 top-2"
+                      onClick={() => removeSelectedPhoto(photo.id)}
+                      aria-label={`Remove ${photo.file.name}`}
+                    >
+                      <X aria-hidden />
+                    </Button>
+                  </div>
+                  <div className="flex min-w-0 items-center justify-between gap-2 p-3 text-xs">
+                    <span className="min-w-0 truncate">{photo.file.name}</span>
+                    <Badge
+                      className="shrink-0"
+                      variant={
+                        photo.isLocationVerified &&
+                        photo.locationVerification.locationStatus === "MISMATCH"
+                          ? "destructive"
+                          : "outline"
+                      }
+                    >
+                      {photo.isLocationVerified
+                        ? getPhotoStatusLabel(
+                            photo.locationVerification.locationStatus,
+                            photo.locationVerification.locationSource
+                          )
+                        : "Checked on submit"}
+                    </Badge>
+                  </div>
                 </div>
               ))}
             </div>
-          ) : null}
+          ) : (
+            <div className="flex items-center gap-2 rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+              <ImagePlus className="size-5" aria-hidden />
+              No photo selected.
+            </div>
+          )}
         </div>
 
         <Button
