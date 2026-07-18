@@ -1,11 +1,15 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
+import { MapPinPlus } from "lucide-react";
 import ParksMap, {
   getInitialLightPreset,
   type MapTheme,
 } from "@/components/ParksMap";
 import { UserMenu } from "@/components/UserMenu";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { ParkSummary } from "@/types/park";
 
 type HomePageProps = {
@@ -44,6 +48,19 @@ export default function HomePage({ user, inAppShell = false }: HomePageProps) {
         onThemeChange={setTheme}
         inAppShell={inAppShell}
       />
+      <div
+        className={cn(
+          "fixed left-[4.25rem] z-40 sm:left-[5.75rem]",
+          inAppShell ? "top-[4.5rem]" : "top-4"
+        )}
+      >
+        <Button asChild className="h-10 gap-2 rounded-full px-3 shadow-md sm:px-4">
+          <Link href={user ? "/my-parks" : "/login"}>
+            <MapPinPlus className="size-4" aria-hidden="true" />
+            Add park
+          </Link>
+        </Button>
+      </div>
     </main>
   );
 }

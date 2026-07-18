@@ -29,7 +29,7 @@ export default async function SubmitParkPage() {
 
   return (
     <main className="mx-auto w-full max-w-4xl p-4 sm:p-6 lg:p-8">
-      <BackButton fallbackHref="/parks" />
+      <BackButton fallbackHref="/my-parks" label="Back to contributions" />
       <ParkSubmissionForm equipment={equipment} mode="create" />
     </main>
   );
