@@ -13,7 +13,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { MapLightPreset, MapTheme } from "@/components/ParksMap";
-import { cn } from "@/lib/utils";
 
 type UserMenuProps = {
   user: { name?: string | null; email?: string | null } | null;
@@ -33,12 +32,7 @@ export function UserMenu({
   inAppShell = false,
 }: UserMenuProps) {
   return (
-    <div
-      className={cn(
-        "fixed left-4 z-50 sm:left-8",
-        inAppShell ? "top-[4.5rem]" : "top-4"
-      )}
-    >
+    <div className="absolute top-4 left-4 z-50 sm:left-8">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button

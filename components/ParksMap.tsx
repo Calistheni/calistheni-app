@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import mapboxgl from "mapbox-gl";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,6 +40,18 @@ type ParksMapProps = {
   theme: MapTheme;
   onViewportParksChange: (parks: ParkSummary[]) => void;
   onViewportLoadingChange?: (isLoading: boolean) => void;
+  onLocationStatusChange?: (status: ParksLocationStatus) => void;
+};
+
+export type ParksLocationStatus =
+  | "idle"
+  | "loading"
+  | "success"
+  | "denied"
+  | "unavailable";
+
+export type ParksMapHandle = {
+  requestUserLocation: () => boolean;
 };
 
 type ParksChangesResponse = {
@@ -280,14 +298,18 @@ function renderPopupMarkup({
   `;
 }
 
-export default function ParksMap({
-  parks,
-  selectedPark,
-  lightPreset,
-  theme,
-  onViewportParksChange,
-  onViewportLoadingChange,
-}: ParksMapProps) {
+const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
+  {
+    parks,
+    selectedPark,
+    lightPreset,
+    theme,
+    onViewportParksChange,
+    onViewportLoadingChange,
+    onLocationStatusChange,
+  },
+  ref
+) {
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
@@ -307,13 +329,7 @@ export default function ParksMap({
   const viewportDebounceRef = useRef<number | null>(null);
   const mapLoadedRef = useRef(false);
   const onViewportParksChangeRef = useRef(onViewportParksChange);
-  const [showLocationDialog, setShowLocationDialog] = useState(() => {
-    if (typeof window === "undefined") {
-      return false;
-    }
-
-    return !localStorage.getItem("location-allowed");
-  });
+  const onLocationStatusChangeRef = useRef(onLocationStatusChange);
   const [isMapInitializing, setIsMapInitializing] = useState(true);
   const [, setIsViewportLoading] = useState(true);
   const [viewportError, setViewportError] = useState<string | null>(null);
@@ -368,6 +384,44 @@ export default function ParksMap({
 
   const markerColor =
     lightPreset === "day" || lightPreset === "dawn" ? "#2563eb" : "#ef4444";
+
+  function requestUserLocation() {
+    const map = mapRef.current;
+    const geolocate = geolocateRef.current;
+
+    if (!map || !geolocate) {
+      onLocationStatusChangeRef.current?.("unavailable");
+      return false;
+    }
+
+    if (userLocationRef.current) {
+      geolocate.setFollowUserLocation(true);
+      map.easeTo({
+        center: userLocationRef.current,
+        zoom: Math.max(map.getZoom(), 14),
+        duration: 700,
+      });
+      onLocationStatusChangeRef.current?.("success");
+      return true;
+    }
+
+    onLocationStatusChangeRef.current?.("loading");
+    const triggered = geolocate.trigger();
+
+    if (!triggered) {
+      onLocationStatusChangeRef.current?.("unavailable");
+    }
+
+    return triggered;
+  }
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      requestUserLocation,
+    }),
+    []
+  );
 
   function clearRoute() {
     const map = mapRef.current;
@@ -595,7 +649,7 @@ export default function ParksMap({
 
     try {
       if (!userLocationRef.current) {
-        setShowLocationDialog(true);
+        requestUserLocation();
         button.textContent = "Directions";
         button.disabled = false;
         return;
@@ -946,6 +1000,7 @@ export default function ParksMap({
   const fetchParkDetailRef = useRef(fetchParkDetail);
   useEffect(() => {
     onViewportParksChangeRef.current = onViewportParksChange;
+    onLocationStatusChangeRef.current = onLocationStatusChange;
     openParkPopupRef.current = openParkPopup;
     requestViewportParksRef.current = requestViewportParks;
     scheduleViewportLoadRef.current = scheduleViewportLoad;
@@ -1292,6 +1347,7 @@ export default function ParksMap({
 
       localStorage.setItem("location-allowed", "true");
       localStorage.setItem("user-location", JSON.stringify(location));
+      onLocationStatusChangeRef.current?.("success");
 
       if (!hadLocation) {
         map.flyTo({
@@ -1302,9 +1358,12 @@ export default function ParksMap({
       }
     });
 
-    geolocate.on("error", () => {
+    geolocate.on("error", (error) => {
       localStorage.removeItem("location-allowed");
       localStorage.removeItem("user-location");
+      onLocationStatusChangeRef.current?.(
+        error.code === error.PERMISSION_DENIED ? "denied" : "unavailable"
+      );
     });
 
     map.addControl(geolocate, "top-right");
@@ -1377,59 +1436,14 @@ export default function ParksMap({
     };
   }, [selectedPark]);
 
-  const enableLocation = () => {
-    setShowLocationDialog(false);
-    geolocateRef.current?.trigger();
-  };
-
-  const maybeLater = () => {
-    setShowLocationDialog(false);
-    localStorage.removeItem("location-allowed");
-  };
-
   const handleContinue = () => {
     setShowLoadingDialog(false);
     setIsMapInitializing(false);
     stopSmoothProgress();
-
-    if (!localStorage.getItem("location-allowed")) {
-      setShowLocationDialog(true);
-    }
   };
 
   return (
     <div className="relative h-full min-h-0 w-full overflow-hidden">
-      <Dialog
-        open={showLocationDialog && !showLoadingDialog}
-        onOpenChange={setShowLocationDialog}
-      >
-        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Enable Location</DialogTitle>
-            <DialogDescription className="sr-only">
-              Allow access to your location to get walking directions to nearby
-              calisthenics parks.
-            </DialogDescription>
-          </DialogHeader>
-
-          <p className="text-sm text-muted-foreground">
-            Allow access to your location to get walking directions to nearby
-            calisthenics parks.
-            <br />
-            <br />
-            Your location is only used while using the app and can be disabled
-            at any time from your browser settings.
-          </p>
-
-          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-            <Button variant="outline" onClick={maybeLater}>
-              Maybe Later
-            </Button>
-
-            <Button onClick={enableLocation}>Allow Location</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
       <Dialog open={showLoadingDialog}>
         <DialogContent
           className="max-w-[calc(100vw-2rem)] sm:max-w-sm"
@@ -1516,4 +1530,6 @@ export default function ParksMap({
       </div>
     </div>
   );
-}
+});
+
+export default ParksMap;

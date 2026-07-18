@@ -68,9 +68,17 @@ export function CoordinatePicker({
       handleCoordinateChange(latitude, longitude);
     });
 
-    markerRef.current = new mapboxgl.Marker()
+    markerRef.current = new mapboxgl.Marker({ draggable: true })
       .setLngLat([initialLng, initialLat])
       .addTo(map);
+
+    markerRef.current.on("dragend", () => {
+      const position = markerRef.current?.getLngLat();
+
+      if (position) {
+        handleCoordinateChange(position.lat, position.lng);
+      }
+    });
 
     map.on("click", (event) => {
       const { lng, lat } = event.lngLat;
@@ -117,6 +125,7 @@ export function CoordinatePicker({
 
     mapRef.current.flyTo({
       center: [longitude, latitude],
+      zoom: Math.max(mapRef.current.getZoom(), 15),
       duration: 500,
     });
   }, [lat, lon]);

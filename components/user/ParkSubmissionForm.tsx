@@ -3,7 +3,13 @@
 import * as exifr from "exifr";
 import imageCompression from "browser-image-compression";
 import Image from "next/image";
-import { AlertTriangle, ImagePlus, X } from "lucide-react";
+import {
+  AlertTriangle,
+  ImagePlus,
+  LoaderCircle,
+  LocateFixed,
+  X,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { CoordinatePicker } from "@/components/CoordinatePicker";
@@ -17,6 +23,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -240,36 +247,57 @@ function getPhotoStatusLabel(
   return "No GPS metadata";
 }
 
-function getBrowserGeolocation() {
-  return new Promise<{ latitude: number; longitude: number } | null>(
-    (resolve) => {
-      if (!("geolocation" in navigator)) {
-        resolve(null);
-        return;
-      }
-
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          resolve({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          });
-        },
-        (error) => {
-          if (process.env.NODE_ENV === "development") {
-            console.info("Unable to read browser geolocation.", error);
-          }
-
-          resolve(null);
-        },
-        {
-          enableHighAccuracy: true,
-          maximumAge: 60_000,
-          timeout: 10_000,
-        }
-      );
+function requestBrowserGeolocation() {
+  return new Promise<GpsCoordinates>((resolve, reject) => {
+    if (!("geolocation" in navigator)) {
+      reject(new Error("Location services are not available in this browser."));
+      return;
     }
-  );
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+      },
+      reject,
+      {
+        enableHighAccuracy: true,
+        maximumAge: 60_000,
+        timeout: 10_000,
+      }
+    );
+  });
+}
+
+async function getBrowserGeolocation() {
+  try {
+    return await requestBrowserGeolocation();
+  } catch (error) {
+    if (process.env.NODE_ENV === "development") {
+      console.info("Unable to read browser geolocation.", error);
+    }
+
+    return null;
+  }
+}
+
+function getLocationRequestError(error: unknown) {
+  const code =
+    typeof error === "object" && error !== null && "code" in error
+      ? Number(error.code)
+      : null;
+
+  if (code === 1) {
+    return "Location access was denied. You can select the park location directly on the map.";
+  }
+
+  if (code === 3) {
+    return "Getting your location took too long. You can try again or select the park location directly on the map.";
+  }
+
+  return "We couldn’t determine your location. You can select the park location directly on the map.";
 }
 
 async function parseApiError(response: Response) {
@@ -310,6 +338,13 @@ export function ParkSubmissionForm({
     useState<LocationWarning | null>(null);
   const [nearbyParkWarning, setNearbyParkWarning] =
     useState<NearbyParkWarning | null>(null);
+  const [showLocationOnboarding, setShowLocationOnboarding] = useState(
+    mode === "create"
+  );
+  const [isGettingLocation, setIsGettingLocation] = useState(false);
+  const [locationOnboardingError, setLocationOnboardingError] = useState<
+    string | null
+  >(null);
 
   useEffect(() => {
     const previewUrls = photoPreviewUrlsRef.current;
@@ -344,6 +379,38 @@ export function ParkSubmissionForm({
 
     if (field === "name" || field === "lat" || field === "lon") {
       clearFieldError(field);
+    }
+  }
+
+  function updateCoordinates(latitude: number, longitude: number) {
+    setFormValues((current) => ({
+      ...current,
+      lat: String(latitude),
+      lon: String(longitude),
+    }));
+    clearFieldError("lat");
+    clearFieldError("lon");
+  }
+
+  async function selectCurrentLocation() {
+    if (isGettingLocation) {
+      return;
+    }
+
+    setIsGettingLocation(true);
+    setLocationOnboardingError(null);
+
+    try {
+      const location = await requestBrowserGeolocation();
+      updateCoordinates(location.latitude, location.longitude);
+      setShowLocationOnboarding(false);
+      toast.success(
+        "Current location selected. You can move the marker if needed."
+      );
+    } catch (error) {
+      setLocationOnboardingError(getLocationRequestError(error));
+    } finally {
+      setIsGettingLocation(false);
     }
   }
 
@@ -913,10 +980,7 @@ export function ParkSubmissionForm({
             <CoordinatePicker
               lat={formValues.lat}
               lon={formValues.lon}
-              onChange={(newLat, newLon) => {
-                updateTextField("lat", String(newLat));
-                updateTextField("lon", String(newLon));
-              }}
+              onChange={updateCoordinates}
             />
 
             <div className="rounded-lg border p-3 text-sm">
@@ -1121,6 +1185,62 @@ export function ParkSubmissionForm({
             : "Submit Edit for Review"}
         </Button>
       </CardContent>
+
+      <AlertDialog
+        open={showLocationOnboarding}
+        onOpenChange={(open) => {
+          if (!open && !isGettingLocation) {
+            setShowLocationOnboarding(false);
+          }
+        }}
+      >
+        <AlertDialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Use your current location?</AlertDialogTitle>
+            <AlertDialogDescription>
+              We can use your current location as the starting point for this
+              park submission. You can adjust the marker afterward if the park
+              is somewhere else.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          {locationOnboardingError ? (
+            <Alert
+              className="border-destructive/30 bg-destructive/5"
+              aria-live="assertive"
+            >
+              <AlertTriangle className="text-destructive" aria-hidden="true" />
+              <AlertDescription className="text-foreground">
+                {locationOnboardingError}
+              </AlertDescription>
+            </Alert>
+          ) : null}
+
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              disabled={isGettingLocation}
+              onClick={() => setShowLocationOnboarding(false)}
+            >
+              Not now
+            </AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              disabled={isGettingLocation}
+              onClick={(event) => {
+                event.preventDefault();
+                void selectCurrentLocation();
+              }}
+            >
+              {isGettingLocation ? (
+                <LoaderCircle className="animate-spin" aria-hidden="true" />
+              ) : (
+                <LocateFixed aria-hidden="true" />
+              )}
+              {isGettingLocation ? "Getting your location..." : "Allow location"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={Boolean(nearbyParkWarning)}
