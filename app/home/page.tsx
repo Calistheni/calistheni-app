@@ -331,12 +331,12 @@ export default async function HomePage() {
             description="Completed training from the current calendar week."
           />
           <Card className="rounded-2xl border-border/80 bg-card/80 py-0 shadow-none">
-            <CardContent className="p-5 sm:p-7 lg:p-8">
+            <CardContent className="px-0 py-5 sm:p-7 lg:p-8">
               <div className="grid grid-cols-2 lg:grid-cols-4">
                 {weekStats.map((stat, index) => (
                   <div
                     key={stat.label}
-                    className={`min-w-0 py-4 sm:px-6 sm:py-5 lg:px-8 ${
+                    className={`min-w-0 px-5 py-5 sm:px-6 lg:px-8 ${
                       index % 2 === 1 ? "border-l" : ""
                     } ${index >= 2 ? "border-t" : ""} ${
                       index > 0 ? "lg:border-t-0" : ""
@@ -345,16 +345,18 @@ export default async function HomePage() {
                     <p className="text-[0.68rem] font-semibold tracking-[0.15em] text-muted-foreground uppercase sm:text-xs">
                       {stat.label}
                     </p>
-                    <p className="mt-2 break-words text-2xl font-bold tracking-tight tabular-nums sm:text-3xl lg:text-4xl">
+                    <p className="mt-2.5 break-words text-2xl font-bold tracking-tight tabular-nums sm:mt-2 sm:text-3xl lg:text-4xl">
                       {stat.value}
                     </p>
                   </div>
                 ))}
               </div>
-              <WeeklyGoalEditor
-                initialGoal={profile.weeklyWorkoutGoal}
-                completedWorkouts={weeklyWorkoutCount}
-              />
+              <div className="px-5 sm:px-0">
+                <WeeklyGoalEditor
+                  initialGoal={profile.weeklyWorkoutGoal}
+                  completedWorkouts={weeklyWorkoutCount}
+                />
+              </div>
             </CardContent>
           </Card>
         </section>

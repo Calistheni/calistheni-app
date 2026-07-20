@@ -48,6 +48,7 @@ export function AppShell({ children, user }: AppShellProps) {
   const activeKey = getActivePrimaryNavigation(pathname);
   const isFullBleed = isFullBleedAppRoute(pathname);
   const usesFocusedWorkoutMode = pathname === "/workouts/new";
+  const keepsMobileHeader = pathname === "/pro";
 
   return (
     <div
@@ -59,7 +60,7 @@ export function AppShell({ children, user }: AppShellProps) {
       <header
         className={cn(
           "sticky top-0 z-40 h-14 shrink-0 border-b bg-background",
-          (usesFocusedWorkoutMode || isFullBleed) && "hidden md:block"
+          !keepsMobileHeader && "hidden md:block"
         )}
       >
         <div className="mx-auto flex h-full max-w-7xl items-center gap-4 px-3 sm:px-6">
