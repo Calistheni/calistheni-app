@@ -59,7 +59,7 @@ export function AppShell({ children, user }: AppShellProps) {
       <header
         className={cn(
           "sticky top-0 z-40 h-14 shrink-0 border-b bg-background",
-          usesFocusedWorkoutMode && "hidden md:block"
+          (usesFocusedWorkoutMode || isFullBleed) && "hidden md:block"
         )}
       >
         <div className="mx-auto flex h-full max-w-7xl items-center gap-4 px-3 sm:px-6">

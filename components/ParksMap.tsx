@@ -1374,7 +1374,14 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       "bottom-right"
     );
 
+    const resizeObserver = new ResizeObserver(() => {
+      map.resize();
+    });
+    resizeObserver.observe(mapContainer.current);
+
     return () => {
+      resizeObserver.disconnect();
+
       if (viewportDebounceRef.current) {
         window.clearTimeout(viewportDebounceRef.current);
       }
