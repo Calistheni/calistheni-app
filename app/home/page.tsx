@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import {
   ArrowRight,
   Dumbbell,
+  Gift,
   ListChecks,
   MapPin,
   Medal,
@@ -19,6 +20,7 @@ import {
 } from "@/components/home/HomeWorkoutOverview";
 import { TrainingActivityCalendar } from "@/components/home/TrainingActivityCalendar";
 import { WeeklyGoalEditor } from "@/components/home/WeeklyGoalEditor";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -191,6 +193,7 @@ export default async function HomePage() {
       select: {
         name: true,
         bodyweightKg: true,
+        rewardPoints: true,
         weeklyWorkoutGoal: true,
         createdAt: true,
       },
@@ -561,20 +564,46 @@ export default async function HomePage() {
         </section>
 
         <section aria-labelledby="explore-heading">
-          <SectionHeading id="explore-heading" title="Explore" />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <ExploreCard
+          <SectionHeading
+            id="explore-heading"
+            eyebrow="Beyond your workouts"
+            title="Explore"
+            description="Find places to train and see what your activity can unlock."
+          />
+          <div className="grid gap-4 md:grid-cols-2">
+            <DashboardDestinationCard
+              href="/rewards"
+              icon={Gift}
+              title="Rewards"
+              description="Earn Calis Points through eligible activity and unlock partner benefits when the program launches."
+              actionLabel="View rewards"
+              badge="Coming Soon"
+              detail={
+                <>
+                  <span className="text-xs font-semibold tracking-[0.13em] text-muted-foreground uppercase">
+                    Current balance
+                  </span>
+                  <span className="mt-1 block text-xl font-bold tracking-tight tabular-nums">
+                    {profile.rewardPoints.toLocaleString()} Calis Points
+                  </span>
+                </>
+              }
+            />
+            <DashboardDestinationCard
               href="/parks"
               icon={MapPin}
-              title="Find Parks"
-              description="Discover outdoor training spaces near you."
+              title="Discover Parks"
+              description="Find outdoor training spots near you."
+              actionLabel="Explore parks"
             />
-            <ExploreCard
-              href="/feed"
-              icon={UsersRound}
-              title="Community"
-              description="See recent training from athletes you follow."
-            />
+            <div className="md:col-span-2">
+              <ExploreCard
+                href="/feed"
+                icon={UsersRound}
+                title="Community"
+                description="See recent training from athletes you follow."
+              />
+            </div>
           </div>
         </section>
       </div>
@@ -640,5 +669,49 @@ function ExploreCard({
       </div>
       <ArrowRight className="size-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-primary" />
     </Link>
+  );
+}
+
+function DashboardDestinationCard({
+  href,
+  icon: Icon,
+  title,
+  description,
+  actionLabel,
+  badge,
+  detail,
+}: {
+  href: string;
+  icon: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+  title: string;
+  description: string;
+  actionLabel: string;
+  badge?: string;
+  detail?: React.ReactNode;
+}) {
+  return (
+    <Card className="h-full rounded-2xl shadow-none">
+      <CardContent className="flex h-full flex-col p-6 sm:p-7">
+        <div className="flex items-start justify-between gap-4">
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Icon className="size-5" aria-hidden={true} />
+          </span>
+          {badge ? <Badge variant="secondary">{badge}</Badge> : null}
+        </div>
+        <h3 className="mt-5 text-xl font-semibold">{title}</h3>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          {description}
+        </p>
+        {detail ? <div className="mt-6 border-t pt-4">{detail}</div> : null}
+        <div className="mt-auto pt-7">
+          <Button asChild className="w-full sm:w-fit">
+            <Link href={href}>
+              {actionLabel}{" "}
+              <ArrowRight className="size-4" aria-hidden="true" />
+            </Link>
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
