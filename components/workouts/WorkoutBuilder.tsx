@@ -11,6 +11,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  ArrowDown,
+  ArrowUp,
   AlertTriangle,
   CheckCircle2,
   Circle,
@@ -18,8 +20,10 @@ import {
   Gauge,
   MessageSquare,
   Plus,
+  Repeat2,
   Trash2,
 } from "lucide-react";
+import { arrayMove } from "@dnd-kit/sortable";
 import {
   Accordion,
   AccordionContent,
@@ -89,6 +93,10 @@ import {
 } from "@/components/workouts/hooks/useWorkoutTimer";
 import { useRestTimer } from "@/components/workouts/hooks/useRestTimer";
 import { MobileActiveWorkoutHeader } from "@/components/workouts/MobileActiveWorkoutHeader";
+import {
+  SortableExerciseItem,
+  SortableExerciseList,
+} from "@/components/workouts/SortableExerciseList";
 import { toast } from "sonner";
 import {
   clearActiveWorkoutSessionStorage,
@@ -252,6 +260,82 @@ function usesBodyweightVolume(trackingType: ExerciseListItem["trackingType"]) {
     trackingType === "BODYWEIGHT_REPS" ||
     trackingType === "WEIGHTED_BODYWEIGHT"
   );
+}
+
+function getTrackingFamily(
+  trackingType: ExerciseListItem["trackingType"]
+) {
+  if (
+    trackingType === "BODYWEIGHT_REPS" ||
+    trackingType === "WEIGHTED_BODYWEIGHT" ||
+    trackingType === "EXTERNAL_WEIGHT"
+  ) {
+    return "reps";
+  }
+
+  if (trackingType === "DURATION") {
+    return "duration";
+  }
+
+  if (
+    trackingType === "DISTANCE_DURATION" ||
+    trackingType === "STEPS_DISTANCE_DURATION" ||
+    trackingType === "FLOORS_DISTANCE_DURATION" ||
+    trackingType === "WEIGHT_DISTANCE_DURATION"
+  ) {
+    return "distance";
+  }
+
+  return "unspecified";
+}
+
+function getTrackingFields(
+  trackingType: ExerciseListItem["trackingType"]
+) {
+  const fields = new Set<keyof WorkoutSetInput>();
+
+  if (isRepsFieldVisible(trackingType)) fields.add("reps");
+  if (isWeightFieldVisible(trackingType)) fields.add("weight");
+  if (isDurationFieldVisible(trackingType)) fields.add("durationSeconds");
+  if (isDistanceFieldVisible(trackingType)) fields.add("distanceMeters");
+  if (trackingType === "STEPS_DISTANCE_DURATION") fields.add("steps");
+  if (trackingType === "FLOORS_DISTANCE_DURATION") fields.add("floors");
+
+  return fields;
+}
+
+function areTrackingTypesCompatible(
+  currentType: ExerciseListItem["trackingType"],
+  replacementType: ExerciseListItem["trackingType"]
+) {
+  if (getTrackingFamily(currentType) !== getTrackingFamily(replacementType)) {
+    return false;
+  }
+
+  const replacementFields = getTrackingFields(replacementType);
+
+  return [...getTrackingFields(currentType)].every((field) =>
+    replacementFields.has(field)
+  );
+}
+
+function preserveCompatibleSetFields(
+  set: LocalWorkoutSet,
+  trackingType: ExerciseListItem["trackingType"]
+): LocalWorkoutSet {
+  const fields = getTrackingFields(trackingType);
+
+  return {
+    ...set,
+    reps: fields.has("reps") ? set.reps : null,
+    weight: fields.has("weight") ? set.weight : null,
+    durationSeconds: fields.has("durationSeconds")
+      ? set.durationSeconds
+      : null,
+    distanceMeters: fields.has("distanceMeters") ? set.distanceMeters : null,
+    steps: fields.has("steps") ? set.steps : null,
+    floors: fields.has("floors") ? set.floors : null,
+  };
 }
 
 function getSetRowGridClass(showRpeAction: boolean) {
@@ -511,6 +595,19 @@ export function WorkoutBuilder({
   const [isSaving, setIsSaving] = useState(false);
   const [isWorkoutDetailsOpen, setIsWorkoutDetailsOpen] = useState(false);
   const [isExercisePickerOpen, setIsExercisePickerOpen] = useState(false);
+  const [exerciseToReplaceId, setExerciseToReplaceId] = useState<string | null>(
+    null
+  );
+  const [pendingIncompatibleReplacement, setPendingIncompatibleReplacement] =
+    useState<{
+      localId: string;
+      currentExercise: ExerciseListItem;
+      replacementExercise: ExerciseListItem;
+    } | null>(null);
+  const [exercisePickerViewport, setExercisePickerViewport] = useState<{
+    height: number;
+    bottom: number;
+  } | null>(null);
   const [isTimerSheetOpen, setIsTimerSheetOpen] = useState(false);
   const [isFinishSheetOpen, setIsFinishSheetOpen] = useState(false);
   const [showIncompleteSetsDialog, setShowIncompleteSetsDialog] =
@@ -629,6 +726,45 @@ export function WorkoutBuilder({
 
     return warnedSetIds.filter((setId) => currentIds.has(setId));
   }, [incompleteEnteredSets, warnedSetIds]);
+
+  useEffect(() => {
+    if (!isExercisePickerOpen) {
+      return;
+    }
+
+    const viewport = window.visualViewport;
+
+    function updateViewport() {
+      if (!viewport) {
+        setExercisePickerViewport({
+          height: Math.round(window.innerHeight * 0.9),
+          bottom: 0,
+        });
+        return;
+      }
+
+      setExercisePickerViewport({
+        height: Math.round(
+          Math.min(viewport.height, window.innerHeight * 0.9)
+        ),
+        bottom: Math.max(
+          0,
+          Math.round(window.innerHeight - viewport.height - viewport.offsetTop)
+        ),
+      });
+    }
+
+    updateViewport();
+    viewport?.addEventListener("resize", updateViewport);
+    viewport?.addEventListener("scroll", updateViewport);
+    window.addEventListener("orientationchange", updateViewport);
+
+    return () => {
+      viewport?.removeEventListener("resize", updateViewport);
+      viewport?.removeEventListener("scroll", updateViewport);
+      window.removeEventListener("orientationchange", updateViewport);
+    };
+  }, [isExercisePickerOpen]);
 
   useEffect(() => {
     if (!scrollTargetSetId) {
@@ -793,6 +929,106 @@ export function WorkoutBuilder({
     );
   }
 
+  function moveExercise(activeId: string, overId: string) {
+    setSelectedExercises((current) => {
+      const activeIndex = current.findIndex((item) => item.localId === activeId);
+      const overIndex = current.findIndex((item) => item.localId === overId);
+
+      if (activeIndex < 0 || overIndex < 0) {
+        return current;
+      }
+
+      return arrayMove(current, activeIndex, overIndex);
+    });
+  }
+
+  function moveExerciseBy(localId: string, offset: -1 | 1) {
+    setSelectedExercises((current) => {
+      const currentIndex = current.findIndex((item) => item.localId === localId);
+      const nextIndex = currentIndex + offset;
+
+      if (
+        currentIndex < 0 ||
+        nextIndex < 0 ||
+        nextIndex >= current.length
+      ) {
+        return current;
+      }
+
+      return arrayMove(current, currentIndex, nextIndex);
+    });
+  }
+
+  function replaceExercise(
+    localId: string,
+    replacementExercise: ExerciseListItem,
+    preserveSetData: boolean
+  ) {
+    setSelectedExercises((current) =>
+      current.map((item) =>
+        item.localId === localId
+          ? {
+              ...item,
+              exerciseId: replacementExercise.id,
+              sets: item.sets.map((set) =>
+                preserveSetData
+                  ? preserveCompatibleSetFields(
+                      set,
+                      replacementExercise.trackingType
+                    )
+                  : createLocalSet(EMPTY_SET_VALUES, set.localId)
+              ),
+            }
+          : item
+      )
+    );
+    setPendingIncompatibleReplacement(null);
+  }
+
+  function selectExercise(exercise: ExerciseListItem) {
+    if (!exerciseToReplaceId) {
+      addExercise(exercise.id);
+      handleExercisePickerOpenChange(false);
+      return;
+    }
+
+    const currentExerciseState = selectedExercises.find(
+      (item) => item.localId === exerciseToReplaceId
+    );
+    const currentExercise = exercises.find(
+      (item) => item.id === currentExerciseState?.exerciseId
+    );
+
+    if (!currentExercise || currentExercise.id === exercise.id) {
+      handleExercisePickerOpenChange(false);
+      return;
+    }
+
+    if (
+      areTrackingTypesCompatible(
+        currentExercise.trackingType,
+        exercise.trackingType
+      )
+    ) {
+      replaceExercise(exerciseToReplaceId, exercise, true);
+      toast.success(`${currentExercise.name} replaced with ${exercise.name}.`);
+      handleExercisePickerOpenChange(false);
+      return;
+    }
+
+    setPendingIncompatibleReplacement({
+      localId: exerciseToReplaceId,
+      currentExercise,
+      replacementExercise: exercise,
+    });
+    handleExercisePickerOpenChange(false);
+  }
+
+  function openReplaceExercise(localId: string) {
+    setExerciseToReplaceId(localId);
+    setIsExercisePickerOpen(true);
+  }
+
   function removeExercise(localId: string) {
     setSelectedExercises((current) =>
       current.filter((item) => item.localId !== localId)
@@ -830,6 +1066,8 @@ export function WorkoutBuilder({
     if (!open) {
       setSearch("");
       setMuscleFilter("all");
+      setExerciseToReplaceId(null);
+      setExercisePickerViewport(null);
     }
   }
 
@@ -1242,9 +1480,11 @@ export function WorkoutBuilder({
             : "space-y-4"
         }
       >
-        <Button asChild variant="outline" className="w-full">
-          <Link href="/exercises/custom/new">Create Custom Exercise</Link>
-        </Button>
+        {!exerciseToReplaceId ? (
+          <Button asChild variant="outline" className="w-full">
+            <Link href="/exercises/custom/new">Create Custom Exercise</Link>
+          </Button>
+        ) : null}
         <Input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
@@ -1272,19 +1512,24 @@ export function WorkoutBuilder({
           }
         >
           {filteredExercises.map((exercise) => {
-            const selected = selectedExercises.some(
-              (item) => item.exerciseId === exercise.id
+            const selectedElsewhere = selectedExercises.some(
+              (item) =>
+                item.exerciseId === exercise.id &&
+                item.localId !== exerciseToReplaceId
             );
+            const isCurrentExercise = selectedExercises.some(
+              (item) =>
+                item.localId === exerciseToReplaceId &&
+                item.exerciseId === exercise.id
+            );
+            const unavailable = selectedElsewhere || isCurrentExercise;
 
             return (
               <button
                 key={exercise.id}
                 type="button"
-                onClick={() => {
-                  addExercise(exercise.id);
-                  handleExercisePickerOpenChange(false);
-                }}
-                disabled={selected}
+                onClick={() => selectExercise(exercise)}
+                disabled={unavailable}
                 className="flex w-full items-center gap-3 rounded-lg border p-2 text-left transition hover:border-primary disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Image
@@ -1309,8 +1554,14 @@ export function WorkoutBuilder({
                     </Badge>
                   ) : null}
                 </span>
-                <Badge variant={selected ? "secondary" : "outline"}>
-                  {selected ? "Added" : "Add"}
+                <Badge variant={unavailable ? "secondary" : "outline"}>
+                  {isCurrentExercise
+                    ? "Current"
+                    : selectedElsewhere
+                      ? "Added"
+                      : exerciseToReplaceId
+                        ? "Replace"
+                        : "Add"}
                 </Badge>
               </button>
             );
@@ -1583,13 +1834,29 @@ export function WorkoutBuilder({
               ref={exercisePickerContentRef}
               side="bottom"
               className="h-[90dvh] max-h-[calc(100dvh-env(safe-area-inset-top))] gap-0 overflow-hidden rounded-t-2xl"
+              style={
+                exercisePickerViewport
+                  ? {
+                      height: exercisePickerViewport.height,
+                      maxHeight: exercisePickerViewport.height,
+                      bottom: exercisePickerViewport.bottom,
+                    }
+                  : undefined
+              }
               onOpenAutoFocus={(event) => {
                 event.preventDefault();
                 exercisePickerContentRef.current?.focus({ preventScroll: true });
               }}
             >
               <SheetHeader className="shrink-0 border-b">
-                <SheetTitle>Add Exercise</SheetTitle>
+                <SheetTitle>
+                  {exerciseToReplaceId ? "Replace exercise" : "Add Exercise"}
+                </SheetTitle>
+                <SheetDescription>
+                  {exerciseToReplaceId
+                    ? "Choose a replacement for this workout exercise."
+                    : "Search and choose an exercise for this workout."}
+                </SheetDescription>
               </SheetHeader>
               <div className="flex min-h-0 flex-1 flex-col px-4 pt-3">
                 {renderExercisePicker(true)}
@@ -1743,13 +2010,17 @@ export function WorkoutBuilder({
               </CardContent>
             </Card>
           ) : (
-            <Accordion
-              type="multiple"
-              value={openExerciseIds}
-              onValueChange={setOpenExerciseIds}
-              className="space-y-2"
+            <SortableExerciseList
+              ids={selectedExercises.map((exercise) => exercise.localId)}
+              onMove={moveExercise}
             >
-              {selectedExercises.map((selectedExercise) => {
+              <Accordion
+                type="multiple"
+                value={openExerciseIds}
+                onValueChange={setOpenExerciseIds}
+                className="space-y-2"
+              >
+              {selectedExercises.map((selectedExercise, exerciseIndex) => {
                 const exercise = exercises.find(
                   (item) => item.id === selectedExercise.exerciseId
                 );
@@ -1770,8 +2041,13 @@ export function WorkoutBuilder({
                 ).length;
 
                 return (
-                  <AccordionItem
+                  <SortableExerciseItem
                     key={selectedExercise.localId}
+                    id={selectedExercise.localId}
+                    label={exercise.name}
+                  >
+                    {(dragHandle) => (
+                  <AccordionItem
                     value={selectedExercise.localId}
                     className="overflow-hidden rounded-xl border border-border bg-card shadow-sm [overflow-anchor:none]"
                   >
@@ -1806,6 +2082,7 @@ export function WorkoutBuilder({
                         </div>
                       </AccordionTrigger>
                       <div className="flex shrink-0 items-center py-1 pr-1">
+                        {dragHandle}
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
@@ -1818,6 +2095,32 @@ export function WorkoutBuilder({
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onSelect={() =>
+                                openReplaceExercise(selectedExercise.localId)
+                              }
+                            >
+                              <Repeat2 />
+                              Replace exercise
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={exerciseIndex === 0}
+                              onSelect={() =>
+                                moveExerciseBy(selectedExercise.localId, -1)
+                              }
+                            >
+                              <ArrowUp />
+                              Move up
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={exerciseIndex === selectedExercises.length - 1}
+                              onSelect={() =>
+                                moveExerciseBy(selectedExercise.localId, 1)
+                              }
+                            >
+                              <ArrowDown />
+                              Move down
+                            </DropdownMenuItem>
                             <DropdownMenuItem
                               variant="destructive"
                               onSelect={() =>
@@ -2229,9 +2532,12 @@ export function WorkoutBuilder({
                       </Button>
                     </AccordionContent>
                   </AccordionItem>
+                    )}
+                  </SortableExerciseItem>
                 );
               })}
-            </Accordion>
+              </Accordion>
+            </SortableExerciseList>
           )}
         </section>
 
@@ -2513,6 +2819,50 @@ export function WorkoutBuilder({
             </AlertDialogCancel>
             <AlertDialogAction onClick={reviewIncompleteSets}>
               Review sets
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={Boolean(pendingIncompatibleReplacement)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingIncompatibleReplacement(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Replace and reset set data?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingIncompatibleReplacement?.currentExercise.name ??
+                "The current exercise"}{" "}
+              and {pendingIncompatibleReplacement?.replacementExercise.name ??
+                "the replacement"} use incompatible tracking formats. The
+              number of sets, exercise notes, and rest time will remain, but
+              entered set values, completion state, and RPE will be reset.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel replacement</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!pendingIncompatibleReplacement) {
+                  return;
+                }
+
+                replaceExercise(
+                  pendingIncompatibleReplacement.localId,
+                  pendingIncompatibleReplacement.replacementExercise,
+                  false
+                );
+                toast.success(
+                  `${pendingIncompatibleReplacement.currentExercise.name} replaced with ${pendingIncompatibleReplacement.replacementExercise.name}.`
+                );
+              }}
+            >
+              Replace and reset
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
