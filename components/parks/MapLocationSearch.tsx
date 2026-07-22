@@ -14,9 +14,10 @@ import { AlertCircle, LoaderCircle, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 type SearchFeature = GeoJSON.Feature<
-  GeoJSON.Point,
+  GeoJSON.Point | GeoJSON.Polygon | GeoJSON.MultiPolygon,
   {
     feature_type?: string;
+    mapbox_id?: string;
     bbox?: [number, number, number, number];
   }
 >;
@@ -178,6 +179,7 @@ export function MapLocationSearch({
             <SearchBox
               ref={searchBoxRef}
               accessToken={accessToken}
+              marker={false}
               value={value}
               placeholder="Search location"
               options={{

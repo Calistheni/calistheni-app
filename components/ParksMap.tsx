@@ -10,7 +10,8 @@ import {
 } from "react";
 import dynamic from "next/dynamic";
 import mapboxgl from "mapbox-gl";
-import { LoaderCircle, LocateFixed, Search } from "lucide-react";
+import { createRoot, type Root } from "react-dom/client";
+import { LoaderCircle, LocateFixed, MapPin, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useMapUserFocus } from "@/components/parks/useMapUserFocus";
 import type {
@@ -45,6 +46,38 @@ const MEANINGFUL_CENTER_SHIFT_RATIO = 0.18;
 const MEANINGFUL_ZOOM_DELTA = 0.5;
 const LIGHT_MAP_MARKER_COLOR = "#2563eb";
 const DARK_MAP_MARKER_COLOR = "#ef4444";
+const SEARCHED_AREA_SOURCE_ID = "searched-area-boundary-source";
+const SEARCHED_AREA_FILL_LAYER_ID = "searched-area-boundary-fill";
+const SEARCHED_AREA_OUTLINE_LAYER_ID = "searched-area-boundary-outline";
+const SEARCHED_AREA_VECTOR_SOURCE_ID = "searched-area-boundary-vector-source";
+const SEARCHED_AREA_VECTOR_FILL_LAYER_ID =
+  "searched-area-boundary-vector-fill";
+const SEARCHED_AREA_VECTOR_OUTLINE_LAYER_ID =
+  "searched-area-boundary-vector-outline";
+const MAPBOX_BOUNDARIES_VERSION = "v4_6";
+const AREA_FEATURE_TYPES = new Set([
+  "country",
+  "region",
+  "state",
+  "province",
+  "district",
+  "place",
+  "city",
+  "locality",
+  "neighborhood",
+]);
+
+const BOUNDARY_LEVELS_BY_FEATURE_TYPE: Record<string, number[]> = {
+  country: [0],
+  region: [1],
+  state: [1],
+  province: [1],
+  district: [2],
+  place: [2, 3, 4],
+  city: [2, 3, 4],
+  locality: [3, 4],
+  neighborhood: [4],
+};
 
 export type MapLightPreset = "dawn" | "day" | "dusk" | "night";
 export type MapTheme = "default" | "faded" | "monochrome";
@@ -84,13 +117,54 @@ type PopupRenderOptions = {
   expanded?: boolean;
 };
 
+type SearchGeometry = GeoJSON.Point | GeoJSON.Polygon | GeoJSON.MultiPolygon;
+
 type SearchFeature = GeoJSON.Feature<
-  GeoJSON.Point,
+  SearchGeometry,
   {
     feature_type?: string;
+    mapbox_id?: string;
     bbox?: [number, number, number, number];
   }
 >;
+
+type MapboxBoundaryMatch = {
+  level: number;
+  mapboxId: string;
+  sourceLayer: string;
+  tilesetId: string;
+};
+
+type TilequeryResponse = GeoJSON.FeatureCollection<
+  GeoJSON.Point,
+  {
+    mapbox_id?: string;
+    tilequery?: {
+      geometry?: string;
+      layer?: string;
+    };
+  }
+> & {
+  message?: string;
+};
+
+const EMPTY_SEARCHED_AREA: GeoJSON.FeatureCollection = {
+  type: "FeatureCollection",
+  features: [],
+};
+
+function SearchResultMarker() {
+  return (
+    <div className="relative flex size-11 animate-in items-center justify-center rounded-full border border-border bg-card text-primary shadow-[0_6px_20px_rgb(0_0_0/0.24)] duration-150 fade-in-0 zoom-in-90">
+      <span className="absolute -bottom-1.5 left-1/2 size-3 -translate-x-1/2 rotate-45 border-r border-b border-border bg-card" />
+      <MapPin
+        className="relative z-10 size-5"
+        strokeWidth={2.4}
+        aria-hidden="true"
+      />
+    </div>
+  );
+}
 
 function readStoredUserLocation(): [number, number] | null {
   if (typeof window === "undefined") {
@@ -260,6 +334,35 @@ function getSearchResultZoom(featureType: string | undefined) {
     default:
       return 14;
   }
+}
+
+function isBoundaryGeometry(
+  geometry: SearchGeometry
+): geometry is GeoJSON.Polygon | GeoJSON.MultiPolygon {
+  return geometry.type === "Polygon" || geometry.type === "MultiPolygon";
+}
+
+function getBoundaryBounds(
+  geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon
+) {
+  const bounds = new mapboxgl.LngLatBounds();
+
+  function extend(coordinates: unknown) {
+    if (!Array.isArray(coordinates)) return;
+
+    if (
+      typeof coordinates[0] === "number" &&
+      typeof coordinates[1] === "number"
+    ) {
+      bounds.extend([coordinates[0], coordinates[1]] as [number, number]);
+      return;
+    }
+
+    coordinates.forEach(extend);
+  }
+
+  extend(geometry.coordinates);
+  return bounds.isEmpty() ? null : bounds;
 }
 
 export function getInitialLightPreset(): MapLightPreset {
@@ -512,6 +615,10 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   const popupParkIdRef = useRef<number | null>(null);
   const geolocateRef = useRef<mapboxgl.GeolocateControl | null>(null);
   const searchMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const searchMarkerRootRef = useRef<Root | null>(null);
+  const boundaryRequestRef = useRef<AbortController | null>(null);
+  const boundariesAccessUnavailableRef = useRef(false);
+  const searchSelectionRef = useRef(0);
   const storedUserLocationRef = useRef<[number, number] | null>(null);
   const parksRef = useRef(parks);
   const userLocationRef = useRef<[number, number] | null>(null);
@@ -590,9 +697,246 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
 
   const markerColor = getParkMarkerColor(lightPreset);
 
-  function clearSearchLocation() {
+  function clearSearchPointMarker() {
     searchMarkerRef.current?.remove();
-    searchMarkerRef.current = null;
+  }
+
+  function clearMapboxBoundaryLayers() {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (map.getLayer(SEARCHED_AREA_VECTOR_OUTLINE_LAYER_ID)) {
+      map.removeLayer(SEARCHED_AREA_VECTOR_OUTLINE_LAYER_ID);
+    }
+    if (map.getLayer(SEARCHED_AREA_VECTOR_FILL_LAYER_ID)) {
+      map.removeLayer(SEARCHED_AREA_VECTOR_FILL_LAYER_ID);
+    }
+    if (map.getSource(SEARCHED_AREA_VECTOR_SOURCE_ID)) {
+      map.removeSource(SEARCHED_AREA_VECTOR_SOURCE_ID);
+    }
+  }
+
+  function clearSearchBoundary() {
+    const source = mapRef.current?.getSource(
+      SEARCHED_AREA_SOURCE_ID
+    ) as mapboxgl.GeoJSONSource | undefined;
+    source?.setData(EMPTY_SEARCHED_AREA);
+    clearMapboxBoundaryLayers();
+  }
+
+  function clearSearchLocation() {
+    boundaryRequestRef.current?.abort();
+    boundaryRequestRef.current = null;
+    searchSelectionRef.current += 1;
+    clearSearchPointMarker();
+    clearSearchBoundary();
+  }
+
+  function fitSearchResult(
+    map: mapboxgl.Map,
+    location: [number, number],
+    featureType: string | undefined,
+    bbox?: [number, number, number, number]
+  ) {
+    const resultZoom = getSearchResultZoom(featureType);
+
+    if (bbox) {
+      const mobile = window.matchMedia("(max-width: 639px)").matches;
+      map.fitBounds(bbox, {
+        padding: mobile
+          ? { top: 140, right: 28, bottom: 120, left: 28 }
+          : { top: 96, right: 96, bottom: 72, left: 96 },
+        maxZoom: resultZoom,
+        duration: 1000,
+        essential: true,
+      });
+      return;
+    }
+
+    map.flyTo({
+      center: location,
+      zoom: resultZoom,
+      bearing: 0,
+      pitch: 0,
+      duration: 1000,
+      essential: true,
+    });
+  }
+
+  function showSearchPointMarker(
+    map: mapboxgl.Map,
+    location: [number, number]
+  ) {
+    let marker = searchMarkerRef.current;
+
+    if (!marker) {
+      const markerElement = document.createElement("div");
+      markerElement.className = "size-11";
+      markerElement.setAttribute("aria-label", "Searched location");
+      const markerRoot = createRoot(markerElement);
+      markerRoot.render(<SearchResultMarker />);
+      marker = new mapboxgl.Marker({
+        element: markerElement,
+        anchor: "bottom",
+      });
+      searchMarkerRef.current = marker;
+      searchMarkerRootRef.current = markerRoot;
+    }
+
+    marker.setLngLat(location).addTo(map);
+  }
+
+  function showSearchBoundary(
+    map: mapboxgl.Map,
+    feature: SearchFeature & {
+      geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon;
+    }
+  ) {
+    const source = map.getSource(
+      SEARCHED_AREA_SOURCE_ID
+    ) as mapboxgl.GeoJSONSource | undefined;
+    const bounds = feature.properties.bbox
+      ? new mapboxgl.LngLatBounds(
+          [feature.properties.bbox[0], feature.properties.bbox[1]],
+          [feature.properties.bbox[2], feature.properties.bbox[3]]
+        )
+      : getBoundaryBounds(feature.geometry);
+
+    if (!source || !bounds) return false;
+
+    clearSearchPointMarker();
+    source.setData({
+      type: "FeatureCollection",
+      features: [feature],
+    });
+    const center = bounds.getCenter();
+    fitSearchResult(
+      map,
+      [center.lng, center.lat],
+      feature.properties.feature_type,
+      [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()]
+    );
+    return true;
+  }
+
+  async function retrieveMapboxBoundary(
+    feature: SearchFeature,
+    location: [number, number],
+    signal: AbortSignal
+  ): Promise<MapboxBoundaryMatch | null> {
+    const featureType = feature.properties.feature_type;
+    const mapboxId = feature.properties.mapbox_id;
+    const levels = BOUNDARY_LEVELS_BY_FEATURE_TYPE[featureType ?? ""];
+    if (
+      !mapboxId ||
+      !levels?.length ||
+      !MAPBOX_ACCESS_TOKEN ||
+      boundariesAccessUnavailableRef.current
+    ) {
+      return null;
+    }
+
+    const tilesetIds = levels.map(
+      (level) => `mapbox.boundaries-adm${level}-${MAPBOX_BOUNDARIES_VERSION}`
+    );
+    const url = new URL(
+      `https://api.mapbox.com/v4/${tilesetIds.join(",")}/tilequery/${location[0]},${location[1]}.json`
+    );
+    url.searchParams.set("geometry", "polygon");
+    url.searchParams.set("limit", "50");
+    url.searchParams.set("access_token", MAPBOX_ACCESS_TOKEN);
+
+    const response = await fetch(url, { signal });
+    if ([401, 402, 403].includes(response.status)) {
+      boundariesAccessUnavailableRef.current = true;
+    }
+    if (!response.ok) return null;
+
+    const result = (await response.json()) as TilequeryResponse;
+    const match = result.features.find((candidate) => {
+      const candidateId =
+        candidate.properties.mapbox_id ??
+        (candidate.id === undefined ? undefined : String(candidate.id));
+      return (
+        candidateId === mapboxId &&
+        candidate.properties.tilequery?.geometry === "polygon"
+      );
+    });
+    const sourceLayer = match?.properties.tilequery?.layer;
+    const levelMatch = sourceLayer?.match(/boundaries_admin_(\d)/);
+    const level = levelMatch ? Number(levelMatch[1]) : NaN;
+    if (!match || !sourceLayer || !Number.isInteger(level)) return null;
+
+    return {
+      level,
+      mapboxId,
+      sourceLayer,
+      tilesetId: `mapbox.boundaries-adm${level}-${MAPBOX_BOUNDARIES_VERSION}`,
+    };
+  }
+
+  function showMapboxBoundary(
+    map: mapboxgl.Map,
+    match: MapboxBoundaryMatch,
+    feature: SearchFeature,
+    location: [number, number]
+  ) {
+    clearSearchPointMarker();
+    clearMapboxBoundaryLayers();
+    map.addSource(SEARCHED_AREA_VECTOR_SOURCE_ID, {
+      type: "vector",
+      url: `mapbox://${match.tilesetId}`,
+      promoteId: "mapbox_id",
+    });
+    const filter: mapboxgl.FilterSpecification = [
+      "all",
+      ["==", ["get", "mapbox_id"], match.mapboxId],
+      [
+        "any",
+        ["==", ["get", "worldview"], "all"],
+        ["in", "US", ["get", "worldview"]],
+      ],
+    ];
+    const beforeLayer = map.getLayer("park-placeholder-circles")
+      ? "park-placeholder-circles"
+      : undefined;
+
+    map.addLayer(
+      {
+        id: SEARCHED_AREA_VECTOR_FILL_LAYER_ID,
+        type: "fill",
+        source: SEARCHED_AREA_VECTOR_SOURCE_ID,
+        "source-layer": match.sourceLayer,
+        filter,
+        paint: {
+          "fill-color": markerColor,
+          "fill-opacity":
+            lightPreset === "day" || lightPreset === "dawn" ? 0.1 : 0.14,
+        },
+      },
+      beforeLayer
+    );
+    map.addLayer(
+      {
+        id: SEARCHED_AREA_VECTOR_OUTLINE_LAYER_ID,
+        type: "line",
+        source: SEARCHED_AREA_VECTOR_SOURCE_ID,
+        "source-layer": match.sourceLayer,
+        filter,
+        paint: {
+          "line-color": markerColor,
+          "line-opacity": 0.9,
+          "line-width": 2.5,
+        },
+      },
+      beforeLayer
+    );
+    fitSearchResult(
+      map,
+      location,
+      feature.properties.feature_type,
+      feature.properties.bbox
+    );
   }
 
   function queueViewportLoadAfterLocationMove() {
@@ -659,8 +1003,33 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     return triggered;
   }
 
-  function handleLocationSearchRetrieve(feature: SearchFeature) {
+  async function handleLocationSearchRetrieve(feature: SearchFeature) {
     const map = mapRef.current;
+    if (!map) return;
+
+    const featureType = feature.properties.feature_type;
+    const isAreaFeature = AREA_FEATURE_TYPES.has(featureType ?? "");
+
+    popupRef.current?.remove();
+    clearSearchLocation();
+    const selection = searchSelectionRef.current;
+    beginAwayFromUser();
+
+    if (
+      isAreaFeature &&
+      isBoundaryGeometry(feature.geometry) &&
+      showSearchBoundary(
+        map,
+        feature as SearchFeature & {
+          geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon;
+        }
+      )
+    ) {
+      return;
+    }
+
+    if (feature.geometry.type !== "Point") return;
+
     const coordinates = feature.geometry.coordinates;
 
     if (
@@ -673,37 +1042,45 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     }
 
     const location: [number, number] = [coordinates[0], coordinates[1]];
-    const resultZoom = getSearchResultZoom(feature.properties.feature_type);
 
-    popupRef.current?.remove();
-    clearSearchLocation();
-    beginAwayFromUser();
+    if (isAreaFeature) {
+      const controller = new AbortController();
+      boundaryRequestRef.current = controller;
 
-    searchMarkerRef.current = new mapboxgl.Marker({
-      color: "#f59e0b",
-      scale: 0.85,
-    })
-      .setLngLat(location)
-      .addTo(map);
+      try {
+        const boundary = await retrieveMapboxBoundary(
+          feature,
+          location,
+          controller.signal
+        );
+        if (
+          controller.signal.aborted ||
+          searchSelectionRef.current !== selection
+        ) {
+          return;
+        }
+        boundaryRequestRef.current = null;
 
-    if (feature.properties.bbox) {
-      map.fitBounds(feature.properties.bbox, {
-        padding: 64,
-        maxZoom: resultZoom,
-        duration: 1000,
-        essential: true,
-      });
-      return;
+        if (boundary) {
+          showMapboxBoundary(map, boundary, feature, location);
+          return;
+        }
+      } catch (error) {
+        if ((error as { name?: string }).name === "AbortError") return;
+      } finally {
+        if (boundaryRequestRef.current === controller) {
+          boundaryRequestRef.current = null;
+        }
+      }
     }
 
-    map.flyTo({
-      center: location,
-      zoom: resultZoom,
-      bearing: 0,
-      pitch: 0,
-      duration: 1000,
-      essential: true,
-    });
+    showSearchPointMarker(map, location);
+    fitSearchResult(
+      map,
+      location,
+      featureType,
+      isAreaFeature ? feature.properties.bbox : undefined
+    );
   }
 
   const requestUserLocationLatestRef = useRef(requestUserLocation);
@@ -1444,6 +1821,35 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         },
       });
 
+      map.addSource(SEARCHED_AREA_SOURCE_ID, {
+        type: "geojson",
+        data: EMPTY_SEARCHED_AREA,
+      });
+
+      map.addLayer({
+        id: SEARCHED_AREA_FILL_LAYER_ID,
+        type: "fill",
+        source: SEARCHED_AREA_SOURCE_ID,
+        paint: {
+          "fill-color": initialMarkerColor,
+          "fill-opacity":
+            initialLightPreset === "day" || initialLightPreset === "dawn"
+              ? 0.1
+              : 0.14,
+        },
+      });
+
+      map.addLayer({
+        id: SEARCHED_AREA_OUTLINE_LAYER_ID,
+        type: "line",
+        source: SEARCHED_AREA_SOURCE_ID,
+        paint: {
+          "line-color": initialMarkerColor,
+          "line-opacity": 0.9,
+          "line-width": 2.5,
+        },
+      });
+
       map.addLayer({
         id: "park-placeholder-circles",
         type: "circle",
@@ -1858,13 +2264,23 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         window.clearTimeout(areaLoadFallbackRef.current);
       }
 
+      boundaryRequestRef.current?.abort();
       viewportRequestRef.current?.controller.abort();
       popupRef.current?.remove();
       searchMarkerRef.current?.remove();
+      const searchMarkerRoot = searchMarkerRootRef.current;
+      searchMarkerRef.current = null;
+      searchMarkerRootRef.current = null;
       map.remove();
       geolocateRef.current = null;
       mapRef.current = null;
       mapLoadedRef.current = false;
+
+      // This cleanup runs while React is committing the parent unmount. Defer
+      // disposal of the nested marker root until that commit has completed.
+      if (searchMarkerRoot) {
+        window.setTimeout(() => searchMarkerRoot.unmount(), 0);
+      }
     };
   }, [
     beginAwayFromUser,
@@ -1893,6 +2309,40 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       "circle-color",
       markerColor
     );
+    map.setPaintProperty(
+      SEARCHED_AREA_FILL_LAYER_ID,
+      "fill-color",
+      markerColor
+    );
+    map.setPaintProperty(
+      SEARCHED_AREA_FILL_LAYER_ID,
+      "fill-opacity",
+      lightPreset === "day" || lightPreset === "dawn" ? 0.1 : 0.14
+    );
+    map.setPaintProperty(
+      SEARCHED_AREA_OUTLINE_LAYER_ID,
+      "line-color",
+      markerColor
+    );
+    if (map.getLayer(SEARCHED_AREA_VECTOR_FILL_LAYER_ID)) {
+      map.setPaintProperty(
+        SEARCHED_AREA_VECTOR_FILL_LAYER_ID,
+        "fill-color",
+        markerColor
+      );
+      map.setPaintProperty(
+        SEARCHED_AREA_VECTOR_FILL_LAYER_ID,
+        "fill-opacity",
+        lightPreset === "day" || lightPreset === "dawn" ? 0.1 : 0.14
+      );
+    }
+    if (map.getLayer(SEARCHED_AREA_VECTOR_OUTLINE_LAYER_ID)) {
+      map.setPaintProperty(
+        SEARCHED_AREA_VECTOR_OUTLINE_LAYER_ID,
+        "line-color",
+        markerColor
+      );
+    }
 
     const source = map.getSource("parks") as mapboxgl.GeoJSONSource | undefined;
 
