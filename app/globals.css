@@ -75,6 +75,10 @@
   cursor: pointer;
 }
 
+[data-parks-map] .mapboxgl-ctrl-group:has(> .mapboxgl-ctrl-geolocate) {
+  display: none;
+}
+
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);

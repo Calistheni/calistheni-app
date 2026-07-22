@@ -14,11 +14,33 @@ export const metadata: Metadata = {
   },
 };
 
-export default async function LoginPage() {
+function getSafeCallbackUrl(value: string | string[] | undefined) {
+  if (
+    typeof value !== "string" ||
+    !value.startsWith("/") ||
+    value.startsWith("//")
+  ) {
+    return null;
+  }
+
+  return value;
+}
+
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    callbackUrl?: string | string[];
+    intent?: string | string[];
+  }>;
+}) {
+  const query = await searchParams;
+  const callbackUrl = getSafeCallbackUrl(query.callbackUrl);
+  const isCreatingAccount = query.intent === "signup";
   const session = await auth();
 
   if (session?.user) {
-    redirect(await getPostLoginRedirect(session.user.id));
+    redirect(callbackUrl ?? (await getPostLoginRedirect(session.user.id)));
   }
 
   const isGoogleConfigured =
@@ -29,7 +51,7 @@ export default async function LoginPage() {
     "use server";
 
     await signIn("google", {
-      redirectTo: "/onboarding",
+      redirectTo: callbackUrl ?? "/onboarding",
     });
   }
 
@@ -40,9 +62,13 @@ export default async function LoginPage() {
           <p className="text-sm font-medium text-muted-foreground">
             Calistheni
           </p>
-          <h1 className="text-3xl font-bold">Login</h1>
+          <h1 className="text-3xl font-bold">
+            {isCreatingAccount ? "Create your free account" : "Sign in"}
+          </h1>
           <p className="text-sm text-muted-foreground">
-            Sign in to submit parks and manage your contributions.
+            {isCreatingAccount
+              ? "Join Calistheni to contribute parks, save your training, and track progress."
+              : "Sign in to submit parks and manage your contributions."}
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -60,7 +86,9 @@ export default async function LoginPage() {
           )}
 
           <Button asChild variant="outline" className="w-full">
-            <Link href="/">Back to Map</Link>
+            <Link href={callbackUrl ?? "/"}>
+              {callbackUrl === "/parks" ? "Back to parks" : "Back to Map"}
+            </Link>
           </Button>
         </CardContent>
       </Card>
