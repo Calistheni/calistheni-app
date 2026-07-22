@@ -2,16 +2,23 @@ import { NextResponse } from "next/server";
 import {
   createInternalServerErrorResponse,
   createJsonErrorResponse,
+  createJsonValidationErrorResponse,
 } from "@/lib/api-response";
 import {
   createUserUnauthorizedResponse,
   getAuthenticatedUserId,
 } from "@/lib/user-auth";
 import { parseWeeklyWorkoutGoal } from "@/lib/home-dashboard";
+import {
+  calculateAge,
+  formatDateOfBirth,
+  validateDateOfBirth,
+} from "@/lib/date-of-birth";
 import { prisma } from "@/lib/prisma";
 
 type ProfileUpdatePayload = {
   bodyweightKg?: unknown;
+  dateOfBirth?: unknown;
   trainingStyle?: unknown;
   primaryGoal?: unknown;
   onboardingCompleted?: unknown;
@@ -83,6 +90,7 @@ export async function PATCH(request: Request) {
 
   const data: {
     bodyweightKg?: number | null;
+    dateOfBirth?: Date | null;
     trainingStyle?: (typeof TRAINING_STYLES)[number] | null;
     primaryGoal?: (typeof PRIMARY_GOALS)[number] | null;
     onboardingCompleted?: boolean;
@@ -94,13 +102,27 @@ export async function PATCH(request: Request) {
     const bodyweightKg = parseBodyweightKg(body.bodyweightKg);
 
     if (bodyweightKg === undefined) {
-      return createJsonErrorResponse(
-        "Bodyweight must be between 20 and 300 kg.",
-        400
+      const error = "Bodyweight must be between 20 and 300 kg.";
+      return createJsonValidationErrorResponse(
+        error,
+        { bodyweightKg: [error] }
       );
     }
 
     data.bodyweightKg = bodyweightKg;
+  }
+
+  if (hasField(body, "dateOfBirth")) {
+    const dateOfBirth = validateDateOfBirth(body.dateOfBirth);
+
+    if (!dateOfBirth.success) {
+      return createJsonValidationErrorResponse(
+        dateOfBirth.error,
+        { dateOfBirth: [dateOfBirth.error] }
+      );
+    }
+
+    data.dateOfBirth = dateOfBirth.date;
   }
 
   if (hasField(body, "trainingStyle")) {
@@ -160,6 +182,7 @@ export async function PATCH(request: Request) {
       data,
       select: {
         bodyweightKg: true,
+        dateOfBirth: true,
         trainingStyle: true,
         primaryGoal: true,
         onboardingCompleted: true,
@@ -168,7 +191,17 @@ export async function PATCH(request: Request) {
       },
     });
 
-    return NextResponse.json(user);
+    const { dateOfBirth, ...profile } = user;
+
+    return NextResponse.json(
+      hasField(body, "dateOfBirth")
+        ? {
+            ...profile,
+            dateOfBirth: formatDateOfBirth(dateOfBirth),
+            age: calculateAge(dateOfBirth),
+          }
+        : profile
+    );
   } catch (error) {
     console.error(error);
     return createInternalServerErrorResponse();

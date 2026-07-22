@@ -20,6 +20,7 @@ import {
   type PersonalRecordType,
 } from "@/lib/personal-records";
 import { aggregateMuscleActivity } from "@/lib/muscle-activity";
+import { formatDateOfBirth } from "@/lib/date-of-birth";
 import { prisma } from "@/lib/prisma";
 import {
   getFriendlySubscriptionPlan,
@@ -95,6 +96,7 @@ export default async function ProfilePage() {
       },
       select: {
         bodyweightKg: true,
+        dateOfBirth: true,
         rpeTrackingEnabled: true,
         rewardPoints: true,
       },
@@ -297,14 +299,15 @@ export default async function ProfilePage() {
 
       <Card className="mb-6">
         <CardHeader>
-          <h2 className="text-2xl font-bold">Workout Settings</h2>
+          <h2 className="text-2xl font-bold">Personal details</h2>
           <p className="text-sm text-muted-foreground">
-            Bodyweight is used to calculate bodyweight exercise volume.
+            Private details used to personalize your training calculations.
           </p>
         </CardHeader>
         <CardContent>
           <BodyweightForm
             initialBodyweightKg={profile?.bodyweightKg ?? null}
+            initialDateOfBirth={formatDateOfBirth(profile?.dateOfBirth)}
             initialRpeTrackingEnabled={profile?.rpeTrackingEnabled ?? false}
           />
         </CardContent>

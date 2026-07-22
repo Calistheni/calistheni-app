@@ -7,12 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import { calculateAge, validateDateOfBirth } from "@/lib/date-of-birth";
 
 type TrainingStyle = "CALISTHENICS" | "GYM" | "BOTH";
 type PrimaryGoal = "FIND_PARKS" | "TRACK_WORKOUTS" | "BOTH";
 
 type OnboardingFlowProps = {
   initialBodyweightKg: number | null;
+  initialDateOfBirth: string | null;
   initialTrainingStyle: TrainingStyle | null;
   initialPrimaryGoal: PrimaryGoal | null;
 };
@@ -71,6 +73,7 @@ function getErrorMessage(error: unknown) {
 
 export function OnboardingFlow({
   initialBodyweightKg,
+  initialDateOfBirth,
   initialTrainingStyle,
   initialPrimaryGoal,
 }: OnboardingFlowProps) {
@@ -79,6 +82,9 @@ export function OnboardingFlow({
   const [bodyweightKg, setBodyweightKg] = useState(
     initialBodyweightKg?.toString() ?? ""
   );
+  const [dateOfBirth, setDateOfBirth] = useState(initialDateOfBirth ?? "");
+  const [dateOfBirthError, setDateOfBirthError] = useState<string | null>(null);
+  const [bodyweightError, setBodyweightError] = useState<string | null>(null);
   const [trainingStyle, setTrainingStyle] = useState<TrainingStyle | null>(
     initialTrainingStyle
   );
@@ -88,8 +94,12 @@ export function OnboardingFlow({
   const [isSaving, setIsSaving] = useState(false);
   const progress = (step / TOTAL_STEPS) * 100;
 
-  function goNext() {
-    if (step === 2 && bodyweightKg.trim()) {
+  function validatePersonalDetails() {
+    const dateResult = validateDateOfBirth(dateOfBirth);
+    const nextDateError = dateResult.success ? null : dateResult.error;
+    let nextBodyweightError: string | null = null;
+
+    if (bodyweightKg.trim()) {
       const parsedBodyweight = Number(bodyweightKg);
 
       if (
@@ -97,10 +107,19 @@ export function OnboardingFlow({
         parsedBodyweight < 20 ||
         parsedBodyweight > 300
       ) {
-        toast.error("Bodyweight must be between 20 and 300 kg.");
-        return;
+        nextBodyweightError = "Bodyweight must be between 20 and 300 kg.";
       }
     }
+
+    setDateOfBirthError(nextDateError);
+    setBodyweightError(nextBodyweightError);
+    const error = nextDateError ?? nextBodyweightError;
+    if (error) toast.error(error);
+    return error === null;
+  }
+
+  function goNext() {
+    if (step === 2 && !validatePersonalDetails()) return;
 
     if (step === 3 && !trainingStyle) {
       toast.error("Choose your training style to continue.");
@@ -116,6 +135,11 @@ export function OnboardingFlow({
   }
 
   async function finishOnboarding() {
+    if (!validatePersonalDetails()) {
+      setStep(2);
+      return;
+    }
+
     setIsSaving(true);
 
     try {
@@ -129,6 +153,7 @@ export function OnboardingFlow({
         },
         body: JSON.stringify({
           bodyweightKg: parsedBodyweight,
+          dateOfBirth: dateOfBirth || null,
           trainingStyle,
           primaryGoal,
           onboardingCompleted: true,
@@ -138,7 +163,11 @@ export function OnboardingFlow({
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as {
           error?: string;
+          fieldErrors?: { dateOfBirth?: string[]; bodyweightKg?: string[] };
         } | null;
+
+        setDateOfBirthError(payload?.fieldErrors?.dateOfBirth?.[0] ?? null);
+        setBodyweightError(payload?.fieldErrors?.bodyweightKg?.[0] ?? null);
 
         throw new Error(payload?.error || "Unable to save onboarding.");
       }
@@ -182,14 +211,57 @@ export function OnboardingFlow({
         {step === 2 ? (
           <section className="space-y-4">
             <div className="space-y-2">
-              <h1 className="text-2xl font-bold">Bodyweight</h1>
+              <h1 className="text-2xl font-bold">Personal details</h1>
               <p className="text-sm text-muted-foreground">
-                Bodyweight improves volume calculations for exercises such as
-                pull-ups, push-ups, and dips. You can skip this for now.
+                These details improve training insights. You can skip them for
+                now and update them privately from your profile later.
               </p>
             </div>
             <div className="space-y-2">
-              <label htmlFor="onboarding-bodyweight" className="text-sm font-medium">
+              <label
+                htmlFor="onboarding-date-of-birth"
+                className="text-sm font-medium"
+              >
+                Date of birth
+              </label>
+              <Input
+                id="onboarding-date-of-birth"
+                type="date"
+                autoComplete="bday"
+                value={dateOfBirth}
+                onChange={(event) => {
+                  setDateOfBirth(event.target.value);
+                  setDateOfBirthError(null);
+                }}
+                aria-invalid={Boolean(dateOfBirthError)}
+                aria-describedby={
+                  dateOfBirthError
+                    ? "onboarding-date-of-birth-help onboarding-date-of-birth-error"
+                    : "onboarding-date-of-birth-help"
+                }
+              />
+              <p
+                id="onboarding-date-of-birth-help"
+                className="text-xs text-muted-foreground"
+              >
+                Used to calculate your age. This is private and can be changed
+                later.
+              </p>
+              {dateOfBirthError ? (
+                <p
+                  id="onboarding-date-of-birth-error"
+                  className="text-xs text-destructive"
+                  role="alert"
+                >
+                  {dateOfBirthError}
+                </p>
+              ) : null}
+            </div>
+            <div className="space-y-2">
+              <label
+                htmlFor="onboarding-bodyweight"
+                className="text-sm font-medium"
+              >
                 Bodyweight in kg
               </label>
               <Input
@@ -199,8 +271,32 @@ export function OnboardingFlow({
                 max={300}
                 placeholder="80"
                 value={bodyweightKg}
-                onChange={(event) => setBodyweightKg(event.target.value)}
+                onChange={(event) => {
+                  setBodyweightKg(event.target.value);
+                  setBodyweightError(null);
+                }}
+                aria-invalid={Boolean(bodyweightError)}
+                aria-describedby={
+                  bodyweightError
+                    ? "onboarding-bodyweight-help onboarding-bodyweight-error"
+                    : "onboarding-bodyweight-help"
+                }
               />
+              <p
+                id="onboarding-bodyweight-help"
+                className="text-xs text-muted-foreground"
+              >
+                Used for bodyweight and weighted-bodyweight workout volume.
+              </p>
+              {bodyweightError ? (
+                <p
+                  id="onboarding-bodyweight-error"
+                  className="text-xs text-destructive"
+                  role="alert"
+                >
+                  {bodyweightError}
+                </p>
+              ) : null}
             </div>
           </section>
         ) : null}
@@ -274,6 +370,10 @@ export function OnboardingFlow({
             </div>
             <div className="space-y-2 rounded-lg border bg-muted/40 p-4 text-sm">
               <p>
+                <span className="font-medium">Age:</span>{" "}
+                {calculateAge(dateOfBirth) ?? "Skipped"}
+              </p>
+              <p>
                 <span className="font-medium">Bodyweight:</span>{" "}
                 {bodyweightKg.trim() ? `${bodyweightKg} kg` : "Skipped"}
               </p>
@@ -307,7 +407,10 @@ export function OnboardingFlow({
                   type="button"
                   variant="ghost"
                   onClick={() => {
+                    setDateOfBirth("");
+                    setDateOfBirthError(null);
                     setBodyweightKg("");
+                    setBodyweightError(null);
                     setStep(3);
                   }}
                 >
