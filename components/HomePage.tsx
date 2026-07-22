@@ -98,7 +98,6 @@ export default function HomePage({ user, inAppShell = false }: HomePageProps) {
             lightPreset={lightPreset}
             theme={theme}
             searchControlVariant={user ? "authenticated" : "guest"}
-            showInitialLoadingDialog={Boolean(user)}
             onViewportParksChange={setParks}
           />
         </div>
@@ -146,7 +145,6 @@ export default function HomePage({ user, inAppShell = false }: HomePageProps) {
 
         {isGuestOnboardingOpen ? (
           <GuestParksOnboarding
-            parkCount={parks.length || undefined}
             onExplore={dismissGuestOnboarding}
             createAccountHref={PARKS_CREATE_ACCOUNT_HREF}
             signInHref={PARKS_SIGN_IN_HREF}

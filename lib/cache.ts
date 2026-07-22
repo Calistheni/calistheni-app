@@ -3,6 +3,7 @@ import type { ParkDetail, ParkSummary } from "@/types/park";
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 const PARKS_CACHE_SCHEMA_VERSION = 3;
+const PARK_AREA_CACHE_SCHEMA_VERSION = 1;
 const PARK_DETAIL_CACHE_SCHEMA_VERSION = 2;
 
 async function getDB() {
@@ -27,36 +28,12 @@ async function getDB() {
   return dbPromise;
 }
 
-export async function mergeParks(
-  updated: ParkSummary[],
-  deleted: number[],
-  version?: string | null
-): Promise<ParkSummary[] | null> {
-  const cached = await loadParks();
-
-  if (!cached) {
-    return null;
-  }
-
-  const parksMap = new Map<number, ParkSummary>(
-    cached.data.map((park: ParkSummary) => [park.id, park])
-  );
-
-  updated.forEach((park) => {
-    parksMap.set(park.id, park);
-  });
-
-  deleted.forEach((id) => {
-    parksMap.delete(id);
-  });
-
-  const merged: ParkSummary[] = [...parksMap.values()];
-
-  await saveParks(merged, version ?? undefined);
-
-  return merged;
-}
-export async function saveParks(parks: ParkSummary[], version?: string) {
+export async function saveParkArea(
+  areaKey: string,
+  parks: ParkSummary[],
+  version: string | null,
+  truncated: boolean
+) {
   const db = await getDB();
 
   await db.put(
@@ -64,25 +41,41 @@ export async function saveParks(parks: ParkSummary[], version?: string) {
     {
       data: parks,
       version,
-      schemaVersion: PARKS_CACHE_SCHEMA_VERSION,
+      truncated,
+      schemaVersion: PARK_AREA_CACHE_SCHEMA_VERSION,
       timestamp: Date.now(),
     },
-    "all"
+    `area:${areaKey}`
   );
 }
-export async function loadParks() {
+
+export async function loadParkArea(areaKey: string) {
   if (typeof window === "undefined") {
     return null;
   }
 
   const db = await getDB();
-  const cache = await db.get("parks", "all");
+  const cache = await db.get("parks", `area:${areaKey}`);
 
-  if (!cache || cache.schemaVersion !== PARKS_CACHE_SCHEMA_VERSION) {
+  if (!cache || cache.schemaVersion !== PARK_AREA_CACHE_SCHEMA_VERSION) {
     return null;
   }
 
-  return cache;
+  return cache as {
+    data: ParkSummary[];
+    version: string | null;
+    truncated: boolean;
+    timestamp: number;
+  };
+}
+
+export async function clearLegacyGlobalParkCache() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const db = await getDB();
+  await db.delete("parks", "all");
 }
 
 export async function saveParkDetail(park: ParkDetail) {
@@ -111,18 +104,6 @@ export async function loadParkDetail(id: number) {
   }
 
   return cache.data as ParkDetail;
-}
-
-export async function deleteParkDetails(ids: number[]) {
-  if (typeof window === "undefined" || ids.length === 0) {
-    return;
-  }
-
-  const db = await getDB();
-  const tx = db.transaction("park-details", "readwrite");
-
-  await Promise.all(ids.map((id) => tx.store.delete(id)));
-  await tx.done;
 }
 
 export async function saveAdminParks(

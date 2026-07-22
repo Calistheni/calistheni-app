@@ -10,6 +10,19 @@ export type ParkSummary = {
   deletedAt: string | null;
 };
 
+export type ParksMapResponse = {
+  parks: ParkSummary[];
+  areaKey: string;
+  version: string | null;
+  truncated: boolean;
+};
+
+export type ParkClusterPlaceholder = {
+  lat: number;
+  lon: number;
+  count: number;
+};
+
 export type ParkDetail = ParkSummary & {
   equipment: string[];
 };
