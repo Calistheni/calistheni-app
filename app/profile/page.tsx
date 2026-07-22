@@ -108,10 +108,11 @@ export default async function ProfilePage() {
       orderBy: {
         achievedAt: "desc",
       },
-      take: 5,
+      take: 30,
       include: {
         exercise: {
           select: {
+            id: true,
             name: true,
           },
         },
@@ -151,6 +152,13 @@ export default async function ProfilePage() {
       secondaryMuscles: set.workoutExercise.exercise.secondaryMuscles,
     }))
   );
+  const recentRecordExercises = recentPersonalRecords
+    .filter(
+      (record, index, records) =>
+        records.findIndex((item) => item.exerciseId === record.exerciseId) ===
+        index
+    )
+    .slice(0, 5);
 
   return (
     <main className="mx-auto w-full max-w-4xl p-4 sm:p-6 lg:p-8">
@@ -260,17 +268,18 @@ export default async function ProfilePage() {
           </div>
         </CardHeader>
         <CardContent>
-          {recentPersonalRecords.length === 0 ? (
+          {recentRecordExercises.length === 0 ? (
             <p className="rounded-xl border p-4 text-sm text-muted-foreground">
               Complete workout sets to start collecting personal records.
             </p>
           ) : (
             <div className="grid gap-3">
-              {recentPersonalRecords.map((record) => (
+              {recentRecordExercises.map((record) => (
                 <Link
-                  key={record.id}
-                  href={`/workouts/${record.workoutId}`}
+                  key={record.exerciseId}
+                  href={`/profile/records/${encodeURIComponent(record.exercise.id)}`}
                   className="rounded-xl border bg-muted/20 p-4 transition hover:border-primary/50"
+                  aria-label={`View all records for ${record.exercise.name}`}
                 >
                   <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                     <div>

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { CartesianGrid, Line, LineChart, XAxis } from "recharts";
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import {
   Card,
   CardContent,
@@ -15,115 +15,113 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
+import {
+  EXERCISE_RECORD_CHART_COLOR,
+  formatExerciseRecordMetricValue,
+  type ExerciseRecordMetricDefinition,
+  type ExerciseWorkoutPerformance,
+} from "@/lib/exercise-record-metrics";
 
-export type ExerciseProgressChartPoint = {
-  date: string;
-  label: string;
-  volume: number;
-  bestSet: number;
-  reps: number;
-  duration: number;
-  weight: number;
+export type ExerciseProgressMetric = ExerciseRecordMetricDefinition & {
+  bestValue: number;
 };
-
-type MetricKey = "volume" | "bestSet" | "reps" | "duration" | "weight";
 
 type ExerciseProgressChartProps = {
-  data: ExerciseProgressChartPoint[];
-  enabledMetrics: MetricKey[];
+  data: ExerciseWorkoutPerformance[];
+  metrics: ExerciseProgressMetric[];
 };
-
-const chartConfig = {
-  volume: {
-    label: "Volume",
-    color: "var(--chart-1)",
-  },
-  bestSet: {
-    label: "Best Set",
-    color: "var(--chart-2)",
-  },
-  reps: {
-    label: "Reps",
-    color: "var(--chart-3)",
-  },
-  duration: {
-    label: "Duration",
-    color: "var(--chart-4)",
-  },
-  weight: {
-    label: "Weight",
-    color: "var(--chart-5)",
-  },
-} satisfies ChartConfig;
 
 export function ExerciseProgressChart({
   data,
-  enabledMetrics,
+  metrics,
 }: ExerciseProgressChartProps) {
-  const metrics = React.useMemo<MetricKey[]>(
-    () => (enabledMetrics.length > 0 ? enabledMetrics : ["volume"]),
-    [enabledMetrics]
-  );
-  const [activeChart, setActiveChart] = React.useState<MetricKey>(metrics[0]);
-  const activeMetric = metrics.includes(activeChart) ? activeChart : metrics[0];
-
-  const totals = React.useMemo(
+  const [activeChart, setActiveChart] = React.useState(metrics[0]?.key ?? null);
+  const activeMetric =
+    metrics.find((metric) => metric.key === activeChart) ?? metrics[0];
+  const chartData = React.useMemo(
     () =>
-      metrics.reduce(
-        (acc, metric) => ({
-          ...acc,
-          [metric]: data.reduce((sum, point) => sum + point[metric], 0),
-        }),
-        {} as Record<MetricKey, number>
-      ),
-    [data, metrics]
+      activeMetric
+        ? data.map((point) => ({
+            date: point.startedAt,
+            workoutId: point.workoutId,
+            workoutTitle: point.workoutTitle,
+            value: point.values[activeMetric.key],
+          }))
+        : [],
+    [activeMetric, data]
   );
+  const availablePoints = chartData.filter(
+    (point) => point.value !== null
+  ).length;
+  const chartConfig = React.useMemo(
+    () =>
+      ({
+        value: {
+          label: activeMetric?.label ?? "Performance",
+          color: EXERCISE_RECORD_CHART_COLOR,
+        },
+      }) satisfies ChartConfig,
+    [activeMetric]
+  );
+
+  if (!activeMetric) {
+    return null;
+  }
 
   return (
     <Card className="py-4 sm:py-0">
-      <CardHeader className="flex flex-col items-stretch border-b p-0! sm:flex-row">
-        <div className="flex flex-1 flex-col justify-center gap-1 px-6 pb-3 sm:pb-0">
-          <CardTitle>Progress Over Time</CardTitle>
+      <CardHeader className="flex flex-col items-stretch border-b p-0!">
+        <div className="flex flex-col justify-center gap-1 px-4 pb-3 sm:px-6">
+          <CardTitle>Progress over time</CardTitle>
           <CardDescription>
-            Choose the stat you want to inspect across your logged sessions.
+            One point per completed workout. Select a metric without leaving
+            this exercise page.
           </CardDescription>
         </div>
-        <div className="grid grid-cols-2 sm:flex">
-          {metrics.map((key) => (
+        <div
+          className="flex gap-1 overflow-x-auto border-t p-2"
+          role="group"
+          aria-label="Progress chart metric"
+        >
+          {metrics.map((metric) => (
             <button
-              key={key}
-              data-active={activeMetric === key}
-              className="flex flex-1 flex-col justify-center gap-1 border-t px-4 py-3 text-left transition hover:bg-muted/30 data-[active=true]:bg-muted/50 sm:border-l sm:border-t-0 sm:px-6 sm:py-5"
-              onClick={() => setActiveChart(key)}
+              key={metric.key}
+              aria-pressed={activeMetric.key === metric.key}
+              className="min-w-32 flex-1 rounded-lg border border-transparent px-3 py-2 text-left transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 aria-pressed:border-primary/30 aria-pressed:bg-accent aria-pressed:text-accent-foreground"
+              onClick={() => setActiveChart(metric.key)}
               type="button"
             >
-              <span className="text-xs text-muted-foreground">
-                {chartConfig[key].label}
+              <span className="block text-xs text-muted-foreground">
+                {metric.shortLabel}
               </span>
-              <span className="text-lg font-bold leading-none sm:text-2xl">
-                {Math.round(totals[key] ?? 0).toLocaleString()}
+              <span className="mt-1 block text-base font-bold leading-none">
+                {formatExerciseRecordMetricValue(metric, metric.bestValue)}
               </span>
             </button>
           ))}
         </div>
       </CardHeader>
       <CardContent className="px-2 sm:p-6">
-        {data.length <= 1 ? (
+        <p className="sr-only" aria-live="polite">
+          Showing {activeMetric.label}. Best value: {" "}
+          {formatExerciseRecordMetricValue(
+            activeMetric,
+            activeMetric.bestValue
+          )}.
+        </p>
+        {availablePoints === 0 ? (
           <div className="flex h-[250px] items-center justify-center rounded-xl border text-center text-sm text-muted-foreground">
-            Log more sessions to see a trend.
+            No completed data is available for this metric yet.
           </div>
         ) : (
           <ChartContainer
             config={chartConfig}
-            className="aspect-auto h-[250px] w-full"
+            className="aspect-auto h-[280px] w-full"
           >
             <LineChart
               accessibilityLayer
-              data={data}
-              margin={{
-                left: 12,
-                right: 12,
-              }}
+              data={chartData}
+              margin={{ left: 8, right: 16, top: 12 }}
             >
               <CartesianGrid vertical={false} />
               <XAxis
@@ -139,26 +137,69 @@ export function ExerciseProgressChart({
                   })
                 }
               />
+              <YAxis
+                tickLine={false}
+                axisLine={false}
+                width={42}
+                tickFormatter={(value) => Number(value).toLocaleString()}
+              />
               <ChartTooltip
                 content={
                   <ChartTooltipContent
-                    className="w-[160px]"
-                    labelFormatter={(value) =>
-                      new Date(String(value ?? "")).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })
-                    }
+                    className="w-[190px]"
+                    color={EXERCISE_RECORD_CHART_COLOR}
+                    labelFormatter={(_, payload) => {
+                      const rawDate = payload[0]?.payload?.date;
+                      return new Date(String(rawDate ?? "")).toLocaleString(
+                        "en-US",
+                        {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                          hour: "numeric",
+                          minute: "2-digit",
+                        }
+                      );
+                    }}
+                    formatter={(value) => (
+                      <div className="flex w-full items-center justify-between gap-3">
+                        <span className="text-muted-foreground">
+                          {activeMetric.shortLabel}
+                        </span>
+                        <span className="font-mono font-medium tabular-nums">
+                          {formatExerciseRecordMetricValue(
+                            activeMetric,
+                            Number(value)
+                          )}
+                        </span>
+                      </div>
+                    )}
                   />
                 }
               />
               <Line
-                dataKey={activeMetric}
+                dataKey="value"
+                name={activeMetric.label}
                 type="monotone"
-                stroke={`var(--color-${activeMetric})`}
-                strokeWidth={2}
-                dot={false}
+                stroke={EXERCISE_RECORD_CHART_COLOR}
+                strokeWidth={2.5}
+                connectNulls={false}
+                dot={
+                  availablePoints === 1
+                    ? {
+                        fill: EXERCISE_RECORD_CHART_COLOR,
+                        stroke: "var(--background)",
+                        strokeWidth: 2,
+                        r: 4,
+                      }
+                    : false
+                }
+                activeDot={{
+                  fill: EXERCISE_RECORD_CHART_COLOR,
+                  stroke: "var(--background)",
+                  strokeWidth: 2,
+                  r: 5,
+                }}
               />
             </LineChart>
           </ChartContainer>

@@ -25,9 +25,9 @@ type CandidateRecord = {
 export const PERSONAL_RECORD_LABELS: Record<PersonalRecordType, string> = {
   MAX_EXTERNAL_WEIGHT: "Max weight",
   MAX_ADDED_WEIGHT: "Max added weight",
-  MAX_REPS: "Max reps",
+  MAX_REPS: "Max reps in one set",
   MAX_SET_VOLUME: "Best set volume",
-  MAX_EXERCISE_VOLUME: "Best exercise volume",
+  MAX_EXERCISE_VOLUME: "Total volume in workout",
   LONGEST_DURATION: "Longest duration",
 };
 
@@ -70,7 +70,7 @@ function shouldReplaceRecord(
 
   return (
     candidate.value === existingRecord.value &&
-    candidate.achievedAt > existingRecord.achievedAt
+    candidate.achievedAt < existingRecord.achievedAt
   );
 }
 

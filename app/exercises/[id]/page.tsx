@@ -82,8 +82,8 @@ export default async function ExerciseDetailPage({
         </div>
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline">
-            <Link href={`/exercises/${exercise.slug}/progress`}>
-              View Progress
+            <Link href={`/profile/records/${encodeURIComponent(exercise.id)}`}>
+              View Records
             </Link>
           </Button>
           <Button asChild>
