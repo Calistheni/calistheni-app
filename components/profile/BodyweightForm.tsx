@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
+import { DateOfBirthPicker } from "@/components/profile/DateOfBirthPicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -123,18 +124,16 @@ export function BodyweightForm({
         <label htmlFor="profile-date-of-birth" className="text-sm font-medium">
           Date of birth
         </label>
-        <Input
+        <DateOfBirthPicker
           id="profile-date-of-birth"
-          type="date"
-          autoComplete="bday"
           value={dateOfBirth}
-          onChange={(event) => {
-            setDateOfBirth(event.target.value);
+          onChange={(value) => {
+            setDateOfBirth(value ?? "");
             setDateOfBirthError(null);
           }}
           disabled={isSaving}
-          aria-invalid={Boolean(dateOfBirthError)}
-          aria-describedby={
+          error={dateOfBirthError}
+          ariaDescribedBy={
             dateOfBirthError
               ? "profile-date-of-birth-help profile-date-of-birth-error"
               : "profile-date-of-birth-help"

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
+import { DateOfBirthPicker } from "@/components/profile/DateOfBirthPicker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -224,17 +225,15 @@ export function OnboardingFlow({
               >
                 Date of birth
               </label>
-              <Input
+              <DateOfBirthPicker
                 id="onboarding-date-of-birth"
-                type="date"
-                autoComplete="bday"
                 value={dateOfBirth}
-                onChange={(event) => {
-                  setDateOfBirth(event.target.value);
+                onChange={(value) => {
+                  setDateOfBirth(value ?? "");
                   setDateOfBirthError(null);
                 }}
-                aria-invalid={Boolean(dateOfBirthError)}
-                aria-describedby={
+                error={dateOfBirthError}
+                ariaDescribedBy={
                   dateOfBirthError
                     ? "onboarding-date-of-birth-help onboarding-date-of-birth-error"
                     : "onboarding-date-of-birth-help"
