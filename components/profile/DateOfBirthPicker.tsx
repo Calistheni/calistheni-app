@@ -131,13 +131,20 @@ export function DateOfBirthPicker({
       </PopoverTrigger>
       <PopoverContent
         align="start"
+        side="bottom"
         sideOffset={6}
+        avoidCollisions
         collisionPadding={12}
         className="w-auto max-w-none overflow-visible p-0"
-        style={{
-          width: "min(360px, calc(100vw - 24px))",
-          minWidth: "min(360px, calc(100vw - 24px))",
-        }}
+        style={
+          {
+            "--dob-picker-width":
+              "min(360px, var(--radix-popover-trigger-width, 360px), var(--radix-popover-content-available-width, calc(100vw - 24px)), calc(100vw - 24px))",
+            width: "var(--dob-picker-width)",
+            minWidth: "var(--dob-picker-width)",
+            maxWidth: "var(--dob-picker-width)",
+          } as CSSProperties
+        }
         aria-label="Select date of birth"
       >
         <div className="grid grid-cols-2 gap-2 px-3 pt-3 sm:px-4 sm:pt-4">
@@ -227,10 +234,11 @@ export function DateOfBirthPicker({
           fixedWeeks
           hideNavigation
           autoFocus
-          className="mx-auto w-full px-2 pb-3 pt-2 sm:px-4 sm:pb-4 sm:pt-3"
+          className="mx-auto w-full px-2 pb-3 pt-2 sm:pb-4 sm:pt-3"
           style={
             {
-              "--cell-size": "min(44px, calc((100vw - 42px) / 7))",
+              "--cell-size":
+                "min(44px, calc((var(--dob-picker-width) - 18px) / 7))",
             } as CSSProperties
           }
           classNames={{
