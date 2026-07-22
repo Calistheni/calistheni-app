@@ -10,6 +10,7 @@ import {
 } from "react";
 import dynamic from "next/dynamic";
 import mapboxgl from "mapbox-gl";
+import { LocateFixed } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -56,8 +57,6 @@ type ParksMapProps = {
   onViewportParksChange: (parks: ParkSummary[]) => void;
   onViewportLoadingChange?: (isLoading: boolean) => void;
   onLocationStatusChange?: (status: ParksLocationStatus) => void;
-  onRecenterStateChange?: (isRecentering: boolean) => void;
-  onUserFocusChange?: (focused: boolean) => void;
 };
 
 export type ParksLocationStatus =
@@ -385,8 +384,6 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     onViewportParksChange,
     onViewportLoadingChange,
     onLocationStatusChange,
-    onRecenterStateChange,
-    onUserFocusChange,
   },
   ref
 ) {
@@ -396,10 +393,12 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   const popupParkIdRef = useRef<number | null>(null);
   const geolocateRef = useRef<mapboxgl.GeolocateControl | null>(null);
   const searchMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const storedUserLocationRef = useRef<[number, number] | null>(null);
   const parksRef = useRef(parks);
   const userLocationRef = useRef<[number, number] | null>(null);
   const focusOnNextGeolocateRef = useRef(false);
   const recenterInProgressRef = useRef(false);
+  const trackingActiveRef = useRef(false);
   const viewportCacheRef = useRef(new Map<string, ParkSummary[]>());
   const detailCacheRef = useRef(new Map<number, ParkDetail>());
   const detailRequestCacheRef = useRef(new Map<number, Promise<ParkDetail>>());
@@ -413,17 +412,13 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   const mapLoadedRef = useRef(false);
   const onViewportParksChangeRef = useRef(onViewportParksChange);
   const onLocationStatusChangeRef = useRef(onLocationStatusChange);
-  const onRecenterStateChangeRef = useRef(onRecenterStateChange);
-  const storedUserLocationRef = useRef(readStoredUserLocation());
+  const [hasHydrated, setHasHydrated] = useState(false);
+  const [hasUserLocation, setHasUserLocation] = useState(false);
+  const [isRecentering, setIsRecentering] = useState(false);
   const [searchProximity, setSearchProximity] = useState<{
     lng: number;
     lat: number;
-  } | null>(() => {
-    const storedLocation = storedUserLocationRef.current;
-    return storedLocation
-      ? { lng: storedLocation[0], lat: storedLocation[1] }
-      : null;
-  });
+  } | null>(null);
   const [searchClearRequest, setSearchClearRequest] = useState(0);
   const [isMapInitializing, setIsMapInitializing] = useState(true);
   const [, setIsViewportLoading] = useState(true);
@@ -433,13 +428,8 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     parkId: number;
     name: string;
   } | null>(null);
-  const [showLoadingDialog, setShowLoadingDialog] = useState(() => {
-    if (!showInitialLoadingDialog || typeof window === "undefined") {
-      return false;
-    }
-
-    return localStorage.getItem("parks-initial-load-complete") !== "true";
-  });
+  const [showLoadingDialog, setShowLoadingDialog] = useState(false);
+  const showInitialLoadingDialogRef = useRef(showInitialLoadingDialog);
   const progressIntervalRef = useRef<number | null>(null);
 
   function startSmoothProgress() {
@@ -468,30 +458,30 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   const [loadingProgress, setLoadingProgress] = useState(0);
   // const [setMapReady] = useState(false);
 
-  const initialCenterRef = useRef<[number, number]>(
-    storedUserLocationRef.current ?? [-73.924958109856, 40.731742625495]
-  );
+  const initialCenterRef = useRef<[number, number]>([
+    -73.924958109856, 40.731742625495,
+  ]);
   const {
     beginAwayMove,
+    beginTrackingMove,
     beginUserMove,
     finishCameraMove,
+    isFocused,
     isFocusedRef,
     markManualInteraction,
     setFocused,
     userLocationZoom,
   } = useMapUserFocus({
-    initiallyFocused: Boolean(storedUserLocationRef.current),
-    onFocusChange: onUserFocusChange,
+    initiallyFocused: false,
   });
   const beginAwayFromUser = useCallback(() => {
     geolocateRef.current?.setFollowUserLocation(false);
     beginAwayMove();
   }, [beginAwayMove]);
   const markManualCameraInteraction = useCallback(() => {
-    geolocateRef.current?.setFollowUserLocation(false);
     if (recenterInProgressRef.current) {
       recenterInProgressRef.current = false;
-      onRecenterStateChangeRef.current?.(false);
+      setIsRecentering(false);
     }
     markManualInteraction();
   }, [markManualInteraction]);
@@ -516,7 +506,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     clearSearchLocation();
     setSearchClearRequest((current) => current + 1);
     recenterInProgressRef.current = true;
-    onRecenterStateChangeRef.current?.(true);
+    setIsRecentering(true);
     beginUserMove();
     map.easeTo({
       center: location,
@@ -529,9 +519,6 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     onLocationStatusChangeRef.current?.("success");
     return true;
   }
-
-  const recenterToUserLatestRef = useRef(recenterToUser);
-  recenterToUserLatestRef.current = recenterToUser;
 
   function requestUserLocation() {
     const geolocate = geolocateRef.current;
@@ -1194,7 +1181,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   useEffect(() => {
     onViewportParksChangeRef.current = onViewportParksChange;
     onLocationStatusChangeRef.current = onLocationStatusChange;
-    onRecenterStateChangeRef.current = onRecenterStateChange;
+    showInitialLoadingDialogRef.current = showInitialLoadingDialog;
     openParkPopupRef.current = openParkPopup;
     requestViewportParksRef.current = requestViewportParks;
     scheduleViewportLoadRef.current = scheduleViewportLoad;
@@ -1237,6 +1224,31 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     if (!mapContainer.current || mapRef.current) {
       return;
     }
+
+    const storedLocation = readStoredUserLocation();
+    storedUserLocationRef.current = storedLocation;
+    userLocationRef.current = storedLocation;
+
+    if (storedLocation) {
+      initialCenterRef.current = storedLocation;
+    }
+
+    const hydrationFrame = window.requestAnimationFrame(() => {
+      setHasHydrated(true);
+      setHasUserLocation(Boolean(storedLocation));
+      setSearchProximity(
+        storedLocation
+          ? { lng: storedLocation[0], lat: storedLocation[1] }
+          : null
+      );
+      setFocused(Boolean(storedLocation));
+
+      if (showInitialLoadingDialogRef.current) {
+        setShowLoadingDialog(
+          localStorage.getItem("parks-initial-load-complete") !== "true"
+        );
+      }
+    });
 
     const initialLightPreset = getInitialLightPreset();
     const initialMarkerColor =
@@ -1286,7 +1298,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
 
       if (recenterInProgressRef.current && focusResult !== null) {
         recenterInProgressRef.current = false;
-        onRecenterStateChangeRef.current?.(false);
+        setIsRecentering(false);
       }
 
       if (!userLocationRef.current) {
@@ -1572,9 +1584,20 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       },
       trackUserLocation: true,
       showUserHeading: true,
+      showUserLocation: true,
     });
 
     geolocateRef.current = geolocate;
+
+    geolocate.on("trackuserlocationstart", () => {
+      trackingActiveRef.current = true;
+      beginTrackingMove();
+      setFocused(true);
+    });
+
+    geolocate.on("trackuserlocationend", () => {
+      trackingActiveRef.current = false;
+    });
 
     geolocate.on("geolocate", (event) => {
       const location: [number, number] = [
@@ -1586,6 +1609,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         focusOnNextGeolocateRef.current || !userLocationRef.current;
 
       userLocationRef.current = location;
+      setHasUserLocation(true);
       setSearchProximity({ lng: location[0], lat: location[1] });
 
       localStorage.setItem("location-allowed", "true");
@@ -1594,8 +1618,11 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
 
       if (shouldFocusUser) {
         focusOnNextGeolocateRef.current = false;
-        geolocate.setFollowUserLocation(false);
-        recenterToUserLatestRef.current({ source: "mapbox" });
+        beginTrackingMove();
+        setFocused(true);
+      } else if (trackingActiveRef.current) {
+        beginTrackingMove();
+        setFocused(true);
       } else if (isFocusedRef.current) {
         setFocused(true);
       }
@@ -1605,9 +1632,11 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       focusOnNextGeolocateRef.current = false;
       localStorage.removeItem("location-allowed");
       localStorage.removeItem("user-location");
+      trackingActiveRef.current = false;
+      setHasUserLocation(false);
       if (recenterInProgressRef.current) {
         recenterInProgressRef.current = false;
-        onRecenterStateChangeRef.current?.(false);
+        setIsRecentering(false);
       }
       setFocused(false);
       onLocationStatusChangeRef.current?.(
@@ -1629,6 +1658,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     resizeObserver.observe(mapContainer.current);
 
     return () => {
+      window.cancelAnimationFrame(hydrationFrame);
       resizeObserver.disconnect();
       navigationButtons.forEach((control) => {
         control.removeEventListener("pointerdown", markManualCameraInteraction);
@@ -1643,11 +1673,13 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       popupRef.current?.remove();
       searchMarkerRef.current?.remove();
       map.remove();
+      geolocateRef.current = null;
       mapRef.current = null;
       mapLoadedRef.current = false;
     };
   }, [
     beginAwayFromUser,
+    beginTrackingMove,
     beginUserMove,
     finishCameraMove,
     isFocusedRef,
@@ -1710,6 +1742,9 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     setIsMapInitializing(false);
     stopSmoothProgress();
   };
+
+  const shouldShowRecenter =
+    hasHydrated && hasUserLocation && !isFocused;
 
   return (
     <div
@@ -1801,23 +1836,42 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         ) : null}
       </div>
 
-      {!isMapInitializing ? (
-        <div
-          className={`absolute top-[calc(env(safe-area-inset-top)+1rem)] z-40 ${
-            searchControlVariant === "guest"
-              ? "left-[14.5rem] sm:left-[15.75rem]"
-              : "left-[11.75rem] sm:left-[13.5rem]"
+      <div
+        className={`absolute top-[calc(env(safe-area-inset-top)+4rem)] left-4 z-40 flex w-[9.5rem] items-start gap-2 transition-opacity duration-200 sm:top-[calc(env(safe-area-inset-top)+1rem)] ${
+          searchControlVariant === "guest"
+            ? "sm:left-[15.75rem]"
+            : "sm:left-[13.5rem]"
+        } ${isMapInitializing ? "pointer-events-none opacity-0" : "opacity-100"}`}
+        aria-hidden={isMapInitializing || undefined}
+        inert={isMapInitializing || undefined}
+      >
+        <MapLocationSearch
+          accessToken={MAPBOX_ACCESS_TOKEN}
+          clearRequest={searchClearRequest}
+          proximity={searchProximity}
+          onClear={clearSearchLocation}
+          onRetrieve={handleLocationSearchRetrieve}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="default"
+          className={`h-10 w-[6.5rem] shrink-0 gap-2 rounded-full bg-card px-3 shadow-md transition-[opacity,transform,visibility] duration-200 ease-out ${
+            shouldShowRecenter
+              ? "visible pointer-events-auto scale-100 opacity-100"
+              : "invisible pointer-events-none scale-90 opacity-0"
           }`}
+          aria-label="Recenter on my location"
+          title="Recenter on my location"
+          aria-hidden={!shouldShowRecenter || undefined}
+          tabIndex={shouldShowRecenter ? 0 : -1}
+          disabled={!hasHydrated || isRecentering || !hasUserLocation}
+          onClick={() => recenterToUser({ source: "custom" })}
         >
-          <MapLocationSearch
-            accessToken={MAPBOX_ACCESS_TOKEN}
-            clearRequest={searchClearRequest}
-            proximity={searchProximity}
-            onClear={clearSearchLocation}
-            onRetrieve={handleLocationSearchRetrieve}
-          />
-        </div>
-      ) : null}
+          <LocateFixed aria-hidden="true" />
+          Recenter
+        </Button>
+      </div>
     </div>
   );
 });

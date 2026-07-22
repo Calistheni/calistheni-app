@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 
 type Coordinates = [number, number];
-type ProgrammaticCameraMove = "user" | "away" | null;
+type ProgrammaticCameraMove = "user" | "tracking" | "away" | null;
 
 const USER_LOCATION_ZOOM = 14;
 const USER_FOCUS_DISTANCE_METERS = 120;
@@ -30,22 +30,12 @@ function distanceInMeters(from: Coordinates, to: Coordinates) {
 
 export function useMapUserFocus({
   initiallyFocused,
-  onFocusChange,
 }: {
   initiallyFocused: boolean;
-  onFocusChange?: (focused: boolean) => void;
 }) {
+  const [isFocused, setIsFocused] = useState(initiallyFocused);
   const isFocusedRef = useRef(initiallyFocused);
   const programmaticMoveRef = useRef<ProgrammaticCameraMove>(null);
-  const onFocusChangeRef = useRef(onFocusChange);
-
-  useEffect(() => {
-    onFocusChangeRef.current = onFocusChange;
-  }, [onFocusChange]);
-
-  useEffect(() => {
-    onFocusChangeRef.current?.(isFocusedRef.current);
-  }, []);
 
   const setFocused = useCallback((focused: boolean) => {
     if (isFocusedRef.current === focused) {
@@ -53,11 +43,15 @@ export function useMapUserFocus({
     }
 
     isFocusedRef.current = focused;
-    onFocusChangeRef.current?.(focused);
+    setIsFocused(focused);
   }, []);
 
   const beginUserMove = useCallback(() => {
     programmaticMoveRef.current = "user";
+  }, []);
+
+  const beginTrackingMove = useCallback(() => {
+    programmaticMoveRef.current = "tracking";
   }, []);
 
   const beginAwayMove = useCallback(() => {
@@ -88,14 +82,15 @@ export function useMapUserFocus({
         return false;
       }
 
-      if (move !== "user" || !userLocation) {
+      if ((move !== "user" && move !== "tracking") || !userLocation) {
         return null;
       }
 
       const isNearUser =
         distanceInMeters(center, userLocation) <=
         USER_FOCUS_DISTANCE_METERS;
-      const isAtLocationZoom = Math.abs(zoom - USER_LOCATION_ZOOM) <= 0.5;
+      const isAtLocationZoom =
+        move === "tracking" || Math.abs(zoom - USER_LOCATION_ZOOM) <= 0.5;
 
       setFocused(isNearUser && isAtLocationZoom);
       return isNearUser && isAtLocationZoom;
@@ -105,9 +100,11 @@ export function useMapUserFocus({
 
   return {
     beginAwayMove,
+    beginTrackingMove,
     beginUserMove,
     finishCameraMove,
     isFocusedRef,
+    isFocused,
     markManualInteraction,
     setFocused,
     userLocationZoom: USER_LOCATION_ZOOM,
