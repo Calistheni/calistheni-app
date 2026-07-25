@@ -75,6 +75,7 @@ export function mapRoutineDetail(template: {
     colorKey: "BLUE" | "VIOLET" | "AMBER" | "GREEN";
     restSeconds: number | null;
     plannedRounds: number | null;
+    hardRoundLimit: number | null;
   }>;
   exercises: Array<{
     id: number;
@@ -115,6 +116,7 @@ export function mapRoutineDetail(template: {
       colorKey: superset.colorKey,
       restSeconds: superset.restSeconds,
       plannedRounds: superset.plannedRounds,
+      hardRoundLimit: superset.hardRoundLimit,
       exerciseClientIds: template.exercises
         .filter((exercise) => exercise.supersetId === superset.id)
         .sort(
@@ -255,6 +257,7 @@ async function createRoutineChildren(
         colorKey: superset.colorKey,
         restSeconds: superset.restSeconds,
         plannedRounds: superset.plannedRounds,
+        hardRoundLimit: superset.hardRoundLimit,
       },
     });
 

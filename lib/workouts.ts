@@ -82,6 +82,7 @@ export function mapWorkoutDetail(workout: {
     colorKey: "BLUE" | "VIOLET" | "AMBER" | "GREEN";
     restSeconds: number | null;
     plannedRounds: number | null;
+    hardRoundLimit: number | null;
   }>;
   user: {
     bodyweightKg: number | null;
@@ -155,6 +156,7 @@ export function mapWorkoutDetail(workout: {
       colorKey: superset.colorKey,
       restSeconds: superset.restSeconds,
       plannedRounds: superset.plannedRounds,
+      hardRoundLimit: superset.hardRoundLimit,
     })),
     setCount,
     totalVolume,
@@ -286,6 +288,7 @@ async function createWorkoutChildren(
         colorKey: superset.colorKey,
         restSeconds: superset.restSeconds,
         plannedRounds: superset.plannedRounds,
+        hardRoundLimit: superset.hardRoundLimit,
       })),
     });
   }

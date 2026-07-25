@@ -27,6 +27,7 @@ export type RoutineSupersetInput = {
   colorKey: SupersetColorKey;
   restSeconds: number | null;
   plannedRounds: number | null;
+  hardRoundLimit: number | null;
   exerciseClientIds: string[];
 };
 
@@ -52,6 +53,7 @@ export type RoutineDetail = {
     colorKey: SupersetColorKey;
     restSeconds: number | null;
     plannedRounds: number | null;
+    hardRoundLimit: number | null;
     exerciseClientIds: string[];
   }>;
   exercises: Array<{

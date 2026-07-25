@@ -85,6 +85,7 @@ const supersetSchema = z.object({
   colorKey: z.enum(["BLUE", "VIOLET", "AMBER", "GREEN"]),
   restSeconds: nullableInteger(0, 3600),
   plannedRounds: nullableInteger(1, 100),
+  hardRoundLimit: nullableInteger(1, 100),
 });
 
 export const workoutMutationSchema = z

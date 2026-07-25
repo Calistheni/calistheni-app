@@ -124,6 +124,7 @@ import {
 import { isIncompleteEnteredSet } from "@/lib/workout-set-performance";
 import {
   createSupersetKey,
+  getNextSupersetSetDraft,
   getSupersetDisplayLabel,
   getSupersetRoundProgress,
   SUPERSET_COLOR_KEYS,
@@ -726,7 +727,7 @@ export function WorkoutBuilder({
   const activeResultsProgress = activeResultsSuperset
     ? getSupersetRoundProgress(
         activeResultsMembers,
-        activeResultsSuperset.plannedRounds
+        { hardRoundLimit: activeResultsSuperset.hardRoundLimit }
       )
     : null;
   const supersetRoundFormEntries = activeResultsMembers.flatMap(
@@ -1080,6 +1081,7 @@ export function WorkoutBuilder({
             SUPERSET_COLOR_KEYS[groupIndex % SUPERSET_COLOR_KEYS.length],
           restSeconds: supersetRestSeconds,
           plannedRounds: null,
+          hardRoundLimit: null,
         },
       ]);
     }
@@ -1198,23 +1200,22 @@ export function WorkoutBuilder({
       );
     const progress = getSupersetRoundProgress(
       members,
-      supersets.find((superset) => superset.key === key)?.plannedRounds ?? null
+      {
+        hardRoundLimit:
+          supersets.find((superset) => superset.key === key)
+            ?.hardRoundLimit ?? null,
+      }
     );
+    if (progress.complete) {
+      return;
+    }
 
     for (const exercise of members) {
-      const reusableIndex = exercise.sets.findIndex((set) => !set.completed);
-      const previous = [...exercise.sets]
-        .reverse()
-        .find((set) => set.completed);
-      const setIndex = reusableIndex >= 0 ? reusableIndex : -1;
-      const source =
-        reusableIndex >= 0
-          ? exercise.sets[reusableIndex]
-          : previous ?? createLocalSet();
+      const { setIndex, source } = getNextSupersetSetDraft(exercise.sets);
       draft[exercise.localId] = {
         setIndex,
         set: {
-          ...toWorkoutSetInput(source),
+          ...toWorkoutSetInput(source ?? createLocalSet()),
           completed: false,
           supersetRoundIndex: progress.currentRound - 1,
         },
@@ -2909,7 +2910,7 @@ export function WorkoutBuilder({
                 const supersetProgress = superset
                   ? getSupersetRoundProgress(
                       supersetMembers,
-                      superset.plannedRounds
+                      { hardRoundLimit: superset.hardRoundLimit }
                     )
                   : null;
 

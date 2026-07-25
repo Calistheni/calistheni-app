@@ -94,6 +94,7 @@ export async function POST(request: Request) {
         colorKey: superset.colorKey,
         restSeconds: superset.restSeconds,
         plannedRounds: superset.plannedRounds,
+        hardRoundLimit: superset.hardRoundLimit,
         exerciseClientIds: workout.exercises
           .filter((exercise) => exercise.supersetId === superset.id)
           .sort(

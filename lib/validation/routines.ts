@@ -59,6 +59,7 @@ const supersetSchema = z.object({
   colorKey: z.enum(["BLUE", "VIOLET", "AMBER", "GREEN"]),
   restSeconds: nullableInteger(0, 3600),
   plannedRounds: nullableInteger(1, 100),
+  hardRoundLimit: nullableInteger(1, 100),
   exerciseClientIds: z
     .array(z.string().min(1).max(100))
     .min(2, "A superset must contain at least two exercises.")

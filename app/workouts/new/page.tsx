@@ -129,6 +129,7 @@ export default async function NewWorkoutPage({
           colorKey: superset.colorKey,
           restSeconds: superset.restSeconds,
           plannedRounds: superset.plannedRounds,
+          hardRoundLimit: superset.hardRoundLimit,
         })),
         exercises: routine.exercises.map((routineExercise) => ({
           id: -routineExercise.id,

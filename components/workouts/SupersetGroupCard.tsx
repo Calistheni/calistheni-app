@@ -105,11 +105,15 @@ export function SupersetGroupCard({
                       All rounds complete
                     </>
                   ) : openEnded ? (
-                    `${completedRounds} ${
-                      completedRounds === 1 ? "round" : "rounds"
-                    } completed`
+                    completedRounds === 0
+                      ? "No rounds completed"
+                      : `${completedRounds} ${
+                          completedRounds === 1 ? "round" : "rounds"
+                        } completed`
+                  ) : completedRounds > 0 ? (
+                    `${completedRounds} of ${totalRounds} rounds complete`
                   ) : (
-                    `Round ${currentRound}/${totalRounds}`
+                    `Round ${currentRound} of ${totalRounds}`
                   )}
                 </span>
               </div>

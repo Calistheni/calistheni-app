@@ -14,6 +14,7 @@ function routinePayload() {
         colorKey: "BLUE",
         restSeconds: 90,
         plannedRounds: 3,
+        hardRoundLimit: null,
         exerciseClientIds: ["temp-pull-up", "temp-dip"],
       },
     ],

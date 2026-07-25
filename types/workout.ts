@@ -43,6 +43,7 @@ export type WorkoutSupersetInput = {
   colorKey: SupersetColorKey;
   restSeconds: number | null;
   plannedRounds: number | null;
+  hardRoundLimit: number | null;
 };
 
 export type WorkoutExerciseInput = {

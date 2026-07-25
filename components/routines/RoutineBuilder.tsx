@@ -280,6 +280,7 @@ export function RoutineBuilder({
                 ?.sets.length ?? 1
           )
         ),
+        hardRoundLimit: null,
         exerciseClientIds: [...supersetSelection],
       },
     ]);

@@ -356,6 +356,7 @@ model WorkoutSuperset {
   colorKey    SupersetColorKey
   restSeconds Int?
   plannedRounds Int?
+  hardRoundLimit Int?
 
   workout   Workout           @relation(fields: [workoutId], references: [id], onDelete: Cascade)
   exercises WorkoutExercise[]
@@ -525,6 +526,7 @@ model WorkoutTemplateSuperset {
   colorKey    SupersetColorKey
   restSeconds Int?
   plannedRounds Int?
+  hardRoundLimit Int?
 
   template  WorkoutTemplate           @relation(fields: [templateId], references: [id], onDelete: Cascade)
   exercises WorkoutTemplateExercise[]

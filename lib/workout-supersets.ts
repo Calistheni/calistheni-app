@@ -54,14 +54,48 @@ export function getNextIncompleteSetIndex(
   return index >= 0 ? index : null;
 }
 
+export function getNextSupersetSetDraft<T extends {
+  completed: boolean;
+}>(sets: T[]) {
+  const reusableIndex = sets.findIndex((set) => !set.completed);
+
+  if (reusableIndex >= 0) {
+    return {
+      setIndex: reusableIndex,
+      source: sets[reusableIndex] ?? null,
+    };
+  }
+
+  return {
+    setIndex: -1,
+    source: [...sets].reverse().find((set) => set.completed) ?? null,
+  };
+}
+
+export function isOpenEndedSuperset(hardRoundLimit: number | null) {
+  return hardRoundLimit === null;
+}
+
+export function hasReachedHardRoundLimit(
+  hardRoundLimit: number | null,
+  completedRounds: number
+) {
+  return (
+    hardRoundLimit !== null && completedRounds >= hardRoundLimit
+  );
+}
+
 export function getSupersetRoundProgress(
   exercises: Array<{
     sets: Array<
       Pick<WorkoutSetInput, "completed" | "supersetRoundIndex">
     >;
   }>,
-  plannedRounds: number | null = null
+  options: {
+    hardRoundLimit?: number | null;
+  } = {}
 ) {
+  const hardRoundLimit = options.hardRoundLimit ?? null;
   const completedRoundSets = exercises.map(
     (exercise) =>
       new Set(
@@ -77,16 +111,36 @@ export function getSupersetRoundProgress(
   ) {
     completedRounds += 1;
   }
-  const complete =
-    plannedRounds !== null && completedRounds >= plannedRounds;
+  const complete = hasReachedHardRoundLimit(
+    hardRoundLimit,
+    completedRounds
+  );
 
   return {
-    currentRound: complete ? plannedRounds : completedRounds + 1,
-    totalRounds: plannedRounds ?? completedRounds + 1,
+    currentRound:
+      complete && hardRoundLimit !== null
+        ? hardRoundLimit
+        : completedRounds + 1,
+    totalRounds: hardRoundLimit ?? completedRounds + 1,
     completedRounds,
     complete,
-    openEnded: plannedRounds === null,
+    openEnded: isOpenEndedSuperset(hardRoundLimit),
   };
+}
+
+export function getNextSupersetRoundIndex(
+  exercises: Array<{
+    sets: Array<
+      Pick<WorkoutSetInput, "completed" | "supersetRoundIndex">
+    >;
+  }>,
+  hardRoundLimit: number | null = null
+) {
+  const progress = getSupersetRoundProgress(exercises, {
+    hardRoundLimit,
+  });
+
+  return progress.complete ? null : progress.completedRounds;
 }
 
 export function getCurrentSupersetRoundEntries<
@@ -95,8 +149,13 @@ export function getCurrentSupersetRoundEntries<
       Pick<WorkoutSetInput, "completed" | "supersetRoundIndex">
     >;
   },
->(exercises: T[], plannedRounds: number | null = null) {
-  const progress = getSupersetRoundProgress(exercises, plannedRounds);
+>(
+  exercises: T[],
+  options: {
+    hardRoundLimit?: number | null;
+  } = {}
+) {
+  const progress = getSupersetRoundProgress(exercises, options);
   const setIndex = Math.max(0, progress.currentRound - 1);
 
   return exercises.flatMap((exercise) => {
