@@ -565,6 +565,9 @@ model WorkoutTemplateSet {
   reps               Int?
   weightKg           Float?
   durationSec        Int?
+  distanceMeters     Float?
+  steps              Int?
+  floors              Int?
 
   templateExercise WorkoutTemplateExercise @relation(fields: [templateExerciseId], references: [id], onDelete: Cascade)
 

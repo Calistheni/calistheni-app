@@ -39,29 +39,42 @@ import type {
   RoutineExerciseInput,
   RoutineMutationPayload,
   RoutineSetInput,
+  RoutineSupersetInput,
 } from "@/types/routine";
 import type { ExerciseListItem } from "@/types/workout";
-import type { WorkoutSupersetInput } from "@/types/workout";
 import {
   createSupersetKey,
   getSupersetDisplayLabel,
   SUPERSET_COLOR_KEYS,
   SUPERSET_COLOR_STYLES,
 } from "@/lib/workout-supersets";
+import {
+  getTrackingTypeFieldConfig,
+  sanitizeRoutineSetForTrackingType,
+} from "@/lib/exercise-tracking-fields";
 
 type RoutineBuilderProps = {
   exercises: ExerciseListItem[];
   initialRoutine?: RoutineDetail;
 };
 
-type LocalRoutineExercise = RoutineExerciseInput & {
+type LocalRoutineExercise = Omit<
+  RoutineExerciseInput,
+  "clientExerciseId" | "routineExerciseId"
+> & {
   localId: string;
+  persistedId: number | null;
+  supersetKey: string | null;
+  supersetPosition: number | null;
 };
 
 const EMPTY_SET: RoutineSetInput = {
   reps: null,
   weightKg: null,
   durationSec: null,
+  distanceMeters: null,
+  steps: null,
+  floors: null,
 };
 
 function getNumberValue(value: string) {
@@ -86,17 +99,26 @@ function buildInitialExercises(
   }
 
   return initialRoutine.exercises.map((routineExercise) => ({
-    localId: String(routineExercise.id),
+    localId: routineExercise.clientExerciseId,
+    persistedId: routineExercise.id,
     exerciseId: routineExercise.exercise.id,
     restSeconds: routineExercise.restSeconds,
     notes: routineExercise.notes,
     supersetKey: routineExercise.supersetKey,
     supersetPosition: routineExercise.supersetPosition,
-    sets: routineExercise.sets.map((set) => ({
-      reps: set.reps,
-      weightKg: set.weightKg,
-      durationSec: set.durationSec,
-    })),
+    sets: routineExercise.sets.map((set) =>
+      sanitizeRoutineSetForTrackingType(
+        {
+          reps: set.reps,
+          weightKg: set.weightKg,
+          durationSec: set.durationSec,
+          distanceMeters: set.distanceMeters,
+          steps: set.steps,
+          floors: set.floors,
+        },
+        routineExercise.exercise.trackingType
+      )
+    ),
   }));
 }
 
@@ -131,7 +153,7 @@ export function RoutineBuilder({
   const [selectedExercises, setSelectedExercises] = useState<
     LocalRoutineExercise[]
   >(buildInitialExercises(initialRoutine));
-  const [supersets, setSupersets] = useState<WorkoutSupersetInput[]>(
+  const [supersets, setSupersets] = useState<RoutineSupersetInput[]>(
     initialRoutine?.supersets ?? []
   );
   const [isSupersetDialogOpen, setIsSupersetDialogOpen] = useState(false);
@@ -179,6 +201,7 @@ export function RoutineBuilder({
       ...current,
       {
         localId: crypto.randomUUID(),
+        persistedId: null,
         exerciseId,
         restSeconds: 90,
         notes: null,
@@ -218,6 +241,17 @@ export function RoutineBuilder({
       setSupersets((current) =>
         current.filter((item) => item.key !== affectedKey)
       );
+    } else if (affectedKey) {
+      setSupersets((current) =>
+        current.map((item) =>
+          item.key === affectedKey
+            ? {
+                ...item,
+                exerciseClientIds: remaining.map((exercise) => exercise.localId),
+              }
+            : item
+        )
+      );
     }
     setCustomRestExerciseIds((current) =>
       current.filter((item) => item !== localId)
@@ -246,6 +280,7 @@ export function RoutineBuilder({
                 ?.sets.length ?? 1
           )
         ),
+        exerciseClientIds: [...supersetSelection],
       },
     ]);
     setSelectedExercises((current) =>
@@ -352,6 +387,15 @@ export function RoutineBuilder({
     );
   }
 
+  function updateSetField(
+    localId: string,
+    setIndex: number,
+    field: keyof RoutineSetInput,
+    value: string
+  ) {
+    updateSet(localId, setIndex, field, value);
+  }
+
   async function saveRoutine() {
     if (!name.trim()) {
       toast.error("Routine name is required.");
@@ -370,19 +414,24 @@ export function RoutineBuilder({
       supersets,
       exercises: selectedExercises.map(
         ({
+          localId,
+          persistedId,
           exerciseId,
           restSeconds,
           notes,
-          supersetKey,
-          supersetPosition,
           sets,
         }) => ({
+          clientExerciseId: localId,
+          routineExerciseId: persistedId,
           exerciseId,
           restSeconds,
           notes,
-          supersetKey,
-          supersetPosition,
-          sets,
+          sets: sets.map((set) => {
+            const trackingType =
+              exercises.find((exercise) => exercise.id === exerciseId)
+                ?.trackingType ?? "NOT_SELECTED";
+            return sanitizeRoutineSetForTrackingType(set, trackingType);
+          }),
         })
       ),
     };
@@ -542,6 +591,9 @@ export function RoutineBuilder({
             const supersetIndex = superset
               ? supersets.findIndex((item) => item.key === superset.key)
               : -1;
+            const fieldConfig = getTrackingTypeFieldConfig(
+              exercise.trackingType
+            );
 
             return (
               <Card
@@ -574,7 +626,7 @@ export function RoutineBuilder({
                           <Badge variant="outline">
                             {getExerciseTrackingTypeLabel(exercise.trackingType)}
                           </Badge>
-                          {restSeconds !== null ? (
+                          {restSeconds !== null && !superset ? (
                             <Badge variant="outline">
                               {getRestBadgeLabel(restSeconds)}
                             </Badge>
@@ -609,6 +661,13 @@ export function RoutineBuilder({
                   </div>
                   <div className="grid gap-3 sm:grid-cols-[160px_minmax(0,1fr)]">
                     <div className="flex flex-wrap items-end gap-2">
+                      {superset ? (
+                        <p className="text-xs text-muted-foreground">
+                          Rest is controlled by{" "}
+                          {getSupersetDisplayLabel(superset, supersetIndex)}.
+                        </p>
+                      ) : (
+                        <>
                       <div className="space-y-2">
                         <Label htmlFor={`routine-rest-${selectedExercise.localId}`}>
                           Rest
@@ -659,6 +718,8 @@ export function RoutineBuilder({
                           />
                         </div>
                       ) : null}
+                        </>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <label className="text-sm font-medium">
@@ -679,54 +740,121 @@ export function RoutineBuilder({
                   {selectedExercise.sets.map((set, setIndex) => (
                     <div
                       key={setIndex}
-                      className="grid gap-2 rounded-lg border p-3 sm:grid-cols-2 lg:grid-cols-4"
+                      className="grid gap-2 rounded-lg border p-3 sm:grid-cols-2"
                     >
-                      <Input
-                        type="number"
-                        min="0"
-                        placeholder="Reps"
-                        aria-label={`Set ${setIndex + 1} reps`}
-                        value={set.reps ?? ""}
-                        onChange={(event) =>
-                          updateSet(
-                            selectedExercise.localId,
-                            setIndex,
-                            "reps",
-                            event.target.value
-                          )
-                        }
-                      />
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.5"
-                        placeholder="Weight"
-                        aria-label={`Set ${setIndex + 1} weight`}
-                        value={set.weightKg ?? ""}
-                        onChange={(event) =>
-                          updateSet(
-                            selectedExercise.localId,
-                            setIndex,
-                            "weightKg",
-                            event.target.value
-                          )
-                        }
-                      />
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.25"
-                        placeholder="Minutes"
-                        aria-label={`Set ${setIndex + 1} duration minutes`}
-                        value={getDurationMinutesValue(set.durationSec)}
-                        onChange={(event) =>
-                          updateSetDurationMinutes(
-                            selectedExercise.localId,
-                            setIndex,
-                            event.target.value
-                          )
-                        }
-                      />
+                      {fieldConfig.reps ? (
+                        <Input
+                          type="number"
+                          inputMode="numeric"
+                          min="0"
+                          step="1"
+                          placeholder="Reps"
+                          aria-label={`Set ${setIndex + 1} reps`}
+                          value={set.reps ?? ""}
+                          onChange={(event) =>
+                            updateSet(
+                              selectedExercise.localId,
+                              setIndex,
+                              "reps",
+                              event.target.value
+                            )
+                          }
+                        />
+                      ) : null}
+                      {fieldConfig.weight ? (
+                        <Input
+                          type="number"
+                          inputMode="decimal"
+                          min="0"
+                          step="0.5"
+                          placeholder={fieldConfig.weightLabel}
+                          aria-label={`Set ${setIndex + 1} ${fieldConfig.weightLabel.toLowerCase()}`}
+                          value={set.weightKg ?? ""}
+                          onChange={(event) =>
+                            updateSet(
+                              selectedExercise.localId,
+                              setIndex,
+                              "weightKg",
+                              event.target.value
+                            )
+                          }
+                        />
+                      ) : null}
+                      {fieldConfig.duration ? (
+                        <Input
+                          type="number"
+                          inputMode="decimal"
+                          min="0"
+                          step="0.25"
+                          placeholder="Minutes"
+                          aria-label={`Set ${setIndex + 1} duration minutes`}
+                          value={getDurationMinutesValue(set.durationSec)}
+                          onChange={(event) =>
+                            updateSetDurationMinutes(
+                              selectedExercise.localId,
+                              setIndex,
+                              event.target.value
+                            )
+                          }
+                        />
+                      ) : null}
+                      {fieldConfig.distance ? (
+                        <Input
+                          type="number"
+                          inputMode="decimal"
+                          min="0"
+                          step="1"
+                          placeholder="Meters"
+                          aria-label={`Set ${setIndex + 1} distance`}
+                          value={set.distanceMeters ?? ""}
+                          onChange={(event) =>
+                            updateSetField(
+                              selectedExercise.localId,
+                              setIndex,
+                              "distanceMeters",
+                              event.target.value
+                            )
+                          }
+                        />
+                      ) : null}
+                      {fieldConfig.steps ? (
+                        <Input
+                          type="number"
+                          inputMode="numeric"
+                          min="0"
+                          step="1"
+                          placeholder="Steps"
+                          aria-label={`Set ${setIndex + 1} steps`}
+                          value={set.steps ?? ""}
+                          onChange={(event) =>
+                            updateSetField(
+                              selectedExercise.localId,
+                              setIndex,
+                              "steps",
+                              event.target.value
+                            )
+                          }
+                        />
+                      ) : null}
+                      {fieldConfig.floors ? (
+                        <Input
+                          type="number"
+                          inputMode="numeric"
+                          min="0"
+                          step="1"
+                          placeholder="Floors"
+                          aria-label={`Set ${setIndex + 1} floors`}
+                          value={set.floors ?? ""}
+                          onChange={(event) =>
+                            updateSetField(
+                              selectedExercise.localId,
+                              setIndex,
+                              "floors",
+                              event.target.value
+                            )
+                          }
+                        />
+                      ) : null}
                       <Button
                         type="button"
                         variant="outline"

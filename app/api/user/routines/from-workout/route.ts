@@ -72,6 +72,12 @@ export async function POST(request: Request) {
         `superset-${crypto.randomUUID()}`,
       ])
     );
+    const exerciseClientIdMap = new Map(
+      workout.exercises.map((exercise) => [
+        exercise.id,
+        `routine-exercise-${crypto.randomUUID()}`,
+      ])
+    );
 
     const result = await createUserRoutine(userId, {
       name:
@@ -88,19 +94,34 @@ export async function POST(request: Request) {
         colorKey: superset.colorKey,
         restSeconds: superset.restSeconds,
         plannedRounds: superset.plannedRounds,
+        exerciseClientIds: workout.exercises
+          .filter((exercise) => exercise.supersetId === superset.id)
+          .sort(
+            (left, right) =>
+              (left.supersetPosition ?? 0) -
+              (right.supersetPosition ?? 0)
+          )
+          .map(
+            (exercise) =>
+              exerciseClientIdMap.get(exercise.id) ??
+              `routine-exercise-${exercise.id}`
+          ),
       })),
       exercises: workout.exercises.map((exercise) => ({
+        clientExerciseId:
+          exerciseClientIdMap.get(exercise.id) ??
+          `routine-exercise-${exercise.id}`,
+        routineExerciseId: null,
         exerciseId: exercise.exerciseId,
         restSeconds: exercise.restSeconds,
         notes: exercise.notes,
-        supersetKey: exercise.supersetId
-          ? (supersetKeyMap.get(exercise.supersetId) ?? null)
-          : null,
-        supersetPosition: exercise.supersetPosition,
         sets: exercise.sets.map((set) => ({
           reps: set.reps,
           weightKg: set.weight,
           durationSec: set.durationSeconds,
+          distanceMeters: set.distanceMeters,
+          steps: set.steps,
+          floors: set.floors,
         })),
       })),
     });

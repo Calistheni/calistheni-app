@@ -1,0 +1,4 @@
+ALTER TABLE "WorkoutTemplateSet"
+ADD COLUMN "distanceMeters" DOUBLE PRECISION,
+ADD COLUMN "steps" INTEGER,
+ADD COLUMN "floors" INTEGER;

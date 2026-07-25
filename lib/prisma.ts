@@ -6,9 +6,21 @@ const globalForPrisma = globalThis as typeof globalThis & {
   prismaSchemaSignature?: string;
 };
 
-const prismaSchemaSignature = Object.values(Prisma.UserScalarFieldEnum).join(
-  ":"
-);
+const prismaSchemaSignature = Object.entries(
+  Prisma as unknown as Record<string, unknown>
+)
+  .filter(
+    ([name, value]) =>
+      name.endsWith("ScalarFieldEnum") &&
+      typeof value === "object" &&
+      value !== null
+  )
+  .map(
+    ([name, value]) =>
+      `${name}:${Object.values(value as Record<string, string>).join(",")}`
+  )
+  .sort()
+  .join("|");
 
 function getDatabaseConnectionString() {
   const connectionString = process.env.DATABASE_URL;

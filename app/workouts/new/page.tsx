@@ -8,6 +8,7 @@ import { routineInclude } from "@/lib/routines";
 import type { ExerciseListItem, ExerciseTrackingType } from "@/types/workout";
 import type { WorkoutDetail } from "@/types/workout";
 import { exerciseVisibilityWhere } from "@/lib/exercise-access";
+import { sanitizeRoutineSetForTrackingType } from "@/lib/exercise-tracking-fields";
 
 export const metadata: Metadata = {
   title: "New Workout",
@@ -138,19 +139,33 @@ export default async function NewWorkoutPage({
             : null,
           supersetPosition: routineExercise.supersetPosition,
           exercise: mapExercise(routineExercise.exercise),
-          sets: routineExercise.sets.map((set) => ({
-            id: -set.id,
-            reps: set.reps,
-            weight: set.weightKg,
-            durationSeconds: set.durationSec,
-            distanceMeters: null,
-            steps: null,
-            floors: null,
-            rpe: null,
-            notes: null,
-            completed: false,
-            supersetRoundIndex: null,
-          })),
+          sets: routineExercise.sets.map((set) => {
+            const normalizedSet = sanitizeRoutineSetForTrackingType(
+              {
+                reps: set.reps,
+                weightKg: set.weightKg,
+                durationSec: set.durationSec,
+                distanceMeters: set.distanceMeters,
+                steps: set.steps,
+                floors: set.floors,
+              },
+              routineExercise.exercise.trackingType
+            );
+
+            return {
+              id: -set.id,
+              reps: normalizedSet.reps,
+              weight: normalizedSet.weightKg,
+              durationSeconds: normalizedSet.durationSec,
+              distanceMeters: normalizedSet.distanceMeters,
+              steps: normalizedSet.steps,
+              floors: normalizedSet.floors,
+              rpe: null,
+              notes: null,
+              completed: false,
+              supersetRoundIndex: null,
+            };
+          }),
         })),
       }
     : undefined;

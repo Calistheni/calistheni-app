@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import {
   createInternalServerErrorResponse,
   createJsonErrorResponse,
-  createJsonValidationErrorResponse,
   parsePositiveInteger,
 } from "@/lib/api-response";
 import { mapRoutineDetail, routineInclude, updateUserRoutine } from "@/lib/routines";
@@ -11,7 +10,34 @@ import {
   getAuthenticatedUserId,
 } from "@/lib/user-auth";
 import { prisma } from "@/lib/prisma";
-import { routineMutationSchema } from "@/lib/validation/routines";
+import {
+  getRoutineValidationError,
+  routineMutationSchema,
+} from "@/lib/validation/routines";
+import { Prisma } from "@/lib/generated/prisma/client";
+import { UnresolvedRoutineExerciseError } from "@/lib/routine-superset-mapping";
+
+function logRoutineUpdateError(
+  error: unknown,
+  context: {
+    routineId: number;
+    userId: string;
+    exerciseCount: number;
+    supersetCount: number;
+  }
+) {
+  console.error("Routine persistence failed", {
+    operation: "update",
+    ...context,
+    prismaCode:
+      error instanceof Prisma.PrismaClientKnownRequestError
+        ? error.code
+        : undefined,
+    errorName: error instanceof Error ? error.name : typeof error,
+    errorMessage:
+      error instanceof Error ? error.message : "Unknown routine error",
+  });
+}
 
 export async function GET(
   _request: Request,
@@ -78,9 +104,20 @@ export async function PATCH(
   const parsedBody = routineMutationSchema.safeParse(body);
 
   if (!parsedBody.success) {
-    return createJsonValidationErrorResponse(
-      "Invalid routine payload.",
-      parsedBody.error.flatten().fieldErrors
+    const validationError = getRoutineValidationError(parsedBody.error);
+    console.warn("Routine validation failed", {
+      operation: "update",
+      routineId,
+      userId,
+      ...validationError,
+    });
+    return NextResponse.json(
+      {
+        error: validationError.message,
+        ...validationError,
+        fieldErrors: parsedBody.error.flatten().fieldErrors,
+      },
+      { status: 400 }
     );
   }
 
@@ -91,10 +128,36 @@ export async function PATCH(
       return NextResponse.json(result.routine);
     }
 
+    if ("code" in result) {
+      return NextResponse.json(
+        { code: result.code, error: result.error },
+        { status: 400 }
+      );
+    }
+
     return createJsonErrorResponse(result.error, 404);
   } catch (error) {
-    console.error(error);
-    return createInternalServerErrorResponse();
+    if (error instanceof UnresolvedRoutineExerciseError) {
+      return NextResponse.json(
+        {
+          code: error.code,
+          path: ["supersets"],
+          error: error.message,
+        },
+        { status: 400 }
+      );
+    }
+
+    logRoutineUpdateError(error, {
+      routineId,
+      userId,
+      exerciseCount: parsedBody.data.exercises.length,
+      supersetCount: parsedBody.data.supersets.length,
+    });
+    return createJsonErrorResponse(
+      "Could not save this routine because its exercise or superset configuration is invalid.",
+      500
+    );
   }
 }
 

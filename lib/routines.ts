@@ -9,6 +9,8 @@ import {
   getUserEntitlements,
 } from "@/lib/entitlements";
 import type { Prisma } from "@/lib/generated/prisma/client";
+import { sanitizeRoutineSetForTrackingType } from "@/lib/exercise-tracking-fields";
+import { resolveRoutineSupersetMemberships } from "@/lib/routine-superset-mapping";
 
 export { FREE_ROUTINE_LIMIT } from "@/lib/entitlements";
 
@@ -86,9 +88,19 @@ export function mapRoutineDetail(template: {
       reps: number | null;
       weightKg: number | null;
       durationSec: number | null;
+      distanceMeters: number | null;
+      steps: number | null;
+      floors: number | null;
     }>;
   }>;
 }): RoutineDetail {
+  const clientExerciseIds = new Map(
+    template.exercises.map((exercise) => [
+      exercise.id,
+      `routine-exercise-${exercise.id}`,
+    ])
+  );
+
   return {
     id: template.id,
     name: template.name,
@@ -103,36 +115,91 @@ export function mapRoutineDetail(template: {
       colorKey: superset.colorKey,
       restSeconds: superset.restSeconds,
       plannedRounds: superset.plannedRounds,
+      exerciseClientIds: template.exercises
+        .filter((exercise) => exercise.supersetId === superset.id)
+        .sort(
+          (left, right) =>
+            (left.supersetPosition ?? 0) - (right.supersetPosition ?? 0)
+        )
+        .map(
+          (exercise) =>
+            clientExerciseIds.get(exercise.id) ??
+            `routine-exercise-${exercise.id}`
+        ),
     })),
-    exercises: template.exercises.map((templateExercise) => ({
-      id: templateExercise.id,
-      restSeconds: templateExercise.restSeconds,
-      notes: templateExercise.notes,
-      supersetKey: templateExercise.supersetId,
-      supersetPosition: templateExercise.supersetPosition,
-      exercise: mapExercise(templateExercise.exercise),
-      sets: templateExercise.sets.map((set) => ({
-        id: set.id,
-        reps: set.reps,
-        weightKg: set.weightKg,
-        durationSec: set.durationSec,
-      })),
-    })),
+    exercises: template.exercises.map((templateExercise) => {
+      const trackingType = templateExercise.exercise.trackingType;
+
+      return {
+        id: templateExercise.id,
+        clientExerciseId:
+          clientExerciseIds.get(templateExercise.id) ??
+          `routine-exercise-${templateExercise.id}`,
+        restSeconds: templateExercise.restSeconds,
+        notes: templateExercise.notes,
+        supersetKey: templateExercise.supersetId,
+        supersetPosition: templateExercise.supersetPosition,
+        exercise: mapExercise(templateExercise.exercise),
+        sets: templateExercise.sets.map((set) => ({
+          id: set.id,
+          ...sanitizeRoutineSetForTrackingType(
+            {
+              reps: set.reps,
+              weightKg: set.weightKg,
+              durationSec: set.durationSec,
+              distanceMeters: set.distanceMeters,
+              steps: set.steps,
+              floors: set.floors,
+            },
+            trackingType
+          ),
+        })),
+      };
+    }),
   };
 }
 
-async function assertExercisesExist(userId: string, exerciseIds: string[]) {
+async function getExerciseTrackingTypes(
+  userId: string,
+  exerciseIds: string[]
+) {
   const uniqueExerciseIds = [...new Set(exerciseIds)];
-  const existingCount = await prisma.exercise.count({
+  const exercises = await prisma.exercise.findMany({
     where: {
       id: {
         in: uniqueExerciseIds,
       },
       ...exerciseVisibilityWhere(userId),
     },
+    select: {
+      id: true,
+      trackingType: true,
+    },
   });
 
-  return existingCount === uniqueExerciseIds.length;
+  return exercises.length === uniqueExerciseIds.length
+    ? new Map(
+        exercises.map((exercise) => [exercise.id, exercise.trackingType])
+      )
+    : null;
+}
+
+function normalizeRoutineTrackingValues(
+  payload: ValidRoutineMutation,
+  trackingTypes: Map<string, ExerciseTrackingType>
+): ValidRoutineMutation {
+  return {
+    ...payload,
+    exercises: payload.exercises.map((exercise) => ({
+      ...exercise,
+      sets: exercise.sets.map((set) =>
+        sanitizeRoutineSetForTrackingType(
+          set,
+          trackingTypes.get(exercise.exerciseId) ?? "NOT_SELECTED"
+        )
+      ),
+    })),
+  };
 }
 
 function buildRoutineMetadata(payload: ValidRoutineMutation) {
@@ -148,39 +215,82 @@ async function createRoutineChildren(
   templateId: number,
   payload: ValidRoutineMutation
 ) {
-  if (payload.supersets.length > 0) {
-    await tx.workoutTemplateSuperset.createMany({
-      data: payload.supersets.map((superset, supersetIndex) => ({
-        id: superset.key,
-        templateId,
-        order: supersetIndex,
-        label: superset.label,
-        colorKey: superset.colorKey,
-        restSeconds: superset.restSeconds,
-        plannedRounds: superset.plannedRounds,
-      })),
-    });
-  }
+  const persistedExerciseIds = new Map<string, number>();
 
   for (const [exerciseIndex, exercise] of payload.exercises.entries()) {
-    await tx.workoutTemplateExercise.create({
+    const persistedExercise = await tx.workoutTemplateExercise.create({
       data: {
         templateId,
         exerciseId: exercise.exerciseId,
         order: exerciseIndex,
         restSeconds: exercise.restSeconds,
         notes: exercise.notes,
-        supersetId: exercise.supersetKey,
-        supersetPosition: exercise.supersetPosition,
-        sets: {
-          create: exercise.sets.map((set, setIndex) => ({
-            order: setIndex,
-            reps: set.reps,
-            weightKg: set.weightKg,
-            durationSec: set.durationSec,
-          })),
-        },
       },
+      select: {
+        id: true,
+      },
+    });
+    persistedExerciseIds.set(
+      exercise.clientExerciseId,
+      persistedExercise.id
+    );
+  }
+
+  const resolvedSupersets = resolveRoutineSupersetMemberships(
+    payload.supersets,
+    persistedExerciseIds
+  );
+
+  for (const [supersetIndex, resolvedSuperset] of
+    resolvedSupersets.entries()) {
+    const superset = payload.supersets[supersetIndex];
+    const persistedSupersetId = `routine-superset-${crypto.randomUUID()}`;
+
+    await tx.workoutTemplateSuperset.create({
+      data: {
+        templateId,
+        id: persistedSupersetId,
+        order: supersetIndex,
+        label: superset.label,
+        colorKey: superset.colorKey,
+        restSeconds: superset.restSeconds,
+        plannedRounds: superset.plannedRounds,
+      },
+    });
+
+    for (const member of resolvedSuperset.members) {
+      await tx.workoutTemplateExercise.update({
+        where: {
+          id: member.persistedExerciseId,
+        },
+        data: {
+          supersetId: persistedSupersetId,
+          supersetPosition: member.position,
+        },
+      });
+    }
+  }
+
+  for (const exercise of payload.exercises) {
+    const persistedExerciseId = persistedExerciseIds.get(
+      exercise.clientExerciseId
+    );
+
+    if (!persistedExerciseId) {
+      throw new Error(`Unresolved exercise ${exercise.clientExerciseId}`);
+    }
+
+    await tx.workoutTemplateSet.createMany({
+      data: exercise.sets.map((set, setIndex) => ({
+        templateExerciseId: persistedExerciseId,
+        order: setIndex,
+        reps: set.reps,
+        weightKg: set.weightKg,
+        durationSec: set.durationSec,
+        distanceMeters: set.distanceMeters,
+        steps: set.steps,
+        floors: set.floors,
+      })),
     });
   }
 }
@@ -189,9 +299,24 @@ export async function createUserRoutine(
   userId: string,
   payload: ValidRoutineMutation
 ) {
-  if (!(await assertExercisesExist(userId, payload.exercises.map((item) => item.exerciseId)))) {
+  if (payload.exercises.some((exercise) => exercise.routineExerciseId !== null)) {
+    return {
+      code: "UNRESOLVED_ROUTINE_EXERCISE",
+      error: "A new routine cannot reference an existing routine exercise.",
+    } as const;
+  }
+
+  const trackingTypes = await getExerciseTrackingTypes(
+    userId,
+    payload.exercises.map((item) => item.exerciseId)
+  );
+  if (!trackingTypes) {
     return { error: "One or more exercises were not found." } as const;
   }
+  const normalizedPayload = normalizeRoutineTrackingValues(
+    payload,
+    trackingTypes
+  );
 
   const { entitlements } = await getUserEntitlements(userId);
   const routine = await prisma.$transaction(
@@ -203,11 +328,11 @@ export async function createUserRoutine(
       const routine = await tx.workoutTemplate.create({
         data: {
           userId,
-          ...buildRoutineMetadata(payload),
+          ...buildRoutineMetadata(normalizedPayload),
         },
         select: { id: true },
       });
-      await createRoutineChildren(tx, routine.id, payload);
+      await createRoutineChildren(tx, routine.id, normalizedPayload);
       return tx.workoutTemplate.findUniqueOrThrow({
         where: { id: routine.id },
         include: routineInclude,
@@ -231,9 +356,17 @@ export async function updateUserRoutine(
   routineId: number,
   payload: ValidRoutineMutation
 ) {
-  if (!(await assertExercisesExist(userId, payload.exercises.map((item) => item.exerciseId)))) {
+  const trackingTypes = await getExerciseTrackingTypes(
+    userId,
+    payload.exercises.map((item) => item.exerciseId)
+  );
+  if (!trackingTypes) {
     return { error: "One or more exercises were not found." } as const;
   }
+  const normalizedPayload = normalizeRoutineTrackingValues(
+    payload,
+    trackingTypes
+  );
 
   const existingRoutine = await prisma.workoutTemplate.findFirst({
     where: {
@@ -242,11 +375,32 @@ export async function updateUserRoutine(
     },
     select: {
       id: true,
+      exercises: {
+        select: {
+          id: true,
+        },
+      },
     },
   });
 
   if (!existingRoutine) {
     return { error: "Routine not found." } as const;
+  }
+
+  const existingExerciseIds = new Set(
+    existingRoutine.exercises.map((exercise) => exercise.id)
+  );
+  if (
+    payload.exercises.some(
+      (exercise) =>
+        exercise.routineExerciseId !== null &&
+        !existingExerciseIds.has(exercise.routineExerciseId)
+    )
+  ) {
+    return {
+      code: "UNRESOLVED_ROUTINE_EXERCISE",
+      error: "A routine exercise could not be resolved for this routine.",
+    } as const;
   }
 
   await prisma.$transaction(async (tx) => {
@@ -265,9 +419,9 @@ export async function updateUserRoutine(
       where: {
         id: routineId,
       },
-      data: buildRoutineMetadata(payload),
+      data: buildRoutineMetadata(normalizedPayload),
     });
-    await createRoutineChildren(tx, routineId, payload);
+    await createRoutineChildren(tx, routineId, normalizedPayload);
   });
 
   const routine = await prisma.workoutTemplate.findFirst({

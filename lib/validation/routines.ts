@@ -59,6 +59,10 @@ const supersetSchema = z.object({
   colorKey: z.enum(["BLUE", "VIOLET", "AMBER", "GREEN"]),
   restSeconds: nullableInteger(0, 3600),
   plannedRounds: nullableInteger(1, 100),
+  exerciseClientIds: z
+    .array(z.string().min(1).max(100))
+    .min(2, "A superset must contain at least two exercises.")
+    .max(50),
 });
 
 export const routineMutationSchema = z
@@ -74,21 +78,22 @@ export const routineMutationSchema = z
   exercises: z
     .array(
       z.object({
+        clientExerciseId: z.string().min(1).max(100),
+        routineExerciseId: z
+          .union([z.number().int().positive(), z.null(), z.undefined()])
+          .transform((value) => value ?? null),
         exerciseId: z.string().min(1, "Exercise is required."),
         restSeconds: nullableInteger(0, 3600),
         notes: nullableText(500),
-        supersetKey: z
-          .union([z.string().min(1).max(100), z.null(), z.undefined()])
-          .transform((value) => value ?? null),
-        supersetPosition: z
-          .union([z.number().int().min(0).max(49), z.null(), z.undefined()])
-          .transform((value) => value ?? null),
         sets: z
           .array(
             z.object({
               reps: nullableInteger(0, 10000),
               weightKg: nullableNumber(0, 100000),
               durationSec: nullableInteger(0, 86400),
+              distanceMeters: nullableNumber(0, 100000000),
+              steps: nullableInteger(0, 100000000),
+              floors: nullableInteger(0, 1000000),
             })
           )
           .min(1, "Add at least one set."),
@@ -99,41 +104,113 @@ export const routineMutationSchema = z
   })
   .superRefine((payload, ctx) => {
     const keys = new Set(payload.supersets.map((superset) => superset.key));
+    const exerciseKeys = new Set(
+      payload.exercises.map((exercise) => exercise.clientExerciseId)
+    );
+    const groupedExerciseKeys = new Set<string>();
 
-    for (const exercise of payload.exercises) {
-      if (exercise.supersetKey && !keys.has(exercise.supersetKey)) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["exercises"],
-          message: "A grouped exercise references an unknown superset.",
-        });
-      }
-
-      if (
-        (exercise.supersetKey === null) !==
-        (exercise.supersetPosition === null)
-      ) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["exercises"],
-          message: "Superset position and group must be provided together.",
-        });
-      }
+    if (keys.size !== payload.supersets.length) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["supersets"],
+        message: "Superset identifiers must be unique.",
+      });
     }
 
-    for (const superset of payload.supersets) {
-      const members = payload.exercises.filter(
-        (exercise) => exercise.supersetKey === superset.key
-      );
+    if (exerciseKeys.size !== payload.exercises.length) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["exercises"],
+        message: "Exercise client identifiers must be unique.",
+      });
+    }
 
-      if (members.length < 2) {
+    for (const [supersetIndex, superset] of payload.supersets.entries()) {
+      const uniqueMembers = new Set(superset.exerciseClientIds);
+
+      if (uniqueMembers.size !== superset.exerciseClientIds.length) {
         ctx.addIssue({
           code: "custom",
-          path: ["supersets"],
-          message: "A superset must contain at least two exercises.",
+          path: ["supersets", supersetIndex, "exerciseClientIds"],
+          message: "A superset cannot contain the same exercise twice.",
         });
+      }
+
+      for (const [memberIndex, exerciseClientId] of
+        superset.exerciseClientIds.entries()) {
+        if (!exerciseKeys.has(exerciseClientId)) {
+          ctx.addIssue({
+            code: "custom",
+            path: [
+              "supersets",
+              supersetIndex,
+              "exerciseClientIds",
+              memberIndex,
+            ],
+            message:
+              "This superset references an exercise that is not present in the routine.",
+          });
+        }
+
+        if (groupedExerciseKeys.has(exerciseClientId)) {
+          ctx.addIssue({
+            code: "custom",
+            path: [
+              "supersets",
+              supersetIndex,
+              "exerciseClientIds",
+              memberIndex,
+            ],
+            message: "An exercise cannot belong to more than one superset.",
+          });
+        }
+
+        groupedExerciseKeys.add(exerciseClientId);
       }
     }
   });
 
 export type ValidRoutineMutation = z.infer<typeof routineMutationSchema>;
+
+export type RoutineValidationErrorCode =
+  | "INVALID_SUPERSET_EXERCISE_REFERENCE"
+  | "SUPERSET_TOO_SMALL"
+  | "DUPLICATE_SUPERSET_MEMBERSHIP"
+  | "DUPLICATE_CLIENT_EXERCISE_ID"
+  | "INVALID_SUPERSET_POSITION"
+  | "INVALID_SHARED_REST"
+  | "INVALID_ROUTINE_PAYLOAD";
+
+export function getRoutineValidationError(
+  error: z.ZodError
+): {
+  code: RoutineValidationErrorCode;
+  path: PropertyKey[];
+  message: string;
+} {
+  const issue = error.issues[0];
+  const message = issue?.message ?? "Invalid routine payload.";
+
+  let code: RoutineValidationErrorCode = "INVALID_ROUTINE_PAYLOAD";
+
+  if (message.includes("not present in the routine")) {
+    code = "INVALID_SUPERSET_EXERCISE_REFERENCE";
+  } else if (message.includes("at least two exercises")) {
+    code = "SUPERSET_TOO_SMALL";
+  } else if (
+    message.includes("more than one superset") ||
+    message.includes("same exercise twice")
+  ) {
+    code = "DUPLICATE_SUPERSET_MEMBERSHIP";
+  } else if (message.includes("client identifiers must be unique")) {
+    code = "DUPLICATE_CLIENT_EXERCISE_ID";
+  } else if (issue?.path.includes("restSeconds")) {
+    code = "INVALID_SHARED_REST";
+  }
+
+  return {
+    code,
+    path: issue?.path ?? [],
+    message,
+  };
+}

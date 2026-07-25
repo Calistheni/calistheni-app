@@ -14,8 +14,14 @@ import {
   getExerciseTrackingTypeLabel,
   getRestBadgeLabel,
 } from "@/lib/exercise-display";
-import { routineInclude } from "@/lib/routines";
+import { getTrackingTypeFieldConfig } from "@/lib/exercise-tracking-fields";
+import { mapRoutineDetail, routineInclude } from "@/lib/routines";
 import { prisma } from "@/lib/prisma";
+import {
+  getSupersetDisplayLabel,
+  SUPERSET_COLOR_STYLES,
+} from "@/lib/workout-supersets";
+import { Layers2 } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Routine",
@@ -43,7 +49,7 @@ export default async function RoutineDetailPage({
     notFound();
   }
 
-  const routine = await prisma.workoutTemplate.findFirst({
+  const routineRecord = await prisma.workoutTemplate.findFirst({
     where: {
       id: routineId,
       userId: session.user.id,
@@ -51,9 +57,10 @@ export default async function RoutineDetailPage({
     include: routineInclude,
   });
 
-  if (!routine) {
+  if (!routineRecord) {
     notFound();
   }
+  const routine = mapRoutineDetail(routineRecord);
 
   return (
     <main className="mx-auto w-full max-w-5xl p-4 sm:p-6 lg:p-8">
@@ -79,7 +86,20 @@ export default async function RoutineDetailPage({
       </div>
 
       <div className="space-y-4">
-        {routine.exercises.map((routineExercise) => (
+        {routine.exercises.map((routineExercise) => {
+          const fieldConfig = getTrackingTypeFieldConfig(
+            routineExercise.exercise.trackingType
+          );
+          const superset = routineExercise.supersetKey
+            ? routine.supersets.find(
+                (item) => item.key === routineExercise.supersetKey
+              )
+            : null;
+          const supersetIndex = superset
+            ? routine.supersets.findIndex((item) => item.key === superset.key)
+            : -1;
+
+          return (
           <Card key={routineExercise.id}>
             <CardHeader>
               <div className="flex min-w-0 items-center gap-3">
@@ -106,9 +126,25 @@ export default async function RoutineDetailPage({
                         routineExercise.exercise.trackingType
                       )}
                     </Badge>
-                    {routineExercise.restSeconds !== null ? (
+                    {superset ? (
+                      <Badge
+                        variant="outline"
+                        className={
+                          SUPERSET_COLOR_STYLES[superset.colorKey].badge
+                        }
+                      >
+                        <Layers2 />
+                        {getSupersetDisplayLabel(superset, supersetIndex)}
+                      </Badge>
+                    ) : null}
+                    {!superset && routineExercise.restSeconds !== null ? (
                       <Badge variant="outline">
                         {getRestBadgeLabel(routineExercise.restSeconds)}
+                      </Badge>
+                    ) : null}
+                    {superset && superset.restSeconds !== null ? (
+                      <Badge variant="outline">
+                        Shared {getRestBadgeLabel(superset.restSeconds)}
                       </Badge>
                     ) : null}
                   </div>
@@ -119,22 +155,38 @@ export default async function RoutineDetailPage({
               {routineExercise.sets.map((set, index) => (
                 <div
                   key={set.id}
-                  className="grid gap-2 rounded-lg border bg-muted/20 p-3 text-sm sm:grid-cols-4"
+                  className="grid gap-2 rounded-lg border bg-muted/20 p-3 text-sm sm:grid-cols-2"
                 >
                   <div className="font-medium">Set {index + 1}</div>
-                  <div>Reps: {set.reps ?? "-"}</div>
-                  <div>Weight: {set.weightKg ?? "-"}</div>
-                  <div>
-                    Duration:{" "}
-                    {set.durationSec === null
-                      ? "-"
-                      : `${Math.round(set.durationSec / 60)} min`}
-                  </div>
+                  {fieldConfig.reps ? <div>Reps: {set.reps ?? "-"}</div> : null}
+                  {fieldConfig.weight ? (
+                    <div>
+                      {fieldConfig.weightLabel}: {set.weightKg ?? "-"} kg
+                    </div>
+                  ) : null}
+                  {fieldConfig.duration ? (
+                    <div>
+                      Duration:{" "}
+                      {set.durationSec === null
+                        ? "-"
+                        : `${set.durationSec} sec`}
+                    </div>
+                  ) : null}
+                  {fieldConfig.distance ? (
+                    <div>Distance: {set.distanceMeters ?? "-"} m</div>
+                  ) : null}
+                  {fieldConfig.steps ? (
+                    <div>Steps: {set.steps ?? "-"}</div>
+                  ) : null}
+                  {fieldConfig.floors ? (
+                    <div>Floors: {set.floors ?? "-"}</div>
+                  ) : null}
                 </div>
               ))}
             </CardContent>
           </Card>
-        ))}
+          );
+        })}
       </div>
     </main>
   );

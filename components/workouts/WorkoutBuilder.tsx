@@ -132,6 +132,7 @@ import {
   DEFAULT_WORKOUT_TITLE,
   getFinalWorkoutTitle,
 } from "@/lib/workout-title";
+import { getTrackingTypeFieldConfig } from "@/lib/exercise-tracking-fields";
 import type {
   ExerciseListItem,
   WorkoutDetail,
@@ -236,46 +237,23 @@ function getDurationMinutesValue(durationSeconds: number | null) {
 }
 
 function isRepsFieldVisible(trackingType: ExerciseListItem["trackingType"]) {
-  return (
-    trackingType === "NOT_SELECTED" ||
-    trackingType === "BODYWEIGHT_REPS" ||
-    trackingType === "WEIGHTED_BODYWEIGHT" ||
-    trackingType === "EXTERNAL_WEIGHT"
-  );
+  return getTrackingTypeFieldConfig(trackingType).reps;
 }
 
 function isWeightFieldVisible(trackingType: ExerciseListItem["trackingType"]) {
-  return (
-    trackingType === "NOT_SELECTED" ||
-    trackingType === "WEIGHTED_BODYWEIGHT" ||
-    trackingType === "EXTERNAL_WEIGHT" ||
-    trackingType === "WEIGHT_DISTANCE_DURATION"
-  );
+  return getTrackingTypeFieldConfig(trackingType).weight;
 }
 
 function isDurationFieldVisible(
   trackingType: ExerciseListItem["trackingType"]
 ) {
-  return (
-    trackingType === "NOT_SELECTED" ||
-    trackingType === "DURATION" ||
-    trackingType === "DISTANCE_DURATION" ||
-    trackingType === "STEPS_DISTANCE_DURATION" ||
-    trackingType === "FLOORS_DISTANCE_DURATION" ||
-    trackingType === "WEIGHT_DISTANCE_DURATION"
-  );
+  return getTrackingTypeFieldConfig(trackingType).duration;
 }
 
 function isDistanceFieldVisible(
   trackingType: ExerciseListItem["trackingType"]
 ) {
-  return (
-    trackingType === "NOT_SELECTED" ||
-    trackingType === "DISTANCE_DURATION" ||
-    trackingType === "STEPS_DISTANCE_DURATION" ||
-    trackingType === "FLOORS_DISTANCE_DURATION" ||
-    trackingType === "WEIGHT_DISTANCE_DURATION"
-  );
+  return getTrackingTypeFieldConfig(trackingType).distance;
 }
 
 function usesBodyweightVolume(trackingType: ExerciseListItem["trackingType"]) {
