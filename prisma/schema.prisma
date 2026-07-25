@@ -61,6 +61,13 @@ enum WorkoutTemplateVisibility {
   PUBLIC
 }
 
+enum SupersetColorKey {
+  BLUE
+  VIOLET
+  AMBER
+  GREEN
+}
+
 enum TrainingStyle {
   CALISTHENICS
   GYM
@@ -331,6 +338,7 @@ model Workout {
 
   user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   exercises       WorkoutExercise[]
+  supersets       WorkoutSuperset[]
   personalRecords PersonalRecord[]
 
   createdAt DateTime @default(now())
@@ -340,16 +348,38 @@ model Workout {
   @@index([visibility, completedAt])
 }
 
-model WorkoutExercise {
-  id          Int     @id @default(autoincrement())
+model WorkoutSuperset {
+  id          String            @id
   workoutId   Int
-  exerciseId  String
   order       Int
-  notes       String?
+  label       String?
+  colorKey    SupersetColorKey
   restSeconds Int?
+  plannedRounds Int?
 
-  workout  Workout      @relation(fields: [workoutId], references: [id], onDelete: Cascade)
-  exercise Exercise     @relation(fields: [exerciseId], references: [id], onDelete: Restrict)
+  workout   Workout           @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  exercises WorkoutExercise[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workoutId, order])
+  @@index([workoutId])
+}
+
+model WorkoutExercise {
+  id               Int     @id @default(autoincrement())
+  workoutId        Int
+  exerciseId       String
+  order            Int
+  notes            String?
+  restSeconds      Int?
+  supersetId       String?
+  supersetPosition Int?
+
+  workout  Workout           @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  exercise Exercise          @relation(fields: [exerciseId], references: [id], onDelete: Restrict)
+  superset WorkoutSuperset? @relation(fields: [supersetId], references: [id], onDelete: SetNull)
   sets     WorkoutSet[]
 
   createdAt DateTime @default(now())
@@ -357,6 +387,7 @@ model WorkoutExercise {
 
   @@index([workoutId, order])
   @@index([exerciseId])
+  @@index([supersetId, supersetPosition])
 }
 
 model WorkoutSet {
@@ -372,6 +403,7 @@ model WorkoutSet {
   rpe               Float?
   notes             String?
   completed         Boolean @default(false)
+  supersetRoundIndex Int?
 
   workoutExercise WorkoutExercise  @relation(fields: [workoutExerciseId], references: [id], onDelete: Cascade)
   personalRecords PersonalRecord[]
@@ -380,6 +412,7 @@ model WorkoutSet {
   updatedAt DateTime @updatedAt
 
   @@index([workoutExerciseId, order])
+  @@index([workoutExerciseId, supersetRoundIndex])
 }
 
 model UserFollow {
@@ -478,27 +511,51 @@ model WorkoutTemplate {
 
   user      User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
   exercises WorkoutTemplateExercise[]
+  supersets WorkoutTemplateSuperset[]
 
   @@index([userId, updatedAt])
   @@index([visibility])
 }
 
-model WorkoutTemplateExercise {
-  id          Int      @id @default(autoincrement())
+model WorkoutTemplateSuperset {
+  id          String            @id
   templateId  Int
-  exerciseId  String
   order       Int
+  label       String?
+  colorKey    SupersetColorKey
   restSeconds Int?
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  plannedRounds Int?
 
-  template WorkoutTemplate      @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  exercise Exercise             @relation(fields: [exerciseId], references: [id], onDelete: Restrict)
+  template  WorkoutTemplate           @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  exercises WorkoutTemplateExercise[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([templateId, order])
+  @@index([templateId])
+}
+
+model WorkoutTemplateExercise {
+  id               Int      @id @default(autoincrement())
+  templateId       Int
+  exerciseId       String
+  order            Int
+  restSeconds      Int?
+  notes            String?
+  supersetId       String?
+  supersetPosition Int?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  template WorkoutTemplate          @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  exercise Exercise                 @relation(fields: [exerciseId], references: [id], onDelete: Restrict)
+  superset WorkoutTemplateSuperset? @relation(fields: [supersetId], references: [id], onDelete: SetNull)
   sets     WorkoutTemplateSet[]
 
   @@index([templateId, order])
   @@index([exerciseId])
+  @@index([supersetId, supersetPosition])
 }
 
 model WorkoutTemplateSet {

@@ -100,6 +100,12 @@ export default async function NewWorkoutPage({
         })
       : null,
   ]);
+  const routineSupersetKeyMap = new Map(
+    routine?.supersets.map((superset) => [
+      superset.id,
+      `superset-${crypto.randomUUID()}`,
+    ]) ?? []
+  );
   const initialWorkoutFromRoutine: WorkoutDetail | undefined = routine
     ? {
         id: 0,
@@ -115,10 +121,22 @@ export default async function NewWorkoutPage({
           0
         ),
         totalVolume: null,
+        supersets: routine.supersets.map((superset) => ({
+          id: routineSupersetKeyMap.get(superset.id) ?? superset.id,
+          key: routineSupersetKeyMap.get(superset.id) ?? superset.id,
+          label: superset.label,
+          colorKey: superset.colorKey,
+          restSeconds: superset.restSeconds,
+          plannedRounds: superset.plannedRounds,
+        })),
         exercises: routine.exercises.map((routineExercise) => ({
           id: -routineExercise.id,
           notes: routineExercise.notes,
           restSeconds: routineExercise.restSeconds,
+          supersetKey: routineExercise.supersetId
+            ? (routineSupersetKeyMap.get(routineExercise.supersetId) ?? null)
+            : null,
+          supersetPosition: routineExercise.supersetPosition,
           exercise: mapExercise(routineExercise.exercise),
           sets: routineExercise.sets.map((set) => ({
             id: -set.id,
@@ -131,6 +149,7 @@ export default async function NewWorkoutPage({
             rpe: null,
             notes: null,
             completed: false,
+            supersetRoundIndex: null,
           })),
         })),
       }

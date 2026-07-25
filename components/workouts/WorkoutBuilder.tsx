@@ -18,10 +18,12 @@ import {
   Circle,
   EllipsisVertical,
   Gauge,
+  Layers2,
   MessageSquare,
   Plus,
   Repeat2,
   Trash2,
+  Unlink2,
 } from "lucide-react";
 import { arrayMove } from "@dnd-kit/sortable";
 import {
@@ -44,6 +46,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Collapsible,
   CollapsibleContent,
@@ -93,6 +96,11 @@ import {
 } from "@/components/workouts/hooks/useWorkoutTimer";
 import { useRestTimer } from "@/components/workouts/hooks/useRestTimer";
 import { MobileActiveWorkoutHeader } from "@/components/workouts/MobileActiveWorkoutHeader";
+import { SupersetGroupCard } from "@/components/workouts/SupersetGroupCard";
+import {
+  SupersetRoundForm,
+  type SupersetRoundFormEntry,
+} from "@/components/workouts/SupersetRoundForm";
 import {
   SortableExerciseItem,
   SortableExerciseList,
@@ -115,6 +123,12 @@ import {
 } from "@/lib/workout-volume";
 import { isIncompleteEnteredSet } from "@/lib/workout-set-performance";
 import {
+  createSupersetKey,
+  getSupersetDisplayLabel,
+  getSupersetRoundProgress,
+  SUPERSET_COLOR_KEYS,
+} from "@/lib/workout-supersets";
+import {
   DEFAULT_WORKOUT_TITLE,
   getFinalWorkoutTitle,
 } from "@/lib/workout-title";
@@ -124,6 +138,7 @@ import type {
   WorkoutExerciseInput,
   WorkoutMutationPayload,
   WorkoutSetInput,
+  WorkoutSupersetInput,
 } from "@/types/workout";
 
 type WorkoutBuilderProps = {
@@ -143,10 +158,16 @@ type LocalWorkoutExercise = Omit<WorkoutExerciseInput, "sets"> & {
   sets: LocalWorkoutSet[];
 };
 
+type SupersetResultDraft = Record<
+  string,
+  { setIndex: number; set: WorkoutSetInput }
+>;
+
 type ActiveWorkoutDraft = {
   title: string;
   notes: string;
   visibility: "PRIVATE" | "PUBLIC";
+  supersets: WorkoutSupersetInput[];
   selectedExercises: LocalWorkoutExercise[];
 };
 
@@ -165,6 +186,7 @@ const EMPTY_SET_VALUES: WorkoutSetInput = {
   rpe: null,
   notes: null,
   completed: false,
+  supersetRoundIndex: null,
 };
 
 function createLocalSet(
@@ -185,6 +207,7 @@ function toWorkoutSetInput(set: LocalWorkoutSet): WorkoutSetInput {
     rpe: set.rpe,
     notes: set.notes,
     completed: set.completed,
+    supersetRoundIndex: set.supersetRoundIndex,
   };
 }
 
@@ -385,6 +408,12 @@ function readActiveWorkoutDraft(sessionId: string) {
 
     const selectedExercises = parsed.selectedExercises.map((exercise) => ({
       ...exercise,
+      supersetKey:
+        typeof exercise.supersetKey === "string" ? exercise.supersetKey : null,
+      supersetPosition:
+        typeof exercise.supersetPosition === "number"
+          ? exercise.supersetPosition
+          : null,
       localId:
         typeof exercise.localId === "string"
           ? exercise.localId
@@ -408,6 +437,7 @@ function readActiveWorkoutDraft(sessionId: string) {
         parsed.visibility === "PRIVATE" || parsed.visibility === "PUBLIC"
           ? parsed.visibility
           : "PUBLIC",
+      supersets: Array.isArray(parsed.supersets) ? parsed.supersets : [],
       selectedExercises,
     } satisfies ActiveWorkoutDraft;
   } catch {
@@ -492,6 +522,8 @@ function buildInitialExercises(
     exerciseId: workoutExercise.exercise.id,
     notes: workoutExercise.notes,
     restSeconds: workoutExercise.restSeconds ?? DEFAULT_REST_SECONDS,
+    supersetKey: workoutExercise.supersetKey,
+    supersetPosition: workoutExercise.supersetPosition,
     sets: workoutExercise.sets.map((set) =>
       createLocalSet(
         {
@@ -504,6 +536,7 @@ function buildInitialExercises(
           rpe: set.rpe,
           notes: set.notes,
           completed: set.completed,
+          supersetRoundIndex: set.supersetRoundIndex,
         },
         `workout-set-${set.id}`
       )
@@ -550,6 +583,13 @@ export function WorkoutBuilder({
   const [selectedExercises, setSelectedExercises] = useState<
     LocalWorkoutExercise[]
   >(initialSelectedExercises);
+  const [supersets, setSupersets] = useState<WorkoutSupersetInput[]>(
+    initialWorkout?.supersets ?? []
+  );
+  const [openSupersetKeys, setOpenSupersetKeys] = useState<string[]>(
+    initialWorkout?.supersets.map((superset) => superset.key) ?? []
+  );
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [openExerciseIds, setOpenExerciseIds] = useState<string[]>(() =>
     initialSelectedExercises[0] ? [initialSelectedExercises[0].localId] : []
   );
@@ -624,6 +664,23 @@ export function WorkoutBuilder({
     summary: string;
     value: number | null;
   } | null>(null);
+  const [supersetEditorKey, setSupersetEditorKey] = useState<string | "new" | null>(
+    null
+  );
+  const [supersetSelection, setSupersetSelection] = useState<string[]>([]);
+  const [supersetRestSeconds, setSupersetRestSeconds] = useState<number | null>(
+    DEFAULT_REST_SECONDS
+  );
+  const [supersetPendingDissolve, setSupersetPendingDissolve] = useState<
+    string | null
+  >(null);
+  const [resultsSupersetKey, setResultsSupersetKey] = useState<string | null>(
+    null
+  );
+  const [supersetResultDraft, setSupersetResultDraft] =
+    useState<SupersetResultDraft>({});
+  const [isCompletingSuperset, setIsCompletingSuperset] = useState(false);
+  const isCompletingSupersetRef = useRef(false);
   const muscles = useMemo(
     () => [...new Set(exercises.map((exercise) => exercise.muscle))].sort(),
     [exercises]
@@ -669,6 +726,58 @@ export function WorkoutBuilder({
           } => item !== null
         ),
     [exercises, selectedExercises]
+  );
+  const activeResultsSuperset = resultsSupersetKey
+    ? supersets.find((superset) => superset.key === resultsSupersetKey) ?? null
+    : null;
+  const activeResultsSupersetIndex = activeResultsSuperset
+    ? supersets.findIndex(
+        (superset) => superset.key === activeResultsSuperset.key
+      )
+    : -1;
+  const activeResultsMembers = activeResultsSuperset
+    ? selectedExercises
+        .filter(
+          (exercise) => exercise.supersetKey === activeResultsSuperset.key
+        )
+        .sort(
+          (a, b) =>
+            (a.supersetPosition ?? 0) - (b.supersetPosition ?? 0)
+        )
+    : [];
+  const activeResultsProgress = activeResultsSuperset
+    ? getSupersetRoundProgress(
+        activeResultsMembers,
+        activeResultsSuperset.plannedRounds
+      )
+    : null;
+  const supersetRoundFormEntries = activeResultsMembers.flatMap(
+    (selectedExercise): SupersetRoundFormEntry[] => {
+      const entry = supersetResultDraft[selectedExercise.localId];
+      const exercise = exercises.find(
+        (item) => item.id === selectedExercise.exerciseId
+      );
+      if (!entry || !exercise) return [];
+
+      return [
+        {
+          localId: selectedExercise.localId,
+          exerciseName: exercise.name,
+          setIndex: entry.setIndex,
+          set: entry.set,
+          showWeight: isWeightFieldVisible(exercise.trackingType),
+          weightedBodyweight:
+            exercise.trackingType === "WEIGHTED_BODYWEIGHT",
+          showReps: isRepsFieldVisible(exercise.trackingType),
+          showDuration: isDurationFieldVisible(exercise.trackingType),
+          showDistance: isDistanceFieldVisible(exercise.trackingType),
+          showSteps:
+            exercise.trackingType === "STEPS_DISTANCE_DURATION",
+          showFloors:
+            exercise.trackingType === "FLOORS_DISTANCE_DURATION",
+        },
+      ];
+    }
   );
   const liveVolumeKg = useMemo(
     () =>
@@ -726,6 +835,15 @@ export function WorkoutBuilder({
 
     return warnedSetIds.filter((setId) => currentIds.has(setId));
   }, [incompleteEnteredSets, warnedSetIds]);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 767px)");
+    const updateViewport = () => setIsMobileViewport(mediaQuery.matches);
+
+    updateViewport();
+    mediaQuery.addEventListener("change", updateViewport);
+    return () => mediaQuery.removeEventListener("change", updateViewport);
+  }, []);
 
   useEffect(() => {
     if (!isExercisePickerOpen) {
@@ -834,6 +952,8 @@ export function WorkoutBuilder({
         setTitle(draft.title);
         setNotes(draft.notes);
         setVisibility(draft.visibility);
+        setSupersets(draft.supersets);
+        setOpenSupersetKeys(draft.supersets.map((superset) => superset.key));
         setSelectedExercises(draft.selectedExercises);
         setOpenExerciseIds(
           draft.selectedExercises[0]
@@ -894,6 +1014,7 @@ export function WorkoutBuilder({
         title,
         notes,
         visibility,
+        supersets,
         selectedExercises,
       } satisfies ActiveWorkoutDraft)
     );
@@ -903,6 +1024,7 @@ export function WorkoutBuilder({
     isEditing,
     notes,
     selectedExercises,
+    supersets,
     title,
     visibility,
   ]);
@@ -921,6 +1043,8 @@ export function WorkoutBuilder({
         exerciseId,
         notes: null,
         restSeconds: DEFAULT_REST_SECONDS,
+        supersetKey: null,
+        supersetPosition: null,
         sets: [createLocalSet()],
       },
     ]);
@@ -929,12 +1053,304 @@ export function WorkoutBuilder({
     );
   }
 
+  function openSupersetEditor(key: string | "new") {
+    const superset =
+      key === "new" ? null : supersets.find((item) => item.key === key);
+    const members = superset
+      ? selectedExercises
+          .filter((exercise) => exercise.supersetKey === superset.key)
+          .sort(
+            (a, b) =>
+              (a.supersetPosition ?? 0) - (b.supersetPosition ?? 0)
+          )
+          .map((exercise) => exercise.localId)
+      : [];
+
+    setSupersetEditorKey(key);
+    setSupersetSelection(members);
+    setSupersetRestSeconds(superset?.restSeconds ?? DEFAULT_REST_SECONDS);
+  }
+
+  function saveSuperset() {
+    if (supersetSelection.length < 2) {
+      toast.error("Select at least two exercises.");
+      return;
+    }
+
+    const existing =
+      supersetEditorKey && supersetEditorKey !== "new"
+        ? supersets.find((item) => item.key === supersetEditorKey)
+        : null;
+    const key = existing?.key ?? createSupersetKey();
+
+    if (existing) {
+      setSupersets((current) =>
+        current.map((item) =>
+          item.key === key
+            ? { ...item, restSeconds: supersetRestSeconds }
+            : item
+        )
+      );
+    } else {
+      const groupIndex = supersets.length;
+      setSupersets((current) => [
+        ...current,
+        {
+          key,
+          label: null,
+          colorKey:
+            SUPERSET_COLOR_KEYS[groupIndex % SUPERSET_COLOR_KEYS.length],
+          restSeconds: supersetRestSeconds,
+          plannedRounds: null,
+        },
+      ]);
+    }
+
+    setSelectedExercises((current) => {
+      const grouped = current.map((exercise) => {
+        const position = supersetSelection.indexOf(exercise.localId);
+
+        if (position >= 0) {
+          return {
+            ...exercise,
+            supersetKey: key,
+            supersetPosition: position,
+          };
+        }
+
+        if (exercise.supersetKey === key) {
+          return {
+            ...exercise,
+            supersetKey: null,
+            supersetPosition: null,
+          };
+        }
+
+        return exercise;
+      });
+      const members = supersetSelection
+        .map((localId) => grouped.find((exercise) => exercise.localId === localId))
+        .filter((exercise): exercise is LocalWorkoutExercise => Boolean(exercise));
+      const remaining = grouped.filter(
+        (exercise) => !supersetSelection.includes(exercise.localId)
+      );
+      const originalIndexes = supersetSelection
+        .map((localId) =>
+          current.findIndex((exercise) => exercise.localId === localId)
+        )
+        .filter((index) => index >= 0);
+      const insertAt = Math.min(...originalIndexes, remaining.length);
+
+      return [
+        ...remaining.slice(0, insertAt),
+        ...members,
+        ...remaining.slice(insertAt),
+      ];
+    });
+    setOpenExerciseIds((current) => [
+      ...current,
+      ...supersetSelection.filter((id) => !current.includes(id)),
+    ]);
+    setOpenSupersetKeys((current) =>
+      current.includes(key) ? current : [...current, key]
+    );
+    setSupersetEditorKey(null);
+    toast.success(existing ? "Superset updated." : "Superset created.");
+  }
+
+  function dissolveSuperset(key: string) {
+    setSelectedExercises((current) =>
+      current.map((exercise) =>
+        exercise.supersetKey === key
+          ? {
+              ...exercise,
+              supersetKey: null,
+              supersetPosition: null,
+            }
+          : exercise
+      )
+    );
+    setSupersets((current) => current.filter((item) => item.key !== key));
+    setOpenSupersetKeys((current) => current.filter((item) => item !== key));
+    setSupersetPendingDissolve(null);
+    toast.success("Superset dissolved. Exercise data was kept.");
+  }
+
+  function removeExerciseFromSuperset(localId: string) {
+    const exercise = selectedExercises.find((item) => item.localId === localId);
+
+    if (!exercise?.supersetKey) return;
+
+    const key = exercise.supersetKey;
+    const remaining = selectedExercises.filter(
+      (item) => item.supersetKey === key && item.localId !== localId
+    );
+
+    if (remaining.length < 2) {
+      dissolveSuperset(key);
+      return;
+    }
+
+    setSelectedExercises((current) =>
+      current.map((item) => {
+        if (item.localId === localId) {
+          return { ...item, supersetKey: null, supersetPosition: null };
+        }
+
+        if (item.supersetKey === key) {
+          const position = remaining.findIndex(
+            (remainingItem) => remainingItem.localId === item.localId
+          );
+          return { ...item, supersetPosition: position };
+        }
+
+        return item;
+      })
+    );
+  }
+
+  function openSupersetResults(key: string) {
+    const draft: SupersetResultDraft = {};
+
+    const members = selectedExercises
+      .filter((exercise) => exercise.supersetKey === key)
+      .sort(
+        (a, b) =>
+          (a.supersetPosition ?? 0) - (b.supersetPosition ?? 0)
+      );
+    const progress = getSupersetRoundProgress(
+      members,
+      supersets.find((superset) => superset.key === key)?.plannedRounds ?? null
+    );
+
+    for (const exercise of members) {
+      const reusableIndex = exercise.sets.findIndex((set) => !set.completed);
+      const previous = [...exercise.sets]
+        .reverse()
+        .find((set) => set.completed);
+      const setIndex = reusableIndex >= 0 ? reusableIndex : -1;
+      const source =
+        reusableIndex >= 0
+          ? exercise.sets[reusableIndex]
+          : previous ?? createLocalSet();
+      draft[exercise.localId] = {
+        setIndex,
+        set: {
+          ...toWorkoutSetInput(source),
+          completed: false,
+          supersetRoundIndex: progress.currentRound - 1,
+        },
+      };
+    }
+
+    setSupersetResultDraft(draft);
+    setResultsSupersetKey(key);
+  }
+
+  function completeSupersetRound(
+    key: string,
+    resultDraft?: SupersetResultDraft
+  ) {
+    if (isCompletingSupersetRef.current) return;
+
+    const superset = supersets.find((item) => item.key === key);
+    if (!superset) return;
+
+    isCompletingSupersetRef.current = true;
+    setIsCompletingSuperset(true);
+    setSelectedExercises((current) => {
+      return current.map((exercise) => {
+        if (exercise.supersetKey !== key) return exercise;
+        const draft = resultDraft?.[exercise.localId];
+        if (!draft) return exercise;
+        if (draft.setIndex < 0) {
+          return {
+            ...exercise,
+            sets: [
+              ...exercise.sets,
+              createLocalSet({
+                ...draft.set,
+                completed: true,
+              }),
+            ],
+          };
+        }
+
+        return {
+          ...exercise,
+          sets: exercise.sets.map((set, index) =>
+            index === draft.setIndex
+              ? {
+                  ...set,
+                  ...(draft?.set ?? {}),
+                  localId: set.localId,
+                  completed: true,
+                }
+              : set
+          ),
+        };
+      });
+    });
+
+    if (superset.restSeconds && superset.restSeconds > 0) {
+      void restTimer.initializeAudio();
+      restTimer.startRestTimer({
+        exerciseLocalId: key,
+        exerciseName: getSupersetDisplayLabel(
+          superset,
+          supersets.findIndex((item) => item.key === key)
+        ),
+        restSeconds: superset.restSeconds,
+      });
+    }
+
+    setResultsSupersetKey(null);
+    setSupersetResultDraft({});
+    window.setTimeout(() => {
+      isCompletingSupersetRef.current = false;
+      setIsCompletingSuperset(false);
+    }, 350);
+    toast.success(
+      superset.restSeconds
+        ? "Superset completed. Rest started."
+        : "Superset completed."
+    );
+  }
+
+  function updateSupersetResult(
+    localId: string,
+    field: keyof WorkoutSetInput,
+    value: string
+  ) {
+    setSupersetResultDraft((current) => {
+      const entry = current[localId];
+      if (!entry) return current;
+
+      return {
+        ...current,
+        [localId]: {
+          ...entry,
+          set: {
+            ...entry.set,
+            [field]:
+              field === "notes"
+                ? getTextValue(value)
+                : getNumberValue(value),
+          },
+        },
+      };
+    });
+  }
+
   function moveExercise(activeId: string, overId: string) {
     setSelectedExercises((current) => {
       const activeIndex = current.findIndex((item) => item.localId === activeId);
       const overIndex = current.findIndex((item) => item.localId === overId);
 
       if (activeIndex < 0 || overIndex < 0) {
+        return current;
+      }
+      if (current[activeIndex]?.supersetKey) {
         return current;
       }
 
@@ -952,6 +1368,9 @@ export function WorkoutBuilder({
         nextIndex < 0 ||
         nextIndex >= current.length
       ) {
+        return current;
+      }
+      if (current[currentIndex]?.supersetKey) {
         return current;
       }
 
@@ -1030,9 +1449,37 @@ export function WorkoutBuilder({
   }
 
   function removeExercise(localId: string) {
-    setSelectedExercises((current) =>
-      current.filter((item) => item.localId !== localId)
+    const removedExercise = selectedExercises.find(
+      (item) => item.localId === localId
     );
+    const affectedKey = removedExercise?.supersetKey ?? null;
+    const remainingMembers = affectedKey
+      ? selectedExercises.filter(
+          (item) => item.supersetKey === affectedKey && item.localId !== localId
+        )
+      : [];
+
+    setSelectedExercises((current) =>
+      current
+        .filter((item) => item.localId !== localId)
+        .map((item) =>
+          affectedKey && item.supersetKey === affectedKey
+            ? remainingMembers.length < 2
+              ? { ...item, supersetKey: null, supersetPosition: null }
+              : {
+                  ...item,
+                  supersetPosition: remainingMembers.findIndex(
+                    (member) => member.localId === item.localId
+                  ),
+                }
+            : item
+        )
+    );
+    if (affectedKey && remainingMembers.length < 2) {
+      setSupersets((current) =>
+        current.filter((item) => item.key !== affectedKey)
+      );
+    }
     setOpenExerciseIds((current) =>
       current.filter((item) => item !== localId)
     );
@@ -1180,9 +1627,10 @@ export function WorkoutBuilder({
     exerciseName: string,
     restSeconds: number | null
   ) {
-    const setLocalId = selectedExercises
-      .find((exercise) => exercise.localId === localId)
-      ?.sets.at(setIndex)?.localId;
+    const workoutExercise = selectedExercises.find(
+      (exercise) => exercise.localId === localId
+    );
+    const setLocalId = workoutExercise?.sets.at(setIndex)?.localId;
     const row = setLocalId ? setRowRefs.current.get(setLocalId) : null;
 
     if (setLocalId && row) {
@@ -1197,6 +1645,10 @@ export function WorkoutBuilder({
     }
 
     updateSet(localId, setIndex, "completed", completed);
+
+    if (workoutExercise?.supersetKey) {
+      return;
+    }
 
     if (completed) {
       const durationSeconds = restSeconds ?? DEFAULT_REST_SECONDS;
@@ -1419,11 +1871,21 @@ export function WorkoutBuilder({
           ).toISOString(),
       completedAt: new Date().toISOString(),
       visibility,
+      supersets,
       exercises: selectedExercises.map(
-        ({ exerciseId, notes, restSeconds, sets }) => ({
+        ({
           exerciseId,
           notes,
           restSeconds,
+          supersetKey,
+          supersetPosition,
+          sets,
+        }) => ({
+          exerciseId,
+          notes,
+          restSeconds,
+          supersetKey,
+          supersetPosition,
           sets: sets.map(toWorkoutSetInput),
         })
       ),
@@ -1573,6 +2035,394 @@ export function WorkoutBuilder({
           ) : null}
         </div>
       </div>
+    );
+  }
+
+  function renderSupersetExerciseRow(
+    selectedExercise: LocalWorkoutExercise,
+    groupPosition: number,
+    supersetLabel: string
+  ) {
+    const exercise = exercises.find(
+      (item) => item.id === selectedExercise.exerciseId
+    );
+    if (!exercise) return null;
+    const completedSets = selectedExercise.sets.filter(
+      (set) => set.completed
+    ).length;
+
+    return (
+      <AccordionItem
+        key={selectedExercise.localId}
+        value={selectedExercise.localId}
+        className="border-b border-border/70 last:border-b-0"
+      >
+        <div className="flex min-w-0 items-stretch">
+          <AccordionTrigger className="min-w-0 px-3 py-2.5 pl-4 hover:no-underline">
+            <div className="flex min-w-0 flex-1 items-center gap-2.5">
+              <Image
+                src={getExerciseThumbnailSrc(exercise.thumbnailUrl)}
+                alt=""
+                width={96}
+                height={96}
+                unoptimized
+                className="size-11 shrink-0 rounded-md bg-muted object-cover"
+              />
+              <div className="min-w-0 flex-1 text-left">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <Badge
+                    variant="outline"
+                    className="h-5 shrink-0 px-1.5 text-[10px]"
+                  >
+                    {supersetLabel.replace("Superset ", "")}
+                    {groupPosition + 1}
+                  </Badge>
+                  <h3 className="truncate text-sm font-semibold">
+                    {exercise.name}
+                  </h3>
+                </div>
+                <p className="truncate text-xs text-muted-foreground">
+                  {exercise.muscle}
+                </p>
+              </div>
+              <span
+                className="shrink-0 text-xs font-semibold tabular-nums text-muted-foreground"
+                aria-label={`${completedSets} of ${selectedExercise.sets.length} sets completed`}
+              >
+                {completedSets}/{selectedExercise.sets.length}
+              </span>
+            </div>
+          </AccordionTrigger>
+          <div className="flex shrink-0 items-center pr-1">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon-lg"
+                  variant="ghost"
+                  aria-label={`Manage ${exercise.name}`}
+                >
+                  <EllipsisVertical />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onSelect={() => openReplaceExercise(selectedExercise.localId)}
+                >
+                  <Repeat2 />
+                  Replace exercise
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() =>
+                    removeExerciseFromSuperset(selectedExercise.localId)
+                  }
+                >
+                  <Unlink2 />
+                  Remove from superset
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  variant="destructive"
+                  onSelect={() =>
+                    setExercisePendingRemoval({
+                      localId: selectedExercise.localId,
+                      exerciseName: exercise.name,
+                    })
+                  }
+                >
+                  <Trash2 />
+                  Remove exercise
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+        <AccordionContent className="space-y-2 border-t border-border/60 bg-muted/15 px-3 pt-2 pb-3 pl-4">
+          <div className="flex justify-end">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={selectedExercise.notes ? "secondary" : "outline"}
+                >
+                  <MessageSquare />
+                  Notes
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="end"
+                className="w-[min(18rem,calc(100vw-2rem))]"
+              >
+                <div className="space-y-2">
+                  <Label htmlFor={`exercise-notes-${selectedExercise.localId}`}>
+                    Notes for {exercise.name}
+                  </Label>
+                  <Input
+                    id={`exercise-notes-${selectedExercise.localId}`}
+                    value={selectedExercise.notes ?? ""}
+                    onChange={(event) =>
+                      updateExerciseNotes(
+                        selectedExercise.localId,
+                        event.target.value
+                      )
+                    }
+                    placeholder="Exercise notes"
+                  />
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+          <div className="space-y-1.5">
+            {selectedExercise.sets.map((set, setIndex) => {
+              const isWarned =
+                activeWarnedSetIds.includes(set.localId) &&
+                isIncompleteEnteredSet(set, exercise.trackingType);
+
+              return (
+                <div
+                  key={set.localId}
+                  ref={(row) => {
+                    if (row) setRowRefs.current.set(set.localId, row);
+                    else setRowRefs.current.delete(set.localId);
+                  }}
+                  className={`rounded-md border p-1.5 ${
+                    isWarned
+                      ? "border-destructive bg-destructive/10"
+                      : set.completed
+                        ? "border-primary/40 bg-primary/10"
+                        : "border-border/70 bg-background/70"
+                  }`}
+                >
+                  <div
+                    className={`grid w-full min-w-0 items-center gap-1 ${getSetRowGridClass(
+                      rpeTrackingEnabled
+                    )}`}
+                  >
+                    <span className="w-5 text-center text-xs font-semibold tabular-nums text-muted-foreground">
+                      {setIndex + 1}
+                    </span>
+                    <div
+                      className={`grid min-w-0 gap-1 ${getSetFieldsGridClass(
+                        exercise.trackingType
+                      )}`}
+                    >
+                      {isWeightFieldVisible(exercise.trackingType) ? (
+                        <Input
+                          className={COMPACT_WORKOUT_NUMBER_INPUT_CLASS}
+                          type="number"
+                          inputMode="decimal"
+                          min="0"
+                          step="0.5"
+                          placeholder={
+                            exercise.trackingType === "WEIGHTED_BODYWEIGHT"
+                              ? "+kg"
+                              : "kg"
+                          }
+                          aria-label={`${exercise.name} set ${setIndex + 1} weight`}
+                          value={set.weight ?? ""}
+                          onChange={(event) =>
+                            updateSet(
+                              selectedExercise.localId,
+                              setIndex,
+                              "weight",
+                              event.target.value
+                            )
+                          }
+                        />
+                      ) : null}
+                      {isRepsFieldVisible(exercise.trackingType) ? (
+                        <Input
+                          className={COMPACT_WORKOUT_NUMBER_INPUT_CLASS}
+                          type="number"
+                          inputMode="numeric"
+                          min="0"
+                          step="1"
+                          placeholder="Reps"
+                          aria-label={`${exercise.name} set ${setIndex + 1} reps`}
+                          value={set.reps ?? ""}
+                          onChange={(event) =>
+                            updateSet(
+                              selectedExercise.localId,
+                              setIndex,
+                              "reps",
+                              event.target.value
+                            )
+                          }
+                        />
+                      ) : null}
+                      {isDurationFieldVisible(exercise.trackingType) ? (
+                        <Input
+                          className={COMPACT_WORKOUT_NUMBER_INPUT_CLASS}
+                          type="number"
+                          inputMode="decimal"
+                          min="0"
+                          step="0.25"
+                          placeholder="Min"
+                          aria-label={`${exercise.name} set ${setIndex + 1} duration minutes`}
+                          value={getDurationMinutesValue(set.durationSeconds)}
+                          onChange={(event) =>
+                            updateSetDurationMinutes(
+                              selectedExercise.localId,
+                              setIndex,
+                              event.target.value
+                            )
+                          }
+                        />
+                      ) : null}
+                      {isDistanceFieldVisible(exercise.trackingType) ? (
+                        <Input
+                          className={COMPACT_WORKOUT_NUMBER_INPUT_CLASS}
+                          type="number"
+                          inputMode="decimal"
+                          min="0"
+                          step="1"
+                          placeholder="Meters"
+                          aria-label={`${exercise.name} set ${setIndex + 1} distance`}
+                          value={set.distanceMeters ?? ""}
+                          onChange={(event) =>
+                            updateSet(
+                              selectedExercise.localId,
+                              setIndex,
+                              "distanceMeters",
+                              event.target.value
+                            )
+                          }
+                        />
+                      ) : null}
+                      {exercise.trackingType ===
+                      "STEPS_DISTANCE_DURATION" ? (
+                        <Input
+                          className={COMPACT_WORKOUT_NUMBER_INPUT_CLASS}
+                          type="number"
+                          inputMode="numeric"
+                          min="0"
+                          placeholder="Steps"
+                          aria-label={`${exercise.name} set ${setIndex + 1} steps`}
+                          value={set.steps ?? ""}
+                          onChange={(event) =>
+                            updateSet(
+                              selectedExercise.localId,
+                              setIndex,
+                              "steps",
+                              event.target.value
+                            )
+                          }
+                        />
+                      ) : null}
+                      {exercise.trackingType ===
+                      "FLOORS_DISTANCE_DURATION" ? (
+                        <Input
+                          className={COMPACT_WORKOUT_NUMBER_INPUT_CLASS}
+                          type="number"
+                          inputMode="numeric"
+                          min="0"
+                          placeholder="Floors"
+                          aria-label={`${exercise.name} set ${setIndex + 1} floors`}
+                          value={set.floors ?? ""}
+                          onChange={(event) =>
+                            updateSet(
+                              selectedExercise.localId,
+                              setIndex,
+                              "floors",
+                              event.target.value
+                            )
+                          }
+                        />
+                      ) : null}
+                    </div>
+                    {rpeTrackingEnabled ? (
+                      <Button
+                        type="button"
+                        size="icon-lg"
+                        variant={set.rpe ? "secondary" : "outline"}
+                        className={
+                          set.rpe
+                            ? "w-12 border-primary/40 bg-primary/10 px-1 text-[11px] text-primary"
+                            : undefined
+                        }
+                        aria-label={`Set ${setIndex + 1} RPE`}
+                        onClick={() =>
+                          setActiveRpeTarget({
+                            localId: selectedExercise.localId,
+                            setIndex,
+                            exerciseName: exercise.name,
+                            summary: formatSetSummary(
+                              set,
+                              exercise.trackingType
+                            ),
+                            value: set.rpe,
+                          })
+                        }
+                      >
+                        {set.rpe ? `RPE ${set.rpe}` : <Gauge />}
+                      </Button>
+                    ) : null}
+                    <Button
+                      type="button"
+                      size="icon-lg"
+                      variant={set.completed ? "secondary" : "outline"}
+                      className={
+                        set.completed
+                          ? "border-primary/40 bg-primary/10 text-primary"
+                          : undefined
+                      }
+                      disabled
+                      aria-label={`${supersetLabel} sets are saved with the Done action`}
+                    >
+                      {set.completed ? <CheckCircle2 /> : <Circle />}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon-lg"
+                      variant="destructive"
+                      aria-label={`Remove set ${setIndex + 1}`}
+                      onClick={() =>
+                        removeSet(selectedExercise.localId, setIndex)
+                      }
+                      disabled={selectedExercise.sets.length <= 1}
+                    >
+                      <Trash2 />
+                    </Button>
+                  </div>
+                  {isWarned ? (
+                    <p className="mt-1 text-xs font-medium text-destructive">
+                      Not marked done
+                    </p>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            New grouped sets are added with the superset DONE button.
+          </p>
+        </AccordionContent>
+      </AccordionItem>
+    );
+  }
+
+  function closeSupersetRoundForm() {
+    if (isCompletingSuperset) return;
+    setResultsSupersetKey(null);
+    setSupersetResultDraft({});
+  }
+
+  function saveActiveSupersetRound() {
+    if (!resultsSupersetKey) return;
+    completeSupersetRound(resultsSupersetKey, supersetResultDraft);
+  }
+
+  function renderSupersetRoundForm() {
+    return (
+      <SupersetRoundForm
+        entries={supersetRoundFormEntries}
+        rpeTrackingEnabled={rpeTrackingEnabled}
+        rpeValues={RPE_VALUES}
+        isSaving={isCompletingSuperset}
+        onChange={updateSupersetResult}
+        onCancel={closeSupersetRoundForm}
+        onSave={saveActiveSupersetRound}
+      />
     );
   }
 
@@ -2003,6 +2853,24 @@ export function WorkoutBuilder({
             </Collapsible>
           ) : null}
 
+          {selectedExercises.length >= 2 ? (
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => openSupersetEditor("new")}
+                disabled={
+                  selectedExercises.filter((exercise) => !exercise.supersetKey)
+                    .length < 2
+                }
+              >
+                <Layers2 />
+                Create superset
+              </Button>
+            </div>
+          ) : null}
+
           {selectedExercises.length === 0 ? (
             <Card>
               <CardContent className="p-6 text-sm text-muted-foreground">
@@ -2011,7 +2879,9 @@ export function WorkoutBuilder({
             </Card>
           ) : (
             <SortableExerciseList
-              ids={selectedExercises.map((exercise) => exercise.localId)}
+              ids={selectedExercises
+                .filter((exercise) => !exercise.supersetKey)
+                .map((exercise) => exercise.localId)}
               onMove={moveExercise}
             >
               <Accordion
@@ -2039,6 +2909,113 @@ export function WorkoutBuilder({
                 const completedSets = selectedExercise.sets.filter(
                   (set) => set.completed
                 ).length;
+                const superset = selectedExercise.supersetKey
+                  ? supersets.find(
+                      (item) => item.key === selectedExercise.supersetKey
+                    )
+                  : null;
+                const supersetIndex = superset
+                  ? supersets.findIndex((item) => item.key === superset.key)
+                  : -1;
+                const supersetMembers = superset
+                  ? selectedExercises
+                      .filter((item) => item.supersetKey === superset.key)
+                      .sort(
+                        (a, b) =>
+                          (a.supersetPosition ?? 0) -
+                          (b.supersetPosition ?? 0)
+                      )
+                  : [];
+                const isFirstSupersetMember =
+                  supersetMembers[0]?.localId === selectedExercise.localId;
+                const supersetProgress = superset
+                  ? getSupersetRoundProgress(
+                      supersetMembers,
+                      superset.plannedRounds
+                    )
+                  : null;
+
+                if (
+                  superset &&
+                  supersetProgress &&
+                  isFirstSupersetMember
+                ) {
+                  const label = getSupersetDisplayLabel(
+                    superset,
+                    supersetIndex
+                  );
+                  const exerciseNames = supersetMembers.flatMap((member) => {
+                    const metadata = exercises.find(
+                      (item) => item.id === member.exerciseId
+                    );
+                    return metadata ? [metadata.name] : [];
+                  });
+                  const activeRestSeconds =
+                    restTimer.activeTimer?.exerciseLocalId === superset.key
+                      ? restTimer.remainingSeconds
+                      : null;
+
+                  return (
+                    <SupersetGroupCard
+                      key={superset.key}
+                      label={label}
+                      colorKey={superset.colorKey}
+                      exerciseNames={exerciseNames}
+                      currentRound={supersetProgress.currentRound}
+                      totalRounds={supersetProgress.totalRounds}
+                      completedRounds={supersetProgress.completedRounds}
+                      openEnded={supersetProgress.openEnded}
+                      restLabel={
+                        superset.restSeconds
+                          ? `${superset.restSeconds} sec rest`
+                          : "No rest"
+                      }
+                      activeRestSeconds={activeRestSeconds}
+                      complete={supersetProgress.complete}
+                      open={openSupersetKeys.includes(superset.key)}
+                      onOpenChange={(open) =>
+                        setOpenSupersetKeys((current) =>
+                          open
+                            ? current.includes(superset.key)
+                              ? current
+                              : [...current, superset.key]
+                            : current.filter((key) => key !== superset.key)
+                        )
+                      }
+                      onDone={() => openSupersetResults(superset.key)}
+                      onEdit={() => openSupersetEditor(superset.key)}
+                      onViewRounds={() => {
+                        setOpenSupersetKeys((current) =>
+                          current.includes(superset.key)
+                            ? current
+                            : [...current, superset.key]
+                        );
+                        setOpenExerciseIds((current) => [
+                          ...current,
+                          ...supersetMembers
+                            .map((member) => member.localId)
+                            .filter((id) => !current.includes(id)),
+                        ]);
+                      }}
+                      onDissolve={() =>
+                        setSupersetPendingDissolve(superset.key)
+                      }
+                      isSavingRound={isCompletingSuperset}
+                    >
+                      {supersetMembers.map((member, memberIndex) =>
+                        renderSupersetExerciseRow(
+                          member,
+                          memberIndex,
+                          label
+                        )
+                      )}
+                    </SupersetGroupCard>
+                  );
+                }
+
+                if (superset) {
+                  return null;
+                }
 
                 return (
                   <SortableExerciseItem
@@ -2047,9 +3024,10 @@ export function WorkoutBuilder({
                     label={exercise.name}
                   >
                     {(dragHandle) => (
+                    <>
                   <AccordionItem
                     value={selectedExercise.localId}
-                    className="overflow-hidden rounded-xl border border-border bg-card shadow-sm [overflow-anchor:none]"
+                    className="relative overflow-hidden rounded-xl border border-border bg-card shadow-sm [overflow-anchor:none]"
                   >
                     <div className="flex min-w-0 items-stretch">
                       <AccordionTrigger className="min-w-0 px-2 py-1.5 hover:no-underline">
@@ -2103,6 +3081,16 @@ export function WorkoutBuilder({
                               <Repeat2 />
                               Replace exercise
                             </DropdownMenuItem>
+                            {supersets.length > 0 ? (
+                              <DropdownMenuItem
+                                onSelect={() =>
+                                  openSupersetEditor(supersets[0].key)
+                                }
+                              >
+                                <Layers2 />
+                                Add to superset
+                              </DropdownMenuItem>
+                            ) : null}
                             <DropdownMenuItem
                               disabled={exerciseIndex === 0}
                               onSelect={() =>
@@ -2113,7 +3101,9 @@ export function WorkoutBuilder({
                               Move up
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              disabled={exerciseIndex === selectedExercises.length - 1}
+                              disabled={
+                                exerciseIndex === selectedExercises.length - 1
+                              }
                               onSelect={() =>
                                 moveExerciseBy(selectedExercise.localId, 1)
                               }
@@ -2532,6 +3522,7 @@ export function WorkoutBuilder({
                       </Button>
                     </AccordionContent>
                   </AccordionItem>
+                  </>
                     )}
                   </SortableExerciseItem>
                 );
@@ -2680,6 +3671,438 @@ export function WorkoutBuilder({
           </SheetContent>
         </Sheet>
       ) : null}
+
+      <Dialog
+        open={supersetEditorKey !== null}
+        onOpenChange={(open) => {
+          if (!open) setSupersetEditorKey(null);
+        }}
+      >
+        <DialogContent className="max-h-[85dvh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {supersetEditorKey === "new"
+                ? "Create superset"
+                : "Edit superset"}
+            </DialogTitle>
+            <DialogDescription>
+              Select at least two exercises. Their normal rest timers are
+              replaced by one shared rest after the full round.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              {selectedExercises.map((selectedExercise) => {
+                const exercise = exercises.find(
+                  (item) => item.id === selectedExercise.exerciseId
+                );
+                if (!exercise) return null;
+                const belongsElsewhere =
+                  selectedExercise.supersetKey !== null &&
+                  selectedExercise.supersetKey !== supersetEditorKey;
+                const checked = supersetSelection.includes(
+                  selectedExercise.localId
+                );
+
+                return (
+                  <div
+                    key={selectedExercise.localId}
+                    className="flex items-center gap-3 rounded-lg border p-3"
+                  >
+                    <Checkbox
+                      id={`superset-exercise-${selectedExercise.localId}`}
+                      checked={checked}
+                      disabled={belongsElsewhere}
+                      onCheckedChange={(value) =>
+                        setSupersetSelection((current) =>
+                          value === true
+                            ? [...current, selectedExercise.localId]
+                            : current.filter(
+                                (id) => id !== selectedExercise.localId
+                              )
+                        )
+                      }
+                    />
+                    <Label
+                      htmlFor={`superset-exercise-${selectedExercise.localId}`}
+                      className="min-w-0 flex-1"
+                    >
+                      <span className="block truncate">{exercise.name}</span>
+                      <span className="text-xs font-normal text-muted-foreground">
+                        {belongsElsewhere
+                          ? "Already in another superset"
+                          : `${selectedExercise.sets.length} sets`}
+                      </span>
+                    </Label>
+                    {checked ? (
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          size="icon-sm"
+                          variant="ghost"
+                          aria-label={`Move ${exercise.name} earlier`}
+                          disabled={
+                            supersetSelection.indexOf(
+                              selectedExercise.localId
+                            ) === 0
+                          }
+                          onClick={() =>
+                            setSupersetSelection((current) => {
+                              const index = current.indexOf(
+                                selectedExercise.localId
+                              );
+                              return index > 0
+                                ? arrayMove(current, index, index - 1)
+                                : current;
+                            })
+                          }
+                        >
+                          <ArrowUp />
+                        </Button>
+                        <Button
+                          type="button"
+                          size="icon-sm"
+                          variant="ghost"
+                          aria-label={`Move ${exercise.name} later`}
+                          disabled={
+                            supersetSelection.indexOf(
+                              selectedExercise.localId
+                            ) ===
+                            supersetSelection.length - 1
+                          }
+                          onClick={() =>
+                            setSupersetSelection((current) => {
+                              const index = current.indexOf(
+                                selectedExercise.localId
+                              );
+                              return index >= 0 &&
+                                index < current.length - 1
+                                ? arrayMove(current, index, index + 1)
+                                : current;
+                            })
+                          }
+                        >
+                          <ArrowDown />
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="superset-shared-rest">Shared rest</Label>
+              <Select
+                value={
+                  supersetRestSeconds === null
+                    ? "off"
+                    : String(supersetRestSeconds)
+                }
+                onValueChange={(value) =>
+                  setSupersetRestSeconds(
+                    value === "off" ? null : Number(value)
+                  )
+                }
+              >
+                <SelectTrigger id="superset-shared-rest" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="off">No shared rest timer</SelectItem>
+                  {REST_SELECTOR_SECONDS.filter((seconds) => seconds > 0).map(
+                    (seconds) => (
+                      <SelectItem key={seconds} value={String(seconds)}>
+                        {formatRestDuration(seconds)}
+                      </SelectItem>
+                    )
+                  )}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Rest starts only after every active exercise in the round is
+                completed.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setSupersetEditorKey(null)}
+            >
+              Cancel
+            </Button>
+            <Button type="button" onClick={saveSuperset}>
+              {supersetEditorKey === "new"
+                ? "Create superset"
+                : "Save changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Sheet
+        open={resultsSupersetKey !== null && isMobileViewport}
+        onOpenChange={(open) => {
+          if (!open) closeSupersetRoundForm();
+        }}
+      >
+        <SheetContent
+          side="bottom"
+          className="h-[min(88dvh,48rem)] gap-0 overflow-hidden rounded-t-2xl"
+        >
+          <SheetHeader className="shrink-0 border-b pr-12">
+            <SheetTitle>
+              {activeResultsSuperset
+                ? `${getSupersetDisplayLabel(
+                    activeResultsSuperset,
+                    activeResultsSupersetIndex
+                  )} · Round ${activeResultsProgress?.currentRound ?? 1}`
+                : "Superset round"}
+            </SheetTitle>
+            <SheetDescription>
+              Enter the results for each exercise in this round.
+            </SheetDescription>
+          </SheetHeader>
+          {renderSupersetRoundForm()}
+        </SheetContent>
+      </Sheet>
+
+      <Dialog
+        open={resultsSupersetKey !== null && !isMobileViewport}
+        onOpenChange={(open) => {
+          if (!open && !isCompletingSuperset) {
+            setResultsSupersetKey(null);
+            setSupersetResultDraft({});
+          }
+        }}
+      >
+        <DialogContent className="max-h-[85dvh] overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+          <DialogHeader>
+            <DialogTitle>
+              {activeResultsSuperset
+                ? `${getSupersetDisplayLabel(
+                    activeResultsSuperset,
+                    activeResultsSupersetIndex
+                  )} · Round ${activeResultsProgress?.currentRound ?? 1}`
+                : "Superset round"}
+            </DialogTitle>
+            <DialogDescription>
+              Enter the results for each exercise in this round.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            {resultsSupersetKey
+              ? selectedExercises
+                  .filter(
+                    (exercise) =>
+                      exercise.supersetKey === resultsSupersetKey &&
+                      supersetResultDraft[exercise.localId]
+                  )
+                  .sort(
+                    (a, b) =>
+                      (a.supersetPosition ?? 0) -
+                      (b.supersetPosition ?? 0)
+                  )
+                  .map((selectedExercise) => {
+                    const exercise = exercises.find(
+                      (item) => item.id === selectedExercise.exerciseId
+                    );
+                    const entry =
+                      supersetResultDraft[selectedExercise.localId];
+                    if (!exercise || !entry) return null;
+
+                    return (
+                      <div
+                        key={selectedExercise.localId}
+                        className="space-y-2 rounded-xl border p-3"
+                      >
+                        <div>
+                          <p className="font-semibold">{exercise.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Set {entry.setIndex + 1}
+                          </p>
+                        </div>
+                        <div
+                          className={`grid gap-2 ${getSetFieldsGridClass(
+                            exercise.trackingType
+                          )}`}
+                        >
+                          {isWeightFieldVisible(exercise.trackingType) ? (
+                            <Input
+                              type="number"
+                              inputMode="decimal"
+                              min="0"
+                              step="0.5"
+                              placeholder={
+                                exercise.trackingType ===
+                                "WEIGHTED_BODYWEIGHT"
+                                  ? "Added kg"
+                                  : "Weight kg"
+                              }
+                              aria-label={`${exercise.name} weight`}
+                              value={entry.set.weight ?? ""}
+                              onChange={(event) =>
+                                updateSupersetResult(
+                                  selectedExercise.localId,
+                                  "weight",
+                                  event.target.value
+                                )
+                              }
+                            />
+                          ) : null}
+                          {isRepsFieldVisible(exercise.trackingType) ? (
+                            <Input
+                              type="number"
+                              inputMode="numeric"
+                              min="0"
+                              step="1"
+                              placeholder="Reps"
+                              aria-label={`${exercise.name} reps`}
+                              value={entry.set.reps ?? ""}
+                              onChange={(event) =>
+                                updateSupersetResult(
+                                  selectedExercise.localId,
+                                  "reps",
+                                  event.target.value
+                                )
+                              }
+                            />
+                          ) : null}
+                          {isDurationFieldVisible(exercise.trackingType) ? (
+                            <Input
+                              type="number"
+                              inputMode="numeric"
+                              min="0"
+                              step="1"
+                              placeholder="Seconds"
+                              aria-label={`${exercise.name} duration seconds`}
+                              value={entry.set.durationSeconds ?? ""}
+                              onChange={(event) =>
+                                updateSupersetResult(
+                                  selectedExercise.localId,
+                                  "durationSeconds",
+                                  event.target.value
+                                )
+                              }
+                            />
+                          ) : null}
+                          {isDistanceFieldVisible(exercise.trackingType) ? (
+                            <Input
+                              type="number"
+                              inputMode="decimal"
+                              min="0"
+                              placeholder="Meters"
+                              aria-label={`${exercise.name} distance meters`}
+                              value={entry.set.distanceMeters ?? ""}
+                              onChange={(event) =>
+                                updateSupersetResult(
+                                  selectedExercise.localId,
+                                  "distanceMeters",
+                                  event.target.value
+                                )
+                              }
+                            />
+                          ) : null}
+                          {exercise.trackingType ===
+                          "STEPS_DISTANCE_DURATION" ? (
+                            <Input
+                              type="number"
+                              inputMode="numeric"
+                              min="0"
+                              placeholder="Steps"
+                              aria-label={`${exercise.name} steps`}
+                              value={entry.set.steps ?? ""}
+                              onChange={(event) =>
+                                updateSupersetResult(
+                                  selectedExercise.localId,
+                                  "steps",
+                                  event.target.value
+                                )
+                              }
+                            />
+                          ) : null}
+                          {exercise.trackingType ===
+                          "FLOORS_DISTANCE_DURATION" ? (
+                            <Input
+                              type="number"
+                              inputMode="numeric"
+                              min="0"
+                              placeholder="Floors"
+                              aria-label={`${exercise.name} floors`}
+                              value={entry.set.floors ?? ""}
+                              onChange={(event) =>
+                                updateSupersetResult(
+                                  selectedExercise.localId,
+                                  "floors",
+                                  event.target.value
+                                )
+                              }
+                            />
+                          ) : null}
+                        </div>
+                        {rpeTrackingEnabled ? (
+                          <Select
+                            value={
+                              entry.set.rpe === null
+                                ? "none"
+                                : String(entry.set.rpe)
+                            }
+                            onValueChange={(value) =>
+                              updateSupersetResult(
+                                selectedExercise.localId,
+                                "rpe",
+                                value === "none" ? "" : value
+                              )
+                            }
+                          >
+                            <SelectTrigger
+                              className="w-full"
+                              aria-label={`${exercise.name} RPE`}
+                            >
+                              <SelectValue placeholder="Optional RPE" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">No RPE</SelectItem>
+                              {RPE_VALUES.map((rpe) => (
+                                <SelectItem key={rpe} value={String(rpe)}>
+                                  RPE {rpe}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : null}
+                      </div>
+                    );
+                  })
+              : null}
+          </div>
+          <DialogFooter className="sticky bottom-0 bg-background pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setResultsSupersetKey(null)}
+              disabled={isCompletingSuperset}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={isCompletingSuperset}
+              onClick={() => {
+                if (resultsSupersetKey) {
+                  completeSupersetRound(
+                    resultsSupersetKey,
+                    supersetResultDraft
+                  );
+                }
+              }}
+            >
+              {isCompletingSuperset ? "Saving..." : "Save round"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={isBodyweightDialogOpen}
@@ -2895,6 +4318,36 @@ export function WorkoutBuilder({
               }}
             >
               Remove exercise
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={supersetPendingDissolve !== null}
+        onOpenChange={(open) => {
+          if (!open) setSupersetPendingDissolve(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Dissolve this superset?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The exercises and all completed set data stay in the workout.
+              Only the grouping and shared rest are removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep superset</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (supersetPendingDissolve) {
+                  dissolveSuperset(supersetPendingDissolve);
+                }
+              }}
+            >
+              Dissolve superset
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

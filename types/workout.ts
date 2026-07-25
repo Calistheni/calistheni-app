@@ -32,12 +32,25 @@ export type WorkoutSetInput = {
   rpe: number | null;
   notes: string | null;
   completed: boolean;
+  supersetRoundIndex: number | null;
+};
+
+export type SupersetColorKey = "BLUE" | "VIOLET" | "AMBER" | "GREEN";
+
+export type WorkoutSupersetInput = {
+  key: string;
+  label: string | null;
+  colorKey: SupersetColorKey;
+  restSeconds: number | null;
+  plannedRounds: number | null;
 };
 
 export type WorkoutExerciseInput = {
   exerciseId: string;
   notes: string | null;
   restSeconds: number | null;
+  supersetKey: string | null;
+  supersetPosition: number | null;
   sets: WorkoutSetInput[];
 };
 
@@ -47,6 +60,7 @@ export type WorkoutMutationPayload = {
   startedAt: string | null;
   completedAt: string | null;
   visibility: "PRIVATE" | "PUBLIC";
+  supersets: WorkoutSupersetInput[];
   exercises: WorkoutExerciseInput[];
 };
 
@@ -58,10 +72,13 @@ export type WorkoutDetail = {
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  supersets: Array<WorkoutSupersetInput & { id: string }>;
   exercises: Array<{
     id: number;
     notes: string | null;
     restSeconds: number | null;
+    supersetKey: string | null;
+    supersetPosition: number | null;
     exercise: ExerciseListItem;
     sets: Array<{
       id: number;
@@ -74,6 +91,7 @@ export type WorkoutDetail = {
       rpe: number | null;
       notes: string | null;
       completed: boolean;
+      supersetRoundIndex: number | null;
     }>;
   }>;
   visibility: "PRIVATE" | "PUBLIC";

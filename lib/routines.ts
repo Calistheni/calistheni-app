@@ -8,10 +8,16 @@ import {
   FREE_ROUTINE_LIMIT,
   getUserEntitlements,
 } from "@/lib/entitlements";
+import type { Prisma } from "@/lib/generated/prisma/client";
 
 export { FREE_ROUTINE_LIMIT } from "@/lib/entitlements";
 
 export const routineInclude = {
+  supersets: {
+    orderBy: {
+      order: "asc" as const,
+    },
+  },
   exercises: {
     orderBy: {
       order: "asc" as const,
@@ -60,10 +66,20 @@ export function mapRoutineDetail(template: {
   visibility: "PRIVATE" | "PUBLIC";
   createdAt: Date;
   updatedAt: Date;
+  supersets: Array<{
+    id: string;
+    order: number;
+    label: string | null;
+    colorKey: "BLUE" | "VIOLET" | "AMBER" | "GREEN";
+    restSeconds: number | null;
+    plannedRounds: number | null;
+  }>;
   exercises: Array<{
     id: number;
     restSeconds: number | null;
     notes: string | null;
+    supersetId: string | null;
+    supersetPosition: number | null;
     exercise: Parameters<typeof mapExercise>[0];
     sets: Array<{
       id: number;
@@ -80,10 +96,20 @@ export function mapRoutineDetail(template: {
     visibility: template.visibility,
     createdAt: template.createdAt.toISOString(),
     updatedAt: template.updatedAt.toISOString(),
+    supersets: template.supersets.map((superset) => ({
+      id: superset.id,
+      key: superset.id,
+      label: superset.label,
+      colorKey: superset.colorKey,
+      restSeconds: superset.restSeconds,
+      plannedRounds: superset.plannedRounds,
+    })),
     exercises: template.exercises.map((templateExercise) => ({
       id: templateExercise.id,
       restSeconds: templateExercise.restSeconds,
       notes: templateExercise.notes,
+      supersetKey: templateExercise.supersetId,
+      supersetPosition: templateExercise.supersetPosition,
       exercise: mapExercise(templateExercise.exercise),
       sets: templateExercise.sets.map((set) => ({
         id: set.id,
@@ -109,17 +135,43 @@ async function assertExercisesExist(userId: string, exerciseIds: string[]) {
   return existingCount === uniqueExerciseIds.length;
 }
 
-function buildRoutineData(payload: ValidRoutineMutation) {
+function buildRoutineMetadata(payload: ValidRoutineMutation) {
   return {
     name: payload.name,
     description: payload.description,
     visibility: payload.visibility,
-    exercises: {
-      create: payload.exercises.map((exercise, exerciseIndex) => ({
+  };
+}
+
+async function createRoutineChildren(
+  tx: Prisma.TransactionClient,
+  templateId: number,
+  payload: ValidRoutineMutation
+) {
+  if (payload.supersets.length > 0) {
+    await tx.workoutTemplateSuperset.createMany({
+      data: payload.supersets.map((superset, supersetIndex) => ({
+        id: superset.key,
+        templateId,
+        order: supersetIndex,
+        label: superset.label,
+        colorKey: superset.colorKey,
+        restSeconds: superset.restSeconds,
+        plannedRounds: superset.plannedRounds,
+      })),
+    });
+  }
+
+  for (const [exerciseIndex, exercise] of payload.exercises.entries()) {
+    await tx.workoutTemplateExercise.create({
+      data: {
+        templateId,
         exerciseId: exercise.exerciseId,
         order: exerciseIndex,
         restSeconds: exercise.restSeconds,
         notes: exercise.notes,
+        supersetId: exercise.supersetKey,
+        supersetPosition: exercise.supersetPosition,
         sets: {
           create: exercise.sets.map((set, setIndex) => ({
             order: setIndex,
@@ -128,9 +180,9 @@ function buildRoutineData(payload: ValidRoutineMutation) {
             durationSec: set.durationSec,
           })),
         },
-      })),
-    },
-  };
+      },
+    });
+  }
 }
 
 export async function createUserRoutine(
@@ -148,11 +200,16 @@ export async function createUserRoutine(
 
       if (!canCreateRoutine(entitlements, routineCount)) return null;
 
-      return tx.workoutTemplate.create({
+      const routine = await tx.workoutTemplate.create({
         data: {
           userId,
-          ...buildRoutineData(payload),
+          ...buildRoutineMetadata(payload),
         },
+        select: { id: true },
+      });
+      await createRoutineChildren(tx, routine.id, payload);
+      return tx.workoutTemplate.findUniqueOrThrow({
+        where: { id: routine.id },
         include: routineInclude,
       });
     },
@@ -198,13 +255,19 @@ export async function updateUserRoutine(
         templateId: routineId,
       },
     });
+    await tx.workoutTemplateSuperset.deleteMany({
+      where: {
+        templateId: routineId,
+      },
+    });
 
     await tx.workoutTemplate.update({
       where: {
         id: routineId,
       },
-      data: buildRoutineData(payload),
+      data: buildRoutineMetadata(payload),
     });
+    await createRoutineChildren(tx, routineId, payload);
   });
 
   const routine = await prisma.workoutTemplate.findFirst({

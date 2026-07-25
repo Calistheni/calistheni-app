@@ -43,6 +43,11 @@ export async function POST(request: Request) {
         userId,
       },
       include: {
+        supersets: {
+          orderBy: {
+            order: "asc",
+          },
+        },
         exercises: {
           orderBy: {
             order: "asc",
@@ -61,6 +66,12 @@ export async function POST(request: Request) {
     if (!workout) {
       return createJsonErrorResponse("Workout not found.", 404);
     }
+    const supersetKeyMap = new Map(
+      workout.supersets.map((superset) => [
+        superset.id,
+        `superset-${crypto.randomUUID()}`,
+      ])
+    );
 
     const result = await createUserRoutine(userId, {
       name:
@@ -71,10 +82,21 @@ export async function POST(request: Request) {
             : "Workout Routine",
       description: workout.notes,
       visibility: "PRIVATE",
+      supersets: workout.supersets.map((superset) => ({
+        key: supersetKeyMap.get(superset.id) ?? superset.id,
+        label: superset.label,
+        colorKey: superset.colorKey,
+        restSeconds: superset.restSeconds,
+        plannedRounds: superset.plannedRounds,
+      })),
       exercises: workout.exercises.map((exercise) => ({
         exerciseId: exercise.exerciseId,
         restSeconds: exercise.restSeconds,
         notes: exercise.notes,
+        supersetKey: exercise.supersetId
+          ? (supersetKeyMap.get(exercise.supersetId) ?? null)
+          : null,
+        supersetPosition: exercise.supersetPosition,
         sets: exercise.sets.map((set) => ({
           reps: set.reps,
           weightKg: set.weight,

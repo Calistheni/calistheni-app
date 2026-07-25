@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { Layers2 } from "lucide-react";
 import { auth } from "@/auth";
 import { BackButton } from "@/components/navigation/BackButton";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +18,10 @@ import {
 } from "@/lib/personal-records";
 import { prisma } from "@/lib/prisma";
 import { mapWorkoutDetail, userWorkoutInclude } from "@/lib/workouts";
+import {
+  getSupersetDisplayLabel,
+  SUPERSET_COLOR_STYLES,
+} from "@/lib/workout-supersets";
 
 export const metadata: Metadata = {
   title: "Workout Details",
@@ -207,8 +212,26 @@ export default async function WorkoutDetailPage({
       ) : null}
 
       <div className="space-y-4">
-        {detail.exercises.map((workoutExercise) => (
-          <Card key={workoutExercise.id}>
+        {detail.exercises.map((workoutExercise) => {
+          const superset = workoutExercise.supersetKey
+            ? detail.supersets.find(
+                (item) => item.key === workoutExercise.supersetKey
+              )
+            : null;
+          const supersetIndex = superset
+            ? detail.supersets.findIndex((item) => item.key === superset.key)
+            : -1;
+
+          return (
+          <Card key={workoutExercise.id} className="relative overflow-hidden">
+            {superset ? (
+              <span
+                className={`absolute inset-y-0 left-0 w-1 ${
+                  SUPERSET_COLOR_STYLES[superset.colorKey].accent
+                }`}
+                aria-hidden="true"
+              />
+            ) : null}
             <CardHeader>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <Image
@@ -229,6 +252,17 @@ export default async function WorkoutDetailPage({
                     <Badge variant="secondary">
                       {workoutExercise.exercise.muscle}
                     </Badge>
+                    {superset ? (
+                      <Badge
+                        variant="outline"
+                        className={
+                          SUPERSET_COLOR_STYLES[superset.colorKey].badge
+                        }
+                      >
+                        <Layers2 />
+                        {getSupersetDisplayLabel(superset, supersetIndex)}
+                      </Badge>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -344,7 +378,8 @@ export default async function WorkoutDetailPage({
               ))}
             </CardContent>
           </Card>
-        ))}
+          );
+        })}
       </div>
     </main>
   );

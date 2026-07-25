@@ -6,6 +6,7 @@ import {
   getPersistedVolumeSetCompletion,
 } from "@/lib/workout-volume";
 import { exerciseVisibilityWhere } from "@/lib/exercise-access";
+import type { Prisma } from "@/lib/generated/prisma/client";
 import type {
   ExerciseListItem,
   ExerciseTrackingType,
@@ -30,6 +31,11 @@ const workoutInclude = {
           order: "asc" as const,
         },
       },
+    },
+  },
+  supersets: {
+    orderBy: {
+      order: "asc" as const,
     },
   },
 };
@@ -69,6 +75,14 @@ export function mapWorkoutDetail(workout: {
   visibility: "PRIVATE" | "PUBLIC";
   createdAt: Date;
   updatedAt: Date;
+  supersets: Array<{
+    id: string;
+    order: number;
+    label: string | null;
+    colorKey: "BLUE" | "VIOLET" | "AMBER" | "GREEN";
+    restSeconds: number | null;
+    plannedRounds: number | null;
+  }>;
   user: {
     bodyweightKg: number | null;
   };
@@ -76,6 +90,8 @@ export function mapWorkoutDetail(workout: {
     id: number;
     notes: string | null;
     restSeconds: number | null;
+    supersetId: string | null;
+    supersetPosition: number | null;
     exercise: {
       id: string;
       slug: string;
@@ -99,6 +115,7 @@ export function mapWorkoutDetail(workout: {
       rpe: number | null;
       notes: string | null;
       completed: boolean;
+      supersetRoundIndex: number | null;
     }>;
   }>;
 }): WorkoutDetail {
@@ -131,12 +148,22 @@ export function mapWorkoutDetail(workout: {
     visibility: workout.visibility,
     createdAt: workout.createdAt.toISOString(),
     updatedAt: workout.updatedAt.toISOString(),
+    supersets: workout.supersets.map((superset) => ({
+      id: superset.id,
+      key: superset.id,
+      label: superset.label,
+      colorKey: superset.colorKey,
+      restSeconds: superset.restSeconds,
+      plannedRounds: superset.plannedRounds,
+    })),
     setCount,
     totalVolume,
     exercises: workout.exercises.map((workoutExercise) => ({
       id: workoutExercise.id,
       notes: workoutExercise.notes,
       restSeconds: workoutExercise.restSeconds,
+      supersetKey: workoutExercise.supersetId,
+      supersetPosition: workoutExercise.supersetPosition,
       exercise: mapExercise(workoutExercise.exercise),
       sets: workoutExercise.sets.map((set) => ({
         id: set.id,
@@ -149,6 +176,7 @@ export function mapWorkoutDetail(workout: {
         rpe: set.rpe,
         notes: set.notes,
         completed: set.completed,
+        supersetRoundIndex: set.supersetRoundIndex,
       })),
     })),
   };
@@ -233,19 +261,45 @@ async function assertExercisesExist(userId: string, exerciseIds: string[]) {
   return existingCount === uniqueExerciseIds.length;
 }
 
-function buildWorkoutData(payload: ValidWorkoutMutation) {
+function buildWorkoutMetadata(payload: ValidWorkoutMutation) {
   return {
     title: payload.title,
     notes: payload.notes,
     startedAt: payload.startedAt ? new Date(payload.startedAt) : new Date(),
     completedAt: payload.completedAt ? new Date(payload.completedAt) : null,
     visibility: payload.visibility,
-    exercises: {
-      create: payload.exercises.map((exercise, exerciseIndex) => ({
+  };
+}
+
+async function createWorkoutChildren(
+  tx: Prisma.TransactionClient,
+  workoutId: number,
+  payload: ValidWorkoutMutation
+) {
+  if (payload.supersets.length > 0) {
+    await tx.workoutSuperset.createMany({
+      data: payload.supersets.map((superset, supersetIndex) => ({
+        id: superset.key,
+        workoutId,
+        order: supersetIndex,
+        label: superset.label,
+        colorKey: superset.colorKey,
+        restSeconds: superset.restSeconds,
+        plannedRounds: superset.plannedRounds,
+      })),
+    });
+  }
+
+  for (const [exerciseIndex, exercise] of payload.exercises.entries()) {
+    await tx.workoutExercise.create({
+      data: {
+        workoutId,
         exerciseId: exercise.exerciseId,
         order: exerciseIndex,
         notes: exercise.notes,
         restSeconds: exercise.restSeconds,
+        supersetId: exercise.supersetKey,
+        supersetPosition: exercise.supersetPosition,
         sets: {
           create: exercise.sets.map((set, setIndex) => ({
             order: setIndex,
@@ -258,11 +312,12 @@ function buildWorkoutData(payload: ValidWorkoutMutation) {
             rpe: set.rpe,
             notes: set.notes,
             completed: set.completed,
+            supersetRoundIndex: set.supersetRoundIndex,
           })),
         },
-      })),
-    },
-  };
+      },
+    });
+  }
 }
 
 export async function createUserWorkout(
@@ -273,11 +328,19 @@ export async function createUserWorkout(
     return null;
   }
 
-  const workout = await prisma.workout.create({
-    data: {
-      userId,
-      ...buildWorkoutData(payload),
-    },
+  const workoutId = await prisma.$transaction(async (tx) => {
+    const workout = await tx.workout.create({
+      data: {
+        userId,
+        ...buildWorkoutMetadata(payload),
+      },
+      select: { id: true },
+    });
+    await createWorkoutChildren(tx, workout.id, payload);
+    return workout.id;
+  });
+  const workout = await prisma.workout.findUniqueOrThrow({
+    where: { id: workoutId },
     include: workoutInclude,
   });
 
@@ -315,13 +378,19 @@ export async function updateUserWorkout(
         workoutId,
       },
     });
+    await tx.workoutSuperset.deleteMany({
+      where: {
+        workoutId,
+      },
+    });
 
     await tx.workout.update({
       where: {
         id: workoutId,
       },
-      data: buildWorkoutData(payload),
+      data: buildWorkoutMetadata(payload),
     });
+    await createWorkoutChildren(tx, workoutId, payload);
   });
 
   const workout = await prisma.workout.findFirst({
