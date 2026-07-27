@@ -10,9 +10,10 @@ type RadarPlotArea = {
 
 type RadarPoint = {
   muscle: string;
-  primarySets: number;
-  secondaryContributions: number;
-  workloadSets: number;
+  directSets: number;
+  assistingSets: number;
+  assistingWorkload: number;
+  workloadScore: number;
 };
 
 function normalizeAngle(angle: number) {
@@ -130,10 +131,12 @@ export function formatRadarWorkloadValue(value: number) {
 
 export function getRadarMuscleAriaLabel(point: RadarPoint) {
   return `${point.muscle}. ${formatRadarWorkloadValue(
-    point.primarySets
-  )} primary sets, ${formatRadarWorkloadValue(
-    point.secondaryContributions
-  )} secondary contributions, ${formatRadarWorkloadValue(
-    point.workloadSets
-  )} total workload sets.`;
+    point.directSets
+  )} direct sets, ${formatRadarWorkloadValue(
+    point.assistingSets
+  )} assisting sets, ${formatRadarWorkloadValue(
+    point.assistingWorkload
+  )} assisting workload, ${formatRadarWorkloadValue(
+    point.workloadScore
+  )} workload score.`;
 }

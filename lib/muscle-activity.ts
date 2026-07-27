@@ -1,30 +1,76 @@
-export const MAIN_MUSCLE_GROUPS = [
+export const RADAR_MUSCLE_CATEGORIES = [
   "Chest",
   "Back",
   "Shoulders",
   "Biceps",
   "Triceps",
-  "Forearms",
   "Core",
-  "Legs",
   "Glutes",
-  "Cardio",
+  "Legs",
 ] as const;
 
-export type MainMuscleGroup = (typeof MAIN_MUSCLE_GROUPS)[number];
+/** @deprecated Use RADAR_MUSCLE_CATEGORIES. */
+export const MAIN_MUSCLE_GROUPS = RADAR_MUSCLE_CATEGORIES;
+
+export type RadarMuscleCategory =
+  (typeof RADAR_MUSCLE_CATEGORIES)[number];
+/** @deprecated Use RadarMuscleCategory. */
+export type MainMuscleGroup = RadarMuscleCategory;
 
 export type MuscleWorkloadPoint = {
-  muscle: MainMuscleGroup;
-  primarySets: number;
-  secondaryContributions: number;
-  workloadSets: number;
-  /** @deprecated Use workloadSets. Kept for existing dashboard consumers. */
-  sets: number;
+  muscle: RadarMuscleCategory;
+  directSets: number;
+  assistingSets: number;
+  assistingWorkload: number;
+  workloadScore: number;
 };
 
-export function getMainMuscleGroup(muscle: string): MainMuscleGroup | null {
-  const normalized = muscle.toLowerCase();
+function normalizeMuscleName(muscle: string) {
+  return muscle.trim().toLowerCase();
+}
 
+export function isCardioMuscle(muscle: string) {
+  return normalizeMuscleName(muscle) === "cardio";
+}
+
+/**
+ * Maps detailed exercise-muscle taxonomy to the eight Profile radar axes.
+ * Forearms, Cardio, Full Body, and Neck intentionally remain outside this
+ * high-level strength chart.
+ */
+export function getRadarCategoryForMuscle(
+  muscle: string
+): RadarMuscleCategory | null {
+  const normalized = normalizeMuscleName(muscle);
+
+  if (
+    normalized === "cardio" ||
+    normalized.includes("forearm") ||
+    normalized === "full body" ||
+    normalized.includes("neck")
+  ) {
+    return null;
+  }
+
+  if (
+    normalized.includes("glute") ||
+    normalized.includes("gluteus")
+  ) {
+    return "Glutes";
+  }
+  if (
+    normalized.includes("quad") ||
+    normalized.includes("hamstring") ||
+    normalized.includes("calf") ||
+    normalized.includes("calves") ||
+    normalized.includes("adductor") ||
+    normalized.includes("abductor") ||
+    normalized.includes("tibialis") ||
+    normalized === "legs" ||
+    normalized === "leg"
+  ) {
+    return "Legs";
+  }
   if (
     normalized.includes("lat") ||
     normalized.includes("back") ||
@@ -33,42 +79,42 @@ export function getMainMuscleGroup(muscle: string): MainMuscleGroup | null {
   ) {
     return "Back";
   }
-  if (normalized.includes("bicep")) return "Biceps";
-  if (normalized.includes("tricep")) return "Triceps";
-  if (normalized.includes("forearm")) return "Forearms";
   if (
-    normalized.includes("ab") ||
+    normalized.includes("shoulder") ||
+    normalized.includes("delt")
+  ) {
+    return "Shoulders";
+  }
+  if (
+    normalized.includes("bicep") ||
+    normalized.includes("brachialis")
+  ) {
+    return "Biceps";
+  }
+  if (normalized.includes("tricep")) return "Triceps";
+  if (
+    normalized.includes("abdominal") ||
+    normalized === "abs" ||
     normalized.includes("core") ||
     normalized.includes("oblique") ||
+    normalized.includes("transverse abdominis") ||
     normalized.includes("hip flexor")
   ) {
     return "Core";
   }
   if (
-    normalized.includes("quad") ||
-    normalized.includes("hamstring") ||
-    normalized.includes("calf") ||
-    normalized.includes("leg") ||
-    normalized.includes("adductor") ||
-    normalized.includes("abductor")
-  ) {
-    return "Legs";
-  }
-  if (normalized.includes("glute")) return "Glutes";
-  if (normalized.includes("shoulder") || normalized.includes("delt")) {
-    return "Shoulders";
-  }
-  if (normalized.includes("cardio")) return "Cardio";
-  if (
     normalized.includes("chest") ||
-    normalized.includes("pec") ||
-    normalized.includes("upper chest")
+    normalized.includes("pectoral") ||
+    normalized === "pecs"
   ) {
     return "Chest";
   }
 
   return null;
 }
+
+/** @deprecated Use getRadarCategoryForMuscle. */
+export const getMainMuscleGroup = getRadarCategoryForMuscle;
 
 export function getMuscleContributionWeight(
   role: "PRIMARY" | "SECONDARY"
@@ -77,10 +123,12 @@ export function getMuscleContributionWeight(
 }
 
 /**
- * Aggregates completed-set rows into workload. Callers are responsible for
- * querying only valid, completed workout sets in the desired reporting period.
- * A main group receives at most one contribution per role for each set, and a
- * secondary alias never adds workload to that set's primary main group.
+ * Aggregates completed-set rows into the eight-category workload score.
+ * Callers must query valid completed workout sets for the desired period.
+ *
+ * Each set contributes at most once per radar category. If primary and
+ * secondary muscles from the same set map to one category, PRIMARY wins.
+ * Cardio-primary sets are excluded from strength workload entirely.
  */
 export function aggregateCompletedSetsByMuscle(
   completedSets: Array<{
@@ -90,8 +138,8 @@ export function aggregateCompletedSetsByMuscle(
   }>
 ): MuscleWorkloadPoint[] {
   const workload = new Map<
-    MainMuscleGroup,
-    { primarySets: number; secondaryContributions: number }
+    RadarMuscleCategory,
+    { directSets: number; assistingSets: number }
   >();
   const seen = new Set<string | number>();
 
@@ -101,49 +149,53 @@ export function aggregateCompletedSetsByMuscle(
       seen.add(set.aggregationId);
     }
 
-    const primaryGroup = getMainMuscleGroup(set.primaryMuscle);
-    if (primaryGroup) {
-      const value = workload.get(primaryGroup) ?? {
-        primarySets: 0,
-        secondaryContributions: 0,
-      };
-      value.primarySets += 1;
-      workload.set(primaryGroup, value);
+    if (isCardioMuscle(set.primaryMuscle)) continue;
+
+    const rolesByCategory = new Map<
+      RadarMuscleCategory,
+      "PRIMARY" | "SECONDARY"
+    >();
+    const primaryCategory = getRadarCategoryForMuscle(set.primaryMuscle);
+
+    if (primaryCategory) {
+      rolesByCategory.set(primaryCategory, "PRIMARY");
     }
 
-    const secondaryGroups = new Set(
-      set.secondaryMuscles
-        .map(getMainMuscleGroup)
-        .filter((group): group is MainMuscleGroup => Boolean(group))
-    );
+    for (const secondaryMuscle of set.secondaryMuscles) {
+      const category = getRadarCategoryForMuscle(secondaryMuscle);
+      if (!category || rolesByCategory.get(category) === "PRIMARY") continue;
+      rolesByCategory.set(category, "SECONDARY");
+    }
 
-    if (primaryGroup) secondaryGroups.delete(primaryGroup);
-
-    for (const group of secondaryGroups) {
-      const value = workload.get(group) ?? {
-        primarySets: 0,
-        secondaryContributions: 0,
+    for (const [category, role] of rolesByCategory) {
+      const value = workload.get(category) ?? {
+        directSets: 0,
+        assistingSets: 0,
       };
-      value.secondaryContributions += 1;
-      workload.set(group, value);
+
+      if (role === "PRIMARY") {
+        value.directSets += 1;
+      } else {
+        value.assistingSets += 1;
+      }
+      workload.set(category, value);
     }
   }
 
-  return MAIN_MUSCLE_GROUPS.map((muscle) => {
+  return RADAR_MUSCLE_CATEGORIES.map((muscle) => {
     const value = workload.get(muscle) ?? {
-      primarySets: 0,
-      secondaryContributions: 0,
+      directSets: 0,
+      assistingSets: 0,
     };
-    const workloadSets =
-      value.primarySets +
-      value.secondaryContributions *
-        getMuscleContributionWeight("SECONDARY");
+    const assistingWorkload =
+      value.assistingSets * getMuscleContributionWeight("SECONDARY");
+    const workloadScore = value.directSets + assistingWorkload;
 
     return {
       muscle,
       ...value,
-      workloadSets,
-      sets: workloadSets,
+      assistingWorkload,
+      workloadScore,
     };
   });
 }
@@ -155,6 +207,7 @@ export function getMuscleWorkloadSummary(
 ) {
   return [...points].sort(
     (a, b) =>
-      b.workloadSets - a.workloadSets || a.muscle.localeCompare(b.muscle)
+      b.workloadScore - a.workloadScore ||
+      a.muscle.localeCompare(b.muscle)
   );
 }

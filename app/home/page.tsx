@@ -609,15 +609,13 @@ export default async function HomePage() {
               icon={Medal}
               label="Top muscle this week"
               value={
-                mostTrainedMuscle && mostTrainedMuscle.sets > 0
+                mostTrainedMuscle && mostTrainedMuscle.workloadScore > 0
                   ? mostTrainedMuscle.muscle
                   : "No data yet"
               }
               detail={
-                mostTrainedMuscle && mostTrainedMuscle.sets > 0
-                  ? `${mostTrainedMuscle.workloadSets} workload set${
-                      mostTrainedMuscle.workloadSets === 1 ? "" : "s"
-                    }`
+                mostTrainedMuscle && mostTrainedMuscle.workloadScore > 0
+                  ? `${mostTrainedMuscle.workloadScore} workload score`
                   : "Complete a workout"
               }
               href="/profile"

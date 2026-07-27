@@ -84,7 +84,7 @@ function summarizePeriod(
     muscleWorkload,
     mostTrainedMuscle:
       getMuscleWorkloadSummary(muscleWorkload).find(
-        (point) => point.workloadSets > 0
+        (point) => point.workloadScore > 0
       ) ?? null,
   };
 }

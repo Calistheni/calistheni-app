@@ -113,6 +113,7 @@ model User {
   primaryGoal         PrimaryGoal?
   rpeTrackingEnabled  Boolean        @default(false)
   weeklyWorkoutGoal   Int            @default(3)
+  weeklyCardioGoalMinutes Int?
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 

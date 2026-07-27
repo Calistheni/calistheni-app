@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { BackButton } from "@/components/navigation/BackButton";
 import { BodyweightForm } from "@/components/profile/BodyweightForm";
+import { CardioGoalCard } from "@/components/profile/CardioGoalCard";
 import { MobileAccountUtilities } from "@/components/profile/MobileAccountUtilities";
 import { ProfileStatCard } from "@/components/profile/ProfileStatCard";
 import { SocialConnections } from "@/components/social/SocialConnections";
@@ -22,6 +23,7 @@ import {
   type PersonalRecordType,
 } from "@/lib/personal-records";
 import { aggregateMuscleActivity } from "@/lib/muscle-activity";
+import { getWeeklyCardioProgress } from "@/lib/cardio-service";
 import { formatDateOfBirth } from "@/lib/date-of-birth";
 import { prisma } from "@/lib/prisma";
 import {
@@ -57,6 +59,7 @@ export default async function ProfilePage() {
     recentPersonalRecords,
     recentMuscleSets,
     entitlementResult,
+    cardioProgress,
   ] = await Promise.all([
     prisma.workout.count({
       where: {
@@ -154,6 +157,14 @@ export default async function ProfilePage() {
       },
     }),
     getUserEntitlements(session.user.id),
+    getWeeklyCardioProgress(session.user.id).catch((error) => {
+      console.error("CARDIO_PROGRESS_FAILED", {
+        userId: session.user.id,
+        route: "/profile",
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+      return null;
+    }),
   ]);
   const { entitlements, subscription } = entitlementResult;
   const muscleActivity: MuscleActivityPoint[] = aggregateMuscleActivity(
@@ -247,7 +258,13 @@ export default async function ProfilePage() {
         ))}
       </div>
 
-      <MuscleActivityRadar data={muscleActivity} />
+      <section
+        aria-label="Training analytics"
+        className="mb-6 grid items-stretch gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(280px,2fr)]"
+      >
+        <MuscleActivityRadar data={muscleActivity} />
+        <CardioGoalCard initialProgress={cardioProgress} />
+      </section>
 
       <Card className="mb-6">
         <CardHeader>

@@ -46,8 +46,8 @@ type MuscleActivityRadarProps = {
 };
 
 const chartConfig = {
-  workloadSets: {
-    label: "Workload sets",
+  workloadScore: {
+    label: "Workload score",
     color: CALISTHENI_CHART_BLUE,
   },
 } satisfies ChartConfig;
@@ -88,7 +88,7 @@ function ActiveRadarSector({
     <g aria-hidden="true" pointerEvents="none">
       <path
         d={geometry.path}
-        fill="var(--color-workloadSets)"
+        fill="var(--color-workloadScore)"
         fillOpacity={0.08}
       />
       <line
@@ -96,7 +96,7 @@ function ActiveRadarSector({
         y1={geometry.cy}
         x2={geometry.axisEnd.x}
         y2={geometry.axisEnd.y}
-        stroke="var(--color-workloadSets)"
+        stroke="var(--color-workloadScore)"
         strokeOpacity={0.8}
         strokeWidth={2}
       />
@@ -148,15 +148,19 @@ function MuscleWorkloadTooltip({
     >
       <p className="mb-2 font-medium text-foreground">{point.muscle}</p>
       <div className="grid gap-1.5">
-        <TooltipMetricRow label="Primary sets" value={point.primarySets} />
+        <TooltipMetricRow label="Direct sets" value={point.directSets} />
         <TooltipMetricRow
-          label="Secondary contributions"
-          value={point.secondaryContributions}
+          label="Assisting sets"
+          value={point.assistingSets}
+        />
+        <TooltipMetricRow
+          label="Assisting workload"
+          value={point.assistingWorkload}
         />
         <TooltipMetricRow
           indicator
-          label="Workload sets"
-          value={point.workloadSets}
+          label="Workload score"
+          value={point.workloadScore}
         />
       </div>
     </div>
@@ -166,18 +170,25 @@ function MuscleWorkloadTooltip({
 export function MuscleActivityRadar({ data }: MuscleActivityRadarProps) {
   const chartData = useMemo(() => data, [data]);
   const sorted = useMemo(
-    () => [...chartData].sort((a, b) => b.sets - a.sets),
+    () =>
+      [...chartData].sort(
+        (a, b) =>
+          b.workloadScore - a.workloadScore ||
+          a.muscle.localeCompare(b.muscle)
+      ),
     [chartData]
   );
-  const totalSets = useMemo(
-    () => chartData.reduce((sum, item) => sum + item.workloadSets, 0),
+  const totalWorkloadScore = useMemo(
+    () => chartData.reduce((sum, item) => sum + item.workloadScore, 0),
     [chartData]
   );
   const mostTrained = sorted[0] ?? null;
   const leastTrained = useMemo(
     () =>
       [...chartData].sort(
-        (a, b) => a.sets - b.sets || a.muscle.localeCompare(b.muscle)
+        (a, b) =>
+          a.workloadScore - b.workloadScore ||
+          a.muscle.localeCompare(b.muscle)
       )[0] ?? null,
     [chartData]
   );
@@ -375,7 +386,7 @@ export function MuscleActivityRadar({ data }: MuscleActivityRadarProps) {
             dominantBaseline="central"
             fill={
               isActive
-                ? "var(--color-workloadSets)"
+                ? "var(--color-workloadScore)"
                 : "var(--muted-foreground)"
             }
             fontSize={11}
@@ -390,11 +401,11 @@ export function MuscleActivityRadar({ data }: MuscleActivityRadarProps) {
   );
 
   return (
-    <Card className="mb-6">
+    <Card className="h-full">
       <CardHeader className="items-center pb-4 text-center">
         <CardTitle>Muscle workload · Last 30 days</CardTitle>
         <CardDescription>
-          Primary sets count as 1. Secondary contributions count as 0.5.
+          Direct sets count as 1. Assisting sets add 0.5 to the workload score.
         </CardDescription>
       </CardHeader>
       <CardContent className="pb-0">
@@ -428,12 +439,12 @@ export function MuscleActivityRadar({ data }: MuscleActivityRadarProps) {
               />
               <PolarGrid stroke="var(--border)" />
               <Radar
-                dataKey="workloadSets"
+                dataKey="workloadScore"
                 activeDot={false}
                 dot={false}
-                fill="var(--color-workloadSets)"
+                fill="var(--color-workloadScore)"
                 fillOpacity={0.28}
-                stroke="var(--color-workloadSets)"
+                stroke="var(--color-workloadScore)"
                 strokeWidth={2}
               />
               <ActiveRadarSector
@@ -457,25 +468,25 @@ export function MuscleActivityRadar({ data }: MuscleActivityRadarProps) {
       <div className="sr-only" id="muscle-workload-summary">
         <h3>Muscle workload · Last 30 days</h3>
         <p>
-          Primary sets count as 1. Secondary contributions count as 0.5.
+          Direct sets count as 1. Assisting sets add 0.5 to the workload score.
         </p>
         <ul>
           {chartData.map((item) => (
             <li key={item.muscle}>
-              {item.muscle}: {item.primarySets} primary sets,{" "}
-              {item.secondaryContributions} secondary contributions,{" "}
-              {item.workloadSets} workload sets.
+              {item.muscle}: {item.directSets} direct sets,{" "}
+              {item.assistingSets} assisting sets, {item.assistingWorkload}{" "}
+              assisting workload, {item.workloadScore} workload score.
             </li>
           ))}
         </ul>
         {mostTrained ? (
           <p>
-            Most trained: {mostTrained.muscle}. Least trained:{" "}
+            Highest workload: {mostTrained.muscle}. Lowest workload:{" "}
             {leastTrained?.muscle ?? "None"}.
           </p>
         ) : null}
       </div>
-      {totalSets === 0 ? (
+      {totalWorkloadScore === 0 ? (
         <CardFooter className="flex-col gap-2 text-sm">
           <div className="leading-none font-medium">
             No completed sets in the last 30 days yet.
@@ -487,12 +498,12 @@ export function MuscleActivityRadar({ data }: MuscleActivityRadarProps) {
       ) : mostTrained ? (
         <CardFooter className="flex-col gap-2 text-sm">
           <div className="flex items-center gap-2 leading-none font-medium">
-            Most trained: {mostTrained.muscle} ({mostTrained.workloadSets} workload sets)
+            Highest workload: {mostTrained.muscle} · {mostTrained.workloadScore}
             <TrendingUp className="h-4 w-4" />
           </div>
           {leastTrained ? (
             <div className="flex items-center gap-2 leading-none text-muted-foreground">
-              Least trained: {leastTrained.muscle} ({leastTrained.workloadSets} workload sets)
+              Lowest workload: {leastTrained.muscle} · {leastTrained.workloadScore}
             </div>
           ) : null}
         </CardFooter>
