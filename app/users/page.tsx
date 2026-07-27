@@ -4,11 +4,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { BackButton } from "@/components/navigation/BackButton";
+import { CommunityTabs } from "@/components/community/CommunityTabs";
+import { PeopleSearchInput } from "@/components/community/PeopleSearchInput";
 import { FollowButton } from "@/components/social/FollowButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { prisma } from "@/lib/prisma";
 
 export const metadata: Metadata = {
@@ -22,6 +23,7 @@ export const metadata: Metadata = {
 type UsersPageProps = {
   searchParams: Promise<{
     q?: string;
+    page?: string;
   }>;
 };
 
@@ -32,9 +34,12 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
     redirect("/login");
   }
 
-  const { q } = await searchParams;
+  const { q, page: pageParam } = await searchParams;
   const query = (q ?? "").trim();
   const canSearch = query.length >= 2;
+  const parsedPage = Number.parseInt(pageParam ?? "1", 10);
+  const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+  const pageSize = 20;
   const users = canSearch
     ? await prisma.user.findMany({
         where: {
@@ -48,12 +53,6 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
                 mode: "insensitive",
               },
             },
-            {
-              email: {
-                contains: query,
-                mode: "insensitive",
-              },
-            },
           ],
         },
         orderBy: [
@@ -61,10 +60,11 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
             name: "asc",
           },
           {
-            email: "asc",
+            id: "asc",
           },
         ],
-        take: 30,
+        skip: (page - 1) * pageSize,
+        take: pageSize + 1,
         select: {
           id: true,
           name: true,
@@ -77,12 +77,14 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
         },
       })
     : [];
-  const follows = users.length
+  const hasNextPage = users.length > pageSize;
+  const visibleUsers = users.slice(0, pageSize);
+  const follows = visibleUsers.length
     ? await prisma.userFollow.findMany({
         where: {
           followerId: session.user.id,
           followingId: {
-            in: users.map((user) => user.id),
+            in: visibleUsers.map((user) => user.id),
           },
         },
         select: {
@@ -96,37 +98,16 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
     <main className="mx-auto w-full max-w-4xl p-4 sm:p-6 lg:p-8">
       <BackButton fallbackHref="/feed" />
       <div className="mb-6 space-y-2">
-        <h1 className="text-3xl font-bold">Find Users</h1>
+        <h1 className="text-3xl font-bold">Community</h1>
         <p className="text-sm text-muted-foreground">
-          Search for athletes, open their public profile, and follow them to see
-          their public workouts in your feed.
+          Discover athletes and follow their public training.
         </p>
       </div>
+      <CommunityTabs active="people" />
 
       <Card className="mb-6">
         <CardContent className="p-4 sm:p-6">
-          <form action="/users" className="flex flex-col gap-3 sm:flex-row">
-            <div className="flex-1 space-y-2">
-              <label htmlFor="user-search" className="text-sm font-medium">
-                Search users
-              </label>
-              <Input
-                id="user-search"
-                name="q"
-                type="search"
-                defaultValue={query}
-                placeholder="Search by name or email"
-              />
-            </div>
-            <div className="flex items-end gap-2">
-              <Button type="submit">Search</Button>
-              {query ? (
-                <Button asChild variant="outline">
-                  <Link href="/users">Clear</Link>
-                </Button>
-              ) : null}
-            </div>
-          </form>
+          <PeopleSearchInput initialQuery={query} />
         </CardContent>
       </Card>
 
@@ -148,7 +129,7 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
             Keep typing. Search needs at least two characters.
           </CardContent>
         </Card>
-      ) : users.length === 0 ? (
+      ) : visibleUsers.length === 0 ? (
         <Card>
           <CardContent className="space-y-2 p-6 text-sm text-muted-foreground">
             <p className="font-medium text-foreground">
@@ -159,7 +140,7 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
         </Card>
       ) : (
         <div className="space-y-3">
-          {users.map((user) => (
+          {visibleUsers.map((user) => (
             <Card key={user.id}>
               <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <Link
@@ -202,6 +183,34 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
               </CardHeader>
             </Card>
           ))}
+          <nav
+            aria-label="People search pagination"
+            className="flex items-center justify-between gap-3 pt-3"
+          >
+            {page > 1 ? (
+              <Button asChild variant="outline">
+                <Link
+                  href={`/users?q=${encodeURIComponent(query)}&page=${page - 1}`}
+                >
+                  Previous
+                </Link>
+              </Button>
+            ) : (
+              <span />
+            )}
+            <span className="text-sm text-muted-foreground">Page {page}</span>
+            {hasNextPage ? (
+              <Button asChild variant="outline">
+                <Link
+                  href={`/users?q=${encodeURIComponent(query)}&page=${page + 1}`}
+                >
+                  Next
+                </Link>
+              </Button>
+            ) : (
+              <span />
+            )}
+          </nav>
         </div>
       )}
     </main>

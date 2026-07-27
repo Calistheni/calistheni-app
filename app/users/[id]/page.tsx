@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { BackButton } from "@/components/navigation/BackButton";
 import { FollowButton } from "@/components/social/FollowButton";
+import { SocialConnections } from "@/components/social/SocialConnections";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -124,9 +125,12 @@ export default async function UserProfilePage({
               <h1 className="text-3xl font-bold">
                 {user.name ?? "Calistheni athlete"}
               </h1>
-              <p className="text-sm text-muted-foreground">
-                {followerCount} followers · {followingCount} following
-              </p>
+              <SocialConnections
+                profileUserId={user.id}
+                viewerUserId={session?.user?.id ?? null}
+                initialFollowerCount={followerCount}
+                initialFollowingCount={followingCount}
+              />
               {followerCount === 0 ? (
                 <p className="mt-1 text-xs text-muted-foreground">
                   No followers yet. Their next public workout can still be the

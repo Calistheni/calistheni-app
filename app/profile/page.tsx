@@ -6,6 +6,7 @@ import { auth } from "@/auth";
 import { BackButton } from "@/components/navigation/BackButton";
 import { BodyweightForm } from "@/components/profile/BodyweightForm";
 import { MobileAccountUtilities } from "@/components/profile/MobileAccountUtilities";
+import { SocialConnections } from "@/components/social/SocialConnections";
 import { ManageSubscriptionButton } from "@/components/billing/ManageSubscriptionButton";
 import {
   MuscleActivityRadar,
@@ -63,6 +64,7 @@ export default async function ProfilePage() {
     }),
     prisma.workoutSet.count({
       where: {
+        completed: true,
         workoutExercise: {
           workout: {
             userId: session.user.id,
@@ -99,6 +101,12 @@ export default async function ProfilePage() {
         dateOfBirth: true,
         rpeTrackingEnabled: true,
         rewardPoints: true,
+        _count: {
+          select: {
+            followers: true,
+            following: true,
+          },
+        },
       },
     }),
     prisma.personalRecord.findMany({
@@ -124,13 +132,14 @@ export default async function ProfilePage() {
         workoutExercise: {
           workout: {
             userId: session.user.id,
-            startedAt: {
+            completedAt: {
               gte: thirtyDaysAgo,
             },
           },
         },
       },
       select: {
+        id: true,
         workoutExercise: {
           select: {
             exercise: {
@@ -148,6 +157,7 @@ export default async function ProfilePage() {
   const { entitlements, subscription } = entitlementResult;
   const muscleActivity: MuscleActivityPoint[] = aggregateMuscleActivity(
     recentMuscleSets.map((set) => ({
+      aggregationId: set.id,
       primaryMuscle: set.workoutExercise.exercise.muscle,
       secondaryMuscles: set.workoutExercise.exercise.secondaryMuscles,
     }))
@@ -186,6 +196,12 @@ export default async function ProfilePage() {
             <p className="truncate text-sm text-muted-foreground">
               {session.user.email ?? "Signed in user"}
             </p>
+            <SocialConnections
+              profileUserId={session.user.id}
+              viewerUserId={session.user.id}
+              initialFollowerCount={profile?._count.followers ?? 0}
+              initialFollowingCount={profile?._count.following ?? 0}
+            />
             <div className="mt-2 flex flex-wrap gap-2">
               <Badge variant={entitlements.isPro ? "default" : "secondary"}>
                 {entitlements.isPro ? "Pro" : "Free"}

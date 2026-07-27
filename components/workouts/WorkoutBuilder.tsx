@@ -106,6 +106,7 @@ import {
   SortableExerciseList,
 } from "@/components/workouts/SortableExerciseList";
 import { toast } from "sonner";
+import { ExerciseDetailPreview } from "@/components/exercises/ExerciseDetailPreview";
 import {
   clearActiveWorkoutSessionStorage,
   getOrCreateActiveWorkoutSessionId,
@@ -2073,6 +2074,7 @@ export function WorkoutBuilder({
             </div>
           </AccordionTrigger>
           <div className="flex shrink-0 items-center pr-1">
+            <ExerciseDetailPreview exercise={exercise} compact />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -3039,6 +3041,7 @@ export function WorkoutBuilder({
                         </div>
                       </AccordionTrigger>
                       <div className="flex shrink-0 items-center py-1 pr-1">
+                        <ExerciseDetailPreview exercise={exercise} compact />
                         {dragHandle}
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>

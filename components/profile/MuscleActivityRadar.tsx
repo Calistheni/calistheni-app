@@ -16,26 +16,24 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
+import type { MuscleWorkloadPoint } from "@/lib/muscle-activity";
 
-export type MuscleActivityPoint = {
-  muscle: string;
-  sets: number;
-};
+export type MuscleActivityPoint = MuscleWorkloadPoint;
 
 type MuscleActivityRadarProps = {
   data: MuscleActivityPoint[];
 };
 
 const chartConfig = {
-  sets: {
-    label: "Completed Sets",
+  workloadSets: {
+    label: "Workload sets",
     color: "#2563eb",
   },
 } satisfies ChartConfig;
 
 export function MuscleActivityRadar({ data }: MuscleActivityRadarProps) {
   const sorted = [...data].sort((a, b) => b.sets - a.sets);
-  const totalSets = data.reduce((sum, item) => sum + item.sets, 0);
+  const totalSets = data.reduce((sum, item) => sum + item.workloadSets, 0);
   const mostTrained = sorted[0] ?? null;
   const leastTrained =
     [...data].sort((a, b) => a.sets - b.sets || a.muscle.localeCompare(b.muscle))[0] ??
@@ -44,10 +42,9 @@ export function MuscleActivityRadar({ data }: MuscleActivityRadarProps) {
   return (
     <Card className="mb-6">
       <CardHeader className="items-center pb-4 text-center">
-        <CardTitle>Muscle Activity</CardTitle>
+        <CardTitle>Muscle workload · Last 30 days</CardTitle>
         <CardDescription>
-          Completed sets by primary and secondary muscle group over the last 30
-          days.
+          Primary sets count as 1. Secondary contributions count as 0.5.
         </CardDescription>
       </CardHeader>
       <CardContent className="pb-0">
@@ -67,7 +64,7 @@ export function MuscleActivityRadar({ data }: MuscleActivityRadarProps) {
             />
             <PolarGrid />
             <Radar
-              dataKey="sets"
+              dataKey="workloadSets"
               dot={{
                 r: 3,
                 fill: "var(--color-sets)",
@@ -79,6 +76,18 @@ export function MuscleActivityRadar({ data }: MuscleActivityRadarProps) {
           </RadarChart>
         </ChartContainer>
       </CardContent>
+      <div className="sr-only">
+        <h3>Accessible muscle workload summary</h3>
+        <ul>
+          {data.map((item) => (
+            <li key={item.muscle}>
+              {item.muscle}: {item.primarySets} primary sets,{" "}
+              {item.secondaryContributions} secondary contributions,{" "}
+              {item.workloadSets} workload sets.
+            </li>
+          ))}
+        </ul>
+      </div>
       {totalSets === 0 ? (
         <CardFooter className="flex-col gap-2 text-sm">
           <div className="leading-none font-medium">
@@ -91,12 +100,12 @@ export function MuscleActivityRadar({ data }: MuscleActivityRadarProps) {
       ) : mostTrained ? (
         <CardFooter className="flex-col gap-2 text-sm">
           <div className="flex items-center gap-2 leading-none font-medium">
-            Most trained: {mostTrained.muscle} ({mostTrained.sets} sets)
+            Most trained: {mostTrained.muscle} ({mostTrained.workloadSets} workload sets)
             <TrendingUp className="h-4 w-4" />
           </div>
           {leastTrained ? (
             <div className="flex items-center gap-2 leading-none text-muted-foreground">
-              Least trained: {leastTrained.muscle} ({leastTrained.sets} sets)
+              Least trained: {leastTrained.muscle} ({leastTrained.workloadSets} workload sets)
             </div>
           ) : null}
         </CardFooter>

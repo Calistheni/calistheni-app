@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
+import { CommunityTabs } from "@/components/community/CommunityTabs";
 import { BackButton } from "@/components/navigation/BackButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -88,6 +89,7 @@ export default async function FeedPage() {
           <Link href="/workouts/new">Start Workout</Link>
         </Button>
       </div>
+      <CommunityTabs active="feed" />
 
       {summaries.length === 0 ? (
         <Card>

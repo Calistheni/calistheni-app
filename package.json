@@ -10,6 +10,8 @@
     "seed:exercises": "node scripts/seed-exercises.mjs",
     "add:l-sit-and-ring-muscle-up": "node --env-file=.env.local scripts/add-l-sit-and-ring-muscle-up.mjs",
     "repair:l-sit-exercises": "node --env-file=.env.local scripts/repair-l-sit-exercises.mjs",
+    "secondary-muscles:preview": "node --env-file=.env.local scripts/backfill-secondary-muscles.mjs",
+    "secondary-muscles:apply": "node --env-file=.env.local scripts/backfill-secondary-muscles.mjs --apply",
     "seed:rewards": "node scripts/seed-rewards.mjs",
     "preview:secondary-muscles": "node --env-file=.env.local scripts/classify-secondary-muscles.mjs --dry-run",
     "classify:secondary-muscles": "node --env-file=.env.local scripts/classify-secondary-muscles.mjs",

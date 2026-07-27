@@ -5,6 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import { Layers2 } from "lucide-react";
 import { auth } from "@/auth";
 import { BackButton } from "@/components/navigation/BackButton";
+import { ExerciseDetailPreview } from "@/components/exercises/ExerciseDetailPreview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -244,9 +245,16 @@ export default async function WorkoutDetailPage({
                   unoptimized
                   className="h-20 w-28 rounded-lg bg-muted object-cover"
                 />
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <h2 className="text-xl font-semibold">
-                    {workoutExercise.exercise.name}
+                    <Link
+                      href={`/exercises/${encodeURIComponent(
+                        workoutExercise.exercise.id
+                      )}`}
+                      className="underline-offset-4 hover:underline"
+                    >
+                      {workoutExercise.exercise.name}
+                    </Link>
                   </h2>
                   <div className="mt-1 flex flex-wrap gap-2">
                     <Badge variant="secondary">
@@ -263,8 +271,17 @@ export default async function WorkoutDetailPage({
                         {getSupersetDisplayLabel(superset, supersetIndex)}
                       </Badge>
                     ) : null}
+                    {workoutExercise.exercise.secondaryMuscles.length ? (
+                      <Badge variant="outline">
+                        +{workoutExercise.exercise.secondaryMuscles.length} secondary
+                      </Badge>
+                    ) : null}
                   </div>
                 </div>
+                <ExerciseDetailPreview
+                  exercise={workoutExercise.exercise}
+                  compact
+                />
               </div>
             </CardHeader>
             <CardContent className="space-y-3">

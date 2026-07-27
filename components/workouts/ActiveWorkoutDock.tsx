@@ -165,7 +165,7 @@ export function ActiveWorkoutDock() {
       <div
         data-active-workout-dock
         className={cn(
-          "pointer-events-none fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-50 mx-auto flex w-[calc(100%-1rem)] max-w-xl justify-center px-2",
+          "pointer-events-none fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-50 mx-auto flex w-[calc(100%-1rem)] max-w-xl justify-center px-2",
           "md:bottom-4"
         )}
       >

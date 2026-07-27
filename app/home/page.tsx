@@ -26,12 +26,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   calculateCurrentWorkoutStreak,
   calculateFourWeekGoalConsistency,
-  countCurrentWeekCompletedWorkouts,
   getUtcWeekStart,
   groupCompletedWorkoutActivity,
   toUtcDateKey,
 } from "@/lib/home-dashboard";
-import { aggregateMuscleActivity } from "@/lib/muscle-activity";
 import { redirectIfOnboardingRequired } from "@/lib/onboarding";
 import {
   formatPersonalRecordValue,
@@ -41,6 +39,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { getPersistedVolumeSetCompletion } from "@/lib/workout-volume";
 import { mapWorkoutSummary } from "@/lib/workouts";
+import { calculateWeeklyReport } from "@/lib/weekly-report";
 
 export const metadata: Metadata = {
   title: "Home",
@@ -115,19 +114,12 @@ function formatHeroDate(date: Date) {
     .toUpperCase();
 }
 
-function formatVolume(
-  workouts: Array<{ totalVolume: number | null }>,
-  emptyLabel = "—"
-) {
-  if (workouts.length === 0) return emptyLabel;
-  const available = workouts.flatMap((workout) =>
-    workout.totalVolume === null ? [] : [workout.totalVolume]
-  );
-  if (available.length === 0) return "Unavailable";
-  const total = available.reduce((sum, value) => sum + value, 0);
-  return `${Math.round(total).toLocaleString()} kg${
-    available.length < workouts.length ? " partial" : ""
-  }`;
+function formatReportDuration(seconds: number) {
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return remainder ? `${hours}h ${remainder}m` : `${hours}h`;
 }
 
 function SectionHeading({
@@ -176,17 +168,20 @@ export default async function HomePage() {
 
   const now = new Date();
   const weekStart = getUtcWeekStart(now);
+  const previousWeekStart = new Date(weekStart);
+  previousWeekStart.setUTCDate(previousWeekStart.getUTCDate() - 7);
   const calendarStart = new Date(weekStart);
   calendarStart.setUTCDate(calendarStart.getUTCDate() - 25 * 7);
 
   const [
     profile,
-    weeklyWorkouts,
+    reportWorkouts,
     calendarWorkouts,
     allCompletedDates,
     recentWorkout,
     routines,
     latestPersonalRecord,
+    weeklyPersonalRecordCount,
   ] = await Promise.all([
     prisma.user.findUnique({
       where: { id: session.user.id },
@@ -201,7 +196,7 @@ export default async function HomePage() {
     prisma.workout.findMany({
       where: {
         userId: session.user.id,
-        completedAt: { gte: weekStart },
+        completedAt: { gte: previousWeekStart },
       },
       orderBy: { completedAt: "desc" },
       include: workoutInclude,
@@ -240,24 +235,40 @@ export default async function HomePage() {
       orderBy: { achievedAt: "desc" },
       include: { exercise: { select: { name: true } } },
     }),
+    prisma.personalRecord.count({
+      where: {
+        userId: session.user.id,
+        achievedAt: { gte: weekStart },
+      },
+    }),
   ]);
 
   if (!profile) redirect("/login");
 
-  const weeklySummaries = weeklyWorkouts.map(mapWorkoutSummary);
-  const weeklyCompletedSets = weeklyWorkouts.reduce(
-    (sum, workout) => sum + completedSetCount(workout),
-    0
-  );
-  const weeklyWorkoutCount = countCurrentWeekCompletedWorkouts(
-    weeklyWorkouts,
-    now
-  );
-  const weeklyActiveDays = new Set(
-    weeklyWorkouts.flatMap((workout) =>
-      workout.completedAt ? [toUtcDateKey(workout.completedAt)] : []
-    )
-  ).size;
+  const weeklyReport = calculateWeeklyReport({
+    weekStart,
+    workouts: reportWorkouts.map((workout) => {
+      const summary = mapWorkoutSummary(workout);
+      return {
+        id: workout.id,
+        startedAt: workout.startedAt,
+        completedAt: workout.completedAt,
+        totalVolumeKg: summary.totalVolume,
+        sets: workout.exercises.flatMap((workoutExercise) =>
+          workoutExercise.sets.map((set) => ({
+            id: set.id,
+            completed: set.completed,
+            reps: set.reps,
+            primaryMuscle: workoutExercise.exercise.muscle,
+            secondaryMuscles: workoutExercise.exercise.secondaryMuscles,
+          }))
+        ),
+      };
+    }),
+  });
+  const weeklyCompletedSets = weeklyReport.current.completedSets;
+  const weeklyWorkoutCount = weeklyReport.current.workouts;
+  const weeklyActiveDays = weeklyReport.current.activeDays;
   const currentStreak = calculateCurrentWorkoutStreak(allCompletedDates, now);
   const calendarActivities = groupCompletedWorkoutActivity(
     calendarWorkouts.map((workout) => {
@@ -275,21 +286,7 @@ export default async function HomePage() {
     now,
     historyStart: profile.createdAt,
   });
-  const trainedMuscles = aggregateMuscleActivity(
-    weeklyWorkouts.flatMap((workout) =>
-      workout.exercises.flatMap((workoutExercise) =>
-        workoutExercise.sets
-          .filter((set) => isCompletedSet(set, workout.updatedAt))
-          .map(() => ({
-            primaryMuscle: workoutExercise.exercise.muscle,
-            secondaryMuscles: workoutExercise.exercise.secondaryMuscles,
-          }))
-      )
-    )
-  );
-  const mostTrainedMuscle = [...trainedMuscles].sort(
-    (left, right) => right.sets - left.sets
-  )[0];
+  const mostTrainedMuscle = weeklyReport.current.mostTrainedMuscle;
   const recentSummary = recentWorkout ? mapWorkoutSummary(recentWorkout) : null;
   const recentCompletedSets = recentWorkout
     ? completedSetCount(recentWorkout)
@@ -299,7 +296,15 @@ export default async function HomePage() {
   const weekStats = [
     { label: "Workouts", value: weeklyWorkoutCount.toLocaleString() },
     { label: "Completed sets", value: weeklyCompletedSets.toLocaleString() },
-    { label: "Volume", value: formatVolume(weeklySummaries) },
+    {
+      label: "Volume",
+      value:
+        weeklyReport.current.totalVolumeKg === null
+          ? "Unavailable"
+          : `${Math.round(
+              weeklyReport.current.totalVolumeKg
+            ).toLocaleString()} kg`,
+    },
     { label: "Active days", value: weeklyActiveDays.toLocaleString() },
   ];
 
@@ -330,11 +335,19 @@ export default async function HomePage() {
           <SectionHeading
             id="week-heading"
             eyebrow="Your momentum"
-            title="This Week"
-            description="Completed training from the current calendar week."
+            title="Weekly report"
+            description="Monday through now, compared with the previous week."
           />
           <Card className="rounded-2xl border-border/80 bg-card/80 py-0 shadow-none">
             <CardContent className="px-0 py-5 sm:p-7 lg:p-8">
+              {weeklyWorkoutCount === 0 ? (
+                <div className="px-5 pb-5 sm:px-0">
+                  <p className="font-semibold">No workouts yet this week.</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Start a workout to build your weekly report.
+                  </p>
+                </div>
+              ) : null}
               <div className="grid grid-cols-2 lg:grid-cols-4">
                 {weekStats.map((stat, index) => (
                   <div
@@ -354,6 +367,63 @@ export default async function HomePage() {
                   </div>
                 ))}
               </div>
+              {weeklyWorkoutCount > 0 ? (
+                <div className="mx-5 mt-5 grid gap-3 border-t pt-5 text-sm sm:mx-0 sm:grid-cols-2 lg:grid-cols-4">
+                  <div>
+                    <p className="text-muted-foreground">Total reps</p>
+                    <p className="font-semibold tabular-nums">
+                      {weeklyReport.current.totalReps.toLocaleString()}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Training time</p>
+                    <p className="font-semibold tabular-nums">
+                      {formatReportDuration(
+                        weeklyReport.current.durationSeconds
+                      )}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Most trained</p>
+                    <p className="font-semibold">
+                      {mostTrainedMuscle?.muscle ?? "Not available"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">New records</p>
+                    <p className="font-semibold tabular-nums">
+                      {weeklyPersonalRecordCount.toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+              {weeklyReport.comparisons.completedSets.kind ===
+              "new-activity" ? (
+                <p className="mx-5 mt-4 text-sm text-muted-foreground sm:mx-0">
+                  Up from no activity last week.
+                </p>
+              ) : weeklyReport.comparisons.completedSets.percentage !== null ? (
+                <p className="mx-5 mt-4 text-sm text-muted-foreground sm:mx-0">
+                  Completed sets{" "}
+                  {weeklyReport.comparisons.completedSets.percentage > 0
+                    ? "+"
+                    : ""}
+                  {weeklyReport.comparisons.completedSets.percentage}% vs last
+                  week.
+                </p>
+              ) : null}
+              {weeklyReport.current.totalVolumeKg === null &&
+              weeklyWorkoutCount > 0 ? (
+                <div className="mx-5 mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm sm:mx-0">
+                  <span>
+                    Some volume could not be calculated because bodyweight or
+                    tracking data is missing.
+                  </span>
+                  <Button asChild size="sm" variant="outline">
+                    <Link href="/profile">Add bodyweight</Link>
+                  </Button>
+                </div>
+              ) : null}
               <div className="px-5 sm:px-0">
                 <WeeklyGoalEditor
                   initialGoal={profile.weeklyWorkoutGoal}
@@ -545,7 +615,9 @@ export default async function HomePage() {
               }
               detail={
                 mostTrainedMuscle && mostTrainedMuscle.sets > 0
-                  ? `${mostTrainedMuscle.sets} completed set${mostTrainedMuscle.sets === 1 ? "" : "s"}`
+                  ? `${mostTrainedMuscle.workloadSets} workload set${
+                      mostTrainedMuscle.workloadSets === 1 ? "" : "s"
+                    }`
                   : "Complete a workout"
               }
               href="/profile"

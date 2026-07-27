@@ -66,18 +66,32 @@ export default async function ExerciseDetailPage({
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold">{exercise.name}</h1>
-          <Badge className="mt-2" variant="secondary">
-            {exercise.muscle}
-          </Badge>
+          <div className="mt-2">
+            <p className="text-xs font-medium text-muted-foreground">
+              Primary muscles
+            </p>
+            <Badge className="mt-1" variant="secondary">
+              {exercise.muscle}
+            </Badge>
+          </div>
           {exercise.createdByUserId ? (
             <Badge className="mt-2 ml-2" variant="outline">
               Custom
             </Badge>
           ) : null}
           {exercise.secondaryMuscles.length > 0 ? (
-            <p className="mt-2 text-sm text-muted-foreground">
-              Secondary: {exercise.secondaryMuscles.join(", ")}
-            </p>
+            <div className="mt-3">
+              <p className="text-xs font-medium text-muted-foreground">
+                Secondary muscles
+              </p>
+              <div className="mt-1 flex flex-wrap gap-2">
+                {exercise.secondaryMuscles.map((muscle) => (
+                  <Badge key={muscle} variant="outline">
+                    {muscle}
+                  </Badge>
+                ))}
+              </div>
+            </div>
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
@@ -109,12 +123,23 @@ export default async function ExerciseDetailPage({
                 poster={thumbnailUrl}
                 controls
                 playsInline
-                preload="metadata"
+                preload="none"
+                aria-label={`${exercise.name} movement video`}
                 className="aspect-video w-full rounded-xl bg-black object-contain"
               />
             ) : (
-              <div className="flex aspect-video items-center justify-center rounded-xl bg-muted p-6 text-center text-sm text-muted-foreground">
-                No video is available for this exercise yet.
+              <div className="space-y-3">
+                <Image
+                  src={thumbnailUrl}
+                  alt={`${exercise.name} exercise`}
+                  width={960}
+                  height={540}
+                  unoptimized
+                  className="aspect-video w-full rounded-xl bg-muted object-cover"
+                />
+                <p className="text-sm text-muted-foreground">
+                  No video is available for this exercise yet.
+                </p>
               </div>
             )}
           </CardContent>

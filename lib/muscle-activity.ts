@@ -13,6 +13,15 @@ export const MAIN_MUSCLE_GROUPS = [
 
 export type MainMuscleGroup = (typeof MAIN_MUSCLE_GROUPS)[number];
 
+export type MuscleWorkloadPoint = {
+  muscle: MainMuscleGroup;
+  primarySets: number;
+  secondaryContributions: number;
+  workloadSets: number;
+  /** @deprecated Use workloadSets. Kept for existing dashboard consumers. */
+  sets: number;
+};
+
 export function getMainMuscleGroup(muscle: string): MainMuscleGroup | null {
   const normalized = muscle.toLowerCase();
 
@@ -30,7 +39,8 @@ export function getMainMuscleGroup(muscle: string): MainMuscleGroup | null {
   if (
     normalized.includes("ab") ||
     normalized.includes("core") ||
-    normalized.includes("oblique")
+    normalized.includes("oblique") ||
+    normalized.includes("hip flexor")
   ) {
     return "Core";
   }
@@ -49,39 +59,102 @@ export function getMainMuscleGroup(muscle: string): MainMuscleGroup | null {
     return "Shoulders";
   }
   if (normalized.includes("cardio")) return "Cardio";
-  if (normalized.includes("chest") || normalized.includes("pec")) {
+  if (
+    normalized.includes("chest") ||
+    normalized.includes("pec") ||
+    normalized.includes("upper chest")
+  ) {
     return "Chest";
   }
 
   return null;
 }
 
-export function aggregateMuscleActivity(
-  exercises: Array<{
+export function getMuscleContributionWeight(
+  role: "PRIMARY" | "SECONDARY"
+) {
+  return role === "PRIMARY" ? 1 : 0.5;
+}
+
+/**
+ * Aggregates completed-set rows into workload. Callers are responsible for
+ * querying only valid, completed workout sets in the desired reporting period.
+ * A main group receives at most one contribution per role for each set, and a
+ * secondary alias never adds workload to that set's primary main group.
+ */
+export function aggregateCompletedSetsByMuscle(
+  completedSets: Array<{
+    aggregationId?: string | number;
     primaryMuscle: string;
     secondaryMuscles: readonly string[];
   }>
-) {
-  const activity = new Map<MainMuscleGroup, number>();
+): MuscleWorkloadPoint[] {
+  const workload = new Map<
+    MainMuscleGroup,
+    { primarySets: number; secondaryContributions: number }
+  >();
+  const seen = new Set<string | number>();
 
-  for (const exercise of exercises) {
-    const trainedGroups = new Set<MainMuscleGroup>();
-
-    for (const muscle of [
-      exercise.primaryMuscle,
-      ...exercise.secondaryMuscles,
-    ]) {
-      const group = getMainMuscleGroup(muscle);
-      if (group) trainedGroups.add(group);
+  for (const set of completedSets) {
+    if (set.aggregationId !== undefined) {
+      if (seen.has(set.aggregationId)) continue;
+      seen.add(set.aggregationId);
     }
 
-    for (const group of trainedGroups) {
-      activity.set(group, (activity.get(group) ?? 0) + 1);
+    const primaryGroup = getMainMuscleGroup(set.primaryMuscle);
+    if (primaryGroup) {
+      const value = workload.get(primaryGroup) ?? {
+        primarySets: 0,
+        secondaryContributions: 0,
+      };
+      value.primarySets += 1;
+      workload.set(primaryGroup, value);
+    }
+
+    const secondaryGroups = new Set(
+      set.secondaryMuscles
+        .map(getMainMuscleGroup)
+        .filter((group): group is MainMuscleGroup => Boolean(group))
+    );
+
+    if (primaryGroup) secondaryGroups.delete(primaryGroup);
+
+    for (const group of secondaryGroups) {
+      const value = workload.get(group) ?? {
+        primarySets: 0,
+        secondaryContributions: 0,
+      };
+      value.secondaryContributions += 1;
+      workload.set(group, value);
     }
   }
 
-  return MAIN_MUSCLE_GROUPS.map((muscle) => ({
-    muscle,
-    sets: activity.get(muscle) ?? 0,
-  }));
+  return MAIN_MUSCLE_GROUPS.map((muscle) => {
+    const value = workload.get(muscle) ?? {
+      primarySets: 0,
+      secondaryContributions: 0,
+    };
+    const workloadSets =
+      value.primarySets +
+      value.secondaryContributions *
+        getMuscleContributionWeight("SECONDARY");
+
+    return {
+      muscle,
+      ...value,
+      workloadSets,
+      sets: workloadSets,
+    };
+  });
+}
+
+export const aggregateMuscleActivity = aggregateCompletedSetsByMuscle;
+
+export function getMuscleWorkloadSummary(
+  points: readonly MuscleWorkloadPoint[]
+) {
+  return [...points].sort(
+    (a, b) =>
+      b.workloadSets - a.workloadSets || a.muscle.localeCompare(b.muscle)
+  );
 }

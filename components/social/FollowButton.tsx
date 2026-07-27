@@ -29,22 +29,56 @@ export function FollowButton({
   const [isPending, setIsPending] = useState(false);
 
   async function toggleFollow() {
+    if (isPending) return;
+    const previousFollowing = isFollowing;
+    const nextFollowing = !previousFollowing;
+    setIsFollowing(nextFollowing);
     setIsPending(true);
+    window.dispatchEvent(
+      new CustomEvent("calistheni:follow-changed", {
+        detail: {
+          userId,
+          previousFollowing,
+          following: nextFollowing,
+          optimistic: true,
+        },
+      })
+    );
 
     try {
       const response = await fetch(`/api/users/${userId}/follow`, {
-        method: isFollowing ? "DELETE" : "POST",
+        method: previousFollowing ? "DELETE" : "POST",
       });
 
       if (!response.ok) {
         throw new Error(await getErrorMessage(response));
       }
 
-      const payload = (await response.json()) as { following: boolean };
+      const payload = (await response.json()) as {
+        following: boolean;
+        followerCount: number;
+        followingCount: number;
+      };
       setIsFollowing(payload.following);
+      window.dispatchEvent(
+        new CustomEvent("calistheni:follow-changed", {
+          detail: { userId, previousFollowing, ...payload },
+        })
+      );
       toast.success(payload.following ? "Following user." : "Unfollowed user.");
       router.refresh();
     } catch (error) {
+      setIsFollowing(previousFollowing);
+      window.dispatchEvent(
+        new CustomEvent("calistheni:follow-changed", {
+          detail: {
+            userId,
+            previousFollowing: nextFollowing,
+            following: previousFollowing,
+            optimistic: true,
+          },
+        })
+      );
       toast.error(
         error instanceof Error
           ? error.message
@@ -60,6 +94,7 @@ export function FollowButton({
       type="button"
       variant={isFollowing ? "outline" : "default"}
       disabled={isPending}
+      aria-pressed={isFollowing}
       onClick={() => void toggleFollow()}
     >
       {isPending ? "Saving..." : isFollowing ? "Following" : "Follow"}

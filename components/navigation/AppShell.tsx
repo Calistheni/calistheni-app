@@ -140,7 +140,7 @@ export function AppShell({ children, user }: AppShellProps) {
                   href={item.href}
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "flex min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 text-[10px] font-medium text-muted-foreground transition-colors",
+                    "flex min-h-11 min-w-0 touch-manipulation flex-col items-center justify-center gap-0.5 px-0.5 text-[10px] font-medium text-muted-foreground transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     active && "text-primary"
                   )}
                 >

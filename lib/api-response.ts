@@ -11,8 +11,13 @@ export function createJsonValidationErrorResponse(
   return NextResponse.json({ error, fieldErrors }, { status: 400 });
 }
 
-export function createInternalServerErrorResponse() {
-  return createJsonErrorResponse("Internal server error.", 500);
+export function createInternalServerErrorResponse(
+  code = "INTERNAL_SERVER_ERROR"
+) {
+  return NextResponse.json(
+    { error: "Internal server error.", code },
+    { status: 500 }
+  );
 }
 
 export function parsePositiveInteger(value: string): number | null {

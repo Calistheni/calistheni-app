@@ -53,10 +53,19 @@ export async function POST(
       },
     });
 
-    return NextResponse.json({ following: true });
+    const [followerCount, followingCount] = await Promise.all([
+      prisma.userFollow.count({ where: { followingId } }),
+      prisma.userFollow.count({ where: { followerId: followingId } }),
+    ]);
+
+    return NextResponse.json({
+      following: true,
+      followerCount,
+      followingCount,
+    });
   } catch (error) {
-    console.error(error);
-    return createInternalServerErrorResponse();
+    console.error("FOLLOW_FAILED", { followerId, followingId, error });
+    return createInternalServerErrorResponse("FOLLOW_FAILED");
   }
 }
 
@@ -80,9 +89,18 @@ export async function DELETE(
       },
     });
 
-    return NextResponse.json({ following: false });
+    const [followerCount, followingCount] = await Promise.all([
+      prisma.userFollow.count({ where: { followingId } }),
+      prisma.userFollow.count({ where: { followerId: followingId } }),
+    ]);
+
+    return NextResponse.json({
+      following: false,
+      followerCount,
+      followingCount,
+    });
   } catch (error) {
-    console.error(error);
-    return createInternalServerErrorResponse();
+    console.error("UNFOLLOW_FAILED", { followerId, followingId, error });
+    return createInternalServerErrorResponse("UNFOLLOW_FAILED");
   }
 }

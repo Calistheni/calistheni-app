@@ -21,7 +21,7 @@ function routinePayload() {
     exercises: [
       {
         clientExerciseId: "temp-pull-up",
-        routineExerciseId: null,
+        routineExerciseId: null as number | null,
         exerciseId: "pull-up",
         restSeconds: 90,
         notes: null,
@@ -38,7 +38,7 @@ function routinePayload() {
       },
       {
         clientExerciseId: "temp-dip",
-        routineExerciseId: null,
+        routineExerciseId: null as number | null,
         exerciseId: "dip",
         restSeconds: 90,
         notes: null,

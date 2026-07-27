@@ -87,9 +87,10 @@ export function hasReachedHardRoundLimit(
 
 export function getSupersetRoundProgress(
   exercises: Array<{
-    sets: Array<
-      Pick<WorkoutSetInput, "completed" | "supersetRoundIndex">
-    >;
+    sets: Array<{
+      completed: boolean;
+      supersetRoundIndex?: number | null;
+    }>;
   }>,
   options: {
     hardRoundLimit?: number | null;
@@ -130,9 +131,10 @@ export function getSupersetRoundProgress(
 
 export function getNextSupersetRoundIndex(
   exercises: Array<{
-    sets: Array<
-      Pick<WorkoutSetInput, "completed" | "supersetRoundIndex">
-    >;
+    sets: Array<{
+      completed: boolean;
+      supersetRoundIndex?: number | null;
+    }>;
   }>,
   hardRoundLimit: number | null = null
 ) {
@@ -145,9 +147,10 @@ export function getNextSupersetRoundIndex(
 
 export function getCurrentSupersetRoundEntries<
   T extends {
-    sets: Array<
-      Pick<WorkoutSetInput, "completed" | "supersetRoundIndex">
-    >;
+    sets: Array<{
+      completed: boolean;
+      supersetRoundIndex?: number | null;
+    }>;
   },
 >(
   exercises: T[],
