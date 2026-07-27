@@ -170,7 +170,7 @@ function SectionHeading({
 
 export default async function HomePage() {
   const session = await auth();
-  if (!session?.user) redirect("/login");
+  if (!session?.user) redirect("/");
 
   await redirectIfOnboardingRequired(session.user.id);
 
