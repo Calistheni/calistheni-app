@@ -175,9 +175,13 @@
   }
 
   .app-mobile-nav-grid {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    display: flex;
+    flex-flow: row nowrap;
+    align-items: stretch;
+    width: 100%;
+    min-width: 0;
     height: calc(4rem + env(safe-area-inset-bottom));
+    overflow: hidden;
     padding-bottom: env(safe-area-inset-bottom);
   }
 

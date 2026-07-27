@@ -6,6 +6,7 @@ import { auth } from "@/auth";
 import { BackButton } from "@/components/navigation/BackButton";
 import { BodyweightForm } from "@/components/profile/BodyweightForm";
 import { MobileAccountUtilities } from "@/components/profile/MobileAccountUtilities";
+import { ProfileStatCard } from "@/components/profile/ProfileStatCard";
 import { SocialConnections } from "@/components/social/SocialConnections";
 import { ManageSubscriptionButton } from "@/components/billing/ManageSubscriptionButton";
 import {
@@ -233,21 +234,16 @@ export default async function ProfilePage() {
         </CardHeader>
       </Card>
 
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         {[
           ["Workouts", workoutCount],
           ["Sets", workoutSets],
           ["Parks", submittedParkCount],
           ["Approved edits", approvedEditCount],
           ["Approved photos", approvedPhotoCount],
-          ["⭐ Reward Points", profile?.rewardPoints ?? 0],
+          ["Reward Points", profile?.rewardPoints ?? 0],
         ].map(([label, value]) => (
-          <Card key={label}>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">{label}</p>
-              <p className="text-2xl font-bold">{value}</p>
-            </CardContent>
-          </Card>
+          <ProfileStatCard key={label} label={String(label)} value={value} />
         ))}
       </div>
 

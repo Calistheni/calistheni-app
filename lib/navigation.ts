@@ -9,7 +9,7 @@ export const desktopPrimaryNavigation = [
 ] as const;
 
 export const mobilePrimaryNavigation = desktopPrimaryNavigation.filter(
-  ({ key }) => key !== "rewards" && key !== "pricing"
+  ({ key }) => key !== "pricing"
 );
 
 export type PrimaryNavigationKey =
