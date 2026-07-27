@@ -2,20 +2,16 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  Activity,
-  LoaderCircle,
-  Pencil,
-  Target,
-} from "lucide-react";
+import { Activity, LoaderCircle, Pencil, Target } from "lucide-react";
 import {
   Label as RechartsLabel,
-  PolarGrid,
+  PolarAngleAxis,
   PolarRadiusAxis,
   RadialBar,
   RadialBarChart,
 } from "recharts";
 import { toast } from "sonner";
+
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -26,10 +22,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  ChartContainer,
-  type ChartConfig,
-} from "@/components/ui/chart";
+import { ChartContainer, type ChartConfig } from "@/components/ui/chart";
 import {
   Dialog,
   DialogContent,
@@ -68,7 +61,9 @@ const chartConfig = {
 const GOAL_PRESETS = [60, 90, 150, 300] as const;
 
 function formatMinutes(value: number) {
-  return value.toLocaleString(undefined, { maximumFractionDigits: 1 });
+  return value.toLocaleString(undefined, {
+    maximumFractionDigits: 1,
+  });
 }
 
 function GoalForm({
@@ -92,6 +87,7 @@ function GoalForm({
     <>
       <div className="grid gap-3 px-4 py-2 sm:px-0">
         <Label htmlFor={inputId}>Weekly cardio goal</Label>
+
         <div className="relative">
           <Input
             id={inputId}
@@ -106,15 +102,18 @@ function GoalForm({
             className="h-11 pr-16"
             onChange={(event) => onChange(event.target.value)}
           />
+
           <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">
             min
           </span>
         </div>
+
         {error ? (
           <p id={`${inputId}-error`} className="text-sm text-destructive">
             {error}
           </p>
         ) : null}
+
         <div className="grid grid-cols-4 gap-2" aria-label="Suggested goals">
           {GOAL_PRESETS.map((preset) => (
             <Button
@@ -130,6 +129,7 @@ function GoalForm({
           ))}
         </div>
       </div>
+
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <Button
           type="button"
@@ -139,10 +139,12 @@ function GoalForm({
         >
           Cancel
         </Button>
+
         <Button type="button" disabled={isSaving} onClick={onSave}>
           {isSaving ? (
             <LoaderCircle className="animate-spin" aria-hidden="true" />
           ) : null}
+
           {isSaving ? "Saving…" : "Save goal"}
         </Button>
       </div>
@@ -176,6 +178,7 @@ function ActivityBreakdown({
               >
                 {activity.exerciseName}
               </Link>
+
               <p className="mt-1 text-xs text-muted-foreground">
                 {new Intl.DateTimeFormat(undefined, {
                   weekday: "long",
@@ -183,19 +186,21 @@ function ActivityBreakdown({
                   day: "numeric",
                   timeZone: "UTC",
                 }).format(new Date(activity.completedAt))}
-                {activity.workoutTitle
-                  ? ` · ${activity.workoutTitle}`
-                  : ""}
+
+                {activity.workoutTitle ? ` · ${activity.workoutTitle}` : ""}
               </p>
             </div>
+
             <span className="shrink-0 font-medium tabular-nums">
               {formatMinutes(activity.durationSeconds / 60)} min
             </span>
           </div>
         ))
       )}
+
       <div className="flex items-center justify-between border-t pt-3 font-medium">
         <span>Total</span>
+
         <span className="tabular-nums">{formatMinutes(totalMinutes)} min</span>
       </div>
     </div>
@@ -219,6 +224,7 @@ function GoalEditor({
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+
   const label = configured ? "Edit cardio goal" : "Set goal";
 
   function close() {
@@ -227,7 +233,9 @@ function GoalEditor({
   }
 
   async function saveAndClose() {
-    if (await onSave()) close();
+    if (await onSave()) {
+      close();
+    }
   }
 
   return (
@@ -240,17 +248,25 @@ function GoalEditor({
               size={configured ? "icon-sm" : "sm"}
               aria-label={label}
             >
-              {configured ? <Pencil aria-hidden="true" /> : <Target />}
+              {configured ? (
+                <Pencil aria-hidden="true" />
+              ) : (
+                <Target aria-hidden="true" />
+              )}
+
               {configured ? null : "Set goal"}
             </Button>
           </DrawerTrigger>
+
           <DrawerContent className="pb-[env(safe-area-inset-bottom)]">
             <DrawerHeader>
               <DrawerTitle>Weekly cardio goal</DrawerTitle>
+
               <DrawerDescription>
                 Choose how many cardio minutes you want to complete each week.
               </DrawerDescription>
             </DrawerHeader>
+
             <div className="px-4">
               <GoalForm
                 draftGoal={draftGoal}
@@ -264,10 +280,12 @@ function GoalEditor({
                 }}
               />
             </div>
+
             <DrawerFooter />
           </DrawerContent>
         </Drawer>
       </div>
+
       <div className="hidden md:block">
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
@@ -276,17 +294,25 @@ function GoalEditor({
               size={configured ? "icon-sm" : "sm"}
               aria-label={label}
             >
-              {configured ? <Pencil aria-hidden="true" /> : <Target />}
+              {configured ? (
+                <Pencil aria-hidden="true" />
+              ) : (
+                <Target aria-hidden="true" />
+              )}
+
               {configured ? null : "Set goal"}
             </Button>
           </DialogTrigger>
+
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Weekly cardio goal</DialogTitle>
+
               <DialogDescription>
                 Choose how many cardio minutes you want to complete each week.
               </DialogDescription>
             </DialogHeader>
+
             <GoalForm
               draftGoal={draftGoal}
               error={error}
@@ -318,38 +344,48 @@ function ActivityViewer({
         <Drawer>
           <DrawerTrigger asChild>
             <Button variant="outline" size="sm">
-              <Activity aria-hidden="true" /> View activity
+              <Activity aria-hidden="true" />
+              View activity
             </Button>
           </DrawerTrigger>
+
           <DrawerContent className="pb-[env(safe-area-inset-bottom)]">
             <DrawerHeader>
               <DrawerTitle>Cardio activity · This week</DrawerTitle>
+
               <DrawerDescription>
                 Completed cardio durations contributing to your weekly total.
               </DrawerDescription>
             </DrawerHeader>
+
             <ActivityBreakdown
               activities={activities}
               totalMinutes={totalMinutes}
             />
+
             <DrawerFooter />
           </DrawerContent>
         </Drawer>
       </div>
+
       <div className="hidden md:block">
         <Dialog>
           <DialogTrigger asChild>
             <Button variant="outline" size="sm">
-              <Activity aria-hidden="true" /> View activity
+              <Activity aria-hidden="true" />
+              View activity
             </Button>
           </DialogTrigger>
+
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Cardio activity · This week</DialogTitle>
+
               <DialogDescription>
                 Completed cardio durations contributing to your weekly total.
               </DialogDescription>
             </DialogHeader>
+
             <ActivityBreakdown
               activities={activities}
               totalMinutes={totalMinutes}
@@ -369,11 +405,14 @@ export function CardioGoalCard({
   const [savedGoal, setSavedGoal] = useState(
     initialProgress?.goalMinutes ?? null
   );
+
   const [draftGoal, setDraftGoal] = useState(
     String(initialProgress?.goalMinutes ?? 150)
   );
+
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
   const goalMetrics = useMemo(
     () =>
       calculateCardioGoalMetrics(
@@ -388,14 +427,16 @@ export function CardioGoalCard({
       <Card className="h-full">
         <CardHeader>
           <CardTitle>Weekly cardio goal</CardTitle>
+
           <CardDescription>
             Cardio progress is temporarily unavailable.
           </CardDescription>
         </CardHeader>
+
         <CardContent>
           <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-            Your muscle workload is still available. Try loading cardio
-            progress again shortly.
+            Your muscle workload is still available. Try loading cardio progress
+            again shortly.
           </p>
         </CardContent>
       </Card>
@@ -404,6 +445,7 @@ export function CardioGoalCard({
 
   async function saveGoal() {
     const parsedGoal = parseWeeklyCardioGoalMinutes(draftGoal);
+
     if (parsedGoal === null) {
       setError("Enter a whole number between 10 and 2,000 minutes.");
       return false;
@@ -411,54 +453,59 @@ export function CardioGoalCard({
 
     setError(null);
     setIsSaving(true);
+
     try {
       const response = await fetch("/api/user/cardio-goal", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ goalMinutes: parsedGoal }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          goalMinutes: parsedGoal,
+        }),
       });
+
       const payload = (await response.json()) as {
         code?: string;
         error?: string;
         goalMinutes?: number;
       };
+
       if (!response.ok || payload.goalMinutes === undefined) {
-        throw new Error(
-          payload.error ?? "Unable to save your cardio goal."
-        );
+        throw new Error(payload.error ?? "Unable to save your cardio goal.");
       }
 
       setSavedGoal(payload.goalMinutes);
       setDraftGoal(String(payload.goalMinutes));
+
       toast.success("Cardio goal saved.");
+
       return true;
     } catch (saveError) {
       const message =
         saveError instanceof Error
           ? saveError.message
           : "Unable to save your cardio goal.";
+
       setError(message);
       toast.error(message);
+
       return false;
     } finally {
       setIsSaving(false);
     }
   }
 
-  const chartData = [
-    {
-      metric: "cardio",
-      progress: goalMetrics.progressPercent,
-      fill: "var(--color-progress)",
-    },
-  ];
   const configured = savedGoal !== null;
+
   const progressForCopy = {
     ...initialProgress,
     ...goalMetrics,
     goalMinutes: savedGoal,
   };
+
   const progressCopy = getWeeklyCardioProgressCopy(progressForCopy);
+
   const accessibleText = configured
     ? `Weekly cardio goal. ${formatMinutes(
         goalMetrics.completedMinutes
@@ -469,13 +516,27 @@ export function CardioGoalCard({
         goalMetrics.completedMinutes
       )} cardio minutes completed this week. Set a goal to track progress.`;
 
+  const progressPercent = configured
+    ? Math.max(0, Math.min(goalMetrics.progressPercent, 100))
+    : 0;
+
+  const chartData = [
+    {
+      metric: "cardio",
+      progress: progressPercent,
+      fill: "var(--color-progress)",
+    },
+  ];
+
   return (
     <Card className="h-full">
       <CardHeader>
         <CardTitle>Weekly cardio goal</CardTitle>
+
         <CardDescription>
           Track your cardio minutes for this week.
         </CardDescription>
+
         <CardAction>
           <GoalEditor
             configured={configured}
@@ -490,6 +551,7 @@ export function CardioGoalCard({
           />
         </CardAction>
       </CardHeader>
+
       <CardContent className="flex flex-1 flex-col items-center">
         <ChartContainer
           config={chartConfig}
@@ -502,55 +564,54 @@ export function CardioGoalCard({
             startAngle={90}
             endAngle={-270}
             innerRadius={78}
-            outerRadius={110}
+            outerRadius={105}
           >
-            <PolarGrid
-              gridType="circle"
-              radialLines={false}
-              stroke="none"
-              className="first:fill-muted last:fill-background"
-              polarRadius={[86, 70]}
+            <PolarAngleAxis
+              type="number"
+              dataKey="progress"
+              domain={[0, 100]}
+              tick={false}
+              axisLine={false}
             />
+
             <RadialBar
               dataKey="progress"
-              background={{ fill: "var(--muted)" }}
-              cornerRadius={10}
               fill="var(--color-progress)"
+              background={{
+                fill: "var(--border)",
+              }}
+              cornerRadius={999}
               isAnimationActive={false}
             />
-            <PolarRadiusAxis
-              angle={90}
-              domain={[0, 100]}
-              axisLine={false}
-              tick={false}
-              tickLine={false}
-            >
+
+            <PolarRadiusAxis tick={false} tickLine={false} axisLine={false}>
               <RechartsLabel
                 content={({ viewBox }) => {
-                  if (
-                    !viewBox ||
-                    !("cx" in viewBox) ||
-                    !("cy" in viewBox)
-                  ) {
+                  if (!viewBox || !("cx" in viewBox) || !("cy" in viewBox)) {
                     return null;
                   }
+
+                  const centerX = viewBox.cx ?? 0;
+                  const centerY = viewBox.cy ?? 0;
+
                   return (
                     <text
-                      x={viewBox.cx}
-                      y={viewBox.cy}
+                      x={centerX}
+                      y={centerY}
                       textAnchor="middle"
                       dominantBaseline="middle"
                     >
                       <tspan
-                        x={viewBox.cx}
-                        y={viewBox.cy}
-                        className="fill-foreground text-2xl font-semibold tabular-nums"
+                        x={centerX}
+                        y={centerY - 4}
+                        className="fill-foreground text-3xl font-bold tabular-nums"
                       >
-                        {formatMinutes(goalMetrics.completedMinutes)} min
+                        {formatMinutes(goalMetrics.completedMinutes)}
                       </tspan>
+
                       <tspan
-                        x={viewBox.cx}
-                        y={(viewBox.cy ?? 0) + 24}
+                        x={centerX}
+                        y={centerY + 24}
                         className="fill-muted-foreground text-xs"
                       >
                         {configured ? `of ${savedGoal} min` : "Set a goal"}
@@ -562,9 +623,12 @@ export function CardioGoalCard({
             </PolarRadiusAxis>
           </RadialBarChart>
         </ChartContainer>
+
         <p className="sr-only">{accessibleText}</p>
+
         <div className="mt-1 text-center">
           <p className="font-medium">{progressCopy}</p>
+
           <p className="mt-1 text-xs text-muted-foreground">
             {initialProgress.sessions} cardio{" "}
             {initialProgress.sessions === 1 ? "session" : "sessions"} ·{" "}
@@ -573,6 +637,7 @@ export function CardioGoalCard({
           </p>
         </div>
       </CardContent>
+
       <CardFooter className="justify-center">
         <ActivityViewer
           activities={initialProgress.activities}
