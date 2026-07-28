@@ -6,7 +6,10 @@ import {
   parsePositiveInteger,
 } from "@/lib/api-response";
 import { getAdminActorLabel, isAdminAuthenticated } from "@/lib/admin-auth";
-import { parseParkQrStatus } from "@/lib/park-map-query";
+import {
+  getParkVisibilityWhere,
+  parseParkQrStatus,
+} from "@/lib/park-map-query";
 import {
   getParkQrUpdateData,
   MAX_PARK_QR_NOTE_LENGTH,
@@ -61,7 +64,7 @@ export async function PATCH(
 
   try {
     const existing = await prisma.park.findFirst({
-      where: { id: parkId, deletedAt: null },
+      where: { id: parkId, ...getParkVisibilityWhere("ACTIVE") },
       select: { id: true, qrStatus: true },
     });
     if (!existing) {

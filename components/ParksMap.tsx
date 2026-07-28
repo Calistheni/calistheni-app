@@ -22,6 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { AdminMapParkPopup } from "@/components/admin/AdminMapParkPopup";
 import { useMapUserFocus } from "@/components/parks/useMapUserFocus";
+import { isParkArchivedForAdminMap } from "@/lib/park-map-query";
 import type {
   AdminParkDetail,
   AdminParkMapSummary,
@@ -110,6 +111,7 @@ type ParksMapProps = {
   parkStatusFilter?: "ACTIVE" | "ARCHIVED" | "ALL";
   adminRefreshToken?: string | number;
   onAdminParkUpdated?: (park: AdminParkDetail) => void;
+  onAdminParkSelected?: (park: AdminParkDetail) => void;
   onAdminParkPlacement?: (coordinates: { lat: number; lon: number }) => void;
   placementResetToken?: string | number;
   searchControlVariant?: "authenticated" | "guest";
@@ -434,7 +436,7 @@ function buildGeoJson(parks: ParkSummary[]): GeoJSON.FeatureCollection {
       type: "Feature",
       properties: {
         id: park.id,
-        archived: Boolean(park.deletedAt),
+        archived: isParkArchivedForAdminMap(park),
       },
       geometry: {
         type: "Point",
@@ -675,6 +677,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     parkStatusFilter = "ACTIVE",
     adminRefreshToken = 0,
     onAdminParkUpdated,
+    onAdminParkSelected,
     onAdminParkPlacement,
     placementResetToken = 0,
     searchControlVariant = "authenticated",
@@ -693,6 +696,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   const searchMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const searchMarkerRootRef = useRef<Root | null>(null);
   const placementMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const selectedMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const boundaryRequestRef = useRef<AbortController | null>(null);
   const boundariesAccessUnavailableRef = useRef(false);
   const searchSelectionRef = useRef(0);
@@ -728,6 +732,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   const placementModeRef = useRef(false);
   const onViewportParksChangeRef = useRef(onViewportParksChange);
   const onAdminParkUpdatedRef = useRef(onAdminParkUpdated);
+  const onAdminParkSelectedRef = useRef(onAdminParkSelected);
   const onAdminParkPlacementRef = useRef(onAdminParkPlacement);
   const onLocationStatusChangeRef = useRef(onLocationStatusChange);
   const [hasHydrated, setHasHydrated] = useState(false);
@@ -1567,6 +1572,9 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       setPopupMarkup(popup, map, parkId, parkPreview, {
         park,
       });
+      if (mode === "admin" && "qrStatus" in park) {
+        onAdminParkSelectedRef.current?.(park as AdminParkDetail);
+      }
     } catch {
       if (popupRef.current !== popup) {
         return;
@@ -1859,6 +1867,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     requestViewportParksRef.current = requestViewportParks;
     fetchParkDetailRef.current = fetchParkDetail;
     onAdminParkUpdatedRef.current = onAdminParkUpdated;
+    onAdminParkSelectedRef.current = onAdminParkSelected;
     onAdminParkPlacementRef.current = onAdminParkPlacement;
   });
 
@@ -2579,6 +2588,8 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       popupRootRef.current = null;
       popupRef.current?.remove();
       clearPlacementMarker();
+      selectedMarkerRef.current?.remove();
+      selectedMarkerRef.current = null;
       searchMarkerRef.current?.remove();
       const searchMarkerRoot = searchMarkerRootRef.current;
       searchMarkerRef.current = null;
@@ -2672,9 +2683,31 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   useEffect(() => {
     const map = mapRef.current;
 
-    if (!selectedPark || !map || !mapLoadedRef.current) {
+    if (!selectedPark) {
+      selectedMarkerRef.current?.remove();
+      selectedMarkerRef.current = null;
       return;
     }
+
+    if (!map || !mapLoadedRef.current) {
+      return;
+    }
+
+    if (!selectedMarkerRef.current) {
+      const markerElement = document.createElement("div");
+      markerElement.setAttribute("aria-label", "Selected park location");
+      markerElement.innerHTML = `
+        <span style="display:block;width:28px;height:28px;border-radius:9999px;background:rgb(37 99 235 / 0.22);padding:4px;box-shadow:0 0 0 5px rgb(37 99 235 / 0.16);">
+          <span style="display:block;width:20px;height:20px;border-radius:9999px;background:#2563eb;border:3px solid white;box-sizing:border-box;"></span>
+        </span>`;
+      selectedMarkerRef.current = new mapboxgl.Marker({
+        element: markerElement,
+        anchor: "center",
+      });
+    }
+    selectedMarkerRef.current
+      .setLngLat([selectedPark.lon, selectedPark.lat])
+      .addTo(map);
 
     beginAwayFromUser();
     map.flyTo({

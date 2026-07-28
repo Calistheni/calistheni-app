@@ -196,3 +196,15 @@ export function getParkVisibilityWhere(status: ParkArchiveStatus = "ACTIVE") {
 
   return {};
 }
+
+/** Mirrors the canonical visibility rule for already-loaded admin summaries. */
+export function isParkArchivedForAdminMap(park: {
+  deletedAt: string | Date | null;
+  submissionStatus?: "PENDING" | "APPROVED" | "REJECTED";
+}) {
+  return (
+    Boolean(park.deletedAt) ||
+    (park.submissionStatus !== undefined &&
+      park.submissionStatus !== "APPROVED")
+  );
+}

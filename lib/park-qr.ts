@@ -1,6 +1,14 @@
 import type { ParkQrStatus } from "@/types/park";
 
 export const MAX_PARK_QR_NOTE_LENGTH = 500;
+export const PARK_QR_STATUS_OPTIONS: Array<{
+  value: ParkQrStatus;
+  label: string;
+}> = [
+  { value: "NOT_INSTALLED", label: "No QR" },
+  { value: "INSTALLED", label: "Installed" },
+  { value: "NEEDS_REPLACEMENT", label: "Needs replacement" },
+];
 
 export function normalizeParkQrNote(value: unknown) {
   if (value === undefined || value === null || value === "") return null;

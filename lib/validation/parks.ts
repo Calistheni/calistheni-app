@@ -101,6 +101,10 @@ export const parkMutationSchema = z.object({
       (items) => new Set(items).size === items.length,
       "Equipment list must not contain duplicates."
     ),
+  qrStatus: z
+    .enum(["NOT_INSTALLED", "INSTALLED", "NEEDS_REPLACEMENT"])
+    .default("NOT_INSTALLED"),
+  qrCodeNote: optionalText(500),
 });
 
 export function mapParkIssuesToFormErrors(issues: ZodIssue[]) {
@@ -124,7 +128,14 @@ export function getParkFormErrors(
     return errors;
   }
 
-  for (const field of ["name", "lat", "lon", "equipmentIds", "photo"] as const) {
+  for (const field of [
+    "name",
+    "lat",
+    "lon",
+    "equipmentIds",
+    "photo",
+    "qrCodeNote",
+  ] as const) {
     const message = fieldErrors[field]?.[0];
 
     if (message) {

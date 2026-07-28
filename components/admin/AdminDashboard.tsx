@@ -28,6 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -40,6 +41,8 @@ import { toast } from "sonner";
 import {
   PARK_DUPLICATE_WARNING_RADIUS_METERS,
 } from "@/lib/park-distance";
+import { isParkArchivedForAdminMap } from "@/lib/park-map-query";
+import { PARK_QR_STATUS_OPTIONS } from "@/lib/park-qr";
 import {
   getParkFormErrors,
   validateParkMutation,
@@ -155,6 +158,8 @@ const EMPTY_FORM_VALUES: ParkFormValues = {
   lat: "",
   lon: "",
   equipmentIds: [],
+  qrStatus: "NOT_INSTALLED",
+  qrCodeNote: "",
 };
 
 function getPhotoLocationBadgeLabel(
@@ -943,6 +948,8 @@ export default function AdminDashboard() {
         equipmentIds: equipment
           .filter((item) => fullPark.equipment.includes(item.name))
           .map((item) => item.id),
+        qrStatus: fullPark.qrStatus,
+        qrCodeNote: fullPark.qrCodeNote ?? "",
       });
       setFormErrors({});
     } catch (error) {
@@ -1029,6 +1036,13 @@ export default function AdminDashboard() {
     : editingParkId
     ? "Update Park"
     : "Create Park";
+  const selectedParkIsArchived =
+    selectedPark !== null && isParkArchivedForAdminMap(selectedPark);
+  const selectedParkIsFilteredOut =
+    selectedPark !== null &&
+    ((parkStatusFilter === "ACTIVE" && selectedParkIsArchived) ||
+      (parkStatusFilter === "ARCHIVED" && !selectedParkIsArchived) ||
+      (qrStatusFilter !== "ALL" && selectedPark.qrStatus !== qrStatusFilter));
   return (
     <main className="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1178,6 +1192,23 @@ export default function AdminDashboard() {
 
         <Card>
           <CardContent className="p-4 sm:p-6">
+            {selectedParkIsFilteredOut && selectedPark ? (
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                <span>
+                  {selectedPark.name} is outside the current map filters.
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setParkStatusFilter(selectedParkIsArchived ? "ARCHIVED" : "ACTIVE");
+                    setQrStatusFilter("ALL");
+                  }}
+                >
+                  {selectedParkIsArchived ? "Show Archived" : "Show Active"}
+                </Button>
+              </div>
+            ) : null}
             <AdminParksMap
               refreshToken={mapRefreshVersion}
               qrStatusFilter={qrStatusFilter}
@@ -1185,6 +1216,12 @@ export default function AdminDashboard() {
               onParkUpdated={(updatedPark) => {
                 applyUpdatedPark(updatedPark);
                 void loadQrCounts();
+              }}
+              selectedPark={selectedPark}
+              onParkSelected={(park) => {
+                if (selectedPark?.id !== park.id) {
+                  void startEditing(park);
+                }
               }}
               onParkPlacement={beginMapParkCreate}
               placementResetToken={placementResetToken}
@@ -1523,6 +1560,52 @@ export default function AdminDashboard() {
           </fieldset>
 
           {!editingParkId ? (
+            <fieldset className="space-y-3 rounded-xl border p-4">
+              <legend className="px-1 text-sm font-semibold">
+                QR Deployment
+              </legend>
+              <div className="grid gap-2">
+                <label htmlFor="park-qr-status" className="text-sm font-medium">
+                  Status
+                </label>
+                <Select
+                  value={formValues.qrStatus ?? "NOT_INSTALLED"}
+                  onValueChange={(value) =>
+                    updateTextField("qrStatus", value)
+                  }
+                >
+                  <SelectTrigger id="park-qr-status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PARK_QR_STATUS_OPTIONS.map((status) => (
+                      <SelectItem key={status.value} value={status.value}>
+                        {status.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <label htmlFor="park-qr-note" className="text-sm font-medium">
+                  Deployment note <span className="text-muted-foreground">(optional)</span>
+                </label>
+                <Textarea
+                  id="park-qr-note"
+                  maxLength={500}
+                  value={formValues.qrCodeNote ?? ""}
+                  onChange={(event) => updateTextField("qrCodeNote", event.target.value)}
+                  placeholder="Sticker placement or replacement note"
+                  aria-invalid={formErrors.qrCodeNote ? true : undefined}
+                />
+                {formErrors.qrCodeNote ? (
+                  <p className="text-xs text-destructive">{formErrors.qrCodeNote}</p>
+                ) : null}
+              </div>
+            </fieldset>
+          ) : null}
+
+          {!editingParkId ? (
             <div className="space-y-3">
               <div>
                 <p className="text-sm font-medium">Park photo</p>
@@ -1843,13 +1926,20 @@ export default function AdminDashboard() {
                   key={park.id}
                   onClick={() => void startEditing(park)}
                   className={`cursor-pointer hover:bg-muted/50 ${
-                    park.deletedAt ? "bg-muted/40 text-muted-foreground" : ""
+                    isParkArchivedForAdminMap(park)
+                      ? "bg-muted/40 text-muted-foreground"
+                      : ""
                   }`}
                 >
                   <TableCell>{park.id}</TableCell>
                   <TableCell>
                     <span className="mr-2">{park.name}</span>
-                    {park.deletedAt ? <Badge variant="outline">Archived</Badge> : null}
+                    {isParkArchivedForAdminMap(park) ? (
+                      <Badge variant="outline">Archived</Badge>
+                    ) : null}
+                    {park.submissionStatus === "REJECTED" ? (
+                      <Badge variant="outline">Rejected</Badge>
+                    ) : null}
                   </TableCell>
                   <TableCell>{park.address}</TableCell>
                   <TableCell>

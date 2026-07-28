@@ -17,6 +17,8 @@ export function AdminParksMap({
   qrStatusFilter,
   parkStatusFilter,
   onParkUpdated,
+  selectedPark,
+  onParkSelected,
   onParkPlacement,
   placementResetToken,
 }: {
@@ -24,6 +26,8 @@ export function AdminParksMap({
   qrStatusFilter: ParkQrStatus | "ALL";
   parkStatusFilter: ParkArchiveStatus;
   onParkUpdated: (park: AdminParkDetail) => void;
+  selectedPark: AdminParkDetail | null;
+  onParkSelected: (park: AdminParkDetail) => void;
   onParkPlacement: (coordinates: { lat: number; lon: number }) => void;
   placementResetToken: number;
 }) {
@@ -53,13 +57,14 @@ export function AdminParksMap({
         <ParksMap
           mode="admin"
           parks={parks}
-          selectedPark={null}
+          selectedPark={selectedPark}
           lightPreset={getInitialLightPreset()}
           theme="default"
           qrStatusFilter={qrStatusFilter}
           parkStatusFilter={parkStatusFilter}
           adminRefreshToken={refreshToken}
           onAdminParkUpdated={onParkUpdated}
+          onAdminParkSelected={onParkSelected}
           onAdminParkPlacement={onParkPlacement}
           placementResetToken={placementResetToken}
           searchControlVariant="authenticated"

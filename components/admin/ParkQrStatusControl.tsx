@@ -4,6 +4,8 @@ import { LoaderCircle, Pencil, QrCode } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ParkQrStatusBadge } from "@/components/admin/ParkQrStatusBadge";
+import { isParkArchivedForAdminMap } from "@/lib/park-map-query";
+import { PARK_QR_STATUS_OPTIONS } from "@/lib/park-qr";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -25,12 +27,6 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import type { AdminParkDetail, ParkQrStatus } from "@/types/park";
 
-const QR_STATUSES: Array<{ value: ParkQrStatus; label: string }> = [
-  { value: "NOT_INSTALLED", label: "No QR" },
-  { value: "INSTALLED", label: "Installed" },
-  { value: "NEEDS_REPLACEMENT", label: "Needs replacement" },
-];
-
 function formatAdminDate(value: string) {
   return new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
@@ -51,7 +47,7 @@ export function ParkQrStatusControl({
   const [status, setStatus] = useState<ParkQrStatus>(park.qrStatus);
   const [note, setNote] = useState(park.qrCodeNote ?? "");
   const [isSaving, setIsSaving] = useState(false);
-  const isArchived = Boolean(park.deletedAt);
+  const isArchived = isParkArchivedForAdminMap(park);
 
   async function saveStatus() {
     setIsSaving(true);
@@ -127,7 +123,7 @@ export function ParkQrStatusControl({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {QR_STATUSES.map((option) => (
+                    {PARK_QR_STATUS_OPTIONS.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
                         {option.label}
                       </SelectItem>

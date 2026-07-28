@@ -5,6 +5,8 @@ import { LoaderCircle, Pencil, QrCode } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ParkQrStatusBadge } from "@/components/admin/ParkQrStatusBadge";
+import { isParkArchivedForAdminMap } from "@/lib/park-map-query";
+import { PARK_QR_STATUS_OPTIONS } from "@/lib/park-qr";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,12 +19,6 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import type { AdminParkDetail, ParkQrStatus } from "@/types/park";
 
-const QR_STATUSES: Array<{ value: ParkQrStatus; label: string }> = [
-  { value: "NOT_INSTALLED", label: "No QR" },
-  { value: "INSTALLED", label: "Installed" },
-  { value: "NEEDS_REPLACEMENT", label: "Needs replacement" },
-];
-
 export function AdminMapParkPopup({
   park,
   onUpdated,
@@ -33,7 +29,8 @@ export function AdminMapParkPopup({
   const [isSaving, setIsSaving] = useState(false);
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [note, setNote] = useState(park.qrCodeNote ?? "");
-  const archived = Boolean(park.deletedAt);
+  const archived = isParkArchivedForAdminMap(park);
+  const rejected = park.submissionStatus === "REJECTED";
 
   async function save(status: ParkQrStatus, nextNote = note) {
     setIsSaving(true);
@@ -83,6 +80,7 @@ export function AdminMapParkPopup({
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="font-semibold leading-tight">{park.name}</h3>
           {archived ? <Badge variant="outline">Archived</Badge> : null}
+          {rejected ? <Badge variant="outline">Rejected</Badge> : null}
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
           {park.address ?? "Address unavailable"}
@@ -100,7 +98,7 @@ export function AdminMapParkPopup({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {QR_STATUSES.map((status) => (
+            {PARK_QR_STATUS_OPTIONS.map((status) => (
               <SelectItem key={status.value} value={status.value}>
                 {status.label}
               </SelectItem>

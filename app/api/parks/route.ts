@@ -3,6 +3,7 @@ import { getParkDetail, getPublicParks } from "@/lib/parks";
 import { prisma } from "@/lib/prisma";
 import {
   createUnauthorizedResponse,
+  getAdminActorLabel,
   isAdminAuthenticated,
 } from "@/lib/admin-auth";
 import {
@@ -17,6 +18,7 @@ import {
 } from "@/lib/park-photo-storage";
 import { parkMutationSchema } from "@/lib/validation/parks";
 import { PARK_PHOTO_MAX_FILE_SIZE } from "@/lib/park-photo-file";
+import { getParkQrUpdateData } from "@/lib/park-qr";
 
 const MAX_MULTIPART_REQUEST_SIZE = PARK_PHOTO_MAX_FILE_SIZE + 1024 * 1024;
 
@@ -78,6 +80,8 @@ export async function POST(request: Request) {
   let uploadedPhoto: UploadedParkPhoto | null = null;
 
   try {
+    const actorLabel = await getAdminActorLabel();
+    const now = new Date();
     const equipmentCount = await prisma.equipment.count({
       where: { id: { in: parsedBody.data.equipmentIds } },
     });
@@ -104,6 +108,12 @@ export async function POST(request: Request) {
         lat: parsedBody.data.lat,
         lon: parsedBody.data.lon,
         submissionStatus: "APPROVED",
+        ...getParkQrUpdateData({
+          nextStatus: parsedBody.data.qrStatus,
+          note: parsedBody.data.qrCodeNote,
+          actorLabel,
+          now,
+        }),
         photoUrl: uploadedPhoto?.photoUrl ?? null,
         photoKey: uploadedPhoto?.key ?? null,
         equipment: {

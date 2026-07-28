@@ -79,6 +79,8 @@ export type ParkMutationPayload = {
   lat: number;
   lon: number;
   equipmentIds: number[];
+  qrStatus?: ParkQrStatus;
+  qrCodeNote?: string | null;
 };
 
 export type ParkFormValues = {
@@ -88,10 +90,15 @@ export type ParkFormValues = {
   lat: string;
   lon: string;
   equipmentIds: number[];
+  qrStatus?: ParkQrStatus;
+  qrCodeNote?: string;
 };
 
 export type ParkFormErrors = Partial<
-  Record<"name" | "lat" | "lon" | "equipmentIds" | "photo", string>
+  Record<
+    "name" | "lat" | "lon" | "equipmentIds" | "photo" | "qrCodeNote",
+    string
+  >
 >;
 
 export type ParkViewportBounds = {
