@@ -5,7 +5,6 @@ import {
   createJsonValidationErrorResponse,
 } from "@/lib/api-response";
 import {
-  createUserUnauthorizedResponse,
   getAuthenticatedUserId,
 } from "@/lib/user-auth";
 import {
@@ -83,7 +82,11 @@ function parseExistingPendingPhoto(body: CreateParkBody, userId: string) {
 export async function POST(request: Request) {
   const userId = await getAuthenticatedUserId();
   if (!userId) {
-    return createUserUnauthorizedResponse();
+    return createJsonErrorResponse(
+      "Please sign in to submit a park.",
+      401,
+      "PARK_SUBMISSION_AUTH_REQUIRED"
+    );
   }
 
   const contentLength = Number(request.headers.get("content-length") ?? "0");
@@ -163,32 +166,34 @@ export async function POST(request: Request) {
       parsedBody.data.lon
     );
 
-    const park = await prisma.park.create({
-      data: {
-        name: parsedBody.data.name,
-        title: parsedBody.data.title,
-        address: parsedBody.data.address,
-        lat: parsedBody.data.lat,
-        lon: parsedBody.data.lon,
-        submissionStatus: "PENDING",
-        submittedById: userId,
-        photoUrl: uploadedPhoto?.photoUrl ?? null,
-        photoKey: uploadedPhoto?.key ?? null,
-        photoLocationVerifications: photoLocationVerifications.length
-          ? photoLocationVerifications
-          : undefined,
-        nearbyParkWarning: Boolean(closestNearbyPark),
-        closestNearbyParkId: closestNearbyPark?.id ?? null,
-        closestNearbyParkDistanceMeters:
-          closestNearbyPark?.distanceMeters ?? null,
-        equipment: {
-          create: parsedBody.data.equipmentIds.map((equipmentId) => ({
-            equipmentId,
-          })),
+    const park = await prisma.$transaction((tx) =>
+      tx.park.create({
+        data: {
+          name: parsedBody.data.name,
+          title: parsedBody.data.title,
+          address: parsedBody.data.address,
+          lat: parsedBody.data.lat,
+          lon: parsedBody.data.lon,
+          submissionStatus: "PENDING",
+          submittedById: userId,
+          photoUrl: uploadedPhoto?.photoUrl ?? null,
+          photoKey: uploadedPhoto?.key ?? null,
+          photoLocationVerifications: photoLocationVerifications.length
+            ? photoLocationVerifications
+            : undefined,
+          nearbyParkWarning: Boolean(closestNearbyPark),
+          closestNearbyParkId: closestNearbyPark?.id ?? null,
+          closestNearbyParkDistanceMeters:
+            closestNearbyPark?.distanceMeters ?? null,
+          equipment: {
+            create: parsedBody.data.equipmentIds.map((equipmentId) => ({
+              equipmentId,
+            })),
+          },
         },
-      },
-      select: { id: true },
-    });
+        select: { id: true },
+      })
+    );
 
     return NextResponse.json(
       {

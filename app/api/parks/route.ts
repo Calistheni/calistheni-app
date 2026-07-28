@@ -110,7 +110,7 @@ export async function POST(request: Request) {
         submissionStatus: "APPROVED",
         ...getParkQrUpdateData({
           nextStatus: parsedBody.data.qrStatus,
-          note: parsedBody.data.qrCodeNote,
+          note: parsedBody.data.qrCodeNote ?? null,
           actorLabel,
           now,
         }),

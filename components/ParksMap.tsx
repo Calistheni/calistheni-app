@@ -57,6 +57,9 @@ const PARK_AREA_CACHE_MAX_AGE_MS = 15 * 60 * 1000;
 const PLACEHOLDER_MAX_ZOOM = 8;
 const MEANINGFUL_CENTER_SHIFT_RATIO = 0.18;
 const MEANINGFUL_ZOOM_DELTA = 0.5;
+// A selected admin park should be easy to identify without losing the useful
+// surrounding streets and neighbouring parks.
+export const ADMIN_SELECTED_PARK_ZOOM = 15;
 const LIGHT_MAP_MARKER_COLOR = "#2563eb";
 const DARK_MAP_MARKER_COLOR = "#ef4444";
 const SEARCHED_AREA_SOURCE_ID = "searched-area-boundary-source";
@@ -706,6 +709,9 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   const focusOnNextGeolocateRef = useRef(false);
   const recenterInProgressRef = useRef(false);
   const trackingActiveRef = useRef(false);
+  const userHeadingPermissionRef = useRef<
+    "unknown" | "requesting" | "granted" | "unavailable"
+  >("unknown");
   const viewportCacheRef = useRef(new Map<string, MapParkSummary[]>());
   const areaCacheTimestampRef = useRef(new Map<string, number>());
   const areaTruncatedRef = useRef(new Map<string, boolean>());
@@ -1082,6 +1088,8 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       return false;
     }
 
+    if (source === "custom") requestUserHeadingFromGesture();
+
     map.stop();
     clearSearchLocation();
     setSearchClearRequest((current) => current + 1);
@@ -1101,10 +1109,50 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     return true;
   }
 
+  function requestUserHeadingFromGesture() {
+    if (userHeadingPermissionRef.current !== "unknown") return;
+
+    const geolocate = geolocateRef.current as (mapboxgl.GeolocateControl & {
+      _addDeviceOrientationListener?: () => void;
+    }) | null;
+    if (!geolocate || typeof window === "undefined") return;
+
+    const orientation = window.DeviceOrientationEvent as
+      | (typeof DeviceOrientationEvent & {
+          requestPermission?: () => Promise<"granted" | "denied">;
+        })
+      | undefined;
+
+    // Mapbox owns the location dot and heading rotation. On iOS it can only
+    // register its orientation listener from a direct user gesture; a stored
+    // location recenter otherwise never gets that opportunity.
+    if (typeof orientation?.requestPermission === "function") {
+      userHeadingPermissionRef.current = "requesting";
+      void orientation
+        .requestPermission()
+        .then((result) => {
+          if (result !== "granted") {
+            userHeadingPermissionRef.current = "unavailable";
+            return;
+          }
+          userHeadingPermissionRef.current = "granted";
+          geolocate._addDeviceOrientationListener?.();
+        })
+        .catch(() => {
+          userHeadingPermissionRef.current = "unavailable";
+        });
+      return;
+    }
+
+    userHeadingPermissionRef.current = "granted";
+    geolocate._addDeviceOrientationListener?.();
+  }
+
   function requestUserLocation() {
     const geolocate = geolocateRef.current;
 
     if (userLocationRef.current) {
+      requestUserHeadingFromGesture();
       return recenterToUser({ source: "custom" });
     }
 
@@ -1114,6 +1162,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     }
 
     onLocationStatusChangeRef.current?.("loading");
+    requestUserHeadingFromGesture();
     focusOnNextGeolocateRef.current = true;
     const triggered = geolocate.trigger();
 
@@ -2708,11 +2757,15 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       .addTo(map);
 
     beginAwayFromUser();
-    map.flyTo({
-      center: [selectedPark.lon, selectedPark.lat],
-      zoom: 17,
-      duration: 1500,
-    });
+    const selectedCenter: [number, number] = [selectedPark.lon, selectedPark.lat];
+    const targetZoom =
+      mode === "admin"
+        ? Math.max(map.getZoom(), ADMIN_SELECTED_PARK_ZOOM)
+        : map.getZoom();
+    const currentCenter = map.getCenter();
+    const isAlreadyCentered =
+      Math.abs(currentCenter.lng - selectedPark.lon) < 0.00001 &&
+      Math.abs(currentCenter.lat - selectedPark.lat) < 0.00001;
 
     const showSelectedPark = () => {
       openParkPopupRef.current(
@@ -2723,12 +2776,22 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       );
     };
 
-    map.once("moveend", showSelectedPark);
+    if (!isAlreadyCentered || Math.abs(map.getZoom() - targetZoom) >= 0.05) {
+      map.flyTo({
+        center: selectedCenter,
+        zoom: targetZoom,
+        duration: 900,
+        essential: true,
+      });
+      map.once("moveend", showSelectedPark);
+    } else {
+      showSelectedPark();
+    }
 
     return () => {
       map.off("moveend", showSelectedPark);
     };
-  }, [beginAwayFromUser, selectedPark]);
+  }, [beginAwayFromUser, mode, selectedPark]);
 
   const shouldShowRecenter =
     hasHydrated && hasUserLocation && !isFocused;

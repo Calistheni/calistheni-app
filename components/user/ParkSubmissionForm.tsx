@@ -1,7 +1,5 @@
 "use client";
 
-import * as exifr from "exifr";
-import imageCompression from "browser-image-compression";
 import Image from "next/image";
 import {
   AlertTriangle,
@@ -11,7 +9,7 @@ import {
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { CoordinatePicker } from "@/components/CoordinatePicker";
 import {
   AlertDialog,
@@ -305,6 +303,7 @@ async function parseApiError(response: Response) {
     const payload = (await response.json()) as ApiErrorPayload;
 
     return {
+      status: response.status,
       message:
         payload.error || "Something went wrong. Please try again in a moment.",
       errors: getParkFormErrors(payload.fieldErrors),
@@ -312,6 +311,7 @@ async function parseApiError(response: Response) {
     };
   } catch {
     return {
+      status: response.status,
       message: "Something went wrong. Please try again in a moment.",
       errors: {},
       nearbyParks: undefined,
@@ -330,7 +330,13 @@ export function ParkSubmissionForm({
   const [formErrors, setFormErrors] = useState<ParkFormErrors>({});
   const [photos, setPhotos] = useState<SelectedPhoto[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPreparingSubmission, setIsPreparingSubmission] = useState(false);
+  const [submissionConfirmation, setSubmissionConfirmation] = useState<{
+    id: number;
+  } | null>(null);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
   const submittingRef = useRef(false);
+  const submissionAttemptRef = useRef(false);
   const photoPreviewUrlsRef = useRef(new Set<string>());
   const [isCheckingNearbyParks, setIsCheckingNearbyParks] = useState(false);
   const [isVerifyingPhotos, setIsVerifyingPhotos] = useState(false);
@@ -434,6 +440,9 @@ export function ParkSubmissionForm({
     }
 
     try {
+      const { default: imageCompression } = await import(
+        "browser-image-compression"
+      );
       const compressedPhoto = await imageCompression(photo, {
         maxSizeMB: 1.5,
         maxWidthOrHeight: 1920,
@@ -513,6 +522,7 @@ export function ParkSubmissionForm({
 
   async function readPhotoGps(photo: File): Promise<GpsCoordinates | null> {
     try {
+      const exifr = await import("exifr");
       const gps = await exifr.gps(photo);
 
       if (
@@ -537,6 +547,7 @@ export function ParkSubmissionForm({
     }
 
     try {
+      const exifr = await import("exifr");
       const metadata = (await exifr.parse(photo, {
         gps: true,
         xmp: true,
@@ -639,6 +650,7 @@ export function ParkSubmissionForm({
 
     submittingRef.current = true;
     setIsSubmitting(true);
+    setSubmissionError(null);
 
     try {
       let response: Response;
@@ -701,7 +713,19 @@ export function ParkSubmissionForm({
           return;
         }
 
+        if (apiError.status === 401) {
+          throw new Error("Please sign in again before submitting a park.");
+        }
+
         throw new Error(apiError.message);
+      }
+
+      const result = (await response.json()) as {
+        id?: number;
+        status?: string;
+      };
+      if (mode === "create" && (!result.id || result.status !== "PENDING")) {
+        throw new Error("The park submission could not be confirmed. Please try again.");
       }
 
       toast.success(
@@ -710,17 +734,24 @@ export function ParkSubmissionForm({
           : "Park edit submitted for admin review."
       );
 
-      router.push(mode === "create" ? "/my-parks" : "/parks");
-      router.refresh();
+      if (mode === "create") {
+        // Keep a durable, in-page confirmation instead of immediately
+        // navigating away and making a successful submission appear silent.
+        setSubmissionConfirmation({ id: result.id! });
+        router.refresh();
+      } else {
+        router.push("/parks");
+        router.refresh();
+      }
     } catch (error) {
-      toast.error(
-        getErrorMessage(
-          error,
-          mode === "create"
-            ? "Unable to submit this park."
-            : "Unable to submit this park edit."
-        )
+      const message = getErrorMessage(
+        error,
+        mode === "create"
+          ? "Unable to submit this park."
+          : "Unable to submit this park edit."
       );
+      setSubmissionError(message);
+      toast.error(message);
     } finally {
       submittingRef.current = false;
       setIsSubmitting(false);
@@ -728,14 +759,26 @@ export function ParkSubmissionForm({
   }
 
   async function handleSubmit() {
+    if (submissionAttemptRef.current || submittingRef.current) return;
+
     const validationResult = validateParkMutation(formValues);
 
     if (!validationResult.success) {
       setFormErrors(validationResult.errors);
+      setSubmissionError("Please correct the highlighted fields before submitting.");
+      window.requestAnimationFrame(() => {
+        const firstInvalid = document.querySelector<HTMLElement>(
+          "#user-park-name[aria-invalid='true'], #user-park-latitude[aria-invalid='true'], #user-park-longitude[aria-invalid='true'], [aria-invalid='true']"
+        );
+        firstInvalid?.focus();
+      });
       return;
     }
 
     setFormErrors({});
+    setSubmissionError(null);
+    submissionAttemptRef.current = true;
+    setIsPreparingSubmission(true);
 
     try {
       if (mode === "create") {
@@ -767,10 +810,21 @@ export function ParkSubmissionForm({
 
       await submitVerifiedPark(validationResult.data, verifiedPhotos);
     } catch (error) {
-      toast.error(
-        getErrorMessage(error, "Unable to check photo location metadata.")
+      const message = getErrorMessage(
+        error,
+        "Unable to check photo location metadata."
       );
+      setSubmissionError(message);
+      toast.error(message);
+    } finally {
+      submissionAttemptRef.current = false;
+      setIsPreparingSubmission(false);
     }
+  }
+
+  function handleFormSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void handleSubmit();
   }
 
   function submitWithoutMismatchedPhotos() {
@@ -922,6 +976,29 @@ export function ParkSubmissionForm({
   }
 
   return (
+    submissionConfirmation && mode === "create" ? (
+      <Card>
+        <CardHeader>
+          <h1 className="text-2xl font-bold">Park submitted for review</h1>
+          <p className="text-sm text-muted-foreground">
+            Your submission #{submissionConfirmation.id} was received and is
+            now pending an administrator review.
+          </p>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          <Button type="button" onClick={() => router.push("/my-parks")}>
+            View my submissions
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setSubmissionConfirmation(null)}
+          >
+            Submit another park
+          </Button>
+        </CardContent>
+      </Card>
+    ) : (
     <Card>
       <CardHeader>
         <h1 className="text-2xl font-bold">
@@ -934,7 +1011,14 @@ export function ParkSubmissionForm({
         </p>
       </CardHeader>
 
-      <CardContent className="space-y-5">
+      <CardContent>
+        <form className="space-y-5" onSubmit={handleFormSubmit} noValidate>
+        {submissionError ? (
+          <Alert className="border-destructive/30 bg-destructive/5" aria-live="assertive">
+            <AlertTriangle className="text-destructive" aria-hidden />
+            <AlertDescription>{submissionError}</AlertDescription>
+          </Alert>
+        ) : null}
         <div className="space-y-2">
           <label htmlFor="user-park-name" className="text-sm font-medium">
             Name
@@ -1169,21 +1253,27 @@ export function ParkSubmissionForm({
         </div>
 
         <Button
-          onClick={handleSubmit}
-          disabled={isSubmitting || isCheckingNearbyParks || isVerifyingPhotos}
+          type="submit"
+          disabled={
+            isSubmitting ||
+            isPreparingSubmission ||
+            isCheckingNearbyParks ||
+            isVerifyingPhotos
+          }
         >
-          {isCheckingNearbyParks
-            ? "Checking nearby parks..."
-            : isVerifyingPhotos
-            ? "Checking photos..."
-            : isSubmitting
+          {isSubmitting
             ? mode === "create"
               ? "Submitting..."
               : "Saving..."
+            : isPreparingSubmission || isCheckingNearbyParks
+            ? "Checking nearby parks..."
+            : isVerifyingPhotos
+            ? "Checking photos..."
             : mode === "create"
             ? "Submit for Review"
             : "Submit Edit for Review"}
         </Button>
+        </form>
       </CardContent>
 
       <AlertDialog
@@ -1353,5 +1443,6 @@ export function ParkSubmissionForm({
         </AlertDialogContent>
       </AlertDialog>
     </Card>
+    )
   );
 }

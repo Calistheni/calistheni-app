@@ -104,7 +104,11 @@ export const parkMutationSchema = z.object({
   qrStatus: z
     .enum(["NOT_INSTALLED", "INSTALLED", "NEEDS_REPLACEMENT"])
     .default("NOT_INSTALLED"),
-  qrCodeNote: optionalText(500),
+  // Keep this property optional at the object boundary. Zod v4 treats the
+  // transformed `undefined` branch as a required output otherwise, which
+  // rejected normal public submissions that correctly omit admin-only QR
+  // deployment metadata.
+  qrCodeNote: optionalText(500).optional(),
 });
 
 export function mapParkIssuesToFormErrors(issues: ZodIssue[]) {
