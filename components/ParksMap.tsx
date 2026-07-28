@@ -1320,9 +1320,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
 
     const request = fetch(
       mode === "admin"
-        ? `/api/admin/parks/${parkId}${
-            parkStatusFilter === "ACTIVE" ? "" : "?includeArchived=1"
-          }`
+        ? `/api/admin/parks/${parkId}`
         : `/api/parks/${parkId}`
     )
       .then(async (response) => {

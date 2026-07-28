@@ -65,7 +65,11 @@ export function AdminMapParkPopup({
 
   return (
     <div
-      className={`w-64 space-y-3 ${archived ? "rounded-md border border-dashed border-muted-foreground/50 p-2" : ""}`}
+      className={`w-64 space-y-3 ${
+        archived
+          ? "rounded-md border border-dashed border-muted-foreground/50 p-2"
+          : ""
+      }`}
     >
       {park.photoUrl ? (
         // Mapbox owns this popup DOM; a native image avoids a nested Next image loader.
@@ -94,7 +98,10 @@ export function AdminMapParkPopup({
           disabled={archived || isSaving}
           onValueChange={(value) => void save(value as ParkQrStatus)}
         >
-          <SelectTrigger aria-label={`QR status for ${park.name}`} className="h-8 w-full">
+          <SelectTrigger
+            aria-label={`QR status for ${park.name}`}
+            className="h-8 w-full"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -106,7 +113,11 @@ export function AdminMapParkPopup({
           </SelectContent>
         </Select>
         <div className="flex items-center gap-2">
-          {isSaving ? <LoaderCircle className="size-3.5 animate-spin" /> : <QrCode className="size-3.5 text-primary" />}
+          {isSaving ? (
+            <LoaderCircle className="size-3.5 animate-spin" />
+          ) : (
+            <QrCode className="size-3.5 text-primary" />
+          )}
           <ParkQrStatusBadge status={park.qrStatus} compact />
         </div>
       </div>
@@ -122,10 +133,19 @@ export function AdminMapParkPopup({
             className="min-h-20 text-xs"
           />
           <div className="flex justify-end gap-2">
-            <Button size="sm" variant="ghost" onClick={() => setIsEditingNote(false)} disabled={isSaving}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setIsEditingNote(false)}
+              disabled={isSaving}
+            >
               Cancel
             </Button>
-            <Button size="sm" onClick={() => void save(park.qrStatus)} disabled={isSaving}>
+            <Button
+              size="sm"
+              onClick={() => void save(park.qrStatus)}
+              disabled={isSaving}
+            >
               Save note
             </Button>
           </div>
@@ -144,14 +164,12 @@ export function AdminMapParkPopup({
       )}
 
       <p className="text-xs text-muted-foreground">
-        {park.equipment.length} equipment item{park.equipment.length === 1 ? "" : "s"}
+        {park.equipment.length} equipment item
+        {park.equipment.length === 1 ? "" : "s"}
       </p>
       <div className="flex gap-2">
         <Button asChild size="sm" variant="outline">
           <Link href={`/admin?park=${park.id}`}>Edit</Link>
-        </Button>
-        <Button asChild size="sm" variant="ghost">
-          <Link href={`/parks/${park.id}`} target="_blank">Open detail</Link>
         </Button>
       </div>
     </div>

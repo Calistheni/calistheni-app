@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ImagePlus, X } from "lucide-react";
+import { ImagePlus, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { AdminParksMap } from "@/components/admin/AdminParksMap";
 import { ParkQrStatusBadge } from "@/components/admin/ParkQrStatusBadge";
@@ -49,6 +49,7 @@ import {
 } from "@/lib/validation/parks";
 import {
   PARK_PHOTO_ACCEPT,
+  PARK_PHOTO_MAX_COUNT,
   validateParkPhotoMetadata,
 } from "@/lib/park-photo-file";
 import {
@@ -144,11 +145,18 @@ type AdminParkPhoto = {
 
 type AdminParkPhotosResponse = {
   photos: AdminParkPhoto[];
+  park?: AdminParkDetail | null;
 };
 
 type AdminParkPhotoUpdateResponse = {
   park: ParkDetail | null;
   photos: AdminParkPhoto[];
+};
+
+type PendingAdminParkPhoto = {
+  id: string;
+  file: File;
+  previewUrl: string;
 };
 
 const EMPTY_FORM_VALUES: ParkFormValues = {
@@ -253,9 +261,18 @@ export default function AdminDashboard() {
   const [search, setSearch] = useState("");
   const [selectedPark, setSelectedPark] =
     useState<AdminParkDetail | null>(null);
+  const [selectedParkPreview, setSelectedParkPreview] =
+    useState<AdminParkMapSummary | null>(null);
+  const mapSectionRef = useRef<HTMLDivElement | null>(null);
   const [parkPhotos, setParkPhotos] = useState<AdminParkPhoto[]>([]);
   const [isParkPhotosLoading, setIsParkPhotosLoading] = useState(false);
   const [updatingPhotoId, setUpdatingPhotoId] = useState<number | null>(null);
+  const [pendingParkPhotos, setPendingParkPhotos] = useState<
+    PendingAdminParkPhoto[]
+  >([]);
+  const pendingParkPhotoUrlsRef = useRef(new Set<string>());
+  const [photoDeleteCandidate, setPhotoDeleteCandidate] =
+    useState<AdminParkPhoto | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [adminPhoto, setAdminPhoto] = useState<File | null>(null);
   const [adminPhotoPreview, setAdminPhotoPreview] = useState<string | null>(null);
@@ -515,6 +532,9 @@ export default function AdminDashboard() {
       adminPhotoPreviewRef.current = null;
     }
     setAdminPhotoPreview(null);
+    pendingParkPhotoUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    pendingParkPhotoUrlsRef.current.clear();
+    setPendingParkPhotos([]);
     setIsMapPlacementDraft(false);
     setPlacementResetToken((current) => current + 1);
   }
@@ -522,6 +542,7 @@ export default function AdminDashboard() {
   function beginMapParkCreate({ lat, lon }: { lat: number; lon: number }) {
     setEditingParkId(null);
     setSelectedPark(null);
+    setSelectedParkPreview(null);
     setParkPhotos([]);
     setFormErrors({});
     setFormValues({
@@ -565,6 +586,80 @@ export default function AdminDashboard() {
     setAdminPhoto(file);
     setAdminPhotoPreview(previewUrl);
     clearFieldError("photo");
+  }
+
+  function addPendingParkPhotos(fileList: FileList | null) {
+    const files = Array.from(fileList ?? []);
+    if (!files.length) return;
+
+    for (const file of files) {
+      const validation = validateParkPhotoMetadata(file);
+      if (!validation.success) {
+        toast.error(validation.error);
+        return;
+      }
+    }
+
+    const existingNames = new Set(
+      pendingParkPhotos.map((photo) => `${photo.file.name}:${photo.file.size}:${photo.file.lastModified}`)
+    );
+    const uniqueFiles = files.filter((file) => {
+      const signature = `${file.name}:${file.size}:${file.lastModified}`;
+      if (existingNames.has(signature)) return false;
+      existingNames.add(signature);
+      return true;
+    });
+    if (parkPhotos.length + pendingParkPhotos.length + uniqueFiles.length > PARK_PHOTO_MAX_COUNT) {
+      toast.error(`A park can have no more than ${PARK_PHOTO_MAX_COUNT} photos.`);
+      return;
+    }
+
+    setPendingParkPhotos((current) => [
+      ...current,
+      ...uniqueFiles.map((file) => {
+        const previewUrl = URL.createObjectURL(file);
+        pendingParkPhotoUrlsRef.current.add(previewUrl);
+        return { id: crypto.randomUUID(), file, previewUrl };
+      }),
+    ]);
+  }
+
+  function removePendingParkPhoto(id: string) {
+    setPendingParkPhotos((current) => {
+      const photo = current.find((item) => item.id === id);
+      if (photo) {
+        URL.revokeObjectURL(photo.previewUrl);
+        pendingParkPhotoUrlsRef.current.delete(photo.previewUrl);
+      }
+      return current.filter((item) => item.id !== id);
+    });
+  }
+
+  async function uploadPendingParkPhotos(parkId: number) {
+    if (!pendingParkPhotos.length) return 0;
+
+    const formData = new FormData();
+    pendingParkPhotos.forEach((photo) => formData.append("photos", photo.file));
+    const response = await fetch(`/api/admin/parks/${parkId}/photos`, {
+      method: "POST",
+      body: formData,
+    });
+    if (!response.ok) {
+      const apiError = await parseApiError(response);
+      if (apiError.unauthorized) {
+        toast.error(apiError.message);
+        redirectToLogin();
+      }
+      throw new Error(apiError.message || "Unable to upload park photos.");
+    }
+    const payload = (await response.json()) as AdminParkPhotosResponse;
+    setParkPhotos(payload.photos);
+    if (payload.park) applyUpdatedPark(payload.park);
+    const uploadedCount = pendingParkPhotos.length;
+    pendingParkPhotoUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    pendingParkPhotoUrlsRef.current.clear();
+    setPendingParkPhotos([]);
+    return uploadedCount;
   }
 
   function clearFieldError(field: keyof ParkFormErrors) {
@@ -655,7 +750,7 @@ export default function AdminDashboard() {
 
   async function updateParkPhoto(
     photoId: number,
-    action: "SET_PRIMARY" | "HIDE" | "RESTORE"
+    action: "SET_PRIMARY" | "HIDE" | "RESTORE" | "DELETE"
   ) {
     if (!selectedPark) {
       return;
@@ -697,12 +792,20 @@ export default function AdminDashboard() {
         });
       }
 
-      toast.success("Park photo updated.");
+      setMapRefreshVersion((current) => current + 1);
+
+      toast.success(action === "DELETE" ? "Park photo removed." : "Park photo updated.");
     } catch (error) {
       toast.error(getErrorMessage(error, "Unable to update this photo."));
     } finally {
       setUpdatingPhotoId(null);
     }
+  }
+
+  async function deleteSelectedParkPhoto() {
+    if (!photoDeleteCandidate) return;
+    await updateParkPhoto(photoDeleteCandidate.id, "DELETE");
+    setPhotoDeleteCandidate(null);
   }
 
   async function submitCreate(payload: ParkMutationPayload) {
@@ -839,8 +942,27 @@ export default function AdminDashboard() {
 
       setParks(nextParks);
       setSelectedPark(updatedPark);
+      let uploadedCount = 0;
+      try {
+        uploadedCount = await uploadPendingParkPhotos(editingParkId);
+      } catch (photoError) {
+        // The park details have been saved. Keep the queued files and form
+        // values available so an administrator can retry without re-entering.
+        toast.error(
+          getErrorMessage(
+            photoError,
+            "Park details saved, but one or more photos could not be uploaded. Please retry."
+          )
+        );
+        return;
+      }
       resetForm();
-      toast.success("Park updated successfully.");
+      setMapRefreshVersion((current) => current + 1);
+      toast.success(
+        uploadedCount
+          ? `Park updated and ${uploadedCount} photo${uploadedCount === 1 ? "" : "s"} uploaded.`
+          : "Park updated successfully."
+      );
     } catch (error) {
       toast.error(getErrorMessage(error, "Unable to update this park."));
     } finally {
@@ -878,6 +1000,7 @@ export default function AdminDashboard() {
 
 	      if (selectedPark?.id === deleteCandidate.id) {
 	        setSelectedPark(null);
+	        setSelectedParkPreview(null);
 	        setParkPhotos([]);
 	      }
 
@@ -913,14 +1036,27 @@ export default function AdminDashboard() {
     void submitCreate(validationResult.data);
   }
 
-	  async function startEditing(park: Pick<ParkSummary, "id">) {
-	    setParkPhotos([]);
-	    try {
-      const response = await fetch(
-        `/api/admin/parks/${park.id}${
-          parkStatusFilter === "ACTIVE" ? "" : "?includeArchived=1"
-        }`
-      );
+  async function startEditing(
+    park: Pick<ParkSummary, "id"> & Partial<AdminParkMapSummary>
+  ) {
+
+    if (
+      typeof park.lat === "number" &&
+      typeof park.lon === "number" &&
+      typeof park.updatedAt === "string" &&
+      typeof park.qrStatus === "string" &&
+      typeof park.equipmentCount === "number" &&
+      typeof park.submissionStatus === "string"
+    ) {
+      setSelectedParkPreview(park as AdminParkMapSummary);
+      mapSectionRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }
+    setParkPhotos([]);
+    try {
+      const response = await fetch(`/api/admin/parks/${park.id}`);
 
       if (!response.ok) {
         const apiError = await parseApiError(response);
@@ -937,6 +1073,7 @@ export default function AdminDashboard() {
       const fullPark = (await response.json()) as AdminParkDetail;
 
 	      setSelectedPark(fullPark);
+	      setSelectedParkPreview(toParkSummary(fullPark));
 	      void loadParkPhotos(fullPark.id);
 	      setEditingParkId(fullPark.id);
       setFormValues({
@@ -1190,6 +1327,7 @@ export default function AdminDashboard() {
           ))}
         </div>
 
+        <div ref={mapSectionRef} className="scroll-mt-6">
         <Card>
           <CardContent className="p-4 sm:p-6">
             {selectedParkIsFilteredOut && selectedPark ? (
@@ -1217,7 +1355,7 @@ export default function AdminDashboard() {
                 applyUpdatedPark(updatedPark);
                 void loadQrCounts();
               }}
-              selectedPark={selectedPark}
+              selectedPark={selectedPark ?? selectedParkPreview}
               onParkSelected={(park) => {
                 if (selectedPark?.id !== park.id) {
                   void startEditing(park);
@@ -1228,6 +1366,7 @@ export default function AdminDashboard() {
             />
           </CardContent>
         </Card>
+        </div>
       </section>
 
       <Card className="mb-6">
@@ -1716,9 +1855,68 @@ export default function AdminDashboard() {
 	                <div>
 	                  <p className="text-sm font-medium">Park photos</p>
 	                  <p className="text-sm text-muted-foreground">
-	                    Choose the main public photo or hide photos from users.
+	                    Add, remove, and choose the main public photo. The same
+	                    JPEG, PNG, WebP, HEIC, and HEIF validation used for park
+	                    submissions applies here.
 	                  </p>
 	                </div>
+
+                  {editingParkId === selectedPark.id ? (
+                    <div className="space-y-3 rounded-lg border border-dashed p-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label
+                          htmlFor="admin-edit-park-photos"
+                          className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-md border px-4 text-sm font-medium hover:bg-accent focus-within:ring-2 focus-within:ring-ring"
+                        >
+                          <ImagePlus className="size-4" aria-hidden />
+                          Add photos
+                        </label>
+                        <Input
+                          id="admin-edit-park-photos"
+                          type="file"
+                          multiple
+                          accept={PARK_PHOTO_ACCEPT}
+                          className="sr-only"
+                          onChange={(event) => {
+                            addPendingParkPhotos(event.target.files);
+                            event.currentTarget.value = "";
+                          }}
+                          disabled={isSubmitting}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Up to {PARK_PHOTO_MAX_COUNT} photos total. New photos upload when you save changes.
+                        </p>
+                      </div>
+
+                      {pendingParkPhotos.length ? (
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-live="polite">
+                          {pendingParkPhotos.map((photo) => (
+                            <div key={photo.id} className="overflow-hidden rounded-lg border bg-muted/30">
+                              <div
+                                className="h-32 bg-muted bg-cover bg-center"
+                                role="img"
+                                aria-label={`Preview of ${photo.file.name}`}
+                                style={{ backgroundImage: `url("${photo.previewUrl}")` }}
+                              />
+                              <div className="flex items-center justify-between gap-2 p-2">
+                                <p className="min-w-0 truncate text-xs" title={photo.file.name}>{photo.file.name}</p>
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => removePendingParkPhoto(photo.id)}
+                                  disabled={isSubmitting}
+                                  aria-label={`Remove pending photo ${photo.file.name}`}
+                                >
+                                  <X className="size-4" aria-hidden />
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
 
 	                {isParkPhotosLoading ? (
 	                  <p className="text-sm text-muted-foreground">
@@ -1814,12 +2012,11 @@ export default function AdminDashboard() {
 	                                <Button
 	                                  size="sm"
 	                                  variant="outline"
-	                                  onClick={() =>
-	                                    void updateParkPhoto(photo.id, "HIDE")
-	                                  }
+	                                  onClick={() => setPhotoDeleteCandidate(photo)}
 	                                  disabled={Boolean(updatingPhotoId)}
 	                                >
-	                                  {isUpdating ? "Saving..." : "Hide"}
+	                                  <Trash2 className="size-4" aria-hidden />
+	                                  {isUpdating ? "Removing..." : "Remove"}
 	                                </Button>
 	                              )}
 	                            </div>
@@ -1964,6 +2161,39 @@ export default function AdminDashboard() {
           </Button>
         </div>
       ) : null}
+
+      <AlertDialog
+        open={Boolean(photoDeleteCandidate)}
+        onOpenChange={(open) => {
+          if (!open && !updatingPhotoId) setPhotoDeleteCandidate(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove park photo?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the photo from this park. If no other park photo
+              references the same R2 object, its stored image is removed after
+              the database update succeeds.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={Boolean(updatingPhotoId)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={Boolean(updatingPhotoId)}
+              onClick={(event) => {
+                event.preventDefault();
+                void deleteSelectedParkPhoto();
+              }}
+            >
+              {updatingPhotoId ? "Removing..." : "Remove photo"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={Boolean(deleteCandidate)}

@@ -8,7 +8,8 @@ import {
   parsePositiveInteger,
 } from "@/lib/api-response";
 import { getAdminParkPhotos } from "@/lib/admin-park-photos";
-import { getParkDetail } from "@/lib/parks";
+import { getAdminParkDetail } from "@/lib/admin-parks";
+import { deleteParkPhotoObject, getParkPhotoKeyFromUrl } from "@/lib/park-photo-storage";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
@@ -16,7 +17,7 @@ type PhotoActionPayload = {
   action?: unknown;
 };
 
-type PhotoAction = "SET_PRIMARY" | "HIDE" | "RESTORE";
+type PhotoAction = "SET_PRIMARY" | "HIDE" | "RESTORE" | "DELETE";
 
 async function syncPrimaryPhoto(
   tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
@@ -81,12 +82,18 @@ async function syncPrimaryPhoto(
     },
     data: {
       photoUrl: fallbackPhoto?.url ?? null,
+      photoKey: fallbackPhoto ? getParkPhotoKeyFromUrl(fallbackPhoto.url) : null,
     },
   });
 }
 
 function parsePhotoAction(value: unknown): PhotoAction | null {
-  if (value === "SET_PRIMARY" || value === "HIDE" || value === "RESTORE") {
+  if (
+    value === "SET_PRIMARY" ||
+    value === "HIDE" ||
+    value === "RESTORE" ||
+    value === "DELETE"
+  ) {
     return value;
   }
 
@@ -128,12 +135,10 @@ export async function PATCH(
       where: {
         id: parsedPhotoId,
         parkId,
-        park: {
-          deletedAt: null,
-        },
       },
       select: {
         id: true,
+        url: true,
       },
     });
 
@@ -142,6 +147,12 @@ export async function PATCH(
     }
 
     await prisma.$transaction(async (tx) => {
+      if (action === "DELETE") {
+        await tx.parkPhoto.delete({ where: { id: parsedPhotoId } });
+        await syncPrimaryPhoto(tx, parkId);
+        return;
+      }
+
       if (action === "SET_PRIMARY") {
         await tx.parkPhoto.update({
           where: {
@@ -180,8 +191,30 @@ export async function PATCH(
       await syncPrimaryPhoto(tx, parkId);
     });
 
+    if (action === "DELETE") {
+      const references = await prisma.parkPhoto.count({
+        where: { url: photo.url },
+      });
+      const key = getParkPhotoKeyFromUrl(photo.url);
+      if (references === 0 && key) {
+        try {
+          await deleteParkPhotoObject(key);
+        } catch (cleanupError) {
+          // The database relation has already been removed. Keep the response
+          // successful and log a safe cleanup retry target instead of deleting
+          // any photo before the transaction is committed.
+          console.error("Unable to delete unreferenced park photo object.", {
+            parkId,
+            photoId: parsedPhotoId,
+            key,
+            error: cleanupError instanceof Error ? cleanupError.message : "Unknown R2 error",
+          });
+        }
+      }
+    }
+
     return NextResponse.json({
-      park: await getParkDetail(parkId),
+      park: await getAdminParkDetail(parkId),
       photos: await getAdminParkPhotos(parkId),
     });
   } catch (error) {

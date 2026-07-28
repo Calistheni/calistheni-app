@@ -1,4 +1,7 @@
 export const PARK_PHOTO_MAX_FILE_SIZE = 15 * 1024 * 1024;
+// Park edit suggestions already allow up to ten photos. Keep the same limit for
+// administrator edits so both flows validate the same queue size.
+export const PARK_PHOTO_MAX_COUNT = 10;
 export const PARK_PHOTO_ACCEPT =
   ".jpg,.jpeg,.png,.webp,.heic,.heif,image/jpeg,image/png,image/webp,image/heic,image/heif";
 

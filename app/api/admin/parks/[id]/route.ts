@@ -11,7 +11,7 @@ import {
 } from "@/lib/admin-auth";
 
 export async function GET(
-  request: Request,
+  _request: Request,
   context: RouteContext<"/api/admin/parks/[id]">
 ) {
   if (!(await isAdminAuthenticated())) return createUnauthorizedResponse();
@@ -23,10 +23,7 @@ export async function GET(
   }
 
   try {
-    const park = await getAdminParkDetail(parkId, {
-      includeArchived:
-        new URL(request.url).searchParams.get("includeArchived") === "1",
-    });
+    const park = await getAdminParkDetail(parkId);
     if (!park) {
       return createJsonErrorResponse("Park not found.", 404, "PARK_NOT_FOUND");
     }

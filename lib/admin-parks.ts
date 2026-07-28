@@ -169,14 +169,12 @@ export async function getAdminParkQrCounts({
 }
 
 export async function getAdminParkDetail(
-  parkId: number,
-  options: { includeArchived?: boolean } = {}
+  parkId: number
 ): Promise<AdminParkDetail | null> {
   const park = await prisma.park.findFirst({
-    where: {
-      id: parkId,
-      ...getParkVisibilityWhere(options.includeArchived ? "ALL" : "ACTIVE"),
-    },
+    // An authenticated admin lookup is intentionally not a public-visibility
+    // lookup: it must return active, rejected, and soft-deleted parks.
+    where: { id: parkId },
     include: {
       equipment: {
         include: { equipment: true },

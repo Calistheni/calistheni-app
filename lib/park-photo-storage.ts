@@ -49,6 +49,17 @@ export function getParkPhotoUrlFromKey(key: string) {
   return `${getParkPhotoR2Configuration().publicUrl}/${key}`;
 }
 
+/** Returns an R2 key only for URLs issued by the configured park-photo bucket. */
+export function getParkPhotoKeyFromUrl(url: string) {
+  const publicUrl = getParkPhotoR2Configuration().publicUrl.replace(/\/$/, "");
+  const prefix = `${publicUrl}/`;
+
+  if (!url.startsWith(prefix)) return null;
+
+  const key = url.slice(prefix.length);
+  return isSafeParkPhotoObjectKey(key) ? key : null;
+}
+
 function createObjectKey({
   extension,
   owner,

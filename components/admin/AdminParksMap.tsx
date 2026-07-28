@@ -26,7 +26,7 @@ export function AdminParksMap({
   qrStatusFilter: ParkQrStatus | "ALL";
   parkStatusFilter: ParkArchiveStatus;
   onParkUpdated: (park: AdminParkDetail) => void;
-  selectedPark: AdminParkDetail | null;
+  selectedPark: MapParkSummary | null;
   onParkSelected: (park: AdminParkDetail) => void;
   onParkPlacement: (coordinates: { lat: number; lon: number }) => void;
   placementResetToken: number;
