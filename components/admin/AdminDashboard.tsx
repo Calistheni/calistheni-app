@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { ImagePlus, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { CoordinatePicker } from "@/components/CoordinatePicker";
+import { useEffect, useRef, useState } from "react";
+import { AdminParksMap } from "@/components/admin/AdminParksMap";
+import { ParkQrStatusBadge } from "@/components/admin/ParkQrStatusBadge";
+import { ParkQrStatusControl } from "@/components/admin/ParkQrStatusControl";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,12 +20,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -33,9 +37,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
-import { loadAdminParks, saveAdminParks } from "@/lib/cache";
 import {
-  findClosestNearbyPark,
   PARK_DUPLICATE_WARNING_RADIUS_METERS,
 } from "@/lib/park-distance";
 import {
@@ -53,10 +55,15 @@ import {
   type StoredPhotoLocationVerification,
 } from "@/lib/photo-location-verification";
 import type {
+  AdminParkDetail,
+  AdminParkMapSummary,
+  AdminParkQrCounts,
   ParkDetail,
+  ParkArchiveStatus,
   ParkFormErrors,
   ParkFormValues,
   ParkMutationPayload,
+  ParkQrStatus,
   ParkSummary,
 } from "@/types/park";
 
@@ -66,7 +73,10 @@ type Equipment = {
 };
 
 type DuplicateCandidate = {
-  existingPark: ParkSummary;
+  existingPark: {
+    id: number;
+    name: string;
+  };
   distanceMeters: number;
   payload: ParkMutationPayload;
 };
@@ -147,23 +157,6 @@ const EMPTY_FORM_VALUES: ParkFormValues = {
   equipmentIds: [],
 };
 
-function findDuplicatePark(parks: ParkSummary[], payload: ParkMutationPayload) {
-  const closestPark = findClosestNearbyPark(
-    parks,
-    payload.lat,
-    payload.lon,
-    PARK_DUPLICATE_WARNING_RADIUS_METERS
-  );
-
-  return closestPark
-    ? {
-        existingPark: closestPark,
-        distanceMeters: closestPark.distanceMeters,
-        payload,
-      }
-    : null;
-}
-
 function getPhotoLocationBadgeLabel(
   status: PhotoLocationStatus,
   source: PhotoLocationSource
@@ -195,7 +188,7 @@ function getPhotoLocationBadgeVariant(status: PhotoLocationStatus) {
   return "default";
 }
 
-function toParkSummary(park: ParkDetail): ParkSummary {
+function toParkSummary(park: AdminParkDetail): AdminParkMapSummary {
   return {
     id: park.id,
     name: park.name,
@@ -206,6 +199,9 @@ function toParkSummary(park: ParkDetail): ParkSummary {
     photoUrl: park.photoUrl,
     updatedAt: park.updatedAt,
     deletedAt: park.deletedAt ?? null,
+    qrStatus: park.qrStatus,
+    equipmentCount: park.equipment.length,
+    submissionStatus: park.submissionStatus,
   };
 }
 
@@ -246,11 +242,12 @@ export default function AdminDashboard() {
   const [formValues, setFormValues] =
     useState<ParkFormValues>(EMPTY_FORM_VALUES);
   const [formErrors, setFormErrors] = useState<ParkFormErrors>({});
-  const [parks, setParks] = useState<ParkSummary[]>([]);
+  const [parks, setParks] = useState<AdminParkMapSummary[]>([]);
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [editingParkId, setEditingParkId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
-  const [selectedPark, setSelectedPark] = useState<ParkDetail | null>(null);
+  const [selectedPark, setSelectedPark] =
+    useState<AdminParkDetail | null>(null);
   const [parkPhotos, setParkPhotos] = useState<AdminParkPhoto[]>([]);
   const [isParkPhotosLoading, setIsParkPhotosLoading] = useState(false);
   const [updatingPhotoId, setUpdatingPhotoId] = useState<number | null>(null);
@@ -258,11 +255,23 @@ export default function AdminDashboard() {
   const [adminPhoto, setAdminPhoto] = useState<File | null>(null);
   const [adminPhotoPreview, setAdminPhotoPreview] = useState<string | null>(null);
   const adminPhotoPreviewRef = useRef<string | null>(null);
+  const initialParkQueryHandledRef = useRef(false);
   const reviewingSubmissionRef = useRef(new Set<string>());
   const [isDeletePending, setIsDeletePending] = useState(false);
-  const [deleteCandidate, setDeleteCandidate] = useState<ParkDetail | null>(
+  const [deleteCandidate, setDeleteCandidate] = useState<AdminParkDetail | null>(
     null
   );
+  const [qrStatusFilter, setQrStatusFilter] =
+    useState<ParkQrStatus | "ALL">("ALL");
+  const [parkStatusFilter, setParkStatusFilter] =
+    useState<ParkArchiveStatus>("ACTIVE");
+  const [qrCounts, setQrCounts] = useState<AdminParkQrCounts | null>(null);
+  const [nextParkCursor, setNextParkCursor] = useState<number | null>(null);
+  const [isParkSearchLoading, setIsParkSearchLoading] = useState(false);
+  const [mapRefreshVersion, setMapRefreshVersion] = useState(0);
+  const [placementResetToken, setPlacementResetToken] = useState(0);
+  const [isMapPlacementDraft, setIsMapPlacementDraft] = useState(false);
+  const parkSearchRequestRef = useRef(0);
 
   const [rejectCandidate, setRejectCandidate] =
     useState<AdminSubmission | null>(null);
@@ -283,19 +292,80 @@ export default function AdminDashboard() {
     string | null
   >(null);
 
-  const filteredParks = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
-
-    if (normalizedSearch.length < 2) {
-      return [];
+  async function loadQrCounts() {
+    try {
+      const params = new URLSearchParams({
+        qrStatus: qrStatusFilter,
+        parkStatus: parkStatusFilter,
+      });
+      const response = await fetch(`/api/admin/parks/summary?${params}`);
+      if (!response.ok) throw new Error("Unable to load QR counts.");
+      setQrCounts((await response.json()) as AdminParkQrCounts);
+    } catch (error) {
+      console.error(error);
     }
+  }
 
-    return parks.filter(
-      (park) =>
-        park.name.toLowerCase().includes(normalizedSearch) ||
-        park.address?.toLowerCase().includes(normalizedSearch)
-    );
-  }, [parks, search]);
+  async function loadParkPage({
+    cursor = null,
+    append = false,
+  }: {
+    cursor?: number | null;
+    append?: boolean;
+  } = {}) {
+    const requestId = ++parkSearchRequestRef.current;
+    setIsParkSearchLoading(true);
+    setInitialLoadError(null);
+
+    const params = new URLSearchParams({
+      qrStatus: qrStatusFilter,
+      parkStatus: parkStatusFilter,
+    });
+    const normalizedSearch = search.trim();
+    if (normalizedSearch.length >= 2) params.set("q", normalizedSearch);
+    if (cursor) params.set("cursor", String(cursor));
+
+    try {
+      const response = await fetch(`/api/admin/parks?${params.toString()}`);
+      if (!response.ok) {
+        const apiError = await parseApiError(response);
+        if (apiError.unauthorized) {
+          toast.error(apiError.message);
+          redirectToLogin();
+          return;
+        }
+        throw new Error(apiError.message);
+      }
+      const payload = (await response.json()) as {
+        parks: AdminParkMapSummary[];
+        nextCursor: number | null;
+      };
+      if (requestId !== parkSearchRequestRef.current) return;
+
+      setParks((current) =>
+        append
+          ? [
+              ...current,
+              ...payload.parks.filter(
+                (park) => !current.some((item) => item.id === park.id)
+              ),
+            ]
+          : payload.parks
+      );
+      setNextParkCursor(payload.nextCursor);
+    } catch (error) {
+      if (requestId !== parkSearchRequestRef.current) return;
+      console.error(error);
+      setInitialLoadError("We couldn't load parks right now.");
+      toast.error("We couldn't load parks right now. Please try again.");
+    } finally {
+      if (requestId === parkSearchRequestRef.current) {
+        setIsParkSearchLoading(false);
+        setIsInitialLoading(false);
+        setIsRetryingInitialLoad(false);
+      }
+    }
+  }
 
   useEffect(() => {
     return () => {
@@ -306,89 +376,65 @@ export default function AdminDashboard() {
   }, []);
 
   useEffect(() => {
-    async function load() {
-      setInitialLoadError(null);
-      try {
-        const cached = await loadAdminParks();
-
-        if (cached) {
-          setParks(cached.data);
-
-          try {
-            const response = await fetch("/api/parks/sync");
-            if (!response.ok) {
-              const apiError = await parseApiError(response);
-
-              if (apiError.unauthorized) {
-                toast.error(apiError.message);
-                redirectToLogin();
-                return;
-              }
-
-              throw new Error(apiError.message);
-            }
-
-            const { lastUpdated } = (await response.json()) as {
-              lastUpdated: string;
-            };
-
-            if (lastUpdated === cached.lastUpdated) {
-              return;
-            }
-          } catch (error) {
-            console.error(error);
-            toast.error(
-              "Unable to refresh parks. Showing cached data instead."
-            );
-            return;
-          }
-        }
-
-        const parksResponse = await fetch("/api/parks");
-        if (!parksResponse.ok) {
-          const apiError = await parseApiError(parksResponse);
-
-          if (apiError.unauthorized) {
-            toast.error(apiError.message);
-            redirectToLogin();
-            return;
-          }
-
-          throw new Error(apiError.message);
-        }
-
-        const syncResponse = await fetch("/api/parks/sync");
-        if (!syncResponse.ok) {
-          const apiError = await parseApiError(syncResponse);
-
-          if (apiError.unauthorized) {
-            toast.error(apiError.message);
-            redirectToLogin();
-            return;
-          }
-
-          throw new Error(apiError.message);
-        }
-
-        const freshParks = (await parksResponse.json()) as ParkSummary[];
-        const { lastUpdated } = (await syncResponse.json()) as {
-          lastUpdated: string;
-        };
-
-        setParks(freshParks);
-        await saveAdminParks(freshParks, lastUpdated);
-      } catch (error) {
-        console.error(error);
-        setInitialLoadError("We couldn't load parks right now.");
-        toast.error("We couldn't load parks right now. Please try again.");
-      } finally {
-        setIsInitialLoading(false);
-        setIsRetryingInitialLoad(false);
+    const frame = window.requestAnimationFrame(() => {
+      const value = new URLSearchParams(window.location.search).get("qrStatus");
+      if (
+        value === "NOT_INSTALLED" ||
+        value === "INSTALLED" ||
+        value === "NEEDS_REPLACEMENT"
+      ) {
+        setQrStatusFilter(value);
       }
+      const parkStatus = new URLSearchParams(window.location.search).get(
+        "parkStatus"
+      );
+      if (
+        parkStatus === "ACTIVE" ||
+        parkStatus === "ARCHIVED" ||
+        parkStatus === "ALL"
+      ) {
+        setParkStatusFilter(parkStatus);
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
+    if (search.trim().length === 1) {
+      parkSearchRequestRef.current += 1;
+      return;
     }
 
-    void load();
-  }, []);
+    const timeout = window.setTimeout(() => {
+      void loadParkPage();
+    }, search.trim().length >= 2 ? 250 : 0);
+
+    return () => window.clearTimeout(timeout);
+    // loadParkPage intentionally reads the latest search/filter values.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parkStatusFilter, qrStatusFilter, search]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      void loadQrCounts();
+    });
+    return () => window.cancelAnimationFrame(frame);
+    // loadQrCounts intentionally reads the latest selected filters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parkStatusFilter, qrStatusFilter]);
+
+  useEffect(() => {
+    if (isEquipmentLoading || initialParkQueryHandledRef.current) return;
+    initialParkQueryHandledRef.current = true;
+
+    const rawParkId = new URLSearchParams(window.location.search).get("park");
+    const parkId = rawParkId ? Number.parseInt(rawParkId, 10) : null;
+    if (parkId && Number.isInteger(parkId) && parkId > 0) {
+      void startEditing({ id: parkId });
+    }
+    // startEditing is a function declaration and reads current equipment.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEquipmentLoading]);
 
   useEffect(() => {
     async function loadEquipment() {
@@ -464,6 +510,28 @@ export default function AdminDashboard() {
       adminPhotoPreviewRef.current = null;
     }
     setAdminPhotoPreview(null);
+    setIsMapPlacementDraft(false);
+    setPlacementResetToken((current) => current + 1);
+  }
+
+  function beginMapParkCreate({ lat, lon }: { lat: number; lon: number }) {
+    setEditingParkId(null);
+    setSelectedPark(null);
+    setParkPhotos([]);
+    setFormErrors({});
+    setFormValues({
+      ...EMPTY_FORM_VALUES,
+      lat: String(lat),
+      lon: String(lon),
+    });
+    setIsMapPlacementDraft(true);
+    window.requestAnimationFrame(() => {
+      document.getElementById("park-create-form")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      document.getElementById("park-name")?.focus();
+    });
   }
 
   function updateAdminPhoto(file: File | null) {
@@ -531,36 +599,25 @@ export default function AdminDashboard() {
     clearFieldError("equipmentIds");
   }
 
-  async function persistParks(nextParks: ParkSummary[]) {
-    const syncResponse = await fetch("/api/parks/sync");
-
-    if (!syncResponse.ok) {
-      const apiError = await parseApiError(syncResponse);
-
-      if (apiError.unauthorized) {
-        redirectToLogin();
+  function applyUpdatedPark(updatedPark: AdminParkDetail) {
+    setParks((current) => {
+      if (
+        qrStatusFilter !== "ALL" &&
+        updatedPark.qrStatus !== qrStatusFilter
+      ) {
+        return current.filter((park) => park.id !== updatedPark.id);
       }
-
-      throw new Error(apiError.message);
-    }
-
-    const { lastUpdated } = (await syncResponse.json()) as {
-      lastUpdated: string;
-    };
-
-    await saveAdminParks(nextParks, lastUpdated);
-  }
-
-  function applyUpdatedPark(updatedPark: ParkDetail) {
-    const nextParks = parks.map((park) =>
-      park.id === updatedPark.id ? toParkSummary(updatedPark) : park
-    );
-
-    setParks(nextParks);
-    setSelectedPark(updatedPark);
-    void persistParks(nextParks).catch((error) => {
-      console.error(error);
+      if (
+        (parkStatusFilter === "ACTIVE" && updatedPark.deletedAt) ||
+        (parkStatusFilter === "ARCHIVED" && !updatedPark.deletedAt)
+      ) {
+        return current.filter((park) => park.id !== updatedPark.id);
+      }
+      return current.map((park) =>
+        park.id === updatedPark.id ? toParkSummary(updatedPark) : park
+      );
     });
+    setSelectedPark(updatedPark);
   }
 
   async function loadParkPhotos(parkId: number) {
@@ -628,8 +685,11 @@ export default function AdminDashboard() {
       const payload = (await response.json()) as AdminParkPhotoUpdateResponse;
       setParkPhotos(payload.photos);
 
-      if (payload.park) {
-        applyUpdatedPark(payload.park);
+      if (payload.park && selectedPark) {
+        applyUpdatedPark({
+          ...selectedPark,
+          ...payload.park,
+        });
       }
 
       toast.success("Park photo updated.");
@@ -641,11 +701,33 @@ export default function AdminDashboard() {
   }
 
   async function submitCreate(payload: ParkMutationPayload) {
-    const duplicate = findDuplicatePark(parks, payload);
-
-    if (duplicate) {
-      setDuplicateCandidate(duplicate);
-      return;
+    try {
+      const params = new URLSearchParams({
+        lat: String(payload.lat),
+        lon: String(payload.lon),
+        radius: String(PARK_DUPLICATE_WARNING_RADIUS_METERS),
+      });
+      const response = await fetch(`/api/parks/nearby-check?${params}`);
+      if (response.ok) {
+        const result = (await response.json()) as {
+          nearbyParks: Array<{
+            id: number;
+            name: string;
+            distanceMeters: number;
+          }>;
+        };
+        const duplicate = result.nearbyParks[0];
+        if (duplicate) {
+          setDuplicateCandidate({
+            existingPark: duplicate,
+            distanceMeters: duplicate.distanceMeters,
+            payload,
+          });
+          return;
+        }
+      }
+    } catch (error) {
+      console.error("Unable to check nearby parks.", error);
     }
 
     await createPark(payload);
@@ -679,7 +761,16 @@ export default function AdminDashboard() {
         throw new Error(apiError.message || "Unable to create this park.");
       }
 
-      const createdPark = (await response.json()) as ParkDetail;
+      const createdPublicPark = (await response.json()) as ParkDetail;
+      const detailResponse = await fetch(
+        `/api/admin/parks/${createdPublicPark.id}`
+      );
+      if (!detailResponse.ok) {
+        throw new Error(
+          "Park was created, but its admin details could not load."
+        );
+      }
+      const createdPark = (await detailResponse.json()) as AdminParkDetail;
       const nextParks = [
         toParkSummary(createdPark),
         ...parks.filter((park) => park.id !== createdPark.id),
@@ -688,11 +779,10 @@ export default function AdminDashboard() {
 	      setParks(nextParks);
 	      setSelectedPark(createdPark);
 	      setParkPhotos([]);
-	      resetForm();
+      resetForm();
+      setMapRefreshVersion((current) => current + 1);
       void loadParkPhotos(createdPark.id);
-      void persistParks(nextParks).catch((error) => {
-        console.error(error);
-      });
+      void loadQrCounts();
       toast.success("Park created successfully.");
     } catch (error) {
       toast.error(getErrorMessage(error, "Unable to create this park."));
@@ -730,7 +820,14 @@ export default function AdminDashboard() {
         throw new Error(apiError.message || "Unable to update this park.");
       }
 
-      const updatedPark = (await response.json()) as ParkDetail;
+      await response.json();
+      const detailResponse = await fetch(`/api/admin/parks/${editingParkId}`);
+      if (!detailResponse.ok) {
+        throw new Error(
+          "Park was updated, but its admin details could not load."
+        );
+      }
+      const updatedPark = (await detailResponse.json()) as AdminParkDetail;
       const nextParks = parks.map((park) =>
         park.id === editingParkId ? toParkSummary(updatedPark) : park
       );
@@ -738,9 +835,6 @@ export default function AdminDashboard() {
       setParks(nextParks);
       setSelectedPark(updatedPark);
       resetForm();
-      void persistParks(nextParks).catch((error) => {
-        console.error(error);
-      });
       toast.success("Park updated successfully.");
     } catch (error) {
       toast.error(getErrorMessage(error, "Unable to update this park."));
@@ -787,9 +881,7 @@ export default function AdminDashboard() {
       }
 
       setDeleteCandidate(null);
-      void persistParks(nextParks).catch((error) => {
-        console.error(error);
-      });
+      void loadQrCounts();
       toast.success("Park deleted successfully.");
     } catch (error) {
       toast.error(getErrorMessage(error, "Unable to delete this park."));
@@ -816,10 +908,14 @@ export default function AdminDashboard() {
     void submitCreate(validationResult.data);
   }
 
-	  async function startEditing(park: ParkSummary) {
+	  async function startEditing(park: Pick<ParkSummary, "id">) {
 	    setParkPhotos([]);
 	    try {
-      const response = await fetch(`/api/parks/${park.id}`);
+      const response = await fetch(
+        `/api/admin/parks/${park.id}${
+          parkStatusFilter === "ACTIVE" ? "" : "?includeArchived=1"
+        }`
+      );
 
       if (!response.ok) {
         const apiError = await parseApiError(response);
@@ -833,7 +929,7 @@ export default function AdminDashboard() {
         throw new Error(apiError.message);
       }
 
-      const fullPark = (await response.json()) as ParkDetail;
+      const fullPark = (await response.json()) as AdminParkDetail;
 
 	      setSelectedPark(fullPark);
 	      void loadParkPhotos(fullPark.id);
@@ -933,8 +1029,6 @@ export default function AdminDashboard() {
     : editingParkId
     ? "Update Park"
     : "Create Park";
-  const isSearchActive = search.trim().length >= 2;
-
   return (
     <main className="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -990,6 +1084,114 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
       ) : null}
+
+      <section className="mb-6 space-y-4" aria-labelledby="qr-deployment-title">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 id="qr-deployment-title" className="text-xl font-semibold">
+              QR deployment
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Track sticker installation and replacement across parks.
+            </p>
+          </div>
+          <div className="grid gap-2">
+            <label htmlFor="admin-qr-filter" className="text-sm font-medium">
+              QR status
+            </label>
+            <Select
+              value={qrStatusFilter}
+              onValueChange={(value) => {
+                const nextStatus = value as ParkQrStatus | "ALL";
+                setQrStatusFilter(nextStatus);
+                const url = new URL(window.location.href);
+                if (nextStatus === "ALL") {
+                  url.searchParams.delete("qrStatus");
+                } else {
+                  url.searchParams.set("qrStatus", nextStatus);
+                }
+                window.history.replaceState(null, "", url);
+              }}
+            >
+              <SelectTrigger id="admin-qr-filter" className="w-full sm:w-56">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All parks</SelectItem>
+                <SelectItem value="INSTALLED">Has QR</SelectItem>
+                <SelectItem value="NOT_INSTALLED">No QR</SelectItem>
+                <SelectItem value="NEEDS_REPLACEMENT">
+                  Needs replacement
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2">
+            <label htmlFor="admin-park-status-filter" className="text-sm font-medium">
+              Park status
+            </label>
+            <Select
+              value={parkStatusFilter}
+              onValueChange={(value) => {
+                const nextStatus = value as ParkArchiveStatus;
+                setParkStatusFilter(nextStatus);
+                const url = new URL(window.location.href);
+                if (nextStatus === "ACTIVE") {
+                  url.searchParams.delete("parkStatus");
+                } else {
+                  url.searchParams.set("parkStatus", nextStatus);
+                }
+                window.history.replaceState(null, "", url);
+              }}
+            >
+              <SelectTrigger id="admin-park-status-filter" className="w-full sm:w-56">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ACTIVE">Active parks</SelectItem>
+                <SelectItem value="ARCHIVED">Archived parks</SelectItem>
+                <SelectItem value="ALL">All parks</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {[
+            ["Total parks", qrCounts?.total],
+            ["QR installed", qrCounts?.installed],
+            ["No QR", qrCounts?.notInstalled],
+            ["Needs replacement", qrCounts?.needsReplacement],
+          ].map(([label, value]) => (
+            <Card key={String(label)}>
+              <CardContent className="p-4">
+                <p className="text-xs leading-tight text-muted-foreground sm:text-sm">
+                  {label}
+                </p>
+                <p className="mt-2 text-2xl font-semibold tabular-nums">
+                  {typeof value === "number" ? value.toLocaleString() : "—"}
+                </p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        <Card>
+          <CardContent className="p-4 sm:p-6">
+            <AdminParksMap
+              refreshToken={mapRefreshVersion}
+              qrStatusFilter={qrStatusFilter}
+              parkStatusFilter={parkStatusFilter}
+              onParkUpdated={(updatedPark) => {
+                applyUpdatedPark(updatedPark);
+                void loadQrCounts();
+              }}
+              onParkPlacement={beginMapParkCreate}
+              placementResetToken={placementResetToken}
+            />
+          </CardContent>
+        </Card>
+      </section>
 
       <Card className="mb-6">
         <CardHeader>
@@ -1192,7 +1394,7 @@ export default function AdminDashboard() {
         </CardContent>
       </Card>
 
-      <Card className="mb-6">
+      <Card id="park-create-form" className="mb-6">
         <CardHeader>
           <h2 className="text-xl font-semibold">
             {editingParkId ? "Edit Park" : "Create Park"}
@@ -1248,79 +1450,39 @@ export default function AdminDashboard() {
             </CardHeader>
 
             <CardContent className="space-y-4">
-              <CoordinatePicker
-                lat={formValues.lat}
-                lon={formValues.lon}
-                onChange={(newLat, newLon) => {
-                  updateTextField("lat", String(newLat));
-                  updateTextField("lon", String(newLon));
-                }}
-              />
-
-              <div className="rounded-lg border p-3 text-sm">
-                <div>
-                  <strong>Latitude:</strong>{" "}
-                  {formValues.lat || "Click on the map"}
+              <p className="text-sm text-muted-foreground">
+                Use the park management map above to verify the location, then
+                enter the coordinates here. This keeps one canonical map for
+                searching, editing, and deployment work.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label htmlFor="park-latitude" className="text-sm font-medium">
+                    Latitude
+                  </label>
+                  <Input
+                    id="park-latitude"
+                    placeholder="Latitude"
+                    value={formValues.lat}
+                    onChange={(event) => updateTextField("lat", event.target.value)}
+                    aria-invalid={formErrors.lat ? true : undefined}
+                  />
+                  {formErrors.lat ? <p className="text-xs text-destructive">{formErrors.lat}</p> : null}
                 </div>
-
-                <div>
-                  <strong>Longitude:</strong>{" "}
-                  {formValues.lon || "Click on the map"}
+                <div className="space-y-2">
+                  <label htmlFor="park-longitude" className="text-sm font-medium">
+                    Longitude
+                  </label>
+                  <Input
+                    id="park-longitude"
+                    placeholder="Longitude"
+                    value={formValues.lon}
+                    onChange={(event) => updateTextField("lon", event.target.value)}
+                    aria-invalid={formErrors.lon ? true : undefined}
+                  />
+                  {formErrors.lon ? <p className="text-xs text-destructive">{formErrors.lon}</p> : null}
                 </div>
               </div>
-
-              {formErrors.lat ? (
-                <p className="text-xs text-destructive">{formErrors.lat}</p>
-              ) : null}
-              {formErrors.lon ? (
-                <p className="text-xs text-destructive">{formErrors.lon}</p>
-              ) : null}
-
-              <Collapsible>
-                <CollapsibleTrigger asChild>
-                  <Button variant="outline">Manual Coordinates</Button>
-                </CollapsibleTrigger>
-
-                <CollapsibleContent className="mt-4 space-y-2">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <label
-                        htmlFor="park-latitude"
-                        className="text-sm font-medium"
-                      >
-                        Latitude
-                      </label>
-                      <Input
-                        id="park-latitude"
-                        placeholder="Latitude"
-                        value={formValues.lat}
-                        onChange={(event) =>
-                          updateTextField("lat", event.target.value)
-                        }
-                        aria-invalid={formErrors.lat ? true : undefined}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <label
-                        htmlFor="park-longitude"
-                        className="text-sm font-medium"
-                      >
-                        Longitude
-                      </label>
-                      <Input
-                        id="park-longitude"
-                        placeholder="Longitude"
-                        value={formValues.lon}
-                        onChange={(event) =>
-                          updateTextField("lon", event.target.value)
-                        }
-                        aria-invalid={formErrors.lon ? true : undefined}
-                      />
-                    </div>
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
             </CardContent>
           </Card>
 
@@ -1457,6 +1619,15 @@ export default function AdminDashboard() {
                   ))}
 	                </div>
 	              </div>
+
+              <ParkQrStatusControl
+                park={selectedPark}
+                onUpdated={(updatedPark) => {
+                  applyUpdatedPark(updatedPark);
+                  setMapRefreshVersion((current) => current + 1);
+                  void loadQrCounts();
+                }}
+              />
 
 	              <div className="space-y-3">
 	                <div>
@@ -1602,7 +1773,7 @@ export default function AdminDashboard() {
           {submitButtonLabel}
         </Button>
 
-        {editingParkId ? (
+        {editingParkId || isMapPlacementDraft ? (
           <Button
             variant="secondary"
             onClick={resetForm}
@@ -1629,11 +1800,11 @@ export default function AdminDashboard() {
       </div>
 
       <p className="mb-4 text-sm text-gray-500">
-        {filteredParks.length.toLocaleString()} matches
-      </p>
-
-      <p className="mb-4 text-sm text-gray-500">
-        {parks.length.toLocaleString()} parks cached locally
+        {isParkSearchLoading
+          ? "Loading parks…"
+          : `${parks.length.toLocaleString()} loaded result${
+              parks.length === 1 ? "" : "s"
+            }`}
       </p>
 
       <div className="overflow-x-auto rounded-lg border">
@@ -1643,44 +1814,66 @@ export default function AdminDashboard() {
               <TableHead className="w-20">ID</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Address</TableHead>
+              <TableHead>QR status</TableHead>
             </TableRow>
           </TableHeader>
 
           <TableBody>
-            {!isSearchActive ? (
+            {search.trim().length === 1 ? (
               <TableRow>
                 <TableCell
-                  colSpan={3}
+                  colSpan={4}
                   className="h-24 text-center text-muted-foreground"
                 >
                   Enter at least 2 characters to search parks.
                 </TableCell>
               </TableRow>
-            ) : filteredParks.length === 0 ? (
+            ) : !isParkSearchLoading && parks.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={3}
+                  colSpan={4}
                   className="h-24 text-center text-muted-foreground"
                 >
                   No parks matched your search.
                 </TableCell>
               </TableRow>
             ) : (
-              filteredParks.slice(0, 100).map((park) => (
+              parks.map((park) => (
                 <TableRow
                   key={park.id}
                   onClick={() => void startEditing(park)}
-                  className="cursor-pointer hover:bg-muted/50"
+                  className={`cursor-pointer hover:bg-muted/50 ${
+                    park.deletedAt ? "bg-muted/40 text-muted-foreground" : ""
+                  }`}
                 >
                   <TableCell>{park.id}</TableCell>
-                  <TableCell>{park.name}</TableCell>
+                  <TableCell>
+                    <span className="mr-2">{park.name}</span>
+                    {park.deletedAt ? <Badge variant="outline">Archived</Badge> : null}
+                  </TableCell>
                   <TableCell>{park.address}</TableCell>
+                  <TableCell>
+                    <ParkQrStatusBadge status={park.qrStatus} compact />
+                  </TableCell>
                 </TableRow>
               ))
             )}
           </TableBody>
         </Table>
       </div>
+      {nextParkCursor ? (
+        <div className="mt-3 flex justify-center">
+          <Button
+            variant="outline"
+            disabled={isParkSearchLoading}
+            onClick={() =>
+              void loadParkPage({ cursor: nextParkCursor, append: true })
+            }
+          >
+            {isParkSearchLoading ? "Loading…" : "Load more"}
+          </Button>
+        </div>
+      ) : null}
 
       <AlertDialog
         open={Boolean(deleteCandidate)}

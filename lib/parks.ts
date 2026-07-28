@@ -1,9 +1,12 @@
 import { prisma } from "@/lib/prisma";
+import {
+  getParkVisibilityWhere,
+  getParkBoundsWhere,
+} from "@/lib/park-map-query";
 import type { ParkDetail, ParkSummary, ParkViewportBounds } from "@/types/park";
 
 export const publicParkWhere = {
-  deletedAt: null,
-  submissionStatus: "APPROVED" as const,
+  ...getParkVisibilityWhere("ACTIVE"),
 };
 export const latestParkPhotoQuery = {
   where: {
@@ -119,25 +122,10 @@ export async function getParksInBounds(
   bounds: ParkViewportBounds,
   limit?: number
 ): Promise<ParkSummary[]> {
-  const { minLat, maxLat, minLon, maxLon } = bounds;
-
   const parks = await prisma.park.findMany({
     where: {
       ...publicParkWhere,
-      lat: {
-        gte: minLat,
-        lte: maxLat,
-      },
-      ...(minLon <= maxLon
-        ? {
-            lon: {
-              gte: minLon,
-              lte: maxLon,
-            },
-          }
-        : {
-            OR: [{ lon: { gte: minLon } }, { lon: { lte: maxLon } }],
-          }),
+      ...getParkBoundsWhere(bounds),
     },
     select: parkSummarySelect,
     take: limit,

@@ -55,7 +55,7 @@ async function getAdminLoginRateLimitKey() {
   return `${ip}:${userAgent}`;
 }
 
-function signAdminSession(expiresAt: number) {
+function signAdminSession(expiresAt: number, encodedActor?: string) {
   const password = getAdminPassword();
 
   if (!password) {
@@ -63,36 +63,59 @@ function signAdminSession(expiresAt: number) {
   }
 
   return createHmac("sha256", password)
-    .update(`admin-session:${expiresAt}`)
+    .update(
+      encodedActor
+        ? `admin-session:${expiresAt}:${encodedActor}`
+        : `admin-session:${expiresAt}`
+    )
     .digest("base64url");
 }
 
 function verifyAdminSessionToken(token: string | undefined) {
   if (!token) {
-    return false;
+    return { valid: false, actorLabel: null };
   }
 
-  const [expiresAtRaw, signature] = token.split(".");
+  const parts = token.split(".");
+  if (parts.length !== 2 && parts.length !== 3) {
+    return { valid: false, actorLabel: null };
+  }
+  const [expiresAtRaw] = parts;
+  const encodedActor = parts.length === 3 ? parts[1] : undefined;
+  const signature = parts.length === 3 ? parts[2] : parts[1];
 
   if (!expiresAtRaw || !signature) {
-    return false;
+    return { valid: false, actorLabel: null };
   }
 
   const expiresAt = Number(expiresAtRaw);
 
   if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
-    return false;
+    return { valid: false, actorLabel: null };
   }
 
-  const expectedSignature = signAdminSession(expiresAt);
+  const expectedSignature = signAdminSession(expiresAt, encodedActor);
   const providedSignatureBuffer = Buffer.from(signature);
   const expectedSignatureBuffer = Buffer.from(expectedSignature);
 
   if (providedSignatureBuffer.length !== expectedSignatureBuffer.length) {
-    return false;
+    return { valid: false, actorLabel: null };
   }
 
-  return timingSafeEqual(providedSignatureBuffer, expectedSignatureBuffer);
+  if (!timingSafeEqual(providedSignatureBuffer, expectedSignatureBuffer)) {
+    return { valid: false, actorLabel: null };
+  }
+
+  let actorLabel: string | null = null;
+  if (encodedActor) {
+    try {
+      actorLabel = Buffer.from(encodedActor, "base64url").toString("utf8");
+    } catch {
+      actorLabel = null;
+    }
+  }
+
+  return { valid: true, actorLabel };
 }
 
 function getAdminCookieOptions() {
@@ -173,14 +196,15 @@ export async function clearFailedAdminLoginAttempts() {
   adminLoginAttempts.delete(key);
 }
 
-export async function createAdminSession() {
+export async function createAdminSession(actorLabel: string) {
   const cookieStore = await cookies();
   const expiresAt = Date.now() + ADMIN_SESSION_MAX_AGE_SECONDS * 1000;
-  const signature = signAdminSession(expiresAt);
+  const encodedActor = Buffer.from(actorLabel.trim()).toString("base64url");
+  const signature = signAdminSession(expiresAt, encodedActor);
 
   cookieStore.set(
     ADMIN_AUTH_COOKIE_NAME,
-    `${expiresAt}.${signature}`,
+    `${expiresAt}.${encodedActor}.${signature}`,
     getAdminCookieOptions()
   );
 }
@@ -194,7 +218,16 @@ export async function isAdminAuthenticated() {
 
   return verifyAdminSessionToken(
     cookieStore.get(ADMIN_AUTH_COOKIE_NAME)?.value
+  ).valid;
+}
+
+export async function getAdminActorLabel() {
+  const cookieStore = await cookies();
+  const session = verifyAdminSessionToken(
+    cookieStore.get(ADMIN_AUTH_COOKIE_NAME)?.value
   );
+  const configuredLabel = process.env.ADMIN_DISPLAY_NAME?.trim();
+  return session.actorLabel?.trim() || configuredLabel || "Administrator";
 }
 
 export async function clearAdminSession() {

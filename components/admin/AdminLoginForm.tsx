@@ -31,6 +31,21 @@ export function AdminLoginForm() {
   return (
     <form action={formAction} className="space-y-4">
       <div className="space-y-2">
+        <label htmlFor="admin-name" className="text-sm font-medium">
+          Your name
+        </label>
+        <Input
+          id="admin-name"
+          name="adminName"
+          type="text"
+          placeholder="Name used in admin history"
+          autoComplete="name"
+          minLength={2}
+          maxLength={80}
+          required
+        />
+      </div>
+      <div className="space-y-2">
         <label htmlFor="admin-password" className="text-sm font-medium">
           Password
         </label>

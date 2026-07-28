@@ -13,6 +13,12 @@ enum ParkSubmissionStatus {
   REJECTED
 }
 
+enum ParkQrStatus {
+  NOT_INSTALLED
+  INSTALLED
+  NEEDS_REPLACEMENT
+}
+
 enum WorkoutVisibility {
   PRIVATE
   PUBLIC
@@ -225,6 +231,11 @@ model Park {
   closestNearbyParkDistanceMeters Float?
   reviewedAt                      DateTime?
   rejectionReason                 String?
+  qrStatus                        ParkQrStatus         @default(NOT_INSTALLED)
+  qrInstalledAt                   DateTime?
+  qrInstalledByLabel              String?
+  qrStatusUpdatedAt               DateTime?
+  qrCodeNote                      String?
 
   deletedAt DateTime?
 
@@ -234,6 +245,7 @@ model Park {
   @@index([lat, lon], map: "park_lat_lon_idx")
   @@index([submissionStatus])
   @@index([submittedById])
+  @@index([qrStatus])
 }
 
 model Equipment {

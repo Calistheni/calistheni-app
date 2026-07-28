@@ -224,18 +224,12 @@ export function MuscleActivityRadar({ data }: MuscleActivityRadarProps) {
     y: number;
   } | null>(null);
 
+  const safeActiveIndex =
+    activeIndex !== null && activeIndex < chartData.length
+      ? activeIndex
+      : null;
   const activePoint =
-    activeIndex === null ? null : chartData[activeIndex] ?? null;
-
-  useEffect(() => {
-    setActiveIndex((current) => {
-      if (current === null || current < chartData.length) {
-        return current;
-      }
-
-      return null;
-    });
-  }, [chartData.length]);
+    safeActiveIndex === null ? null : chartData[safeActiveIndex] ?? null;
 
   const syncChartRect = useCallback(() => {
     if (chartRootRef.current) {
@@ -410,7 +404,7 @@ export function MuscleActivityRadar({ data }: MuscleActivityRadarProps) {
         return <g />;
       }
 
-      const isActive = index === activeIndex;
+      const isActive = index === safeActiveIndex;
       const numericX = Number(x);
       const numericY = Number(y);
 
@@ -458,7 +452,7 @@ export function MuscleActivityRadar({ data }: MuscleActivityRadarProps) {
         </g>
       );
     },
-    [activeIndex, chartData, focusMuscle, handleTickKeyDown]
+    [chartData, focusMuscle, handleTickKeyDown, safeActiveIndex]
   );
 
   return (
@@ -516,7 +510,7 @@ export function MuscleActivityRadar({ data }: MuscleActivityRadarProps) {
               />
 
               <ActiveRadarSector
-                activeIndex={activeIndex}
+                activeIndex={safeActiveIndex}
                 count={chartData.length}
               />
             </RadarChart>
@@ -526,9 +520,9 @@ export function MuscleActivityRadar({ data }: MuscleActivityRadarProps) {
             <MuscleWorkloadTooltip
               point={activePoint}
               placement={
-                activeIndex !== null &&
-                activeIndex >= 1 &&
-                activeIndex <= Math.floor(chartData.length / 2)
+                safeActiveIndex !== null &&
+                safeActiveIndex >= 1 &&
+                safeActiveIndex <= Math.floor(chartData.length / 2)
                   ? "left"
                   : "right"
               }

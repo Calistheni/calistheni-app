@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 
-export function createJsonErrorResponse(error: string, status: number) {
-  return NextResponse.json({ error }, { status });
+export function createJsonErrorResponse(
+  error: string,
+  status: number,
+  code?: string
+) {
+  return NextResponse.json(code ? { error, code } : { error }, { status });
 }
 
 export function createJsonValidationErrorResponse(

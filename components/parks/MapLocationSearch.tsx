@@ -166,7 +166,7 @@ export function MapLocationSearch({
       </Button>
 
       <div
-        className={`fixed top-[calc(env(safe-area-inset-top)+4rem)] right-4 left-4 z-50 origin-top transition-[opacity,transform] duration-200 ease-out sm:absolute sm:top-0 sm:right-auto sm:left-0 sm:w-80 ${
+        className={`fixed top-[calc(env(safe-area-inset-top)+7.25rem)] right-4 left-4 z-50 origin-top transition-[opacity,transform] duration-200 ease-out sm:absolute sm:top-0 sm:right-auto sm:left-0 sm:w-80 ${
           isExpanded
             ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
             : "pointer-events-none -translate-y-1 scale-[0.98] opacity-0"

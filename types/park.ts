@@ -17,6 +17,31 @@ export type ParksMapResponse = {
   truncated: boolean;
 };
 
+export type ParkQrStatus =
+  | "NOT_INSTALLED"
+  | "INSTALLED"
+  | "NEEDS_REPLACEMENT";
+
+export type ParkArchiveStatus = "ACTIVE" | "ARCHIVED" | "ALL";
+
+export type ParkQrDeployment = {
+  qrStatus: ParkQrStatus;
+  qrInstalledAt: string | null;
+  qrInstalledByLabel: string | null;
+  qrStatusUpdatedAt: string | null;
+  qrCodeNote: string | null;
+};
+
+export type AdminParkMapSummary = ParkSummary &
+  Pick<ParkQrDeployment, "qrStatus"> & {
+    equipmentCount: number;
+    submissionStatus: ParkSubmissionStatus;
+  };
+
+export type AdminParksMapResponse = Omit<ParksMapResponse, "parks"> & {
+  parks: AdminParkMapSummary[];
+};
+
 export type ParkClusterPlaceholder = {
   lat: number;
   lon: number;
@@ -28,6 +53,18 @@ export type ParkDetail = ParkSummary & {
 };
 
 export type ParkSubmissionStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export type AdminParkDetail = ParkDetail &
+  ParkQrDeployment & {
+    submissionStatus: ParkSubmissionStatus;
+  };
+
+export type AdminParkQrCounts = {
+  total: number;
+  installed: number;
+  notInstalled: number;
+  needsReplacement: number;
+};
 
 export type UserPark = ParkDetail & {
   submissionStatus: ParkSubmissionStatus;

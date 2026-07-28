@@ -32,6 +32,7 @@ export async function loginAction(
   }
 
   const password = formData.get("password");
+  const adminName = formData.get("adminName");
 
   if (typeof password !== "string" || !validateAdminPassword(password)) {
     await recordFailedAdminLoginAttempt();
@@ -39,9 +40,18 @@ export async function loginAction(
       error: "Invalid password. Please try again.",
     };
   }
+  if (
+    typeof adminName !== "string" ||
+    adminName.trim().length < 2 ||
+    adminName.trim().length > 80
+  ) {
+    return {
+      error: "Enter your name so deployment changes can be attributed.",
+    };
+  }
 
   await clearFailedAdminLoginAttempts();
-  await createAdminSession();
+  await createAdminSession(adminName.trim());
 
   redirect("/admin");
 }

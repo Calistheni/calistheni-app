@@ -11,12 +11,24 @@ import {
 import dynamic from "next/dynamic";
 import mapboxgl from "mapbox-gl";
 import { createRoot, type Root } from "react-dom/client";
-import { LoaderCircle, LocateFixed, MapPin, Search } from "lucide-react";
+import {
+  LoaderCircle,
+  LocateFixed,
+  MapPin,
+  Plus,
+  Search,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AdminMapParkPopup } from "@/components/admin/AdminMapParkPopup";
 import { useMapUserFocus } from "@/components/parks/useMapUserFocus";
 import type {
+  AdminParkDetail,
+  AdminParkMapSummary,
+  AdminParksMapResponse,
   ParkClusterPlaceholder,
   ParkDetail,
+  ParkQrStatus,
   ParksMapResponse,
   ParkSummary,
 } from "@/types/park";
@@ -89,15 +101,25 @@ function getParkMarkerColor(lightPreset: MapLightPreset) {
 }
 
 type ParksMapProps = {
-  parks: ParkSummary[];
-  selectedPark: ParkSummary | null;
+  parks: MapParkSummary[];
+  selectedPark: MapParkSummary | null;
   lightPreset: MapLightPreset;
   theme: MapTheme;
+  mode?: "public" | "admin";
+  qrStatusFilter?: ParkQrStatus | "ALL";
+  parkStatusFilter?: "ACTIVE" | "ARCHIVED" | "ALL";
+  adminRefreshToken?: string | number;
+  onAdminParkUpdated?: (park: AdminParkDetail) => void;
+  onAdminParkPlacement?: (coordinates: { lat: number; lon: number }) => void;
+  placementResetToken?: string | number;
   searchControlVariant?: "authenticated" | "guest";
-  onViewportParksChange: (parks: ParkSummary[]) => void;
+  onViewportParksChange: (parks: MapParkSummary[]) => void;
   onViewportLoadingChange?: (isLoading: boolean) => void;
   onLocationStatusChange?: (status: ParksLocationStatus) => void;
 };
+
+export type MapParkSummary = ParkSummary | AdminParkMapSummary;
+type MapParkDetail = ParkDetail | AdminParkDetail;
 
 export type ParksLocationStatus =
   | "idle"
@@ -111,7 +133,9 @@ export type ParksMapHandle = {
 };
 
 type PopupRenderOptions = {
-  park?: Pick<ParkSummary, "id" | "name" | "address" | "photoUrl"> | ParkDetail;
+  park?: MapParkSummary | MapParkDetail;
+  admin?: boolean;
+  adminQrStatusFilter?: ParkQrStatus | "ALL";
   loading?: boolean;
   error?: string;
   expanded?: boolean;
@@ -410,6 +434,7 @@ function buildGeoJson(parks: ParkSummary[]): GeoJSON.FeatureCollection {
       type: "Feature",
       properties: {
         id: park.id,
+        archived: Boolean(park.deletedAt),
       },
       geometry: {
         type: "Point",
@@ -421,6 +446,8 @@ function buildGeoJson(parks: ParkSummary[]): GeoJSON.FeatureCollection {
 
 function renderPopupMarkup({
   park,
+  admin = false,
+  adminQrStatusFilter = "ALL",
   loading = false,
   error,
   expanded = false,
@@ -502,6 +529,40 @@ function renderPopupMarkup({
         ${escapeHtml(park?.address ?? "Address unavailable")}
       </p>
 
+      ${
+        admin && park && "qrStatus" in park
+          ? `
+            <div style="margin-top:10px;">
+              <span style="
+                display:inline-flex;
+                align-items:center;
+                border:1px solid #d1d5db;
+                border-radius:999px;
+                padding:3px 8px;
+                font-size:11px;
+                font-weight:600;
+              ">
+                ${
+                  park.qrStatus === "INSTALLED"
+                    ? "QR installed"
+                    : park.qrStatus === "NEEDS_REPLACEMENT"
+                      ? "Replace QR"
+                      : "No QR"
+                }
+              </span>
+              ${
+                "equipmentCount" in park
+                  ? `<span style="margin-left:8px;color:#6b7280;font-size:11px;">${park.equipmentCount} equipment</span>`
+                  : ""
+              }
+            </div>
+          `
+          : ""
+      }
+
+      ${
+        !admin
+          ? `
       <button
         data-popup-action="directions"
         style="
@@ -517,12 +578,19 @@ function renderPopupMarkup({
       >
         Directions
       </button>
+          `
+          : ""
+      }
 
       ${
         park
           ? `
             <a
-              href="/parks/${park.id}/edit"
+              href="${
+                admin
+                  ? `/admin?park=${park.id}&qrStatus=${adminQrStatusFilter}`
+                  : `/parks/${park.id}/edit`
+              }"
               style="
                 display:inline-block;
                 background:#f3f4f6;
@@ -537,7 +605,7 @@ function renderPopupMarkup({
                 text-decoration:none;
               "
             >
-              Suggest Edit
+              ${admin ? "Edit park" : "Suggest Edit"}
             </a>
           `
           : ""
@@ -602,6 +670,13 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     selectedPark,
     lightPreset,
     theme,
+    mode = "public",
+    qrStatusFilter = "ALL",
+    parkStatusFilter = "ACTIVE",
+    adminRefreshToken = 0,
+    onAdminParkUpdated,
+    onAdminParkPlacement,
+    placementResetToken = 0,
     searchControlVariant = "authenticated",
     onViewportParksChange,
     onViewportLoadingChange,
@@ -612,10 +687,12 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
+  const popupRootRef = useRef<Root | null>(null);
   const popupParkIdRef = useRef<number | null>(null);
   const geolocateRef = useRef<mapboxgl.GeolocateControl | null>(null);
   const searchMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const searchMarkerRootRef = useRef<Root | null>(null);
+  const placementMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const boundaryRequestRef = useRef<AbortController | null>(null);
   const boundariesAccessUnavailableRef = useRef(false);
   const searchSelectionRef = useRef(0);
@@ -625,20 +702,22 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   const focusOnNextGeolocateRef = useRef(false);
   const recenterInProgressRef = useRef(false);
   const trackingActiveRef = useRef(false);
-  const viewportCacheRef = useRef(new Map<string, ParkSummary[]>());
+  const viewportCacheRef = useRef(new Map<string, MapParkSummary[]>());
   const areaCacheTimestampRef = useRef(new Map<string, number>());
   const areaTruncatedRef = useRef(new Map<string, boolean>());
   const areaParkIdsRef = useRef(new Map<string, Set<number>>());
   const parkAreaMembershipRef = useRef(new Map<number, Set<string>>());
-  const loadedParksRef = useRef(new Map<number, ParkSummary>());
+  const loadedParksRef = useRef(new Map<number, MapParkSummary>());
   const placeholderClustersRef = useRef<ParkClusterPlaceholder[]>([]);
   const searchedViewportsRef = useRef<ViewportArea[]>([]);
   const lastSearchedViewportRef = useRef<ViewportArea | null>(null);
   const areaSearchPendingRef = useRef(false);
   const loadAfterLocationMoveRef = useRef(false);
   const areaLoadFallbackRef = useRef<number | null>(null);
-  const detailCacheRef = useRef(new Map<number, ParkDetail>());
-  const detailRequestCacheRef = useRef(new Map<number, Promise<ParkDetail>>());
+  const detailCacheRef = useRef(new Map<number, MapParkDetail>());
+  const detailRequestCacheRef = useRef(
+    new Map<number, Promise<MapParkDetail>>()
+  );
   const lastViewportKeyRef = useRef<string | null>(null);
   const viewportRequestRef = useRef<{
     key: string;
@@ -646,7 +725,10 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     promise: Promise<void>;
   } | null>(null);
   const mapLoadedRef = useRef(false);
+  const placementModeRef = useRef(false);
   const onViewportParksChangeRef = useRef(onViewportParksChange);
+  const onAdminParkUpdatedRef = useRef(onAdminParkUpdated);
+  const onAdminParkPlacementRef = useRef(onAdminParkPlacement);
   const onLocationStatusChangeRef = useRef(onLocationStatusChange);
   const [hasHydrated, setHasHydrated] = useState(false);
   const [hasUserLocation, setHasUserLocation] = useState(false);
@@ -656,6 +738,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     lat: number;
   } | null>(null);
   const [searchClearRequest, setSearchClearRequest] = useState(0);
+  const [isPlacementMode, setIsPlacementMode] = useState(false);
   const [isMapInitializing, setIsMapInitializing] = useState(true);
   const [isViewportLoading, setIsViewportLoading] = useState(false);
   const [viewportError, setViewportError] = useState<string | null>(null);
@@ -697,8 +780,41 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
 
   const markerColor = getParkMarkerColor(lightPreset);
 
+  useEffect(() => {
+    placementModeRef.current = isPlacementMode;
+  }, [isPlacementMode]);
+
   function clearSearchPointMarker() {
     searchMarkerRef.current?.remove();
+  }
+
+  function clearPlacementMarker() {
+    placementMarkerRef.current?.remove();
+    placementMarkerRef.current = null;
+  }
+
+  function setPlacementCoordinates(coordinates: [number, number]) {
+    const [lon, lat] = coordinates;
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (!placementMarkerRef.current) {
+      const marker = new mapboxgl.Marker({
+        color: LIGHT_MAP_MARKER_COLOR,
+        draggable: true,
+      });
+      marker.on("dragend", () => {
+        const position = marker.getLngLat();
+        onAdminParkPlacementRef.current?.({
+          lat: position.lat,
+          lon: position.lng,
+        });
+      });
+      placementMarkerRef.current = marker;
+    }
+
+    placementMarkerRef.current.setLngLat(coordinates).addTo(map);
+    onAdminParkPlacementRef.current?.({ lat, lon });
   }
 
   function clearMapboxBoundaryLayers() {
@@ -1151,20 +1267,23 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     onViewportLoadingChange?.(nextValue);
   }
 
-  function updateViewportParks(nextParks: ParkSummary[]) {
+  function updateViewportParks(nextParks: MapParkSummary[]) {
     onViewportParksChangeRef.current(nextParks);
   }
 
   function hasCurrentSummaryPhoto(
-    parkDetail: ParkDetail,
-    parkPreview?: ParkSummary
+    parkDetail: MapParkDetail,
+    parkPreview?: MapParkSummary
   ) {
     return (
       !parkPreview?.photoUrl || parkDetail.photoUrl === parkPreview.photoUrl
     );
   }
 
-  async function fetchParkDetail(parkId: number, parkPreview?: ParkSummary) {
+  async function fetchParkDetail(
+    parkId: number,
+    parkPreview?: MapParkSummary
+  ) {
     const memoryCache = detailCacheRef.current.get(parkId);
 
     if (
@@ -1175,7 +1294,8 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       return memoryCache;
     }
 
-    const indexedDbPark = await loadParkDetail(parkId);
+    const indexedDbPark =
+      mode === "public" ? await loadParkDetail(parkId) : null;
 
     if (
       indexedDbPark &&
@@ -1193,7 +1313,13 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       return inFlightRequest;
     }
 
-    const request = fetch(`/api/parks/${parkId}`)
+    const request = fetch(
+      mode === "admin"
+        ? `/api/admin/parks/${parkId}${
+            parkStatusFilter === "ACTIVE" ? "" : "?includeArchived=1"
+          }`
+        : `/api/parks/${parkId}`
+    )
       .then(async (response) => {
         if (!response.ok) {
           throw new Error(
@@ -1204,7 +1330,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
           );
         }
 
-        const park = (await response.json()) as ParkDetail;
+        const park = (await response.json()) as MapParkDetail;
 
         return park;
       })
@@ -1212,7 +1338,9 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         detailCacheRef.current.set(park.id, park);
 
         try {
-          await saveParkDetail(park);
+          if (mode === "public") {
+            await saveParkDetail(park);
+          }
         } catch (error) {
           console.error(error);
         }
@@ -1316,10 +1444,64 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     popup: mapboxgl.Popup,
     map: mapboxgl.Map,
     parkId: number,
-    parkPreview: ParkSummary | undefined,
+    parkPreview: MapParkSummary | undefined,
     options: PopupRenderOptions
   ) {
-    popup.setHTML(renderPopupMarkup(options));
+    if (
+      mode === "admin" &&
+      options.park &&
+      "qrStatus" in options.park &&
+      "equipment" in options.park
+    ) {
+      popupRootRef.current?.unmount();
+      const popupNode = document.createElement("div");
+      popupRootRef.current = createRoot(popupNode);
+      popup.setDOMContent(popupNode);
+      popupRootRef.current.render(
+        <AdminMapParkPopup
+          park={options.park as AdminParkDetail}
+          onUpdated={(updatedPark) => {
+            detailCacheRef.current.set(updatedPark.id, updatedPark);
+            const updatedSummary = {
+              ...updatedPark,
+              equipmentCount: updatedPark.equipment.length,
+            } as AdminParkMapSummary;
+            loadedParksRef.current.set(updatedPark.id, updatedSummary);
+            parksRef.current = parksRef.current.map((park) =>
+              park.id === updatedPark.id ? updatedSummary : park
+            );
+            const source = mapRef.current?.getSource("parks") as
+              | mapboxgl.GeoJSONSource
+              | undefined;
+            source?.setData(buildGeoJson(parksRef.current));
+            updateViewportParks(parksRef.current);
+            onAdminParkUpdatedRef.current?.(updatedPark);
+            setPopupMarkup(popup, map, parkId, updatedSummary, {
+              park: updatedPark,
+            });
+            // A changed status can move the park outside the active QR filter.
+            // Re-query the same viewport rather than leaving a stale marker.
+            if (
+              qrStatusFilter !== "ALL" &&
+              updatedPark.qrStatus !== qrStatusFilter
+            ) {
+              void requestViewportParksRef.current({ force: true });
+            }
+          }}
+        />
+      );
+      return;
+    }
+
+    popupRootRef.current?.unmount();
+    popupRootRef.current = null;
+    popup.setHTML(
+      renderPopupMarkup({
+        ...options,
+        admin: mode === "admin",
+        adminQrStatusFilter: qrStatusFilter,
+      })
+    );
 
     window.requestAnimationFrame(() => {
       if (popupRef.current !== popup) {
@@ -1373,7 +1555,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     popup: mapboxgl.Popup,
     map: mapboxgl.Map,
     parkId: number,
-    parkPreview?: ParkSummary
+    parkPreview?: MapParkSummary
   ) {
     try {
       const park = await fetchParkDetail(parkId, parkPreview);
@@ -1401,8 +1583,10 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     map: mapboxgl.Map,
     parkId: number,
     coordinates: [number, number],
-    parkPreview?: ParkSummary
+    parkPreview?: MapParkSummary
   ) {
+    popupRootRef.current?.unmount();
+    popupRootRef.current = null;
     popupRef.current?.remove();
 
     const popup = new mapboxgl.Popup({
@@ -1413,6 +1597,8 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       .addTo(map);
 
     popup.on("close", () => {
+      popupRootRef.current?.unmount();
+      popupRootRef.current = null;
       if (popupRef.current === popup) {
         popupRef.current = null;
         popupParkIdRef.current = null;
@@ -1456,7 +1642,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
 
   function applyAreaParks(
     areaKey: string,
-    areaParks: ParkSummary[],
+    areaParks: MapParkSummary[],
     viewport: ViewportArea
   ) {
     const nextIds = new Set(areaParks.map((park) => park.id));
@@ -1503,9 +1689,12 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     }
 
     const viewport = getViewportArea(map);
-    const key = viewport.areaKey;
+    const key =
+      mode === "admin"
+        ? `${viewport.areaKey}:qr-${qrStatusFilter}:park-${parkStatusFilter}`
+        : viewport.areaKey;
 
-    if (viewport.zoom < PLACEHOLDER_MAX_ZOOM) {
+    if (mode === "public" && viewport.zoom < PLACEHOLDER_MAX_ZOOM) {
       lastSearchedViewportRef.current = null;
       setShowSearchThisArea(false);
       setIsAreaTruncated(false);
@@ -1533,7 +1722,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       return;
     }
 
-    if (!force) {
+    if (!force && mode === "public") {
       try {
         const cachedArea = await loadParkArea(key);
         if (cachedArea) {
@@ -1571,7 +1760,13 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     const controller = new AbortController();
     setViewportLoading(true);
     setViewportError(null);
-    const promise = fetch(`/api/parks/map?${viewport.params.toString()}`, {
+    if (mode === "admin") {
+      viewport.params.set("qrStatus", qrStatusFilter);
+      viewport.params.set("parkStatus", parkStatusFilter);
+    }
+    const mapEndpoint =
+      mode === "admin" ? "/api/admin/parks/map" : "/api/parks/map";
+    const promise = fetch(`${mapEndpoint}?${viewport.params.toString()}`, {
       signal: controller.signal,
     })
       .then(async (response) => {
@@ -1581,19 +1776,23 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
           );
         }
 
-        return (await response.json()) as ParksMapResponse;
+        return (await response.json()) as
+          | ParksMapResponse
+          | AdminParksMapResponse;
       })
       .then(async (result) => {
-        const nextParks = result.parks;
-        try {
-          await saveParkArea(
-            result.areaKey,
-            nextParks,
-            result.version,
-            result.truncated
-          );
-        } catch (error) {
-          console.error("Unable to cache the park area.", error);
+        const nextParks = result.parks as MapParkSummary[];
+        if (mode === "public") {
+          try {
+            await saveParkArea(
+              result.areaKey,
+              nextParks,
+              result.version,
+              result.truncated
+            );
+          } catch (error) {
+            console.error("Unable to cache the park area.", error);
+          }
         }
 
         viewportCacheRef.current.set(result.areaKey, nextParks);
@@ -1650,13 +1849,76 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
 
   const requestViewportParksRef = useRef(requestViewportParks);
   const fetchParkDetailRef = useRef(fetchParkDetail);
+  const previousAdminQrFilterRef = useRef(qrStatusFilter);
+  const previousAdminParkStatusFilterRef = useRef(parkStatusFilter);
+  const previousAdminRefreshTokenRef = useRef(adminRefreshToken);
   useEffect(() => {
     onViewportParksChangeRef.current = onViewportParksChange;
     onLocationStatusChangeRef.current = onLocationStatusChange;
     openParkPopupRef.current = openParkPopup;
     requestViewportParksRef.current = requestViewportParks;
     fetchParkDetailRef.current = fetchParkDetail;
+    onAdminParkUpdatedRef.current = onAdminParkUpdated;
+    onAdminParkPlacementRef.current = onAdminParkPlacement;
   });
+
+  useEffect(() => {
+    clearPlacementMarker();
+    const frame = window.requestAnimationFrame(() => {
+      setIsPlacementMode(false);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [placementResetToken]);
+
+  useEffect(() => {
+    if (!isPlacementMode) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      clearPlacementMarker();
+      setIsPlacementMode(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isPlacementMode]);
+
+  useEffect(() => {
+    if (mode !== "admin") {
+      return;
+    }
+
+    const filterChanged =
+      previousAdminQrFilterRef.current !== qrStatusFilter ||
+      previousAdminParkStatusFilterRef.current !== parkStatusFilter;
+    const refreshRequested =
+      previousAdminRefreshTokenRef.current !== adminRefreshToken;
+    if (!filterChanged && !refreshRequested) return;
+
+    previousAdminQrFilterRef.current = qrStatusFilter;
+    previousAdminParkStatusFilterRef.current = parkStatusFilter;
+    previousAdminRefreshTokenRef.current = adminRefreshToken;
+    viewportRequestRef.current?.controller.abort();
+    viewportRequestRef.current = null;
+    viewportCacheRef.current.clear();
+    areaCacheTimestampRef.current.clear();
+    areaTruncatedRef.current.clear();
+    areaParkIdsRef.current.clear();
+    parkAreaMembershipRef.current.clear();
+    loadedParksRef.current.clear();
+    searchedViewportsRef.current = [];
+    lastSearchedViewportRef.current = null;
+    lastViewportKeyRef.current = null;
+    detailCacheRef.current.clear();
+    detailRequestCacheRef.current.clear();
+    parksRef.current = [];
+    onViewportParksChangeRef.current([]);
+
+    const source = mapRef.current?.getSource("parks") as
+      | mapboxgl.GeoJSONSource
+      | undefined;
+    source?.setData(buildGeoJson([]));
+    void requestViewportParksRef.current({ force: true });
+  }, [adminRefreshToken, mode, parkStatusFilter, qrStatusFilter]);
 
   useEffect(() => {
     parksRef.current = parks;
@@ -1673,6 +1935,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   }, [parks]);
 
   useEffect(() => {
+    if (mode !== "public") return;
     const savedRoute = localStorage.getItem("active-route");
 
     if (!savedRoute) return;
@@ -1687,7 +1950,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         });
       }, 0);
     } catch {}
-  }, []);
+  }, [mode]);
 
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) {
@@ -1734,7 +1997,11 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         },
       },
       center: initialCenterRef.current,
-      zoom: storedUserLocationRef.current ? userLocationZoom : 2,
+      zoom: storedUserLocationRef.current
+        ? userLocationZoom
+        : mode === "admin"
+          ? 10
+          : 2,
       pitch: 0,
       bearing: storedUserLocationRef.current ? 0 : -20,
       attributionControl: false,
@@ -1780,7 +2047,8 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         const currentViewport = getViewportArea(map);
         const lastSearchedViewport = lastSearchedViewportRef.current;
         setShowSearchThisArea(
-          currentViewport.zoom >= PLACEHOLDER_MAX_ZOOM &&
+          (mode === "admin" ||
+            currentViewport.zoom >= PLACEHOLDER_MAX_ZOOM) &&
             (!lastSearchedViewport ||
               hasMeaningfulViewportChange(
                 currentViewport,
@@ -1919,7 +2187,8 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         },
       });
 
-      const savedRoute = localStorage.getItem("active-route");
+      const savedRoute =
+        mode === "public" ? localStorage.getItem("active-route") : null;
 
       if (savedRoute) {
         try {
@@ -1963,25 +2232,53 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         minzoom: 12,
         filter: ["!", ["has", "point_count"]],
         paint: {
-          "circle-color": initialMarkerColor,
+          "circle-color": [
+            "case",
+            ["==", ["get", "archived"], true],
+            "#6b7280",
+            initialMarkerColor,
+          ],
           "circle-radius": 10,
           "circle-stroke-width": 2,
-          "circle-stroke-color": "#ffffff",
+          "circle-stroke-color": [
+            "case",
+            ["==", ["get", "archived"], true],
+            "#d1d5db",
+            "#ffffff",
+          ],
+          "circle-opacity": [
+            "case",
+            ["==", ["get", "archived"], true],
+            0.65,
+            1,
+          ],
           "circle-emissive-strength": 1,
         },
       });
-      void fetch("/api/parks/map/clusters")
-        .then(async (response) => {
-          if (!response.ok) throw new Error("Unable to load park overview.");
-          return (await response.json()) as ParkClusterPlaceholder[];
-        })
-        .then((clusters) => {
-          placeholderClustersRef.current = clusters;
-          updatePlaceholderSource();
-        })
-        .catch((error) => console.error(error));
+      if (mode === "public") {
+        void fetch("/api/parks/map/clusters")
+          .then(async (response) => {
+            if (!response.ok) throw new Error("Unable to load park overview.");
+            return (await response.json()) as ParkClusterPlaceholder[];
+          })
+          .then((clusters) => {
+            placeholderClustersRef.current = clusters;
+            updatePlaceholderSource();
+          })
+          .catch((error) => console.error(error));
+      }
+
+      map.on("click", (event) => {
+        if (!placementModeRef.current || event.defaultPrevented) return;
+        setPlacementCoordinates([event.lngLat.lng, event.lngLat.lat]);
+        setIsPlacementMode(false);
+      });
 
       map.on("click", "park-placeholder-circles", (event) => {
+        if (placementModeRef.current) {
+          event.preventDefault();
+          return;
+        }
         const feature = event.features?.[0];
         if (!feature) return;
 
@@ -2016,6 +2313,10 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       });
 
       map.on("click", "clusters", (event) => {
+        if (placementModeRef.current) {
+          event.preventDefault();
+          return;
+        }
         const features = map.queryRenderedFeatures(event.point, {
           layers: ["clusters"],
         });
@@ -2073,6 +2374,10 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         });
       });
       map.on("click", "unclustered-point", (event) => {
+        if (placementModeRef.current) {
+          event.preventDefault();
+          return;
+        }
         const feature = event.features?.[0];
 
         if (!feature) {
@@ -2151,10 +2456,14 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
           geolocateRef.current?.trigger();
         }, 500);
       }
-      void clearLegacyGlobalParkCache().catch((error) => {
-        console.error("Unable to remove the legacy global park cache.", error);
+      if (mode === "public") {
+        void clearLegacyGlobalParkCache().catch((error) => {
+          console.error("Unable to remove the legacy global park cache.", error);
+        });
+      }
+      await requestViewportParksRef.current({
+        cacheOnly: mode === "public",
       });
-      await requestViewportParksRef.current({ cacheOnly: true });
       setIsMapInitializing(false);
     };
 
@@ -2266,7 +2575,10 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
 
       boundaryRequestRef.current?.abort();
       viewportRequestRef.current?.controller.abort();
+      popupRootRef.current?.unmount();
+      popupRootRef.current = null;
       popupRef.current?.remove();
+      clearPlacementMarker();
       searchMarkerRef.current?.remove();
       const searchMarkerRoot = searchMarkerRootRef.current;
       searchMarkerRef.current = null;
@@ -2289,6 +2601,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     finishCameraMove,
     isFocusedRef,
     markManualCameraInteraction,
+    mode,
     setFocused,
     userLocationZoom,
   ]);
@@ -2303,7 +2616,12 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     map.setConfigProperty("basemap", "lightPreset", lightPreset);
     map.setConfigProperty("basemap", "theme", theme);
     map.setPaintProperty("clusters", "circle-color", markerColor);
-    map.setPaintProperty("unclustered-point", "circle-color", markerColor);
+    map.setPaintProperty("unclustered-point", "circle-color", [
+      "case",
+      ["==", ["get", "archived"], true],
+      "#6b7280",
+      markerColor,
+    ]);
     map.setPaintProperty(
       "park-placeholder-circles",
       "circle-color",
@@ -2404,7 +2722,14 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       )}
       <div className="absolute inset-0">
         <div className="absolute inset-0">
-          <div ref={mapContainer} className="h-full w-full" />
+          <div
+            ref={mapContainer}
+            className={`h-full w-full ${
+              isPlacementMode
+                ? "cursor-crosshair [&_.mapboxgl-canvas]:!cursor-crosshair"
+                : ""
+            }`}
+          />
 
           {isMapInitializing && (
             <div className="pointer-events-none absolute inset-0 z-10 bg-black/20" />
@@ -2458,7 +2783,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       </div>
 
       <div
-        className={`absolute top-[calc(env(safe-area-inset-top)+4rem)] left-4 z-40 flex w-[9.5rem] items-start gap-2 transition-opacity duration-200 sm:top-[calc(env(safe-area-inset-top)+1rem)] ${
+        className={`absolute top-[calc(env(safe-area-inset-top)+4rem)] left-4 z-40 flex max-w-[calc(100%-2rem)] items-start gap-2 transition-opacity duration-200 sm:top-[calc(env(safe-area-inset-top)+1rem)] ${
           searchControlVariant === "guest"
             ? "sm:left-[15.75rem]"
             : "sm:left-[13.5rem]"
@@ -2466,18 +2791,49 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         aria-hidden={isMapInitializing || undefined}
         inert={isMapInitializing || undefined}
       >
-        <MapLocationSearch
-          accessToken={MAPBOX_ACCESS_TOKEN}
-          clearRequest={searchClearRequest}
-          proximity={searchProximity}
-          onClear={clearSearchLocation}
-          onRetrieve={handleLocationSearchRetrieve}
-        />
+        {mode === "admin" ? (
+          <Button
+            type="button"
+            variant={isPlacementMode ? "secondary" : "outline"}
+            className="h-10 shrink-0 gap-2 rounded-full bg-card px-3 shadow-md"
+            aria-pressed={isPlacementMode}
+            onClick={() => {
+              if (isPlacementMode) {
+                clearPlacementMarker();
+                setIsPlacementMode(false);
+                return;
+              }
+              popupRef.current?.remove();
+              setIsPlacementMode(true);
+            }}
+          >
+            {isPlacementMode ? (
+              <X className="size-4" aria-hidden="true" />
+            ) : (
+              <Plus className="size-4" aria-hidden="true" />
+            )}
+            {isPlacementMode ? "Cancel" : "Add Park"}
+          </Button>
+        ) : null}
+        {mode === "admin" ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="size-10 shrink-0 rounded-full bg-card px-0 shadow-md sm:h-10 sm:w-auto sm:px-3"
+            aria-label="Use my location"
+            title="Use my location"
+            disabled={!hasHydrated}
+            onClick={() => requestUserLocation()}
+          >
+            <LocateFixed aria-hidden="true" />
+            <span className="hidden sm:inline">Location</span>
+          </Button>
+        ) : null}
         <Button
           type="button"
           variant="outline"
           size="default"
-          className={`h-10 w-[6.5rem] shrink-0 gap-2 rounded-full bg-card px-3 shadow-md transition-[opacity,transform,visibility] duration-200 ease-out ${
+          className={`size-10 shrink-0 rounded-full bg-card px-0 shadow-md transition-[opacity,transform,visibility] duration-200 ease-out sm:h-10 sm:w-[6.5rem] sm:px-3 ${
             shouldShowRecenter
               ? "visible pointer-events-auto scale-100 opacity-100"
               : "invisible pointer-events-none scale-90 opacity-0"
@@ -2490,8 +2846,15 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
           onClick={() => recenterToUser({ source: "custom" })}
         >
           <LocateFixed aria-hidden="true" />
-          Recenter
+          <span className="hidden sm:inline">Recenter</span>
         </Button>
+        <MapLocationSearch
+          accessToken={MAPBOX_ACCESS_TOKEN}
+          clearRequest={searchClearRequest}
+          proximity={searchProximity}
+          onClear={clearSearchLocation}
+          onRetrieve={handleLocationSearchRetrieve}
+        />
       </div>
     </div>
   );
