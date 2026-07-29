@@ -8,12 +8,10 @@ import {
   useRef,
   useState,
 } from "react";
-import dynamic from "next/dynamic";
 import mapboxgl from "mapbox-gl";
 import { createRoot, type Root } from "react-dom/client";
 import {
   LoaderCircle,
-  LocateFixed,
   MapPin,
   Plus,
   Search,
@@ -41,14 +39,6 @@ import {
   saveParkDetail,
 } from "@/lib/cache";
 
-const MapLocationSearch = dynamic(
-  () =>
-    import("@/components/parks/MapLocationSearch").then(
-      (module) => module.MapLocationSearch
-    ),
-  { ssr: false }
-);
-
 const MAPBOX_ACCESS_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
 mapboxgl.accessToken = MAPBOX_ACCESS_TOKEN;
@@ -59,7 +49,6 @@ const MEANINGFUL_CENTER_SHIFT_RATIO = 0.18;
 const MEANINGFUL_ZOOM_DELTA = 0.5;
 // A selected admin park should be easy to identify without losing the useful
 // surrounding streets and neighbouring parks.
-export const ADMIN_SELECTED_PARK_ZOOM = 15;
 const LIGHT_MAP_MARKER_COLOR = "#2563eb";
 const DARK_MAP_MARKER_COLOR = "#ef4444";
 const SEARCHED_AREA_SOURCE_ID = "searched-area-boundary-source";
@@ -117,7 +106,6 @@ type ParksMapProps = {
   onAdminParkSelected?: (park: AdminParkDetail) => void;
   onAdminParkPlacement?: (coordinates: { lat: number; lon: number }) => void;
   placementResetToken?: string | number;
-  searchControlVariant?: "authenticated" | "guest";
   onViewportParksChange: (parks: MapParkSummary[]) => void;
   onViewportLoadingChange?: (isLoading: boolean) => void;
   onLocationStatusChange?: (status: ParksLocationStatus) => void;
@@ -683,7 +671,6 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     onAdminParkSelected,
     onAdminParkPlacement,
     placementResetToken = 0,
-    searchControlVariant = "authenticated",
     onViewportParksChange,
     onViewportLoadingChange,
     onLocationStatusChange,
@@ -700,6 +687,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   const searchMarkerRootRef = useRef<Root | null>(null);
   const placementMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const selectedMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const selectedParkCameraRequestRef = useRef(0);
   const boundaryRequestRef = useRef<AbortController | null>(null);
   const boundariesAccessUnavailableRef = useRef(false);
   const searchSelectionRef = useRef(0);
@@ -741,14 +729,14 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   const onAdminParkSelectedRef = useRef(onAdminParkSelected);
   const onAdminParkPlacementRef = useRef(onAdminParkPlacement);
   const onLocationStatusChangeRef = useRef(onLocationStatusChange);
-  const [hasHydrated, setHasHydrated] = useState(false);
-  const [hasUserLocation, setHasUserLocation] = useState(false);
-  const [isRecentering, setIsRecentering] = useState(false);
-  const [searchProximity, setSearchProximity] = useState<{
+  const [, setHasHydrated] = useState(false);
+  const [, setHasUserLocation] = useState(false);
+  const [, setIsRecentering] = useState(false);
+  const [, setSearchProximity] = useState<{
     lng: number;
     lat: number;
   } | null>(null);
-  const [searchClearRequest, setSearchClearRequest] = useState(0);
+  const [, setSearchClearRequest] = useState(0);
   const [isPlacementMode, setIsPlacementMode] = useState(false);
   const [isMapInitializing, setIsMapInitializing] = useState(true);
   const [isViewportLoading, setIsViewportLoading] = useState(false);
@@ -767,7 +755,6 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     beginTrackingMove,
     beginUserMove,
     finishCameraMove,
-    isFocused,
     isFocusedRef,
     markManualInteraction,
     setFocused,
@@ -1113,7 +1100,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     if (userHeadingPermissionRef.current !== "unknown") return;
 
     const geolocate = geolocateRef.current as (mapboxgl.GeolocateControl & {
-      _addDeviceOrientationListener?: () => void;
+      _onDeviceOrientation?: (event: DeviceOrientationEvent) => void;
     }) | null;
     if (!geolocate || typeof window === "undefined") return;
 
@@ -1123,9 +1110,24 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         })
       | undefined;
 
-    // Mapbox owns the location dot and heading rotation. On iOS it can only
-    // register its orientation listener from a direct user gesture; a stored
-    // location recenter otherwise never gets that opportunity.
+    const attachMapboxHeadingListener = () => {
+      if (!geolocate._onDeviceOrientation) return;
+
+      // Keep Mapbox's native dot, marker rotation and heading CSS state. The
+      // listener must be attached only once; Mapbox removes it with the rest
+      // of its location watch when tracking stops.
+      const eventName =
+        "ondeviceorientationabsolute" in window
+          ? "deviceorientationabsolute"
+          : "deviceorientation";
+      window.addEventListener(eventName, geolocate._onDeviceOrientation);
+    };
+
+    // Mapbox owns the location dot and heading rotation. On iOS, permission
+    // must be requested during the user's click. Calling Mapbox's private
+    // `_addDeviceOrientationListener` after this promise resolves causes a
+    // second permission request outside that gesture, so Safari never adds
+    // the listener.
     if (typeof orientation?.requestPermission === "function") {
       userHeadingPermissionRef.current = "requesting";
       void orientation
@@ -1136,7 +1138,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
             return;
           }
           userHeadingPermissionRef.current = "granted";
-          geolocate._addDeviceOrientationListener?.();
+          attachMapboxHeadingListener();
         })
         .catch(() => {
           userHeadingPermissionRef.current = "unavailable";
@@ -1145,7 +1147,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     }
 
     userHeadingPermissionRef.current = "granted";
-    geolocate._addDeviceOrientationListener?.();
+    attachMapboxHeadingListener();
   }
 
   function requestUserLocation() {
@@ -1162,7 +1164,6 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     }
 
     onLocationStatusChangeRef.current?.("loading");
-    requestUserHeadingFromGesture();
     focusOnNextGeolocateRef.current = true;
     const triggered = geolocate.trigger();
 
@@ -1173,6 +1174,9 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     return triggered;
   }
 
+  // The Mapbox place-search implementation is retained for a future dedicated
+  // search surface; the map's magnifying-glass trigger has been removed.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function handleLocationSearchRetrieve(feature: SearchFeature) {
     const map = mapRef.current;
     if (!map) return;
@@ -2544,6 +2548,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       trackUserLocation: true,
       showUserHeading: true,
       showUserLocation: true,
+      showAccuracyCircle: true,
     });
 
     geolocateRef.current = geolocate;
@@ -2727,10 +2732,21 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     }
   }, [lightPreset, markerColor, theme]);
 
+  const selectedParkId = selectedPark?.id ?? null;
+  const selectedParkLat = selectedPark?.lat ?? null;
+  const selectedParkLon = selectedPark?.lon ?? null;
+
+  // Keep marker reconciliation independent from camera ownership. Viewport
+  // and detail payloads may recreate a park object, but must never animate
+  // the Admin map as a side effect.
   useEffect(() => {
     const map = mapRef.current;
 
-    if (!selectedPark) {
+    if (
+      selectedParkId === null ||
+      selectedParkLat === null ||
+      selectedParkLon === null
+    ) {
       selectedMarkerRef.current?.remove();
       selectedMarkerRef.current = null;
       return;
@@ -2753,48 +2769,79 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       });
     }
     selectedMarkerRef.current
-      .setLngLat([selectedPark.lon, selectedPark.lat])
+      .setLngLat([selectedParkLon, selectedParkLat])
       .addTo(map);
+  }, [selectedParkId, selectedParkLat, selectedParkLon]);
 
+  // Shared public/Admin selection camera owner. Admin details and viewport
+  // responses only change marker/panel data; stable ID/coordinate dependencies
+  // ensure they cannot replay this movement.
+  useEffect(() => {
+    const map = mapRef.current;
+
+    if (
+      selectedParkId === null ||
+      selectedParkLat === null ||
+      selectedParkLon === null ||
+      !map ||
+      !mapLoadedRef.current
+    ) {
+      return;
+    }
+
+    const selectionRequestId = ++selectedParkCameraRequestRef.current;
     beginAwayFromUser();
-    const selectedCenter: [number, number] = [selectedPark.lon, selectedPark.lat];
-    const targetZoom =
-      mode === "admin"
-        ? Math.max(map.getZoom(), ADMIN_SELECTED_PARK_ZOOM)
-        : map.getZoom();
+    const selectedCenter: [number, number] = [selectedParkLon, selectedParkLat];
+    const targetZoom = map.getZoom();
     const currentCenter = map.getCenter();
     const isAlreadyCentered =
-      Math.abs(currentCenter.lng - selectedPark.lon) < 0.00001 &&
-      Math.abs(currentCenter.lat - selectedPark.lat) < 0.00001;
+      Math.abs(currentCenter.lng - selectedParkLon) < 0.00001 &&
+      Math.abs(currentCenter.lat - selectedParkLat) < 0.00001;
 
     const showSelectedPark = () => {
+      if (selectedParkCameraRequestRef.current !== selectionRequestId) return;
+
       openParkPopupRef.current(
         map,
-        selectedPark.id,
-        [selectedPark.lon, selectedPark.lat],
-        selectedPark
+        selectedParkId,
+        selectedCenter,
+        parksRef.current.find((park) => park.id === selectedParkId)
       );
+
+      // A list item can be outside the loaded viewport. Keep its temporary
+      // selected marker, then fetch the new viewport without claiming the
+      // camera again when marker data is reconciled.
+      if (
+        mode === "admin" &&
+        !parksRef.current.some((park) => park.id === selectedParkId)
+      ) {
+        void requestViewportParksRef.current();
+      }
     };
 
-    if (!isAlreadyCentered || Math.abs(map.getZoom() - targetZoom) >= 0.05) {
-      map.flyTo({
-        center: selectedCenter,
-        zoom: targetZoom,
-        duration: 900,
-        essential: true,
-      });
-      map.once("moveend", showSelectedPark);
-    } else {
+    if (isAlreadyCentered && Math.abs(map.getZoom() - targetZoom) < 0.05) {
       showSelectedPark();
+      return;
     }
+
+    map.flyTo({
+      center: selectedCenter,
+      zoom: targetZoom,
+      duration: 900,
+      essential: true,
+    });
+    map.once("moveend", showSelectedPark);
 
     return () => {
       map.off("moveend", showSelectedPark);
     };
-  }, [beginAwayFromUser, mode, selectedPark]);
-
-  const shouldShowRecenter =
-    hasHydrated && hasUserLocation && !isFocused;
+  }, [
+    beginAwayFromUser,
+    mode,
+    selectedParkId,
+    selectedParkLat,
+    selectedParkLon,
+  ]);
 
   return (
     <div
@@ -2877,11 +2924,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       </div>
 
       <div
-        className={`absolute top-[calc(env(safe-area-inset-top)+4rem)] left-4 z-40 flex max-w-[calc(100%-2rem)] items-start gap-2 transition-opacity duration-200 sm:top-[calc(env(safe-area-inset-top)+1rem)] ${
-          searchControlVariant === "guest"
-            ? "sm:left-[15.75rem]"
-            : "sm:left-[13.5rem]"
-        } ${isMapInitializing ? "pointer-events-none opacity-0" : "opacity-100"}`}
+        className={`absolute top-[calc(env(safe-area-inset-top)+4rem)] left-4 z-40 flex max-w-[calc(100%-2rem)] items-start gap-2 transition-opacity duration-200 sm:top-[calc(env(safe-area-inset-top)+1rem)] sm:left-4 ${isMapInitializing ? "pointer-events-none opacity-0" : "opacity-100"}`}
         aria-hidden={isMapInitializing || undefined}
         inert={isMapInitializing || undefined}
       >
@@ -2909,46 +2952,6 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
             {isPlacementMode ? "Cancel" : "Add Park"}
           </Button>
         ) : null}
-        {mode === "admin" ? (
-          <Button
-            type="button"
-            variant="outline"
-            className="size-10 shrink-0 rounded-full bg-card px-0 shadow-md sm:h-10 sm:w-auto sm:px-3"
-            aria-label="Use my location"
-            title="Use my location"
-            disabled={!hasHydrated}
-            onClick={() => requestUserLocation()}
-          >
-            <LocateFixed aria-hidden="true" />
-            <span className="hidden sm:inline">Location</span>
-          </Button>
-        ) : null}
-        <Button
-          type="button"
-          variant="outline"
-          size="default"
-          className={`size-10 shrink-0 rounded-full bg-card px-0 shadow-md transition-[opacity,transform,visibility] duration-200 ease-out sm:h-10 sm:w-[6.5rem] sm:px-3 ${
-            shouldShowRecenter
-              ? "visible pointer-events-auto scale-100 opacity-100"
-              : "invisible pointer-events-none scale-90 opacity-0"
-          }`}
-          aria-label="Recenter on my location"
-          title="Recenter on my location"
-          aria-hidden={!shouldShowRecenter || undefined}
-          tabIndex={shouldShowRecenter ? 0 : -1}
-          disabled={!hasHydrated || isRecentering || !hasUserLocation}
-          onClick={() => recenterToUser({ source: "custom" })}
-        >
-          <LocateFixed aria-hidden="true" />
-          <span className="hidden sm:inline">Recenter</span>
-        </Button>
-        <MapLocationSearch
-          accessToken={MAPBOX_ACCESS_TOKEN}
-          clearRequest={searchClearRequest}
-          proximity={searchProximity}
-          onClear={clearSearchLocation}
-          onRetrieve={handleLocationSearchRetrieve}
-        />
       </div>
     </div>
   );

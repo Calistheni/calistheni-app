@@ -97,7 +97,6 @@ export default function HomePage({ user, inAppShell = false }: HomePageProps) {
             selectedPark={null}
             lightPreset={lightPreset}
             theme={theme}
-            searchControlVariant={user ? "authenticated" : "guest"}
             onViewportParksChange={setParks}
           />
         </div>

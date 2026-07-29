@@ -294,6 +294,7 @@ export default function AdminDashboard() {
   const [placementResetToken, setPlacementResetToken] = useState(0);
   const [isMapPlacementDraft, setIsMapPlacementDraft] = useState(false);
   const parkSearchRequestRef = useRef(0);
+  const adminSelectionRequestRef = useRef(0);
 
   const [rejectCandidate, setRejectCandidate] =
     useState<AdminSubmission | null>(null);
@@ -1039,6 +1040,11 @@ export default function AdminDashboard() {
   async function startEditing(
     park: Pick<ParkSummary, "id"> & Partial<AdminParkMapSummary>
   ) {
+    const selectionRequestId = ++adminSelectionRequestRef.current;
+    // `selectedPark` holds the previous full detail response. Clear it before
+    // publishing the new list preview so the map can focus this park once,
+    // rather than continuing to receive the prior park until this fetch ends.
+    setSelectedPark(null);
 
     if (
       typeof park.lat === "number" &&
@@ -1072,10 +1078,14 @@ export default function AdminDashboard() {
 
       const fullPark = (await response.json()) as AdminParkDetail;
 
-	      setSelectedPark(fullPark);
-	      setSelectedParkPreview(toParkSummary(fullPark));
-	      void loadParkPhotos(fullPark.id);
-	      setEditingParkId(fullPark.id);
+      // A later list/map selection owns the current detail panel. Do not let
+      // a stale authenticated-admin response replace its marker or camera.
+      if (selectionRequestId !== adminSelectionRequestRef.current) return;
+
+      setSelectedPark(fullPark);
+      setSelectedParkPreview(toParkSummary(fullPark));
+      void loadParkPhotos(fullPark.id);
+      setEditingParkId(fullPark.id);
       setFormValues({
         name: fullPark.name,
         title: fullPark.title ?? "",
@@ -1090,6 +1100,7 @@ export default function AdminDashboard() {
       });
       setFormErrors({});
     } catch (error) {
+      if (selectionRequestId !== adminSelectionRequestRef.current) return;
       toast.error(
         getErrorMessage(error, "Unable to load this park for editing.")
       );
@@ -1357,7 +1368,10 @@ export default function AdminDashboard() {
               }}
               selectedPark={selectedPark ?? selectedParkPreview}
               onParkSelected={(park) => {
-                if (selectedPark?.id !== park.id) {
+                if (
+                  selectedPark?.id !== park.id &&
+                  selectedParkPreview?.id !== park.id
+                ) {
                   void startEditing(park);
                 }
               }}

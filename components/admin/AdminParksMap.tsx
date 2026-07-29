@@ -67,7 +67,6 @@ export function AdminParksMap({
           onAdminParkSelected={onParkSelected}
           onAdminParkPlacement={onParkPlacement}
           placementResetToken={placementResetToken}
-          searchControlVariant="authenticated"
           onViewportParksChange={setParks}
           onViewportLoadingChange={setIsLoading}
         />
