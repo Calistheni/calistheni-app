@@ -130,6 +130,19 @@ export default async function NewWorkoutPage({
           restSeconds: superset.restSeconds,
           plannedRounds: superset.plannedRounds,
           hardRoundLimit: superset.hardRoundLimit,
+          exerciseLocalIds:
+            superset.exerciseMemberships.length > 0
+              ? superset.exerciseMemberships
+                  .sort((left, right) => left.position - right.position)
+                  .map((membership) => String(-membership.templateExerciseId))
+              : routine.exercises
+                  .filter((exercise) => exercise.supersetId === superset.id)
+                  .sort(
+                    (left, right) =>
+                      (left.supersetPosition ?? 0) -
+                      (right.supersetPosition ?? 0)
+                  )
+                  .map((exercise) => String(-exercise.id)),
         })),
         exercises: routine.exercises.map((routineExercise) => ({
           id: -routineExercise.id,
@@ -165,6 +178,7 @@ export default async function NewWorkoutPage({
               notes: null,
               completed: false,
               supersetRoundIndex: null,
+              supersetRoundId: null,
             };
           }),
         })),

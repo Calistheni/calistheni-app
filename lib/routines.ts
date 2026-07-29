@@ -19,6 +19,9 @@ export const routineInclude = {
     orderBy: {
       order: "asc" as const,
     },
+    include: {
+      exerciseMemberships: { orderBy: { position: "asc" as const } },
+    },
   },
   exercises: {
     orderBy: {
@@ -26,6 +29,7 @@ export const routineInclude = {
     },
     include: {
       exercise: true,
+      supersetMemberships: { orderBy: { position: "asc" as const } },
       sets: {
         orderBy: {
           order: "asc" as const,
@@ -76,6 +80,7 @@ export function mapRoutineDetail(template: {
     restSeconds: number | null;
     plannedRounds: number | null;
     hardRoundLimit: number | null;
+    exerciseMemberships: Array<{ templateExerciseId: number; position: number }>;
   }>;
   exercises: Array<{
     id: number;
@@ -83,6 +88,7 @@ export function mapRoutineDetail(template: {
     notes: string | null;
     supersetId: string | null;
     supersetPosition: number | null;
+    supersetMemberships: Array<{ supersetId: string; position: number }>;
     exercise: Parameters<typeof mapExercise>[0];
     sets: Array<{
       id: number;
@@ -117,17 +123,27 @@ export function mapRoutineDetail(template: {
       restSeconds: superset.restSeconds,
       plannedRounds: superset.plannedRounds,
       hardRoundLimit: superset.hardRoundLimit,
-      exerciseClientIds: template.exercises
-        .filter((exercise) => exercise.supersetId === superset.id)
-        .sort(
-          (left, right) =>
-            (left.supersetPosition ?? 0) - (right.supersetPosition ?? 0)
-        )
-        .map(
-          (exercise) =>
-            clientExerciseIds.get(exercise.id) ??
-            `routine-exercise-${exercise.id}`
-        ),
+      exerciseClientIds:
+        superset.exerciseMemberships.length > 0
+          ? superset.exerciseMemberships
+              .sort((left, right) => left.position - right.position)
+              .map(
+                (membership) =>
+                  clientExerciseIds.get(membership.templateExerciseId) ??
+                  `routine-exercise-${membership.templateExerciseId}`
+              )
+          : template.exercises
+              .filter((exercise) => exercise.supersetId === superset.id)
+              .sort(
+                (left, right) =>
+                  (left.supersetPosition ?? 0) -
+                  (right.supersetPosition ?? 0)
+              )
+              .map(
+                (exercise) =>
+                  clientExerciseIds.get(exercise.id) ??
+                  `routine-exercise-${exercise.id}`
+              ),
     })),
     exercises: template.exercises.map((templateExercise) => {
       const trackingType = templateExercise.exercise.trackingType;
@@ -261,17 +277,13 @@ async function createRoutineChildren(
       },
     });
 
-    for (const member of resolvedSuperset.members) {
-      await tx.workoutTemplateExercise.update({
-        where: {
-          id: member.persistedExerciseId,
-        },
-        data: {
-          supersetId: persistedSupersetId,
-          supersetPosition: member.position,
-        },
-      });
-    }
+    await tx.workoutTemplateSupersetExercise.createMany({
+      data: resolvedSuperset.members.map((member) => ({
+        supersetId: persistedSupersetId,
+        templateExerciseId: member.persistedExerciseId,
+        position: member.position,
+      })),
+    });
   }
 
   for (const exercise of payload.exercises) {

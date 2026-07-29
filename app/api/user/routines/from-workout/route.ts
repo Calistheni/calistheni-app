@@ -47,12 +47,16 @@ export async function POST(request: Request) {
           orderBy: {
             order: "asc",
           },
+          include: {
+            exerciseMemberships: { orderBy: { position: "asc" } },
+          },
         },
         exercises: {
           orderBy: {
             order: "asc",
           },
           include: {
+            supersetMemberships: { orderBy: { position: "asc" } },
             sets: {
               orderBy: {
                 order: "asc",
@@ -95,18 +99,25 @@ export async function POST(request: Request) {
         restSeconds: superset.restSeconds,
         plannedRounds: superset.plannedRounds,
         hardRoundLimit: superset.hardRoundLimit,
-        exerciseClientIds: workout.exercises
-          .filter((exercise) => exercise.supersetId === superset.id)
-          .sort(
-            (left, right) =>
-              (left.supersetPosition ?? 0) -
-              (right.supersetPosition ?? 0)
-          )
-          .map(
-            (exercise) =>
-              exerciseClientIdMap.get(exercise.id) ??
-              `routine-exercise-${exercise.id}`
-          ),
+        exerciseClientIds:
+          superset.exerciseMemberships.length > 0
+            ? superset.exerciseMemberships.map(
+                (membership) =>
+                  exerciseClientIdMap.get(membership.workoutExerciseId) ??
+                  `routine-exercise-${membership.workoutExerciseId}`
+              )
+            : workout.exercises
+                .filter((exercise) => exercise.supersetId === superset.id)
+                .sort(
+                  (left, right) =>
+                    (left.supersetPosition ?? 0) -
+                    (right.supersetPosition ?? 0)
+                )
+                .map(
+                  (exercise) =>
+                    exerciseClientIdMap.get(exercise.id) ??
+                    `routine-exercise-${exercise.id}`
+                ),
       })),
       exercises: workout.exercises.map((exercise) => ({
         clientExerciseId:

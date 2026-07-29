@@ -108,7 +108,6 @@ export const routineMutationSchema = z
     const exerciseKeys = new Set(
       payload.exercises.map((exercise) => exercise.clientExerciseId)
     );
-    const groupedExerciseKeys = new Set<string>();
 
     if (keys.size !== payload.supersets.length) {
       ctx.addIssue({
@@ -153,20 +152,6 @@ export const routineMutationSchema = z
           });
         }
 
-        if (groupedExerciseKeys.has(exerciseClientId)) {
-          ctx.addIssue({
-            code: "custom",
-            path: [
-              "supersets",
-              supersetIndex,
-              "exerciseClientIds",
-              memberIndex,
-            ],
-            message: "An exercise cannot belong to more than one superset.",
-          });
-        }
-
-        groupedExerciseKeys.add(exerciseClientId);
       }
     }
   });

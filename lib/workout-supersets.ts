@@ -62,12 +62,15 @@ export function getNextSupersetSetDraft<T extends {
   if (reusableIndex >= 0) {
     return {
       setIndex: reusableIndex,
+      setNumber: reusableIndex + 1,
       source: sets[reusableIndex] ?? null,
     };
   }
 
   return {
     setIndex: -1,
+    // -1 is an internal append sentinel only. Never expose it as a UI index.
+    setNumber: sets.length + 1,
     source: [...sets].reverse().find((set) => set.completed) ?? null,
   };
 }
@@ -90,28 +93,50 @@ export function getSupersetRoundProgress(
     sets: Array<{
       completed: boolean;
       supersetRoundIndex?: number | null;
+      supersetRoundId?: string | null;
     }>;
   }>,
   options: {
     hardRoundLimit?: number | null;
+    supersetKey?: string;
   } = {}
 ) {
   const hardRoundLimit = options.hardRoundLimit ?? null;
-  const completedRoundSets = exercises.map(
-    (exercise) =>
-      new Set(
-        exercise.sets.flatMap((set, setIndex) =>
-          set.completed ? [set.supersetRoundIndex ?? setIndex] : []
-        )
+  // New records use a shared stable ID so individual sets never advance a
+  // superset round. Legacy records use the old round index as a fallback.
+  const completedRoundSets = exercises.map((exercise) => {
+    const hasExplicitRoundMetadata = exercise.sets.some(
+      (set) =>
+        Boolean(set.supersetRoundId) ||
+        set.supersetRoundIndex !== null && set.supersetRoundIndex !== undefined
+    );
+    return new Set(
+      exercise.sets.flatMap((set, setIndex) => {
+        if (!set.completed) return [];
+        if (set.supersetRoundId) {
+          return options.supersetKey &&
+            !set.supersetRoundId.startsWith(`${options.supersetKey}:`)
+            ? []
+            : [set.supersetRoundId];
+        }
+        if (
+          set.supersetRoundIndex !== null &&
+          set.supersetRoundIndex !== undefined
+        ) {
+          return [`legacy:${set.supersetRoundIndex}`];
+        }
+        return hasExplicitRoundMetadata ? [] : [`legacy:${setIndex}`];
+      })
+    );
+  });
+  // A complete round is an ID present for every member. The order is not
+  // inferred from a set array, so manual sets cannot inflate this value.
+  const commonRoundIds = completedRoundSets.length
+    ? [...completedRoundSets[0]].filter((roundId) =>
+        completedRoundSets.every((rounds) => rounds.has(roundId))
       )
-  );
-  let completedRounds = 0;
-  while (
-    completedRoundSets.length > 0 &&
-    completedRoundSets.every((rounds) => rounds.has(completedRounds))
-  ) {
-    completedRounds += 1;
-  }
+    : [];
+  const completedRounds = commonRoundIds.length;
   const complete = hasReachedHardRoundLimit(
     hardRoundLimit,
     completedRounds
@@ -134,12 +159,15 @@ export function getNextSupersetRoundIndex(
     sets: Array<{
       completed: boolean;
       supersetRoundIndex?: number | null;
+      supersetRoundId?: string | null;
     }>;
   }>,
-  hardRoundLimit: number | null = null
+  hardRoundLimit: number | null = null,
+  supersetKey?: string
 ) {
   const progress = getSupersetRoundProgress(exercises, {
     hardRoundLimit,
+    supersetKey,
   });
 
   return progress.complete ? null : progress.completedRounds;
@@ -150,21 +178,22 @@ export function getCurrentSupersetRoundEntries<
     sets: Array<{
       completed: boolean;
       supersetRoundIndex?: number | null;
+      supersetRoundId?: string | null;
     }>;
   },
 >(
   exercises: T[],
   options: {
     hardRoundLimit?: number | null;
+    supersetKey?: string;
   } = {}
 ) {
   const progress = getSupersetRoundProgress(exercises, options);
-  const setIndex = Math.max(0, progress.currentRound - 1);
-
+  if (progress.complete) return [];
   return exercises.flatMap((exercise) => {
-    const set = exercise.sets[setIndex];
-
-    return set && !set.completed ? [{ exercise, setIndex }] : [];
+    const setIndex = exercise.sets.findIndex((set) => !set.completed);
+    const set = setIndex >= 0 ? exercise.sets[setIndex] : null;
+    return set ? [{ exercise, setIndex }] : [];
   });
 }
 

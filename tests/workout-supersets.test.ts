@@ -121,12 +121,14 @@ test("planned placeholders are consumed before the latest result is reused", () 
 
   assert.deepEqual(getNextSupersetSetDraft(sets), {
     setIndex: 1,
+    setNumber: 2,
     source: sets[1],
   });
 
   const completedSets = sets.map((set) => ({ ...set, completed: true }));
   assert.deepEqual(getNextSupersetSetDraft(completedSets), {
     setIndex: -1,
+    setNumber: 4,
     source: completedSets[2],
   });
 });
@@ -144,12 +146,64 @@ test("different preset counts safely fall back per exercise", () => {
 
   assert.deepEqual(getNextSupersetSetDraft(pullUpSets), {
     setIndex: 2,
+    setNumber: 3,
     source: pullUpSets[2],
   });
   assert.deepEqual(getNextSupersetSetDraft(dipSets), {
     setIndex: -1,
+    setNumber: 3,
     source: dipSets[1],
   });
+});
+
+test("manual sets do not advance a superset round and set numbers stay exercise-specific", () => {
+  const exercises = [
+    {
+      id: "pull-up",
+      sets: [
+        { completed: true, supersetRoundId: "round-1" },
+        { completed: true, supersetRoundId: "round-2" },
+      ],
+    },
+    {
+      id: "dip",
+      sets: [
+        { completed: true, supersetRoundId: "round-1" },
+        { completed: true, supersetRoundId: "round-2" },
+        { completed: true, supersetRoundId: null },
+      ],
+    },
+  ];
+
+  assert.equal(getSupersetRoundProgress(exercises).completedRounds, 2);
+  assert.equal(getNextSupersetSetDraft(exercises[0].sets).setNumber, 3);
+  assert.equal(getNextSupersetSetDraft(exercises[1].sets).setNumber, 4);
+});
+
+test("a first appended superset set is always presented as Set 1", () => {
+  assert.equal(getNextSupersetSetDraft([]).setNumber, 1);
+});
+
+test("round identities are scoped to their superset when exercises are shared", () => {
+  const pullUpAndDip = [
+    {
+      sets: [{ completed: true, supersetRoundId: "superset-a:round-1" }],
+    },
+    {
+      sets: [{ completed: true, supersetRoundId: "superset-a:round-1" }],
+    },
+  ];
+
+  assert.equal(
+    getSupersetRoundProgress(pullUpAndDip, { supersetKey: "superset-a" })
+      .completedRounds,
+    1
+  );
+  assert.equal(
+    getSupersetRoundProgress(pullUpAndDip, { supersetKey: "superset-b" })
+      .completedRounds,
+    0
+  );
 });
 
 test("legacy plannedRounds values remain informational without a hard limit", () => {

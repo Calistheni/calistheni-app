@@ -33,6 +33,8 @@ export type WorkoutSetInput = {
   notes: string | null;
   completed: boolean;
   supersetRoundIndex: number | null;
+  /** A stable ID shared only by sets saved together in one superset round. */
+  supersetRoundId: string | null;
 };
 
 export type SupersetColorKey = "BLUE" | "VIOLET" | "AMBER" | "GREEN";
@@ -44,12 +46,17 @@ export type WorkoutSupersetInput = {
   restSeconds: number | null;
   plannedRounds: number | null;
   hardRoundLimit: number | null;
+  /** Client-local exercise IDs, in their execution order. */
+  exerciseLocalIds: string[];
 };
 
 export type WorkoutExerciseInput = {
+  /** Client-local ID used to resolve superset memberships in one mutation. */
+  localId: string;
   exerciseId: string;
   notes: string | null;
   restSeconds: number | null;
+  /** Legacy single-membership fields. Kept while old draft payloads are read. */
   supersetKey: string | null;
   supersetPosition: number | null;
   sets: WorkoutSetInput[];
@@ -93,6 +100,7 @@ export type WorkoutDetail = {
       notes: string | null;
       completed: boolean;
       supersetRoundIndex: number | null;
+      supersetRoundId: string | null;
     }>;
   }>;
   visibility: "PRIVATE" | "PUBLIC";

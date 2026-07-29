@@ -83,7 +83,7 @@ test("rejects duplicate superset identifiers", () => {
   assert.equal(result.success, false);
 });
 
-test("rejects one exercise in multiple supersets", () => {
+test("allows one exercise in multiple supersets", () => {
   const payload = routinePayload();
   payload.supersets.push({
     ...payload.supersets[0],
@@ -91,7 +91,7 @@ test("rejects one exercise in multiple supersets", () => {
     exerciseClientIds: ["temp-pull-up", "temp-dip"],
   });
   const result = routineMutationSchema.safeParse(payload);
-  assert.equal(result.success, false);
+  assert.equal(result.success, true);
 });
 
 test("accepts mixed persisted and unsaved request exercise keys", () => {

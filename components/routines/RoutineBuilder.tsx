@@ -213,46 +213,17 @@ export function RoutineBuilder({
   }
 
   function removeExercise(localId: string) {
-    const affectedKey =
-      selectedExercises.find((item) => item.localId === localId)?.supersetKey ??
-      null;
-    const remaining = affectedKey
-      ? selectedExercises.filter(
-          (item) => item.localId !== localId && item.supersetKey === affectedKey
-        )
-      : [];
-    setSelectedExercises((current) =>
-      current
-        .filter((item) => item.localId !== localId)
-        .map((item) =>
-          affectedKey && item.supersetKey === affectedKey
-            ? remaining.length < 2
-              ? { ...item, supersetKey: null, supersetPosition: null }
-              : {
-                  ...item,
-                  supersetPosition: remaining.findIndex(
-                    (member) => member.localId === item.localId
-                  ),
-                }
-            : item
-        )
+    setSelectedExercises((current) => current.filter((item) => item.localId !== localId));
+    setSupersets((current) =>
+      current.flatMap((superset) => {
+        const exerciseClientIds = superset.exerciseClientIds.filter(
+          (id) => id !== localId
+        );
+        return exerciseClientIds.length >= 2
+          ? [{ ...superset, exerciseClientIds }]
+          : [];
+      })
     );
-    if (affectedKey && remaining.length < 2) {
-      setSupersets((current) =>
-        current.filter((item) => item.key !== affectedKey)
-      );
-    } else if (affectedKey) {
-      setSupersets((current) =>
-        current.map((item) =>
-          item.key === affectedKey
-            ? {
-                ...item,
-                exerciseClientIds: remaining.map((exercise) => exercise.localId),
-              }
-            : item
-        )
-      );
-    }
     setCustomRestExerciseIds((current) =>
       current.filter((item) => item !== localId)
     );
@@ -284,14 +255,6 @@ export function RoutineBuilder({
         exerciseClientIds: [...supersetSelection],
       },
     ]);
-    setSelectedExercises((current) =>
-      current.map((exercise) => {
-        const position = supersetSelection.indexOf(exercise.localId);
-        return position >= 0
-          ? { ...exercise, supersetKey: key, supersetPosition: position }
-          : exercise;
-      })
-    );
     setSupersetSelection([]);
     setIsSupersetDialogOpen(false);
     toast.success("Superset added to routine.");
@@ -550,10 +513,7 @@ export function RoutineBuilder({
                 setSupersetSelection([]);
                 setIsSupersetDialogOpen(true);
               }}
-              disabled={
-                selectedExercises.filter((exercise) => !exercise.supersetKey)
-                  .length < 2
-              }
+              disabled={selectedExercises.length < 2}
             >
               <Layers2 />
               Create superset
@@ -986,7 +946,9 @@ export function RoutineBuilder({
               (item) => item.id === selectedExercise.exerciseId
             );
             if (!exercise) return null;
-            const disabled = selectedExercise.supersetKey !== null;
+            const usedInAnotherSuperset = supersets.some((superset) =>
+              superset.exerciseClientIds.includes(selectedExercise.localId)
+            );
 
             return (
               <div
@@ -996,7 +958,6 @@ export function RoutineBuilder({
                 <Checkbox
                   id={`routine-superset-${selectedExercise.localId}`}
                   checked={supersetSelection.includes(selectedExercise.localId)}
-                  disabled={disabled}
                   onCheckedChange={(checked) =>
                     setSupersetSelection((current) =>
                       checked === true
@@ -1013,8 +974,8 @@ export function RoutineBuilder({
                 >
                   <span className="block truncate">{exercise.name}</span>
                   <span className="text-xs font-normal text-muted-foreground">
-                    {disabled
-                      ? "Already grouped"
+                    {usedInAnotherSuperset
+                      ? "Also in another superset"
                       : `${selectedExercise.sets.length} preset sets`}
                   </span>
                 </Label>

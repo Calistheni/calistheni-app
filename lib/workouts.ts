@@ -26,6 +26,9 @@ const workoutInclude = {
     },
     include: {
       exercise: true,
+      supersetMemberships: {
+        orderBy: { position: "asc" as const },
+      },
       sets: {
         orderBy: {
           order: "asc" as const,
@@ -36,6 +39,11 @@ const workoutInclude = {
   supersets: {
     orderBy: {
       order: "asc" as const,
+    },
+    include: {
+      exerciseMemberships: {
+        orderBy: { position: "asc" as const },
+      },
     },
   },
 };
@@ -83,6 +91,7 @@ export function mapWorkoutDetail(workout: {
     restSeconds: number | null;
     plannedRounds: number | null;
     hardRoundLimit: number | null;
+    exerciseMemberships: Array<{ workoutExerciseId: number; position: number }>;
   }>;
   user: {
     bodyweightKg: number | null;
@@ -93,6 +102,7 @@ export function mapWorkoutDetail(workout: {
     restSeconds: number | null;
     supersetId: string | null;
     supersetPosition: number | null;
+    supersetMemberships: Array<{ supersetId: string; position: number }>;
     exercise: {
       id: string;
       slug: string;
@@ -117,6 +127,7 @@ export function mapWorkoutDetail(workout: {
       notes: string | null;
       completed: boolean;
       supersetRoundIndex: number | null;
+      supersetRoundId: string | null;
     }>;
   }>;
 }): WorkoutDetail {
@@ -157,6 +168,19 @@ export function mapWorkoutDetail(workout: {
       restSeconds: superset.restSeconds,
       plannedRounds: superset.plannedRounds,
       hardRoundLimit: superset.hardRoundLimit,
+      exerciseLocalIds:
+        superset.exerciseMemberships.length > 0
+          ? superset.exerciseMemberships
+              .sort((left, right) => left.position - right.position)
+              .map((membership) => String(membership.workoutExerciseId))
+          : workout.exercises
+              .filter((exercise) => exercise.supersetId === superset.id)
+              .sort(
+                (left, right) =>
+                  (left.supersetPosition ?? 0) -
+                  (right.supersetPosition ?? 0)
+              )
+              .map((exercise) => String(exercise.id)),
     })),
     setCount,
     totalVolume,
@@ -179,6 +203,7 @@ export function mapWorkoutDetail(workout: {
         notes: set.notes,
         completed: set.completed,
         supersetRoundIndex: set.supersetRoundIndex,
+        supersetRoundId: set.supersetRoundId,
       })),
     })),
   };
@@ -293,16 +318,19 @@ async function createWorkoutChildren(
     });
   }
 
+  const persistedExerciseIds = new Map<string, number>();
   for (const [exerciseIndex, exercise] of payload.exercises.entries()) {
-    await tx.workoutExercise.create({
+    const persistedExercise = await tx.workoutExercise.create({
       data: {
         workoutId,
         exerciseId: exercise.exerciseId,
         order: exerciseIndex,
         notes: exercise.notes,
         restSeconds: exercise.restSeconds,
-        supersetId: exercise.supersetKey,
-        supersetPosition: exercise.supersetPosition,
+        // Legacy columns intentionally stay empty for new writes. Membership
+        // lives in WorkoutSupersetExercise so exercises can join many groups.
+        supersetId: null,
+        supersetPosition: null,
         sets: {
           create: exercise.sets.map((set, setIndex) => ({
             order: setIndex,
@@ -316,9 +344,24 @@ async function createWorkoutChildren(
             notes: set.notes,
             completed: set.completed,
             supersetRoundIndex: set.supersetRoundIndex,
+            supersetRoundId: set.supersetRoundId,
           })),
         },
       },
+      select: { id: true },
+    });
+    persistedExerciseIds.set(exercise.localId, persistedExercise.id);
+  }
+
+  for (const superset of payload.supersets) {
+    await tx.workoutSupersetExercise.createMany({
+      data: superset.exerciseLocalIds.map((localId, position) => {
+        const workoutExerciseId = persistedExerciseIds.get(localId);
+        if (!workoutExerciseId) {
+          throw new Error(`Unresolved workout exercise ${localId}`);
+        }
+        return { supersetId: superset.key, workoutExerciseId, position };
+      }),
     });
   }
 }

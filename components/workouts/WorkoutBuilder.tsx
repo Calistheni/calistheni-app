@@ -122,7 +122,10 @@ import {
   calculateWorkoutVolumeKg,
   isWorkoutVolumeSetIncluded,
 } from "@/lib/workout-volume";
-import { isIncompleteEnteredSet } from "@/lib/workout-set-performance";
+import {
+  hasEnteredSetPerformance,
+  isIncompleteEnteredSet,
+} from "@/lib/workout-set-performance";
 import {
   createSupersetKey,
   getNextSupersetSetDraft,
@@ -163,7 +166,7 @@ type LocalWorkoutExercise = Omit<WorkoutExerciseInput, "sets"> & {
 
 type SupersetResultDraft = Record<
   string,
-  { setIndex: number; set: WorkoutSetInput }
+  { setIndex: number; setNumber: number; set: WorkoutSetInput }
 >;
 
 type ActiveWorkoutDraft = {
@@ -190,6 +193,7 @@ const EMPTY_SET_VALUES: WorkoutSetInput = {
   notes: null,
   completed: false,
   supersetRoundIndex: null,
+  supersetRoundId: null,
 };
 
 function createLocalSet(
@@ -211,6 +215,7 @@ function toWorkoutSetInput(set: LocalWorkoutSet): WorkoutSetInput {
     notes: set.notes,
     completed: set.completed,
     supersetRoundIndex: set.supersetRoundIndex,
+    supersetRoundId: set.supersetRoundId,
   };
 }
 
@@ -410,6 +415,24 @@ function readActiveWorkoutDraft(sessionId: string) {
         : [],
     }));
 
+    const supersets = Array.isArray(parsed.supersets)
+      ? parsed.supersets.map((superset) => ({
+          ...superset,
+          exerciseLocalIds: Array.isArray(superset.exerciseLocalIds)
+            ? superset.exerciseLocalIds.filter(
+                (localId): localId is string => typeof localId === "string"
+              )
+            : selectedExercises
+                .filter((exercise) => exercise.supersetKey === superset.key)
+                .sort(
+                  (left, right) =>
+                    (left.supersetPosition ?? 0) -
+                    (right.supersetPosition ?? 0)
+                )
+                .map((exercise) => exercise.localId),
+        }))
+      : [];
+
     return {
       title: typeof parsed.title === "string" ? parsed.title : "",
       notes: typeof parsed.notes === "string" ? parsed.notes : "",
@@ -417,7 +440,7 @@ function readActiveWorkoutDraft(sessionId: string) {
         parsed.visibility === "PRIVATE" || parsed.visibility === "PUBLIC"
           ? parsed.visibility
           : "PUBLIC",
-      supersets: Array.isArray(parsed.supersets) ? parsed.supersets : [],
+      supersets,
       selectedExercises,
     } satisfies ActiveWorkoutDraft;
   } catch {
@@ -517,11 +540,44 @@ function buildInitialExercises(
           notes: set.notes,
           completed: set.completed,
           supersetRoundIndex: set.supersetRoundIndex,
+          supersetRoundId: set.supersetRoundId,
         },
         `workout-set-${set.id}`
       )
     ),
   }));
+}
+
+function buildInitialSupersets(
+  initialWorkout: WorkoutDetail | undefined,
+  exercises: LocalWorkoutExercise[]
+) {
+  if (!initialWorkout) return [];
+  return initialWorkout.supersets.map((superset) => ({
+    ...superset,
+    exerciseLocalIds:
+      superset.exerciseLocalIds?.length > 0
+        ? superset.exerciseLocalIds
+        : exercises
+            .filter((exercise) => exercise.supersetKey === superset.key)
+            .sort(
+              (left, right) =>
+                (left.supersetPosition ?? 0) - (right.supersetPosition ?? 0)
+            )
+            .map((exercise) => exercise.localId),
+  }));
+}
+
+function getSupersetMembers(
+  supersets: WorkoutSupersetInput[],
+  exercises: LocalWorkoutExercise[],
+  key: string
+) {
+  const superset = supersets.find((item) => item.key === key);
+  if (!superset) return [];
+  return superset.exerciseLocalIds
+    .map((localId) => exercises.find((exercise) => exercise.localId === localId))
+    .filter((exercise): exercise is LocalWorkoutExercise => Boolean(exercise));
 }
 
 export function WorkoutBuilder({
@@ -541,6 +597,10 @@ export function WorkoutBuilder({
   const [isActiveWorkoutSessionReady, setIsActiveWorkoutSessionReady] =
     useState(isEditing);
   const initialSelectedExercises = buildInitialExercises(initialWorkout);
+  const initialSupersets = buildInitialSupersets(
+    initialWorkout,
+    initialSelectedExercises
+  );
   const workoutTimer = useWorkoutTimer(
     getWorkoutTimerStorageKey(activeWorkoutSessionId),
     !isEditing && isActiveWorkoutSessionReady
@@ -564,10 +624,10 @@ export function WorkoutBuilder({
     LocalWorkoutExercise[]
   >(initialSelectedExercises);
   const [supersets, setSupersets] = useState<WorkoutSupersetInput[]>(
-    initialWorkout?.supersets ?? []
+    initialSupersets
   );
   const [openSupersetKeys, setOpenSupersetKeys] = useState<string[]>(
-    initialWorkout?.supersets.map((superset) => superset.key) ?? []
+    initialSupersets.map((superset) => superset.key)
   );
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [openExerciseIds, setOpenExerciseIds] = useState<string[]>(() =>
@@ -716,19 +776,15 @@ export function WorkoutBuilder({
       )
     : -1;
   const activeResultsMembers = activeResultsSuperset
-    ? selectedExercises
-        .filter(
-          (exercise) => exercise.supersetKey === activeResultsSuperset.key
-        )
-        .sort(
-          (a, b) =>
-            (a.supersetPosition ?? 0) - (b.supersetPosition ?? 0)
-        )
+    ? getSupersetMembers(supersets, selectedExercises, activeResultsSuperset.key)
     : [];
   const activeResultsProgress = activeResultsSuperset
     ? getSupersetRoundProgress(
         activeResultsMembers,
-        { hardRoundLimit: activeResultsSuperset.hardRoundLimit }
+        {
+          hardRoundLimit: activeResultsSuperset.hardRoundLimit,
+          supersetKey: activeResultsSuperset.key,
+        }
       )
     : null;
   const supersetRoundFormEntries = activeResultsMembers.flatMap(
@@ -744,6 +800,7 @@ export function WorkoutBuilder({
           localId: selectedExercise.localId,
           exerciseName: exercise.name,
           setIndex: entry.setIndex,
+          setNumber: entry.setNumber,
           set: entry.set,
           showWeight: isWeightFieldVisible(exercise.trackingType),
           weightedBodyweight:
@@ -1037,13 +1094,9 @@ export function WorkoutBuilder({
     const superset =
       key === "new" ? null : supersets.find((item) => item.key === key);
     const members = superset
-      ? selectedExercises
-          .filter((exercise) => exercise.supersetKey === superset.key)
-          .sort(
-            (a, b) =>
-              (a.supersetPosition ?? 0) - (b.supersetPosition ?? 0)
-          )
-          .map((exercise) => exercise.localId)
+      ? getSupersetMembers(supersets, selectedExercises, superset.key).map(
+          (exercise) => exercise.localId
+        )
       : [];
 
     setSupersetEditorKey(key);
@@ -1083,51 +1136,20 @@ export function WorkoutBuilder({
           restSeconds: supersetRestSeconds,
           plannedRounds: null,
           hardRoundLimit: null,
+          exerciseLocalIds: supersetSelection,
         },
       ]);
     }
 
-    setSelectedExercises((current) => {
-      const grouped = current.map((exercise) => {
-        const position = supersetSelection.indexOf(exercise.localId);
-
-        if (position >= 0) {
-          return {
-            ...exercise,
-            supersetKey: key,
-            supersetPosition: position,
-          };
-        }
-
-        if (exercise.supersetKey === key) {
-          return {
-            ...exercise,
-            supersetKey: null,
-            supersetPosition: null,
-          };
-        }
-
-        return exercise;
-      });
-      const members = supersetSelection
-        .map((localId) => grouped.find((exercise) => exercise.localId === localId))
-        .filter((exercise): exercise is LocalWorkoutExercise => Boolean(exercise));
-      const remaining = grouped.filter(
-        (exercise) => !supersetSelection.includes(exercise.localId)
-      );
-      const originalIndexes = supersetSelection
-        .map((localId) =>
-          current.findIndex((exercise) => exercise.localId === localId)
+    if (existing) {
+      setSupersets((current) =>
+        current.map((item) =>
+          item.key === key
+            ? { ...item, exerciseLocalIds: supersetSelection }
+            : item
         )
-        .filter((index) => index >= 0);
-      const insertAt = Math.min(...originalIndexes, remaining.length);
-
-      return [
-        ...remaining.slice(0, insertAt),
-        ...members,
-        ...remaining.slice(insertAt),
-      ];
-    });
+      );
+    }
     setOpenExerciseIds((current) => [
       ...current,
       ...supersetSelection.filter((id) => !current.includes(id)),
@@ -1140,85 +1162,58 @@ export function WorkoutBuilder({
   }
 
   function dissolveSuperset(key: string) {
-    setSelectedExercises((current) =>
-      current.map((exercise) =>
-        exercise.supersetKey === key
-          ? {
-              ...exercise,
-              supersetKey: null,
-              supersetPosition: null,
-            }
-          : exercise
-      )
-    );
     setSupersets((current) => current.filter((item) => item.key !== key));
     setOpenSupersetKeys((current) => current.filter((item) => item !== key));
     setSupersetPendingDissolve(null);
     toast.success("Superset dissolved. Exercise data was kept.");
   }
 
-  function removeExerciseFromSuperset(localId: string) {
-    const exercise = selectedExercises.find((item) => item.localId === localId);
-
-    if (!exercise?.supersetKey) return;
-
-    const key = exercise.supersetKey;
-    const remaining = selectedExercises.filter(
-      (item) => item.supersetKey === key && item.localId !== localId
-    );
+  function removeExerciseFromSuperset(key: string, localId: string) {
+    const superset = supersets.find((item) => item.key === key);
+    if (!superset) return;
+    const remaining = superset.exerciseLocalIds.filter((id) => id !== localId);
 
     if (remaining.length < 2) {
       dissolveSuperset(key);
       return;
     }
 
-    setSelectedExercises((current) =>
-      current.map((item) => {
-        if (item.localId === localId) {
-          return { ...item, supersetKey: null, supersetPosition: null };
-        }
-
-        if (item.supersetKey === key) {
-          const position = remaining.findIndex(
-            (remainingItem) => remainingItem.localId === item.localId
-          );
-          return { ...item, supersetPosition: position };
-        }
-
-        return item;
-      })
+    setSupersets((current) =>
+      current.map((item) =>
+        item.key === key ? { ...item, exerciseLocalIds: remaining } : item
+      )
     );
   }
 
   function openSupersetResults(key: string) {
     const draft: SupersetResultDraft = {};
 
-    const members = selectedExercises
-      .filter((exercise) => exercise.supersetKey === key)
-      .sort(
-        (a, b) =>
-          (a.supersetPosition ?? 0) - (b.supersetPosition ?? 0)
-      );
+    const members = getSupersetMembers(supersets, selectedExercises, key);
     const progress = getSupersetRoundProgress(
       members,
       {
         hardRoundLimit:
           supersets.find((superset) => superset.key === key)
             ?.hardRoundLimit ?? null,
+        supersetKey: key,
       }
     );
     if (progress.complete) {
       return;
     }
 
+    const roundId = `${key}:${crypto.randomUUID()}`;
+
     for (const exercise of members) {
-      const { setIndex, source } = getNextSupersetSetDraft(exercise.sets);
+      const { setIndex, setNumber, source } = getNextSupersetSetDraft(exercise.sets);
       draft[exercise.localId] = {
         setIndex,
+        setNumber,
         set: {
           ...toWorkoutSetInput(source ?? createLocalSet()),
           completed: false,
           supersetRoundIndex: progress.currentRound - 1,
+          supersetRoundId: roundId,
         },
       };
     }
@@ -1239,8 +1234,9 @@ export function WorkoutBuilder({
     isCompletingSupersetRef.current = true;
     setIsCompletingSuperset(true);
     setSelectedExercises((current) => {
+      const memberIds = new Set(superset.exerciseLocalIds);
       return current.map((exercise) => {
-        if (exercise.supersetKey !== key) return exercise;
+        if (!memberIds.has(exercise.localId)) return exercise;
         const draft = resultDraft?.[exercise.localId];
         if (!draft) return exercise;
         if (draft.setIndex < 0) {
@@ -1286,10 +1282,10 @@ export function WorkoutBuilder({
 
     setResultsSupersetKey(null);
     setSupersetResultDraft({});
-    window.setTimeout(() => {
+    queueMicrotask(() => {
       isCompletingSupersetRef.current = false;
       setIsCompletingSuperset(false);
-    }, 350);
+    });
     toast.success(
       superset.restSeconds
         ? "Superset completed. Rest started."
@@ -1330,7 +1326,12 @@ export function WorkoutBuilder({
       if (activeIndex < 0 || overIndex < 0) {
         return current;
       }
-      if (current[activeIndex]?.supersetKey) {
+      if (
+        current[activeIndex] &&
+        supersets.some((superset) =>
+          superset.exerciseLocalIds.includes(current[activeIndex].localId)
+        )
+      ) {
         return current;
       }
 
@@ -1350,7 +1351,12 @@ export function WorkoutBuilder({
       ) {
         return current;
       }
-      if (current[currentIndex]?.supersetKey) {
+      if (
+        current[currentIndex] &&
+        supersets.some((superset) =>
+          superset.exerciseLocalIds.includes(current[currentIndex].localId)
+        )
+      ) {
         return current;
       }
 
@@ -1429,37 +1435,17 @@ export function WorkoutBuilder({
   }
 
   function removeExercise(localId: string) {
-    const removedExercise = selectedExercises.find(
-      (item) => item.localId === localId
+    setSelectedExercises((current) => current.filter((item) => item.localId !== localId));
+    setSupersets((current) =>
+      current.flatMap((superset) => {
+        const exerciseLocalIds = superset.exerciseLocalIds.filter(
+          (id) => id !== localId
+        );
+        return exerciseLocalIds.length >= 2
+          ? [{ ...superset, exerciseLocalIds }]
+          : [];
+      })
     );
-    const affectedKey = removedExercise?.supersetKey ?? null;
-    const remainingMembers = affectedKey
-      ? selectedExercises.filter(
-          (item) => item.supersetKey === affectedKey && item.localId !== localId
-        )
-      : [];
-
-    setSelectedExercises((current) =>
-      current
-        .filter((item) => item.localId !== localId)
-        .map((item) =>
-          affectedKey && item.supersetKey === affectedKey
-            ? remainingMembers.length < 2
-              ? { ...item, supersetKey: null, supersetPosition: null }
-              : {
-                  ...item,
-                  supersetPosition: remainingMembers.findIndex(
-                    (member) => member.localId === item.localId
-                  ),
-                }
-            : item
-        )
-    );
-    if (affectedKey && remainingMembers.length < 2) {
-      setSupersets((current) =>
-        current.filter((item) => item.key !== affectedKey)
-      );
-    }
     setOpenExerciseIds((current) =>
       current.filter((item) => item !== localId)
     );
@@ -1625,10 +1611,6 @@ export function WorkoutBuilder({
     }
 
     updateSet(localId, setIndex, "completed", completed);
-
-    if (workoutExercise?.supersetKey) {
-      return;
-    }
 
     if (completed) {
       const durationSeconds = restSeconds ?? DEFAULT_REST_SECONDS;
@@ -1854,18 +1836,18 @@ export function WorkoutBuilder({
       supersets,
       exercises: selectedExercises.map(
         ({
+          localId,
           exerciseId,
           notes,
           restSeconds,
-          supersetKey,
-          supersetPosition,
           sets,
         }) => ({
+          localId,
           exerciseId,
           notes,
           restSeconds,
-          supersetKey,
-          supersetPosition,
+          supersetKey: null,
+          supersetPosition: null,
           sets: sets.map(toWorkoutSetInput),
         })
       ),
@@ -2021,7 +2003,8 @@ export function WorkoutBuilder({
   function renderSupersetExerciseRow(
     selectedExercise: LocalWorkoutExercise,
     groupPosition: number,
-    supersetLabel: string
+    supersetLabel: string,
+    supersetKey: string
   ) {
     const exercise = exercises.find(
       (item) => item.id === selectedExercise.exerciseId
@@ -2095,7 +2078,7 @@ export function WorkoutBuilder({
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onSelect={() =>
-                    removeExerciseFromSuperset(selectedExercise.localId)
+                    removeExerciseFromSuperset(supersetKey, selectedExercise.localId)
                   }
                 >
                   <Unlink2 />
@@ -2347,8 +2330,16 @@ export function WorkoutBuilder({
                           ? "border-primary/40 bg-primary/10 text-primary"
                           : undefined
                       }
-                      disabled
-                      aria-label={`${supersetLabel} sets are saved with the Done action`}
+                      aria-label={`Mark ${exercise.name} set ${setIndex + 1} as done`}
+                      onClick={() =>
+                        updateSetCompleted(
+                          selectedExercise.localId,
+                          setIndex,
+                          !set.completed,
+                          exercise.name,
+                          selectedExercise.restSeconds
+                        )
+                      }
                     >
                       {set.completed ? <CheckCircle2 /> : <Circle />}
                     </Button>
@@ -2374,9 +2365,20 @@ export function WorkoutBuilder({
               );
             })}
           </div>
-          <p className="text-xs text-muted-foreground">
-            New grouped sets are added with the superset DONE button.
-          </p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              Add a set here for this exercise only, or use Done for a full round.
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => addSet(selectedExercise.localId)}
+            >
+              <Plus />
+              Add set
+            </Button>
+          </div>
         </AccordionContent>
       </AccordionItem>
     );
@@ -2390,6 +2392,26 @@ export function WorkoutBuilder({
 
   function saveActiveSupersetRound() {
     if (!resultsSupersetKey) return;
+    const firstInvalid = getSupersetMembers(
+      supersets,
+      selectedExercises,
+      resultsSupersetKey
+    ).find((exercise) => {
+      const metadata = exercises.find((item) => item.id === exercise.exerciseId);
+      const draft = supersetResultDraft[exercise.localId];
+      return (
+        !metadata ||
+        !draft ||
+        !hasEnteredSetPerformance(draft.set, metadata.trackingType)
+      );
+    });
+    if (firstInvalid) {
+      const name = exercises.find(
+        (item) => item.id === firstInvalid.exerciseId
+      )?.name;
+      toast.error(`Enter results for ${name ?? "each exercise"}.`);
+      return;
+    }
     completeSupersetRound(resultsSupersetKey, supersetResultDraft);
   }
 
@@ -2841,10 +2863,7 @@ export function WorkoutBuilder({
                 size="sm"
                 variant="outline"
                 onClick={() => openSupersetEditor("new")}
-                disabled={
-                  selectedExercises.filter((exercise) => !exercise.supersetKey)
-                    .length < 2
-                }
+                disabled={selectedExercises.length < 2}
               >
                 <Layers2 />
                 Create superset
@@ -2861,7 +2880,12 @@ export function WorkoutBuilder({
           ) : (
             <SortableExerciseList
               ids={selectedExercises
-                .filter((exercise) => !exercise.supersetKey)
+                .filter(
+                  (exercise) =>
+                    !supersets.some((superset) =>
+                      superset.exerciseLocalIds.includes(exercise.localId)
+                    )
+                )
                 .map((exercise) => exercise.localId)}
               onMove={moveExercise}
             >
@@ -2871,7 +2895,25 @@ export function WorkoutBuilder({
                 onValueChange={setOpenExerciseIds}
                 className="space-y-2"
               >
-              {selectedExercises.map((selectedExercise, exerciseIndex) => {
+              {[
+                ...supersets
+                  .map((superset) =>
+                    selectedExercises.find(
+                      (exercise) =>
+                        exercise.localId === superset.exerciseLocalIds[0]
+                    )
+                  )
+                  .filter(
+                    (exercise): exercise is LocalWorkoutExercise =>
+                      Boolean(exercise)
+                  ),
+                ...selectedExercises.filter(
+                  (exercise) =>
+                    !supersets.some((superset) =>
+                      superset.exerciseLocalIds.includes(exercise.localId)
+                    )
+                ),
+              ].map((selectedExercise, exerciseIndex) => {
                 const exercise = exercises.find(
                   (item) => item.id === selectedExercise.exerciseId
                 );
@@ -2890,29 +2932,24 @@ export function WorkoutBuilder({
                 const completedSets = selectedExercise.sets.filter(
                   (set) => set.completed
                 ).length;
-                const superset = selectedExercise.supersetKey
-                  ? supersets.find(
-                      (item) => item.key === selectedExercise.supersetKey
-                    )
-                  : null;
+                const superset = supersets.find(
+                  (item) => item.exerciseLocalIds[0] === selectedExercise.localId
+                ) ?? null;
                 const supersetIndex = superset
                   ? supersets.findIndex((item) => item.key === superset.key)
                   : -1;
                 const supersetMembers = superset
-                  ? selectedExercises
-                      .filter((item) => item.supersetKey === superset.key)
-                      .sort(
-                        (a, b) =>
-                          (a.supersetPosition ?? 0) -
-                          (b.supersetPosition ?? 0)
-                      )
+                  ? getSupersetMembers(supersets, selectedExercises, superset.key)
                   : [];
                 const isFirstSupersetMember =
                   supersetMembers[0]?.localId === selectedExercise.localId;
                 const supersetProgress = superset
                   ? getSupersetRoundProgress(
                       supersetMembers,
-                      { hardRoundLimit: superset.hardRoundLimit }
+                      {
+                        hardRoundLimit: superset.hardRoundLimit,
+                        supersetKey: superset.key,
+                      }
                     )
                   : null;
 
@@ -2987,7 +3024,8 @@ export function WorkoutBuilder({
                         renderSupersetExerciseRow(
                           member,
                           memberIndex,
-                          label
+                          label,
+                          superset.key
                         )
                       )}
                     </SupersetGroupCard>
@@ -3679,9 +3717,6 @@ export function WorkoutBuilder({
                   (item) => item.id === selectedExercise.exerciseId
                 );
                 if (!exercise) return null;
-                const belongsElsewhere =
-                  selectedExercise.supersetKey !== null &&
-                  selectedExercise.supersetKey !== supersetEditorKey;
                 const checked = supersetSelection.includes(
                   selectedExercise.localId
                 );
@@ -3694,7 +3729,6 @@ export function WorkoutBuilder({
                     <Checkbox
                       id={`superset-exercise-${selectedExercise.localId}`}
                       checked={checked}
-                      disabled={belongsElsewhere}
                       onCheckedChange={(value) =>
                         setSupersetSelection((current) =>
                           value === true
@@ -3711,8 +3745,14 @@ export function WorkoutBuilder({
                     >
                       <span className="block truncate">{exercise.name}</span>
                       <span className="text-xs font-normal text-muted-foreground">
-                        {belongsElsewhere
-                          ? "Already in another superset"
+                        {supersets.some(
+                          (superset) =>
+                            superset.key !== supersetEditorKey &&
+                            superset.exerciseLocalIds.includes(
+                              selectedExercise.localId
+                            )
+                        )
+                          ? "Also in another superset"
                           : `${selectedExercise.sets.length} sets`}
                       </span>
                     </Label>
@@ -3831,7 +3871,7 @@ export function WorkoutBuilder({
       >
         <SheetContent
           side="bottom"
-          className="h-[min(88dvh,48rem)] gap-0 overflow-hidden rounded-t-2xl"
+          className="h-[min(88dvh,48rem)] min-h-0 gap-0 overflow-hidden rounded-t-2xl"
         >
           <SheetHeader className="shrink-0 border-b pr-12">
             <SheetTitle>
@@ -3859,8 +3899,8 @@ export function WorkoutBuilder({
           }
         }}
       >
-        <DialogContent className="max-h-[85dvh] overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+1rem)]">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[85dvh] min-h-0 flex-col gap-0 overflow-hidden p-0">
+          <DialogHeader className="shrink-0 border-b p-6 pr-12">
             <DialogTitle>
               {activeResultsSuperset
                 ? `${getSupersetDisplayLabel(
@@ -3873,19 +3913,10 @@ export function WorkoutBuilder({
               Enter the results for each exercise in this round.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-6 py-4">
             {resultsSupersetKey
-              ? selectedExercises
-                  .filter(
-                    (exercise) =>
-                      exercise.supersetKey === resultsSupersetKey &&
-                      supersetResultDraft[exercise.localId]
-                  )
-                  .sort(
-                    (a, b) =>
-                      (a.supersetPosition ?? 0) -
-                      (b.supersetPosition ?? 0)
-                  )
+              ? getSupersetMembers(supersets, selectedExercises, resultsSupersetKey)
+                  .filter((exercise) => supersetResultDraft[exercise.localId])
                   .map((selectedExercise) => {
                     const exercise = exercises.find(
                       (item) => item.id === selectedExercise.exerciseId
@@ -3902,7 +3933,7 @@ export function WorkoutBuilder({
                         <div>
                           <p className="font-semibold">{exercise.name}</p>
                           <p className="text-xs text-muted-foreground">
-                            Set {entry.setIndex + 1}
+                            Set {entry.setNumber}
                           </p>
                         </div>
                         <div
@@ -4059,7 +4090,7 @@ export function WorkoutBuilder({
                   })
               : null}
           </div>
-          <DialogFooter className="sticky bottom-0 bg-background pt-2">
+          <DialogFooter className="shrink-0 border-t bg-background p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
             <Button
               type="button"
               variant="outline"

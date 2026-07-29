@@ -15,6 +15,7 @@ export type SupersetRoundFormEntry = {
   localId: string;
   exerciseName: string;
   setIndex: number;
+  setNumber: number;
   set: WorkoutSetInput;
   showWeight: boolean;
   weightedBodyweight: boolean;
@@ -50,13 +51,13 @@ export function SupersetRoundForm({
 }: SupersetRoundFormProps) {
   return (
     <form
-      className="flex min-h-0 flex-1 flex-col"
+      className="flex min-h-0 flex-1 flex-col overflow-hidden"
       onSubmit={(event) => {
         event.preventDefault();
         onSave();
       }}
     >
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 pb-4">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-4 [-webkit-overflow-scrolling:touch]">
         {entries.map((entry) => (
           <fieldset
             key={entry.localId}
@@ -64,7 +65,7 @@ export function SupersetRoundForm({
           >
             <legend className="px-1 font-semibold">{entry.exerciseName}</legend>
             <p className="text-xs text-muted-foreground">
-              Set {entry.setIndex + 1}
+              Set {entry.setNumber}
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
               {entry.showWeight ? (
@@ -218,7 +219,7 @@ export function SupersetRoundForm({
           </fieldset>
         ))}
       </div>
-      <div className="sticky bottom-0 grid grid-cols-2 gap-2 border-t bg-background p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+      <div className="shrink-0 grid grid-cols-2 gap-2 border-t bg-background p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
         <Button
           type="button"
           variant="outline"

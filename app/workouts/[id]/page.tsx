@@ -214,11 +214,15 @@ export default async function WorkoutDetailPage({
 
       <div className="space-y-4">
         {detail.exercises.map((workoutExercise) => {
-          const superset = workoutExercise.supersetKey
-            ? detail.supersets.find(
-                (item) => item.key === workoutExercise.supersetKey
-              )
-            : null;
+          const superset =
+            detail.supersets.find((item) =>
+              item.exerciseLocalIds.includes(String(workoutExercise.id))
+            ) ??
+            (workoutExercise.supersetKey
+              ? detail.supersets.find(
+                  (item) => item.key === workoutExercise.supersetKey
+                )
+              : null);
           const supersetIndex = superset
             ? detail.supersets.findIndex((item) => item.key === superset.key)
             : -1;

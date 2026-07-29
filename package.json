@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "node --test lib/*.test.mjs && tsx --test tests/*.test.ts",
+    "db:migrate:deploy": "prisma migrate deploy",
     "seed:exercises": "node scripts/seed-exercises.mjs",
     "add:l-sit-and-ring-muscle-up": "node --env-file=.env.local scripts/add-l-sit-and-ring-muscle-up.mjs",
     "repair:l-sit-exercises": "node --env-file=.env.local scripts/repair-l-sit-exercises.mjs",
@@ -62,6 +64,8 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "tailwindcss": "^4",
+    "tsx": "~4.23.1",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

@@ -90,11 +90,15 @@ export default async function RoutineDetailPage({
           const fieldConfig = getTrackingTypeFieldConfig(
             routineExercise.exercise.trackingType
           );
-          const superset = routineExercise.supersetKey
-            ? routine.supersets.find(
-                (item) => item.key === routineExercise.supersetKey
-              )
-            : null;
+          const superset =
+            routine.supersets.find((item) =>
+              item.exerciseClientIds.includes(routineExercise.clientExerciseId)
+            ) ??
+            (routineExercise.supersetKey
+              ? routine.supersets.find(
+                  (item) => item.key === routineExercise.supersetKey
+                )
+              : null);
           const supersetIndex = superset
             ? routine.supersets.findIndex((item) => item.key === superset.key)
             : -1;

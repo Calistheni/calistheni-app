@@ -2,7 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { Moon, Sun, Monitor } from "lucide-react";
-import { useTheme } from "next-themes";
+import { useTheme } from "@/components/ThemeProvider";
 
 import { Button } from "@/components/ui/button";
 
