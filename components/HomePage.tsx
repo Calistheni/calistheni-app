@@ -98,6 +98,28 @@ export default function HomePage({ user, inAppShell = false }: HomePageProps) {
             lightPreset={lightPreset}
             theme={theme}
             onViewportParksChange={setParks}
+            addParkControl={
+              user ? (
+                <Button
+                  asChild
+                  className="pointer-events-auto h-10 gap-2 rounded-full px-3 shadow-md sm:px-4"
+                >
+                  <Link href="/my-parks">
+                    <MapPinPlus className="size-4" aria-hidden="true" />
+                    Add park
+                  </Link>
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  className="pointer-events-auto h-10 gap-2 rounded-full px-3 shadow-md sm:px-4"
+                  onClick={() => setShowGuestAddParkPrompt(true)}
+                >
+                  <MapPinPlus className="size-4" aria-hidden="true" />
+                  Add park
+                </Button>
+              )
+            }
           />
         </div>
         {areGuestControlsReady ? (
@@ -111,34 +133,6 @@ export default function HomePage({ user, inAppShell = false }: HomePageProps) {
               onShowParksIntroduction={reopenGuestOnboarding}
               inAppShell={inAppShell}
             />
-            <div
-              className={
-                user
-                  ? "absolute top-[calc(env(safe-area-inset-top)+1rem)] left-[4.25rem] z-40 sm:left-[5.75rem]"
-                  : "absolute top-[calc(env(safe-area-inset-top)+1rem)] left-[7rem] z-40 sm:left-[8rem]"
-              }
-            >
-              {user ? (
-                <Button
-                  asChild
-                  className="h-10 gap-2 rounded-full px-3 shadow-md sm:px-4"
-                >
-                  <Link href="/my-parks">
-                    <MapPinPlus className="size-4" aria-hidden="true" />
-                    Add park
-                  </Link>
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  className="h-10 gap-2 rounded-full px-3 shadow-md sm:px-4"
-                  onClick={() => setShowGuestAddParkPrompt(true)}
-                >
-                  <MapPinPlus className="size-4" aria-hidden="true" />
-                  Add park
-                </Button>
-              )}
-            </div>
           </>
         ) : null}
 

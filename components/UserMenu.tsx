@@ -107,21 +107,14 @@ export function UserMenu({
         <DropdownMenuTrigger asChild>
           <Button
             variant="outline"
-            size={inAppShell ? "icon-lg" : "default"}
-            className={
-              inAppShell
-                ? "size-10 rounded-full bg-card shadow-md"
-                : "h-10 rounded-full bg-card px-3 shadow-md"
-            }
-            aria-label={inAppShell ? "Open map settings" : "Open menu"}
+            size="icon-lg"
+            className="size-10 rounded-full bg-card shadow-md"
+            aria-label={inAppShell ? "Open map settings" : "Open map menu"}
           >
             {inAppShell ? (
               <Settings2 className="size-5" />
             ) : (
-              <>
-                <Menu className="size-4" />
-                Menu
-              </>
+              <Menu className="size-5" />
             )}
           </Button>
         </DropdownMenuTrigger>

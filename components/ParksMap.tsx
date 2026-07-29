@@ -2,6 +2,7 @@
 
 import {
   forwardRef,
+  type ReactNode,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -106,6 +107,7 @@ type ParksMapProps = {
   onAdminParkSelected?: (park: AdminParkDetail) => void;
   onAdminParkPlacement?: (coordinates: { lat: number; lon: number }) => void;
   placementResetToken?: string | number;
+  addParkControl?: ReactNode;
   onViewportParksChange: (parks: MapParkSummary[]) => void;
   onViewportLoadingChange?: (isLoading: boolean) => void;
   onLocationStatusChange?: (status: ParksLocationStatus) => void;
@@ -671,6 +673,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     onAdminParkSelected,
     onAdminParkPlacement,
     placementResetToken = 0,
+    addParkControl,
     onViewportParksChange,
     onViewportLoadingChange,
     onLocationStatusChange,
@@ -699,9 +702,6 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   const focusOnNextGeolocateRef = useRef(false);
   const recenterInProgressRef = useRef(false);
   const trackingActiveRef = useRef(false);
-  const userHeadingPermissionRef = useRef<
-    "unknown" | "requesting" | "granted" | "unavailable"
-  >("unknown");
   const viewportCacheRef = useRef(new Map<string, MapParkSummary[]>());
   const areaCacheTimestampRef = useRef(new Map<string, number>());
   const areaTruncatedRef = useRef(new Map<string, boolean>());
@@ -1077,8 +1077,6 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       return false;
     }
 
-    if (source === "custom") requestUserHeadingFromGesture();
-
     map.stop();
     clearSearchLocation();
     setSearchClearRequest((current) => current + 1);
@@ -1098,65 +1096,10 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     return true;
   }
 
-  function requestUserHeadingFromGesture() {
-    if (userHeadingPermissionRef.current !== "unknown") return;
-
-    const geolocate = geolocateRef.current as (mapboxgl.GeolocateControl & {
-      _onDeviceOrientation?: (event: DeviceOrientationEvent) => void;
-    }) | null;
-    if (!geolocate || typeof window === "undefined") return;
-
-    const orientation = window.DeviceOrientationEvent as
-      | (typeof DeviceOrientationEvent & {
-          requestPermission?: () => Promise<"granted" | "denied">;
-        })
-      | undefined;
-
-    const attachMapboxHeadingListener = () => {
-      if (!geolocate._onDeviceOrientation) return;
-
-      // Keep Mapbox's native dot, marker rotation and heading CSS state. The
-      // listener must be attached only once; Mapbox removes it with the rest
-      // of its location watch when tracking stops.
-      const eventName =
-        "ondeviceorientationabsolute" in window
-          ? "deviceorientationabsolute"
-          : "deviceorientation";
-      window.addEventListener(eventName, geolocate._onDeviceOrientation);
-    };
-
-    // Mapbox owns the location dot and heading rotation. On iOS, permission
-    // must be requested during the user's click. Calling Mapbox's private
-    // `_addDeviceOrientationListener` after this promise resolves causes a
-    // second permission request outside that gesture, so Safari never adds
-    // the listener.
-    if (typeof orientation?.requestPermission === "function") {
-      userHeadingPermissionRef.current = "requesting";
-      void orientation
-        .requestPermission()
-        .then((result) => {
-          if (result !== "granted") {
-            userHeadingPermissionRef.current = "unavailable";
-            return;
-          }
-          userHeadingPermissionRef.current = "granted";
-          attachMapboxHeadingListener();
-        })
-        .catch(() => {
-          userHeadingPermissionRef.current = "unavailable";
-        });
-      return;
-    }
-
-    userHeadingPermissionRef.current = "granted";
-    attachMapboxHeadingListener();
-  }
-
   function requestUserLocation() {
     const geolocate = geolocateRef.current;
 
     if (userLocationRef.current) {
-      requestUserHeadingFromGesture();
       return recenterToUser({ source: "custom" });
     }
 
@@ -2520,7 +2463,23 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         });
       });
 
-      if (localStorage.getItem("location-allowed") === "true") {
+      const deviceOrientation = window.DeviceOrientationEvent as
+        | (typeof DeviceOrientationEvent & {
+            requestPermission?: () => Promise<"granted" | "denied">;
+          })
+        | undefined;
+      const requiresHeadingGesture =
+        typeof deviceOrientation?.requestPermission === "function";
+
+      // Mapbox requests device-orientation access when tracking starts. On
+      // iOS that request is valid only from the native control's user gesture;
+      // restoring an old location permission programmatically would leave a
+      // blue dot without a heading listener. Let the existing Mapbox button
+      // start tracking on those devices instead.
+      if (
+        localStorage.getItem("location-allowed") === "true" &&
+        !requiresHeadingGesture
+      ) {
         window.setTimeout(() => {
           focusOnNextGeolocateRef.current = true;
           geolocateRef.current?.trigger();
@@ -2559,6 +2518,8 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       showUserHeading: true,
       showUserLocation: true,
       showAccuracyCircle: true,
+      followUserLocation: false,
+      showButton: true,
     });
 
     geolocateRef.current = geolocate;
@@ -2923,36 +2884,42 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         ) : null}
       </div>
 
-      <div className="pointer-events-none absolute top-[calc(env(safe-area-inset-top)+1rem)] left-1/2 z-30 -translate-x-1/2 sm:top-4">
-        <Button
-          type="button"
-          variant="secondary"
-          className={`pointer-events-auto h-10 gap-2 rounded-full border border-border px-4 shadow-md transition-[opacity,transform,visibility] duration-200 ${
-            showSearchThisArea || isViewportLoading
-              ? "visible translate-y-0 opacity-100"
-              : "invisible -translate-y-1 opacity-0 pointer-events-none"
-          }`}
-          aria-hidden={!(showSearchThisArea || isViewportLoading) || undefined}
-          tabIndex={showSearchThisArea || isViewportLoading ? 0 : -1}
-          disabled={isViewportLoading}
-          onClick={() => void requestViewportParksRef.current()}
-        >
-          {isViewportLoading ? (
-            <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />
-          ) : (
-            <Search className="size-4" aria-hidden="true" />
-          )}
-          {isViewportLoading ? "Searching…" : "Search this area"}
-        </Button>
+      <div className="pointer-events-none absolute top-[calc(env(safe-area-inset-top)+1rem)] right-12 left-24 z-30 flex justify-center sm:top-4 sm:right-0 sm:left-0">
+        <div className="pointer-events-auto w-fit max-w-full">
+          <Button
+            type="button"
+            variant="secondary"
+            className={`h-10 max-w-full gap-2 rounded-full border border-border px-3 text-sm whitespace-nowrap shadow-md transition-[opacity,transform,visibility] duration-200 sm:px-4 ${
+              showSearchThisArea || isViewportLoading
+                ? "visible translate-y-0 opacity-100"
+                : "invisible -translate-y-1 opacity-0 pointer-events-none"
+            }`}
+            aria-hidden={!(showSearchThisArea || isViewportLoading) || undefined}
+            tabIndex={showSearchThisArea || isViewportLoading ? 0 : -1}
+            disabled={isViewportLoading}
+            onClick={() => void requestViewportParksRef.current()}
+          >
+            {isViewportLoading ? (
+              <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <Search className="size-4" aria-hidden="true" />
+            )}
+            {isViewportLoading ? "Searching…" : "Search this area"}
+          </Button>
+        </div>
         {isAreaTruncated && !isViewportLoading ? (
-          <p className="mt-2 rounded-full border border-border bg-card px-3 py-1 text-center text-xs text-muted-foreground shadow-sm">
+          <p className="pointer-events-auto absolute top-10 left-1/2 mt-2 max-w-full -translate-x-1/2 rounded-full border border-border bg-card px-3 py-1 text-center text-xs text-muted-foreground shadow-sm">
             Zoom in to see more parks
           </p>
         ) : null}
       </div>
 
       <div
-        className={`pointer-events-none absolute bottom-[calc(env(safe-area-inset-bottom)+1rem)] left-4 z-40 flex max-w-[calc(100%-2rem)] items-start gap-2 transition-opacity duration-200 sm:bottom-4 sm:left-4 ${isMapInitializing ? "opacity-0" : "opacity-100"}`}
+        className={`pointer-events-none absolute left-4 z-40 flex max-w-[calc(100%-2rem)] items-start gap-2 transition-[bottom,opacity] duration-200 ${
+          activeRoute
+            ? "bottom-[calc(env(safe-area-inset-bottom)+7rem)]"
+            : "bottom-[calc(env(safe-area-inset-bottom)+1rem)]"
+        } sm:bottom-4 sm:left-4 ${isMapInitializing ? "opacity-0" : "opacity-100"}`}
         aria-hidden={isMapInitializing || undefined}
         inert={isMapInitializing || undefined}
       >
@@ -2979,7 +2946,9 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
             )}
             {isPlacementMode ? "Cancel" : "Add Park"}
           </Button>
-        ) : null}
+        ) : (
+          addParkControl
+        )}
       </div>
     </div>
   );
