@@ -53,7 +53,7 @@ export function AdminParksMap({
         </Badge>
       </div>
 
-      <div className="h-[32rem] min-h-[24rem] overflow-hidden rounded-xl border sm:h-[38rem]">
+      <div className="h-[32rem] min-h-[24rem] shrink-0 overflow-hidden rounded-xl border sm:h-[38rem]">
         <ParksMap
           mode="admin"
           parks={parks}

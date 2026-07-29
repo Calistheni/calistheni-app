@@ -688,6 +688,8 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   const placementMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const selectedMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const selectedParkCameraRequestRef = useRef(0);
+  const mapContainerSizeRef = useRef({ width: 0, height: 0 });
+  const pendingMapResizeRef = useRef(false);
   const boundaryRequestRef = useRef<AbortController | null>(null);
   const boundariesAccessUnavailableRef = useRef(false);
   const searchSelectionRef = useRef(0);
@@ -2075,6 +2077,14 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       }
     };
     const handleCameraMoveEnd = () => {
+      // A card selection must never resize the map. If the map container did
+      // genuinely change size while Mapbox was animating, resize once after
+      // the active camera transition has completed instead.
+      if (pendingMapResizeRef.current) {
+        pendingMapResizeRef.current = false;
+        map.resize();
+      }
+
       const center = map.getCenter();
 
       const focusResult = finishCameraMove({
@@ -2618,7 +2628,25 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       "bottom-right"
     );
 
-    const resizeObserver = new ResizeObserver(() => {
+    const resizeObserver = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+
+      const { width, height } = entry.contentRect;
+      const previousSize = mapContainerSizeRef.current;
+      if (
+        Math.abs(previousSize.width - width) < 0.5 &&
+        Math.abs(previousSize.height - height) < 0.5
+      ) {
+        return;
+      }
+
+      mapContainerSizeRef.current = { width, height };
+      if (map.isMoving()) {
+        pendingMapResizeRef.current = true;
+        return;
+      }
+
       map.resize();
     });
     resizeObserver.observe(mapContainer.current);
@@ -2895,7 +2923,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         ) : null}
       </div>
 
-      <div className="pointer-events-none absolute top-[calc(env(safe-area-inset-top)+7.25rem)] left-1/2 z-30 -translate-x-1/2 sm:top-[calc(env(safe-area-inset-top)+4.5rem)]">
+      <div className="pointer-events-none absolute top-[calc(env(safe-area-inset-top)+1rem)] left-1/2 z-30 -translate-x-1/2 sm:top-4">
         <Button
           type="button"
           variant="secondary"
@@ -2924,7 +2952,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       </div>
 
       <div
-        className={`absolute top-[calc(env(safe-area-inset-top)+4rem)] left-4 z-40 flex max-w-[calc(100%-2rem)] items-start gap-2 transition-opacity duration-200 sm:top-[calc(env(safe-area-inset-top)+1rem)] sm:left-4 ${isMapInitializing ? "pointer-events-none opacity-0" : "opacity-100"}`}
+        className={`pointer-events-none absolute bottom-[calc(env(safe-area-inset-bottom)+1rem)] left-4 z-40 flex max-w-[calc(100%-2rem)] items-start gap-2 transition-opacity duration-200 sm:bottom-4 sm:left-4 ${isMapInitializing ? "opacity-0" : "opacity-100"}`}
         aria-hidden={isMapInitializing || undefined}
         inert={isMapInitializing || undefined}
       >
@@ -2932,7 +2960,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
           <Button
             type="button"
             variant={isPlacementMode ? "secondary" : "outline"}
-            className="h-10 shrink-0 gap-2 rounded-full bg-card px-3 shadow-md"
+            className="pointer-events-auto h-10 shrink-0 gap-2 rounded-full bg-card px-3 shadow-md"
             aria-pressed={isPlacementMode}
             onClick={() => {
               if (isPlacementMode) {

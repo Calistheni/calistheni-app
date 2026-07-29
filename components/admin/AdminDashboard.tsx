@@ -2103,9 +2103,9 @@ export default function AdminDashboard() {
 
       <div className="overflow-x-auto rounded-lg border">
         <Table>
-          <TableHeader>
+          <TableHeader className="hidden sm:table-header-group">
             <TableRow>
-              <TableHead className="w-20">ID</TableHead>
+              <TableHead className="w-16">ID</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Address</TableHead>
               <TableHead>QR status</TableHead>
@@ -2136,24 +2136,50 @@ export default function AdminDashboard() {
                 <TableRow
                   key={park.id}
                   onClick={() => void startEditing(park)}
-                  className={`cursor-pointer hover:bg-muted/50 ${
+                  className={`cursor-pointer border-l-2 hover:bg-muted/50 ${
+                    selectedParkPreview?.id === park.id
+                      ? "border-l-primary bg-primary/5"
+                      : "border-l-transparent"
+                  } ${
                     isParkArchivedForAdminMap(park)
                       ? "bg-muted/40 text-muted-foreground"
                       : ""
                   }`}
                 >
-                  <TableCell>{park.id}</TableCell>
-                  <TableCell>
-                    <span className="mr-2">{park.name}</span>
-                    {isParkArchivedForAdminMap(park) ? (
-                      <Badge variant="outline">Archived</Badge>
-                    ) : null}
-                    {park.submissionStatus === "REJECTED" ? (
-                      <Badge variant="outline">Rejected</Badge>
-                    ) : null}
+                  <TableCell className="hidden w-16 py-2 text-xs tabular-nums sm:table-cell">
+                    {park.id}
                   </TableCell>
-                  <TableCell>{park.address}</TableCell>
-                  <TableCell>
+                  <TableCell className="min-w-0 py-2 pl-3 sm:pl-4">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium leading-5">
+                          {park.name}
+                        </p>
+                        <p className="truncate text-xs leading-4 text-muted-foreground sm:hidden">
+                          {park.address || "No address"}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {isParkArchivedForAdminMap(park) ? (
+                          <Badge variant="outline" className="px-1.5 py-0 text-[10px] leading-4">
+                            Archived
+                          </Badge>
+                        ) : null}
+                        {park.submissionStatus === "REJECTED" ? (
+                          <Badge variant="outline" className="px-1.5 py-0 text-[10px] leading-4">
+                            Rejected
+                          </Badge>
+                        ) : null}
+                        <span className="sm:hidden">
+                          <ParkQrStatusBadge status={park.qrStatus} compact />
+                        </span>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell className="hidden max-w-64 py-2 text-sm sm:table-cell">
+                    <span className="block truncate">{park.address || "—"}</span>
+                  </TableCell>
+                  <TableCell className="hidden py-2 sm:table-cell">
                     <ParkQrStatusBadge status={park.qrStatus} compact />
                   </TableCell>
                 </TableRow>
