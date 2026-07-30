@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated native projects are built by Xcode/Gradle, not the web linter.
+    "android/**",
+    "ios/**",
+    "mobile-web/**",
   ]),
 ]);
 

@@ -9,6 +9,13 @@
     "lint": "eslint",
     "test": "node --test lib/*.test.mjs && tsx --test tests/*.test.ts",
     "db:migrate:deploy": "prisma migrate deploy",
+    "mobile:assets": "capacitor-assets generate --ios --android --assetPath resources --iconBackgroundColor '#2563eb' --iconBackgroundColorDark '#09090b' --splashBackgroundColor '#09090b' --splashBackgroundColorDark '#09090b' --logoSplashScale 0.24",
+    "mobile:sync": "cap sync",
+    "mobile:prepare": "npm run build && npm run mobile:sync",
+    "mobile:ios": "npm run mobile:prepare && cap open ios",
+    "mobile:android": "npm run mobile:prepare && cap open android",
+    "mobile:ios:build": "npm run mobile:prepare && xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build",
+    "mobile:android:build": "npm run mobile:prepare && cd android && ./gradlew assembleDebug",
     "seed:exercises": "node scripts/seed-exercises.mjs",
     "add:l-sit-and-ring-muscle-up": "node --env-file=.env.local scripts/add-l-sit-and-ring-muscle-up.mjs",
     "repair:l-sit-exercises": "node --env-file=.env.local scripts/repair-l-sit-exercises.mjs",
@@ -24,6 +31,15 @@
   "dependencies": {
     "@auth/prisma-adapter": "~2.11.2",
     "@aws-sdk/client-s3": "~3.1078.0",
+    "@capacitor/android": "~8.4.2",
+    "@capacitor/app": "~8.1.1",
+    "@capacitor/browser": "~8.0.4",
+    "@capacitor/cli": "~8.4.2",
+    "@capacitor/core": "~8.4.2",
+    "@capacitor/ios": "~8.4.2",
+    "@capacitor/keyboard": "~8.0.5",
+    "@capacitor/splash-screen": "~8.0.2",
+    "@capacitor/status-bar": "~8.0.3",
     "@dnd-kit/core": "~6.3.1",
     "@dnd-kit/sortable": "~10.0.0",
     "@dnd-kit/utilities": "~3.2.2",
@@ -56,6 +72,7 @@
     "vaul": "~1.1.2"
   },
   "devDependencies": {
+    "@capacitor/assets": "~3.0.5",
     "@tailwindcss/postcss": "^4",
     "@types/mapbox-gl": "~3.4.1",
     "@types/node": "^20",
@@ -65,7 +82,6 @@
     "eslint-config-next": "16.2.6",
     "tailwindcss": "^4",
     "tsx": "~4.23.1",
-    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

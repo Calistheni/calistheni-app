@@ -15,6 +15,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   session: {
     strategy: "database",
   },
+  pages: {
+    // Native browser failures can return through a verified Universal/App Link
+    // instead of exposing Auth.js's generic server error page.
+    error: "/mobile/auth/error",
+  },
   trustHost: true,
   callbacks: {
     session({ session, user }) {

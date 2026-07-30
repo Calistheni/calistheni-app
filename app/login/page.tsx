@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { auth, signIn } from "@/auth";
+import { auth } from "@/auth";
+import { NativeGoogleSignInButton } from "@/components/auth/NativeGoogleSignInButton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { getPostLoginRedirect } from "@/lib/onboarding";
@@ -32,6 +33,7 @@ export default async function LoginPage({
   searchParams: Promise<{
     callbackUrl?: string | string[];
     intent?: string | string[];
+    nativeAuthError?: string | string[];
   }>;
 }) {
   const query = await searchParams;
@@ -46,14 +48,6 @@ export default async function LoginPage({
   const isGoogleConfigured =
     Boolean(process.env.GOOGLE_CLIENT_ID) &&
     Boolean(process.env.GOOGLE_CLIENT_SECRET);
-
-  async function loginWithGoogle() {
-    "use server";
-
-    await signIn("google", {
-      redirectTo: callbackUrl ?? "/onboarding",
-    });
-  }
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
@@ -72,12 +66,13 @@ export default async function LoginPage({
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
+          {typeof query.nativeAuthError === "string" ? (
+            <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-muted-foreground">
+              Google sign-in did not complete. Please try again.
+            </div>
+          ) : null}
           {isGoogleConfigured ? (
-            <form action={loginWithGoogle}>
-              <Button type="submit" className="w-full">
-                Continue with Google
-              </Button>
-            </form>
+            <NativeGoogleSignInButton callbackUrl={callbackUrl} />
           ) : (
             <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-muted-foreground">
               Google login is not configured yet. Add OAuth environment

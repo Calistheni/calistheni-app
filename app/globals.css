@@ -145,11 +145,30 @@
 }
 
 @layer base {
+  html {
+    min-height: 100%;
+    background: var(--background);
+  }
+
   * {
     @apply border-border outline-ring/50;
   }
   body {
     @apply bg-background text-foreground;
+    min-height: 100dvh;
+  }
+  html[data-native-app] body {
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top);
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+  }
+  html[data-native-app] input,
+  html[data-native-app] textarea,
+  html[data-native-app] select,
+  html[data-native-app] [contenteditable="true"] {
+    scroll-margin-block: calc(1rem + env(safe-area-inset-bottom));
   }
   html {
     @apply font-sans;

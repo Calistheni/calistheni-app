@@ -5,6 +5,7 @@ import "./globals.css";
 import { auth } from "@/auth";
 import { AppShell } from "@/components/navigation/AppShell";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { NativeShell } from "@/components/native/NativeShell";
 import { Toaster } from "@/components/ui/sonner";
 import { getSiteUrl } from "@/lib/site-url";
 
@@ -63,6 +64,9 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  viewportFit: "cover",
+  interactiveWidget: "resizes-content",
+  colorScheme: "light dark",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#2563eb" },
     { media: "(prefers-color-scheme: dark)", color: "#09090b" },
@@ -84,6 +88,7 @@ export default async function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <ThemeProvider>
+          <NativeShell />
           <AppShell
             user={
               session?.user
