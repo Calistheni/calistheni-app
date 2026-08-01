@@ -14,6 +14,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { ActiveWorkoutDock } from "@/components/workouts/ActiveWorkoutDock";
+import { ActiveWorkoutProvider } from "@/components/workouts/ActiveWorkoutProvider";
 import {
   getActivePrimaryNavigation,
   desktopPrimaryNavigation,
@@ -51,6 +52,7 @@ export function AppShell({ children, user }: AppShellProps) {
   const keepsMobileHeader = pathname === "/pro";
 
   return (
+    <ActiveWorkoutProvider>
     <div
       className={cn(
         "app-shell flex min-h-dvh flex-col bg-background",
@@ -169,5 +171,6 @@ export function AppShell({ children, user }: AppShellProps) {
         </nav>
       )}
     </div>
+    </ActiveWorkoutProvider>
   );
 }

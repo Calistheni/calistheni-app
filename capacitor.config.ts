@@ -29,7 +29,10 @@ const config: CapacitorConfig = {
   plugins: {
     StatusBar: {
       overlaysWebView: false,
-      style: "DEFAULT",
+      // The splash and WebView fallback are dark. Start with light status-bar
+      // text so a dark saved theme never gets a light/default status-bar flash;
+      // NativeShell switches this immediately after the server-resolved page loads.
+      style: "DARK",
       backgroundColor: "#09090b",
     },
     SplashScreen: {

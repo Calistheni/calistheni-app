@@ -61,8 +61,15 @@ export function useWorkoutTimer(storageKey: string, autoStart = false) {
         return;
       }
 
+      const nextTimer = readStoredWorkoutTimer(storageKey);
       setNowMs(Date.now());
-      setTimerState(readStoredWorkoutTimer(storageKey));
+      setTimerState((current) =>
+        current.status === nextTimer.status &&
+        current.startedAtMs === nextTimer.startedAtMs &&
+        current.accumulatedMs === nextTimer.accumulatedMs
+          ? current
+          : nextTimer
+      );
     }
 
     window.addEventListener(ACTIVE_WORKOUT_TIMER_EVENT, syncTimer);
@@ -89,7 +96,7 @@ export function useWorkoutTimer(storageKey: string, autoStart = false) {
       return;
     }
 
-    writeStoredWorkoutTimer(storageKey, timerState, false);
+    writeStoredWorkoutTimer(storageKey, timerState);
   }, [initializedStorageKey, storageKey, timerState]);
 
   const elapsedSeconds = Math.floor(

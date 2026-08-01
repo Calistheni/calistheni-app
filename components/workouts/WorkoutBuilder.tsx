@@ -1023,7 +1023,9 @@ export function WorkoutBuilder({
       return;
     }
 
-    const restoreActiveWorkout = window.setTimeout(() => {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
       const sessionId = getOrCreateActiveWorkoutSessionId();
       const draft = readActiveWorkoutDraft(sessionId);
 
@@ -1073,9 +1075,11 @@ export function WorkoutBuilder({
       }
 
       setIsActiveWorkoutSessionReady(true);
-    }, 0);
+    });
 
-    return () => window.clearTimeout(restoreActiveWorkout);
+    return () => {
+      cancelled = true;
+    };
   }, [isEditing]);
 
   useEffect(() => {

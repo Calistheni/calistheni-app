@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Space_Grotesk } from "next/font/google";
+import Script from "next/script";
+import { cookies } from "next/headers";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "./globals.css";
 import { auth } from "@/auth";
@@ -9,6 +11,7 @@ import { NativeShell } from "@/components/native/NativeShell";
 import { Toaster } from "@/components/ui/sonner";
 import { getSiteUrl } from "@/lib/site-url";
 import { prisma } from "@/lib/prisma";
+import { parseTheme, THEME_COOKIE_NAME } from "@/lib/theme";
 
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-sans",
@@ -16,6 +19,10 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 const siteUrl = getSiteUrl();
+
+// Theme is intentionally request-specific: the root HTML must vary by the
+// readable preference cookie before the browser has a chance to paint.
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -80,6 +87,12 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const session = await auth();
+  const themeCookie = (await cookies()).get(THEME_COOKIE_NAME)?.value;
+  const theme = parseTheme(themeCookie);
+  const hasThemeCookie = themeCookie === "light" || themeCookie === "dark" || themeCookie === "system";
+  const initialResolvedTheme = theme === "dark" ? "dark" : "light";
+  const initialBackgroundColor = initialResolvedTheme === "dark" ? "#11131b" : "#ffffff";
+  const initialThemeCss = `html,body{background-color:${initialBackgroundColor};color-scheme:${initialResolvedTheme}}@media (prefers-color-scheme:dark){html[data-theme-preference="system"],html[data-theme-preference="system"] body{background-color:#11131b;color-scheme:dark}}`;
   const unreadCommunityActivity = session?.user?.id
     ? await prisma.workoutNotification.count({ where: { userId: session.user.id, readAt: null } })
     : 0;
@@ -88,10 +101,22 @@ export default async function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${spaceGrotesk.variable} h-full antialiased`}
+      className={`${spaceGrotesk.variable} ${initialResolvedTheme} h-full antialiased`}
+      data-theme-preference={theme}
+      data-theme-cookie={hasThemeCookie ? "true" : "false"}
+      style={{ backgroundColor: initialBackgroundColor, colorScheme: initialResolvedTheme }}
     >
-      <body className="min-h-full flex flex-col">
-        <ThemeProvider>
+      <head>
+        <style id="calistheni-initial-theme-css">{initialThemeCss}</style>
+      </head>
+      <body
+        className="min-h-full flex flex-col"
+        style={{ backgroundColor: initialBackgroundColor }}
+      >
+        <Script id="calistheni-initial-theme" strategy="beforeInteractive">
+          {`(()=>{const r=document.documentElement,k='calistheni-theme',v=r.dataset.themePreference,s=r.dataset.themeCookie==='true',l=localStorage.getItem(k),t=!s&&['light','dark','system'].includes(l||'')?l:v,d=t==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):t;r.dataset.themePreference=t;r.classList.remove('light','dark');r.classList.add(d);r.style.colorScheme=d;if(!s&&['light','dark','system'].includes(t)){document.cookie=k+'='+t+'; Path=/; Max-Age=31536000; SameSite=Lax'+(location.protocol==='https:'?'; Secure':'')}})()`}
+        </Script>
+        <ThemeProvider initialTheme={theme} initialResolvedTheme={initialResolvedTheme}>
           <NativeShell />
           <AppShell
             user={

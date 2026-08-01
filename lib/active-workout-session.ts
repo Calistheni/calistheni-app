@@ -19,6 +19,7 @@ export const ACTIVE_WORKOUT_DRAFT_PREFIX = "calistheni-workout-draft:";
 export const ACTIVE_WORKOUT_TIMER_EVENT = "calistheni-workout-timer-updated";
 
 export type ActiveWorkoutSummary = {
+  sessionId: string;
   timer: StoredWorkoutTimerState;
   elapsedSeconds: number;
   title: string | null;
@@ -101,6 +102,14 @@ export function writeStoredWorkoutTimer(
   }
 }
 
+export function notifyActiveWorkoutChanged(sessionId?: string) {
+  window.dispatchEvent(
+    new CustomEvent(ACTIVE_WORKOUT_TIMER_EVENT, {
+      detail: { sessionId },
+    })
+  );
+}
+
 export function getStoredActiveWorkoutSessionId() {
   return window.localStorage.getItem(ACTIVE_WORKOUT_SESSION_ID_KEY);
 }
@@ -151,6 +160,7 @@ export function readActiveWorkoutSummary(): ActiveWorkoutSummary | null {
   }
 
   return {
+    sessionId,
     timer,
     elapsedSeconds: Math.floor(getElapsedMs(timer) / 1000),
     title,
@@ -163,6 +173,7 @@ export function readActiveWorkoutSummary(): ActiveWorkoutSummary | null {
 export function createActiveWorkoutSessionId() {
   const sessionId = crypto.randomUUID();
   window.localStorage.setItem(ACTIVE_WORKOUT_SESSION_ID_KEY, sessionId);
+  notifyActiveWorkoutChanged(sessionId);
 
   return sessionId;
 }
@@ -175,11 +186,5 @@ export function clearActiveWorkoutSessionStorage(sessionId: string) {
   window.localStorage.removeItem(ACTIVE_WORKOUT_SESSION_ID_KEY);
   window.localStorage.removeItem(getWorkoutTimerStorageKey(sessionId));
   window.localStorage.removeItem(getWorkoutDraftStorageKey(sessionId));
-  window.dispatchEvent(
-    new CustomEvent(ACTIVE_WORKOUT_TIMER_EVENT, {
-      detail: {
-        storageKey: getWorkoutTimerStorageKey(sessionId),
-      },
-    })
-  );
+  notifyActiveWorkoutChanged(sessionId);
 }

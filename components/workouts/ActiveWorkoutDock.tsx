@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -17,115 +17,39 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
-  ACTIVE_WORKOUT_TIMER_EVENT,
   clearActiveWorkoutSessionStorage,
   EMPTY_WORKOUT_TIMER_STATE,
   getElapsedMs,
-  getStoredActiveWorkoutSessionId,
   getWorkoutTimerStorageKey,
-  readStoredWorkoutTimer,
   writeStoredWorkoutTimer,
   type StoredWorkoutTimerState,
 } from "@/lib/active-workout-session";
 import { isWorkoutBuilderRoute } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { formatElapsedTime } from "./hooks/useWorkoutTimer";
-
-type ActiveWorkoutDockState = {
-  sessionId: string;
-  timerStorageKey: string;
-  timer: StoredWorkoutTimerState;
-};
-
-function readActiveDockState(): ActiveWorkoutDockState | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const sessionId = getStoredActiveWorkoutSessionId();
-
-  if (!sessionId) {
-    return null;
-  }
-
-  const timerStorageKey = getWorkoutTimerStorageKey(sessionId);
-
-  return {
-    sessionId,
-    timerStorageKey,
-    timer: readStoredWorkoutTimer(timerStorageKey),
-  };
-}
+import { useActiveWorkout } from "./ActiveWorkoutProvider";
 
 export function ActiveWorkoutDock() {
   const router = useRouter();
   const pathname = usePathname();
-  const [dockState, setDockState] = useState<ActiveWorkoutDockState | null>(
-    null
-  );
-  const [nowMs, setNowMs] = useState(() => Date.now());
+  const activeWorkout = useActiveWorkout();
   const [showDiscardDialog, setShowDiscardDialog] = useState(false);
 
-  useEffect(() => {
-    function syncDockState() {
-      setDockState(readActiveDockState());
-      setNowMs(Date.now());
-    }
-
-    syncDockState();
-
-    window.addEventListener(ACTIVE_WORKOUT_TIMER_EVENT, syncDockState);
-    window.addEventListener("storage", syncDockState);
-
-    return () => {
-      window.removeEventListener(ACTIVE_WORKOUT_TIMER_EVENT, syncDockState);
-      window.removeEventListener("storage", syncDockState);
-    };
-  }, []);
-
-  // Only tick while there is a running timer. Reading localStorage every second
-  // when the user is idle needlessly rerendered this global shell component.
-  useEffect(() => {
-    if (!dockState || dockState.timer.status !== "running") {
-      return;
-    }
-
-    const interval = window.setInterval(() => setNowMs(Date.now()), 1000);
-
-    return () => window.clearInterval(interval);
-  }, [dockState]);
-
-  const elapsedSeconds = useMemo(() => {
-    if (!dockState) {
-      return 0;
-    }
-
-    return Math.floor(getElapsedMs(dockState.timer, nowMs) / 1000);
-  }, [dockState, nowMs]);
-
   if (
-    !dockState ||
+    !activeWorkout ||
     pathname.startsWith("/admin") ||
     isWorkoutBuilderRoute(pathname)
   ) {
     return null;
   }
+  const dockWorkout = activeWorkout;
 
   function updateTimer(nextTimer: StoredWorkoutTimerState) {
-    if (!dockState) {
-      return;
-    }
-
-    writeStoredWorkoutTimer(dockState.timerStorageKey, nextTimer);
-    setDockState({
-      ...dockState,
-      timer: nextTimer,
-    });
-    setNowMs(Date.now());
+    writeStoredWorkoutTimer(getWorkoutTimerStorageKey(dockWorkout.sessionId), nextTimer);
   }
 
   function pauseTimer() {
-    if (!dockState || dockState.timer.status !== "running") {
+    if (dockWorkout.timer.status !== "running") {
       return;
     }
 
@@ -134,17 +58,17 @@ export function ActiveWorkoutDock() {
     updateTimer({
       status: "paused",
       startedAtMs: null,
-      accumulatedMs: getElapsedMs(dockState.timer, pausedAtMs),
+      accumulatedMs: getElapsedMs(dockWorkout.timer, pausedAtMs),
     });
   }
 
   function resumeTimer() {
-    if (!dockState || dockState.timer.status === "running") {
+    if (dockWorkout.timer.status === "running") {
       return;
     }
 
     updateTimer({
-      ...dockState.timer,
+      ...dockWorkout.timer,
       status: "running",
       startedAtMs: Date.now(),
     });
@@ -155,12 +79,7 @@ export function ActiveWorkoutDock() {
   }
 
   function discardWorkout() {
-    if (!dockState) {
-      return;
-    }
-
-    clearActiveWorkoutSessionStorage(dockState.sessionId);
-    setDockState(null);
+    clearActiveWorkoutSessionStorage(dockWorkout.sessionId);
     setShowDiscardDialog(false);
 
     if (pathname.startsWith("/workouts/new")) {
@@ -168,7 +87,7 @@ export function ActiveWorkoutDock() {
     }
   }
 
-  const isRunning = dockState.timer.status === "running";
+  const isRunning = dockWorkout.timer.status === "running";
   return (
     <>
       <div
@@ -195,7 +114,7 @@ export function ActiveWorkoutDock() {
               />
               <span>Return</span>
               <span className="font-semibold tabular-nums">
-                {formatElapsedTime(elapsedSeconds)}
+                {formatElapsedTime(dockWorkout.elapsedSeconds)}
               </span>
             </Link>
           </Button>
