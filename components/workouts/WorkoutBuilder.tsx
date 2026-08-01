@@ -3871,7 +3871,7 @@ export function WorkoutBuilder({
       >
         <SheetContent
           side="bottom"
-          className="h-[min(88dvh,48rem)] min-h-0 gap-0 overflow-hidden rounded-t-2xl"
+          className="h-[90dvh] max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-0.75rem)] min-h-0 gap-0 overflow-hidden rounded-t-2xl"
         >
           <SheetHeader className="shrink-0 border-b pr-12">
             <SheetTitle>
@@ -3899,7 +3899,7 @@ export function WorkoutBuilder({
           }
         }}
       >
-        <DialogContent className="flex max-h-[85dvh] min-h-0 flex-col gap-0 overflow-hidden p-0">
+        <DialogContent className="flex h-[min(90dvh,48rem)] max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] min-h-0 flex-col gap-0 overflow-hidden p-0">
           <DialogHeader className="shrink-0 border-b p-6 pr-12">
             <DialogTitle>
               {activeResultsSuperset
@@ -3913,7 +3913,7 @@ export function WorkoutBuilder({
               Enter the results for each exercise in this round.
             </DialogDescription>
           </DialogHeader>
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-6 py-4">
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-6 py-4 pb-6 [-webkit-overflow-scrolling:touch]">
             {resultsSupersetKey
               ? getSupersetMembers(supersets, selectedExercises, resultsSupersetKey)
                   .filter((exercise) => supersetResultDraft[exercise.localId])
@@ -4090,7 +4090,7 @@ export function WorkoutBuilder({
                   })
               : null}
           </div>
-          <DialogFooter className="shrink-0 border-t bg-background p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+          <DialogFooter className="z-10 shrink-0 border-t bg-background p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
             <Button
               type="button"
               variant="outline"
