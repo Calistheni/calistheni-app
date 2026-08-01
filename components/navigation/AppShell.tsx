@@ -27,7 +27,7 @@ import { AccountMenu } from "./AccountMenu";
 
 type AppShellProps = {
   children: React.ReactNode;
-  user: { name?: string | null; email?: string | null } | null;
+  user: { name?: string | null; email?: string | null; unreadCommunityActivity?: number } | null;
 };
 
 const navigationIcons: Record<PrimaryNavigationKey, LucideIcon> = {
@@ -103,6 +103,11 @@ export function AppShell({ children, user }: AppShellProps) {
                       aria-hidden="true"
                     />
                     {item.label}
+                    {item.key === "community" && user.unreadCommunityActivity ? (
+                      <span className="flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] leading-4 text-white" aria-label={`${user.unreadCommunityActivity} unread community activities`}>
+                        {user.unreadCommunityActivity > 9 ? "9+" : user.unreadCommunityActivity}
+                      </span>
+                    ) : null}
                   </Link>
                 );
               })}
@@ -140,7 +145,7 @@ export function AppShell({ children, user }: AppShellProps) {
                   href={item.href}
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "flex min-h-11 min-w-0 flex-1 basis-0 touch-manipulation flex-col items-center justify-center gap-0.5 overflow-hidden px-0.5 text-[10px] font-medium whitespace-nowrap text-muted-foreground transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "relative flex min-h-11 min-w-0 flex-1 basis-0 touch-manipulation flex-col items-center justify-center gap-0.5 overflow-hidden px-0.5 text-[10px] font-medium whitespace-nowrap text-muted-foreground transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     active && "text-primary"
                   )}
                 >
@@ -152,6 +157,7 @@ export function AppShell({ children, user }: AppShellProps) {
                   >
                     <Icon className="size-[18px]" aria-hidden="true" />
                   </span>
+                  {item.key === "community" && user.unreadCommunityActivity ? <span className="absolute top-1 right-[calc(50%-14px)] size-2 rounded-full bg-red-500" aria-label={`${user.unreadCommunityActivity} unread community activities`} /> : null}
                   <span className="max-w-full truncate">{item.label}</span>
                 </Link>
               );

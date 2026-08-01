@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
 import { mapWorkoutSummary } from "@/lib/workouts";
+import { displayUsername, relativeTime } from "@/lib/community";
+import { WorkoutSocialActions } from "@/components/community/WorkoutSocialActions";
 
 export const metadata: Metadata = {
   title: "Workout Feed",
@@ -60,6 +62,7 @@ export default async function FeedPage() {
             select: {
               id: true,
               name: true,
+              username: true,
               image: true,
               bodyweightKg: true,
             },
@@ -70,6 +73,8 @@ export default async function FeedPage() {
               sets: true,
             },
           },
+          _count: { select: { likes: true, comments: true } },
+          likes: { where: { userId: session.user.id }, select: { userId: true } },
         },
       })
     : [];
@@ -142,7 +147,7 @@ export default async function FeedPage() {
                         {workout.user?.name ?? "Calistheni athlete"}
                       </Link>
                       <p className="text-xs text-muted-foreground">
-                        {new Date(workout.startedAt).toLocaleString()}
+                        {displayUsername(workout.user ?? { id: "athlete" })} · {relativeTime(workoutRecord.completedAt ?? workoutRecord.startedAt)}
                       </p>
                     </div>
                   </div>
@@ -162,15 +167,17 @@ export default async function FeedPage() {
                           ? "Volume unavailable"
                           : `${workout.totalVolume.toLocaleString()} volume`}
                       </Badge>
+                      <Badge variant={workout.visibility === "PUBLIC" ? "secondary" : "outline"}>{workout.visibility === "PUBLIC" ? "Public" : "Private"}</Badge>
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="space-y-3">
                   <p className="text-sm text-muted-foreground">
                     {workoutRecord.exercises
                       .map((item) => item.exercise.name)
                       .join(", ")}
                   </p>
+                  <WorkoutSocialActions workoutId={workout.id} initialLikeCount={workoutRecord._count.likes} initialLiked={workoutRecord.likes.length > 0} canCopy={workoutRecord.userId !== session.user.id} />
                 </CardContent>
               </Card>
             );

@@ -24,6 +24,11 @@ enum WorkoutVisibility {
   PUBLIC
 }
 
+enum WorkoutNotificationType {
+  WORKOUT_LIKED
+  WORKOUT_COMMENTED
+}
+
 enum ExerciseTrackingType {
   NOT_SELECTED
   BODYWEIGHT_REPS
@@ -116,6 +121,7 @@ model User {
   email                   String?        @unique
   emailVerified           DateTime?
   image                   String?
+  username                String?        @unique
   bodyweightKg            Float?
   dateOfBirth             DateTime?
   rewardPoints            Int            @default(0)
@@ -132,18 +138,24 @@ model User {
   sessions           Session[]
   nativeAuthAttempts NativeAuthAttempt[]
 
-  submittedParks      Park[]               @relation("ParkSubmitter")
-  parkEditSubmissions ParkEditSubmission[] @relation("ParkEditSubmitter")
-  parkPhotos          ParkPhoto[]          @relation("ParkPhotoUploader")
-  workouts            Workout[]
-  following           UserFollow[]         @relation("UserFollowing")
-  followers           UserFollow[]         @relation("UserFollowers")
-  rewardTransactions  RewardTransaction[]
-  rewardRedemptions   RewardRedemption[]
-  personalRecords     PersonalRecord[]
-  workoutTemplates    WorkoutTemplate[]
-  customExercises     Exercise[]           @relation("CustomExerciseOwner")
-  subscription        Subscription?
+  submittedParks                Park[]                @relation("ParkSubmitter")
+  parkEditSubmissions           ParkEditSubmission[]  @relation("ParkEditSubmitter")
+  parkPhotos                    ParkPhoto[]           @relation("ParkPhotoUploader")
+  workouts                      Workout[]
+  following                     UserFollow[]          @relation("UserFollowing")
+  followers                     UserFollow[]          @relation("UserFollowers")
+  workoutLikes                  WorkoutLike[]
+  workoutComments               WorkoutComment[]
+  workoutNotifications          WorkoutNotification[] @relation("WorkoutNotificationRecipient")
+  triggeredWorkoutNotifications WorkoutNotification[] @relation("WorkoutNotificationActor")
+  rewardTransactions            RewardTransaction[]
+  rewardRedemptions             RewardRedemption[]
+  personalRecords               PersonalRecord[]
+  workoutTemplates              WorkoutTemplate[]
+  customExercises               Exercise[]            @relation("CustomExerciseOwner")
+  subscription                  Subscription?
+
+  @@index([username])
 }
 
 model Subscription {
@@ -376,16 +388,66 @@ model Workout {
   completedAt DateTime?
   visibility  WorkoutVisibility @default(PUBLIC)
 
-  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   exercises       WorkoutExercise[]
   supersets       WorkoutSuperset[]
   personalRecords PersonalRecord[]
+  likes           WorkoutLike[]
+  comments        WorkoutComment[]
+  notifications   WorkoutNotification[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([userId, startedAt])
   @@index([visibility, completedAt])
+}
+
+model WorkoutLike {
+  workoutId Int
+  userId    String
+  createdAt DateTime @default(now())
+
+  workout Workout @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([workoutId, userId])
+  @@index([userId, createdAt])
+}
+
+model WorkoutComment {
+  id        String   @id @default(cuid())
+  workoutId Int
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workout       Workout               @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notifications WorkoutNotification[]
+
+  @@index([workoutId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model WorkoutNotification {
+  id        String                  @id @default(cuid())
+  userId    String
+  actorId   String
+  workoutId Int
+  commentId String?
+  type      WorkoutNotificationType
+  readAt    DateTime?
+  createdAt DateTime                @default(now())
+
+  user    User            @relation("WorkoutNotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  actor   User            @relation("WorkoutNotificationActor", fields: [actorId], references: [id], onDelete: Cascade)
+  workout Workout         @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  comment WorkoutComment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@index([workoutId, createdAt])
 }
 
 model WorkoutSuperset {

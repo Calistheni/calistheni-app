@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { SaveWorkoutAsRoutineButton } from "@/components/routines/RoutineActions";
 import { DeleteWorkoutButton } from "@/components/workouts/DeleteWorkoutButton";
+import { WorkoutSocialActions } from "@/components/community/WorkoutSocialActions";
 import { parsePositiveInteger } from "@/lib/api-response";
 import {
   formatPersonalRecordValue,
@@ -104,7 +105,12 @@ export default async function WorkoutDetailPage({
         },
       ],
     },
-    include: userWorkoutInclude,
+    include: {
+      ...userWorkoutInclude,
+      user: { select: { id: true, name: true, username: true, image: true, bodyweightKg: true } },
+      _count: { select: { likes: true, comments: true } },
+      likes: { where: { userId: session?.user?.id ?? "" }, select: { userId: true } },
+    },
   });
 
   if (!workout) {
@@ -165,6 +171,7 @@ export default async function WorkoutDetailPage({
           <p className="text-sm text-muted-foreground">
             {new Date(detail.startedAt).toLocaleString()}
           </p>
+          {!isOwner ? <p className="text-sm text-muted-foreground">Shared by <Link className="font-medium text-foreground underline-offset-4 hover:underline" href={`/users/${workout.user.id}`}>{workout.user.name ?? "Calistheni athlete"}</Link></p> : null}
         </div>
         {isOwner ? (
           <div className="flex flex-wrap gap-2">
@@ -176,6 +183,8 @@ export default async function WorkoutDetailPage({
           </div>
         ) : null}
       </div>
+
+      {session?.user?.id ? <div className="mb-6"><WorkoutSocialActions workoutId={workout.id} initialLikeCount={workout._count.likes} initialLiked={workout.likes.length > 0} canCopy={!isOwner} /></div> : null}
 
       <div className="mb-6 grid gap-3 sm:grid-cols-3">
         <Card>

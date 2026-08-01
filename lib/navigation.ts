@@ -41,7 +41,7 @@ export function getActivePrimaryNavigation(
     return "parks";
   }
 
-  if (matchesRoute(pathname, "/feed") || matchesRoute(pathname, "/users")) {
+  if (matchesRoute(pathname, "/feed") || matchesRoute(pathname, "/users") || matchesRoute(pathname, "/activity")) {
     return "community";
   }
 
@@ -64,6 +64,7 @@ const signedInShellRoutes = [
   "/submit-park",
   "/feed",
   "/users",
+  "/activity",
   "/profile",
   "/rewards",
   "/pro",

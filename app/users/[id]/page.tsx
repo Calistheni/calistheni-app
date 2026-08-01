@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
 import { mapWorkoutSummary } from "@/lib/workouts";
+import { displayUsername } from "@/lib/community";
+import { WorkoutSocialActions } from "@/components/community/WorkoutSocialActions";
 
 export const metadata: Metadata = {
   title: "Athlete Profile",
@@ -31,6 +33,7 @@ export default async function UserProfilePage({
       id: true,
       name: true,
       image: true,
+      username: true,
     },
   });
 
@@ -72,6 +75,8 @@ export default async function UserProfilePage({
               sets: true,
             },
           },
+          _count: { select: { likes: true } },
+          likes: { where: { userId: session?.user?.id ?? "" }, select: { userId: true } },
         },
       }),
       prisma.userFollow.count({
@@ -125,6 +130,7 @@ export default async function UserProfilePage({
               <h1 className="text-3xl font-bold">
                 {user.name ?? "Calistheni athlete"}
               </h1>
+              <p className="text-sm text-muted-foreground">{displayUsername(user)}</p>
               <SocialConnections
                 profileUserId={user.id}
                 viewerUserId={session?.user?.id ?? null}
@@ -193,18 +199,20 @@ export default async function UserProfilePage({
             </CardContent>
           </Card>
         ) : (
-          summaries.map((workout) => (
-            <Link key={workout.id} href={`/workouts/${workout.id}`}>
-              <Card className="transition hover:border-primary/50">
+          summaries.map((workout, index) => (
+              <Card key={workout.id} className="transition hover:border-primary/50">
                 <CardHeader>
                   <h3 className="text-xl font-semibold">
+                    <Link href={`/workouts/${workout.id}`}>
                     {workout.title ?? "Workout"}
+                    </Link>
                   </h3>
                   <p className="text-sm text-muted-foreground">
                     {new Date(workout.startedAt).toLocaleString()}
                   </p>
                 </CardHeader>
-                <CardContent className="flex flex-wrap gap-2">
+                <CardContent className="space-y-3">
+                  <div className="flex flex-wrap gap-2">
                   <Badge variant="secondary">
                     {workout.exerciseCount} exercises
                   </Badge>
@@ -214,9 +222,10 @@ export default async function UserProfilePage({
                       ? "Volume unavailable"
                       : `${workout.totalVolume.toLocaleString()} volume`}
                   </Badge>
+                  </div>
+                  {session?.user?.id ? <WorkoutSocialActions workoutId={workout.id} initialLikeCount={workouts[index]._count.likes} initialLiked={workouts[index].likes.length > 0} canCopy={session.user.id !== user.id} /> : null}
                 </CardContent>
               </Card>
-            </Link>
           ))
         )}
       </section>

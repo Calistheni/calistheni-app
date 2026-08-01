@@ -1,17 +1,18 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
-type CommunityTab = "feed" | "people";
+type CommunityTab = "feed" | "people" | "activity";
 
 export function CommunityTabs({ active }: { active: CommunityTab }) {
   const tabs = [
     { key: "feed", label: "Feed", href: "/feed" },
     { key: "people", label: "People", href: "/users" },
+    { key: "activity", label: "Activity", href: "/activity" },
   ] as const;
 
   return (
     <nav aria-label="Community sections" className="mb-6">
-      <div className="grid w-full grid-cols-2 rounded-lg bg-muted p-1 sm:w-80">
+      <div className="grid w-full grid-cols-3 rounded-lg bg-muted p-1 sm:w-[30rem]">
         {tabs.map((tab) => (
           <Link
             key={tab.key}

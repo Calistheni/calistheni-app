@@ -8,6 +8,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import { NativeShell } from "@/components/native/NativeShell";
 import { Toaster } from "@/components/ui/sonner";
 import { getSiteUrl } from "@/lib/site-url";
+import { prisma } from "@/lib/prisma";
 
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-sans",
@@ -79,6 +80,9 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const session = await auth();
+  const unreadCommunityActivity = session?.user?.id
+    ? await prisma.workoutNotification.count({ where: { userId: session.user.id, readAt: null } })
+    : 0;
 
   return (
     <html
@@ -92,7 +96,7 @@ export default async function RootLayout({
           <AppShell
             user={
               session?.user
-                ? { name: session.user.name, email: session.user.email }
+                ? { name: session.user.name, email: session.user.email, unreadCommunityActivity }
                 : null
             }
           >

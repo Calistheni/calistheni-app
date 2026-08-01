@@ -36,7 +36,7 @@ export function PeopleSearchInput({ initialQuery }: { initialQuery: string }) {
   return (
     <div className="relative">
       <label htmlFor="people-search" className="sr-only">
-        Search people by display name
+        Search people by name or username
       </label>
       <Search
         aria-hidden="true"
@@ -47,7 +47,7 @@ export function PeopleSearchInput({ initialQuery }: { initialQuery: string }) {
         type="search"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        placeholder="Search by display name"
+        placeholder="Search name or username"
         className="h-11 pl-9"
         autoComplete="off"
       />

@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
+import { displayUsername } from "@/lib/community";
 
 export const metadata: Metadata = {
   title: "Find Users",
@@ -53,6 +54,7 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
                 mode: "insensitive",
               },
             },
+            { username: { contains: query.toLowerCase(), mode: "insensitive" } },
           ],
         },
         orderBy: [
@@ -68,6 +70,7 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
         select: {
           id: true,
           name: true,
+          username: true,
           image: true,
           _count: {
             select: {
@@ -165,6 +168,7 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
                     <h2 className="truncate text-lg font-semibold">
                       {user.name ?? "Calistheni athlete"}
                     </h2>
+                    <p className="truncate text-xs text-muted-foreground">{displayUsername(user)}</p>
                     <Badge variant="outline">
                       {user._count.followers} followers
                     </Badge>
