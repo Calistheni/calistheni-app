@@ -138,6 +138,11 @@ import {
   getFinalWorkoutTitle,
 } from "@/lib/workout-title";
 import { getTrackingTypeFieldConfig } from "@/lib/exercise-tracking-fields";
+import {
+  getPerformanceReference,
+  getPerformanceReferenceDescription,
+  type ExercisePerformanceReferenceMap,
+} from "@/lib/workout-performance-references";
 import type {
   ExerciseListItem,
   WorkoutDetail,
@@ -623,9 +628,36 @@ export function WorkoutBuilder({
   const [selectedExercises, setSelectedExercises] = useState<
     LocalWorkoutExercise[]
   >(initialSelectedExercises);
+  const [performanceReferences, setPerformanceReferences] = useState<ExercisePerformanceReferenceMap>({});
+  const selectedExerciseIds = useMemo(
+    () => [...new Set(selectedExercises.map((exercise) => exercise.exerciseId))],
+    [selectedExercises]
+  );
   const [supersets, setSupersets] = useState<WorkoutSupersetInput[]>(
     initialSupersets
   );
+
+  useEffect(() => {
+    const exerciseIds = selectedExerciseIds;
+    if (!exerciseIds.length) {
+      return;
+    }
+    const controller = new AbortController();
+    void fetch("/api/user/workout-performance-references", {
+      method: "POST",
+      signal: controller.signal,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        exerciseIds,
+        excludeWorkoutId: initialWorkout && initialWorkout.id > 0 ? initialWorkout.id : undefined,
+        before: isEditing ? initialWorkout?.startedAt : undefined,
+      }),
+    })
+      .then(async (response) => response.ok ? (await response.json()) as { references: ExercisePerformanceReferenceMap } : null)
+      .then((payload) => { if (payload) setPerformanceReferences(payload.references); })
+      .catch((error: unknown) => { if (!(error instanceof DOMException && error.name === "AbortError")) console.error("[workout-performance-references]", error); });
+    return () => controller.abort();
+  }, [initialWorkout, isEditing, selectedExerciseIds]);
   const [openSupersetKeys, setOpenSupersetKeys] = useState<string[]>(
     initialSupersets.map((superset) => superset.key)
   );
@@ -787,6 +819,17 @@ export function WorkoutBuilder({
         }
       )
     : null;
+  const getSetPlaceholder = (
+    exerciseId: string,
+    setIndex: number,
+    metric: "reps" | "weight" | "durationSeconds" | "distanceMeters" | "steps" | "floors",
+    fallback: string
+  ) => getPerformanceReference(performanceReferences[exerciseId], metric, setIndex, fallback);
+  const getSetReferenceDescription = (
+    exerciseId: string,
+    setIndex: number,
+    metric: "reps" | "weight" | "durationSeconds" | "distanceMeters" | "steps" | "floors"
+  ) => getPerformanceReferenceDescription(performanceReferences[exerciseId], metric, setIndex);
   const supersetRoundFormEntries = activeResultsMembers.flatMap(
     (selectedExercise): SupersetRoundFormEntry[] => {
       const entry = supersetResultDraft[selectedExercise.localId];
@@ -812,6 +855,7 @@ export function WorkoutBuilder({
             exercise.trackingType === "STEPS_DISTANCE_DURATION",
           showFloors:
             exercise.trackingType === "FLOORS_DISTANCE_DURATION",
+          performanceReference: performanceReferences[exercise.id],
         },
       ];
     }
@@ -2178,10 +2222,9 @@ export function WorkoutBuilder({
                           min="0"
                           step="0.5"
                           placeholder={
-                            exercise.trackingType === "WEIGHTED_BODYWEIGHT"
-                              ? "+kg"
-                              : "kg"
+                            getSetPlaceholder(exercise.id, setIndex, "weight", "Weight")
                           }
+                          aria-description={getSetReferenceDescription(exercise.id, setIndex, "weight")}
                           aria-label={`${exercise.name} set ${setIndex + 1} weight`}
                           value={set.weight ?? ""}
                           onChange={(event) =>
@@ -2201,7 +2244,8 @@ export function WorkoutBuilder({
                           inputMode="numeric"
                           min="0"
                           step="1"
-                          placeholder="Reps"
+                          placeholder={getSetPlaceholder(exercise.id, setIndex, "reps", "Reps")}
+                          aria-description={getSetReferenceDescription(exercise.id, setIndex, "reps")}
                           aria-label={`${exercise.name} set ${setIndex + 1} reps`}
                           value={set.reps ?? ""}
                           onChange={(event) =>
@@ -2221,7 +2265,8 @@ export function WorkoutBuilder({
                           inputMode="decimal"
                           min="0"
                           step="0.25"
-                          placeholder="Min"
+                          placeholder={getSetPlaceholder(exercise.id, setIndex, "durationSeconds", "Duration")}
+                          aria-description={getSetReferenceDescription(exercise.id, setIndex, "durationSeconds")}
                           aria-label={`${exercise.name} set ${setIndex + 1} duration minutes`}
                           value={getDurationMinutesValue(set.durationSeconds)}
                           onChange={(event) =>
@@ -2240,7 +2285,8 @@ export function WorkoutBuilder({
                           inputMode="decimal"
                           min="0"
                           step="1"
-                          placeholder="Meters"
+                          placeholder={getSetPlaceholder(exercise.id, setIndex, "distanceMeters", "Distance")}
+                          aria-description={getSetReferenceDescription(exercise.id, setIndex, "distanceMeters")}
                           aria-label={`${exercise.name} set ${setIndex + 1} distance`}
                           value={set.distanceMeters ?? ""}
                           onChange={(event) =>
@@ -2260,7 +2306,8 @@ export function WorkoutBuilder({
                           type="number"
                           inputMode="numeric"
                           min="0"
-                          placeholder="Steps"
+                          placeholder={getSetPlaceholder(exercise.id, setIndex, "steps", "Steps")}
+                          aria-description={getSetReferenceDescription(exercise.id, setIndex, "steps")}
                           aria-label={`${exercise.name} set ${setIndex + 1} steps`}
                           value={set.steps ?? ""}
                           onChange={(event) =>
@@ -2280,7 +2327,8 @@ export function WorkoutBuilder({
                           type="number"
                           inputMode="numeric"
                           min="0"
-                          placeholder="Floors"
+                          placeholder={getSetPlaceholder(exercise.id, setIndex, "floors", "Floors")}
+                          aria-description={getSetReferenceDescription(exercise.id, setIndex, "floors")}
                           aria-label={`${exercise.name} set ${setIndex + 1} floors`}
                           value={set.floors ?? ""}
                           onChange={(event) =>
@@ -3311,10 +3359,9 @@ export function WorkoutBuilder({
                                     min="0"
                                     step="0.5"
                                     placeholder={
-                                      exercise.trackingType === "WEIGHTED_BODYWEIGHT"
-                                        ? "+kg"
-                                        : "kg"
+                                      getSetPlaceholder(exercise.id, setIndex, "weight", "Weight")
                                     }
+                                    aria-description={getSetReferenceDescription(exercise.id, setIndex, "weight")}
                                     aria-label={
                                       exercise.trackingType === "WEIGHTED_BODYWEIGHT"
                                         ? `Set ${setIndex + 1} added weight`
@@ -3338,7 +3385,8 @@ export function WorkoutBuilder({
                                     inputMode="numeric"
                                     min="0"
                                     step="1"
-                                    placeholder="Reps"
+                                    placeholder={getSetPlaceholder(exercise.id, setIndex, "reps", "Reps")}
+                                    aria-description={getSetReferenceDescription(exercise.id, setIndex, "reps")}
                                     aria-label={`Set ${setIndex + 1} reps`}
                                     value={set.reps ?? ""}
                                     onChange={(event) =>
@@ -3358,7 +3406,8 @@ export function WorkoutBuilder({
                                     inputMode="decimal"
                                     min="0"
                                     step="0.25"
-                                    placeholder="Min"
+                                    placeholder={getSetPlaceholder(exercise.id, setIndex, "durationSeconds", "Duration")}
+                                    aria-description={getSetReferenceDescription(exercise.id, setIndex, "durationSeconds")}
                                     aria-label={`Set ${setIndex + 1} duration minutes`}
                                     value={getDurationMinutesValue(
                                       set.durationSeconds
@@ -3379,7 +3428,8 @@ export function WorkoutBuilder({
                                     inputMode="decimal"
                                     min="0"
                                     step="1"
-                                    placeholder="Meters"
+                                    placeholder={getSetPlaceholder(exercise.id, setIndex, "distanceMeters", "Distance")}
+                                    aria-description={getSetReferenceDescription(exercise.id, setIndex, "distanceMeters")}
                                     aria-label={`Set ${setIndex + 1} distance meters`}
                                     value={set.distanceMeters ?? ""}
                                     onChange={(event) =>
@@ -3399,7 +3449,8 @@ export function WorkoutBuilder({
                                     inputMode="numeric"
                                     min="0"
                                     step="1"
-                                    placeholder="Steps"
+                                    placeholder={getSetPlaceholder(exercise.id, setIndex, "steps", "Steps")}
+                                    aria-description={getSetReferenceDescription(exercise.id, setIndex, "steps")}
                                     aria-label={`Set ${setIndex + 1} steps`}
                                     value={set.steps ?? ""}
                                     onChange={(event) =>
@@ -3419,7 +3470,8 @@ export function WorkoutBuilder({
                                     inputMode="numeric"
                                     min="0"
                                     step="1"
-                                    placeholder="Floors"
+                                    placeholder={getSetPlaceholder(exercise.id, setIndex, "floors", "Floors")}
+                                    aria-description={getSetReferenceDescription(exercise.id, setIndex, "floors")}
                                     aria-label={`Set ${setIndex + 1} floors`}
                                     value={set.floors ?? ""}
                                     onChange={(event) =>
@@ -3948,11 +4000,9 @@ export function WorkoutBuilder({
                               min="0"
                               step="0.5"
                               placeholder={
-                                exercise.trackingType ===
-                                "WEIGHTED_BODYWEIGHT"
-                                  ? "Added kg"
-                                  : "Weight kg"
+                                getSetPlaceholder(exercise.id, entry.setIndex, "weight", "Weight")
                               }
+                              aria-description={getSetReferenceDescription(exercise.id, entry.setIndex, "weight")}
                               aria-label={`${exercise.name} weight`}
                               value={entry.set.weight ?? ""}
                               onChange={(event) =>
@@ -3970,7 +4020,8 @@ export function WorkoutBuilder({
                               inputMode="numeric"
                               min="0"
                               step="1"
-                              placeholder="Reps"
+                              placeholder={getSetPlaceholder(exercise.id, entry.setIndex, "reps", "Reps")}
+                              aria-description={getSetReferenceDescription(exercise.id, entry.setIndex, "reps")}
                               aria-label={`${exercise.name} reps`}
                               value={entry.set.reps ?? ""}
                               onChange={(event) =>
@@ -3988,7 +4039,8 @@ export function WorkoutBuilder({
                               inputMode="numeric"
                               min="0"
                               step="1"
-                              placeholder="Seconds"
+                              placeholder={getSetPlaceholder(exercise.id, entry.setIndex, "durationSeconds", "Duration")}
+                              aria-description={getSetReferenceDescription(exercise.id, entry.setIndex, "durationSeconds")}
                               aria-label={`${exercise.name} duration seconds`}
                               value={entry.set.durationSeconds ?? ""}
                               onChange={(event) =>
@@ -4005,7 +4057,8 @@ export function WorkoutBuilder({
                               type="number"
                               inputMode="decimal"
                               min="0"
-                              placeholder="Meters"
+                              placeholder={getSetPlaceholder(exercise.id, entry.setIndex, "distanceMeters", "Distance")}
+                              aria-description={getSetReferenceDescription(exercise.id, entry.setIndex, "distanceMeters")}
                               aria-label={`${exercise.name} distance meters`}
                               value={entry.set.distanceMeters ?? ""}
                               onChange={(event) =>
@@ -4023,7 +4076,8 @@ export function WorkoutBuilder({
                               type="number"
                               inputMode="numeric"
                               min="0"
-                              placeholder="Steps"
+                              placeholder={getSetPlaceholder(exercise.id, entry.setIndex, "steps", "Steps")}
+                              aria-description={getSetReferenceDescription(exercise.id, entry.setIndex, "steps")}
                               aria-label={`${exercise.name} steps`}
                               value={entry.set.steps ?? ""}
                               onChange={(event) =>
@@ -4041,7 +4095,8 @@ export function WorkoutBuilder({
                               type="number"
                               inputMode="numeric"
                               min="0"
-                              placeholder="Floors"
+                              placeholder={getSetPlaceholder(exercise.id, entry.setIndex, "floors", "Floors")}
+                              aria-description={getSetReferenceDescription(exercise.id, entry.setIndex, "floors")}
                               aria-label={`${exercise.name} floors`}
                               value={entry.set.floors ?? ""}
                               onChange={(event) =>

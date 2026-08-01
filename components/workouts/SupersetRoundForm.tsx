@@ -10,6 +10,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { WorkoutSetInput } from "@/types/workout";
+import {
+  getPerformanceReference,
+  getPerformanceReferenceDescription,
+  type ExercisePerformanceReference,
+} from "@/lib/workout-performance-references";
 
 export type SupersetRoundFormEntry = {
   localId: string;
@@ -24,6 +29,7 @@ export type SupersetRoundFormEntry = {
   showDistance: boolean;
   showSteps: boolean;
   showFloors: boolean;
+  performanceReference?: ExercisePerformanceReference;
 };
 
 type SupersetRoundFormProps = {
@@ -83,6 +89,8 @@ export function SupersetRoundForm({
                       inputMode="decimal"
                       min="0"
                       step="0.5"
+                      placeholder={getPerformanceReference(entry.performanceReference, "weight", entry.setIndex, entry.weightedBodyweight ? "+kg" : "Weight")}
+                      aria-description={getPerformanceReferenceDescription(entry.performanceReference, "weight", entry.setIndex)}
                       value={entry.set.weight ?? ""}
                       onChange={(event) =>
                         onChange(entry.localId, "weight", event.target.value)
@@ -103,6 +111,8 @@ export function SupersetRoundForm({
                     inputMode="numeric"
                     min="0"
                     step="1"
+                    placeholder={getPerformanceReference(entry.performanceReference, "reps", entry.setIndex, "Reps")}
+                    aria-description={getPerformanceReferenceDescription(entry.performanceReference, "reps", entry.setIndex)}
                     value={entry.set.reps ?? ""}
                     onChange={(event) =>
                       onChange(entry.localId, "reps", event.target.value)
@@ -120,6 +130,8 @@ export function SupersetRoundForm({
                       inputMode="numeric"
                       min="0"
                       step="1"
+                      placeholder={getPerformanceReference(entry.performanceReference, "durationSeconds", entry.setIndex, "Duration")}
+                      aria-description={getPerformanceReferenceDescription(entry.performanceReference, "durationSeconds", entry.setIndex)}
                       value={entry.set.durationSeconds ?? ""}
                       onChange={(event) =>
                         onChange(
@@ -144,6 +156,8 @@ export function SupersetRoundForm({
                       type="number"
                       inputMode="decimal"
                       min="0"
+                      placeholder={getPerformanceReference(entry.performanceReference, "distanceMeters", entry.setIndex, "Distance")}
+                      aria-description={getPerformanceReferenceDescription(entry.performanceReference, "distanceMeters", entry.setIndex)}
                       value={entry.set.distanceMeters ?? ""}
                       onChange={(event) =>
                         onChange(
@@ -167,6 +181,8 @@ export function SupersetRoundForm({
                     type="number"
                     inputMode="numeric"
                     min="0"
+                    placeholder={getPerformanceReference(entry.performanceReference, "steps", entry.setIndex, "Steps")}
+                    aria-description={getPerformanceReferenceDescription(entry.performanceReference, "steps", entry.setIndex)}
                     value={entry.set.steps ?? ""}
                     onChange={(event) =>
                       onChange(entry.localId, "steps", event.target.value)
@@ -182,6 +198,8 @@ export function SupersetRoundForm({
                     type="number"
                     inputMode="numeric"
                     min="0"
+                    placeholder={getPerformanceReference(entry.performanceReference, "floors", entry.setIndex, "Floors")}
+                    aria-description={getPerformanceReferenceDescription(entry.performanceReference, "floors", entry.setIndex)}
                     value={entry.set.floors ?? ""}
                     onChange={(event) =>
                       onChange(entry.localId, "floors", event.target.value)
