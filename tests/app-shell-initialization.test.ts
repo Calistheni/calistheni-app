@@ -32,6 +32,8 @@ test("theme is server-initialized from a validated cookie and system mode has a 
   const provider = read("components/ThemeProvider.tsx");
   assert.match(layout, /await cookies\(\)/);
   assert.match(layout, /export const dynamic = "force-dynamic"/);
+  assert.match(layout, /export async function generateViewport/);
+  assert.match(layout, /colorScheme: theme === "system" \? "light dark" : resolvedTheme/);
   assert.match(layout, /parseTheme/);
   assert.match(layout, /strategy="beforeInteractive"/);
   assert.match(layout, /initialTheme=\{theme\}/);

@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Space_Grotesk } from "next/font/google";
-import Script from "next/script";
 import { cookies } from "next/headers";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "./globals.css";
@@ -11,7 +10,7 @@ import { NativeShell } from "@/components/native/NativeShell";
 import { Toaster } from "@/components/ui/sonner";
 import { getSiteUrl } from "@/lib/site-url";
 import { prisma } from "@/lib/prisma";
-import { parseTheme, THEME_COOKIE_NAME } from "@/lib/theme";
+import { parseTheme, THEME_COOKIE_NAME, type Theme } from "@/lib/theme";
 
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-sans",
@@ -20,8 +19,9 @@ const spaceGrotesk = Space_Grotesk({
 
 const siteUrl = getSiteUrl();
 
-// Theme is intentionally request-specific: the root HTML must vary by the
-// readable preference cookie before the browser has a chance to paint.
+const LIGHT_BACKGROUND = "#ffffff";
+const DARK_BACKGROUND = "#11131b";
+
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
@@ -69,64 +69,219 @@ export const metadata: Metadata = {
   },
 };
 
-export const viewport: Viewport = {
-  width: "device-width",
-  initialScale: 1,
-  viewportFit: "cover",
-  interactiveWidget: "resizes-content",
-  colorScheme: "light dark",
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#2563eb" },
-    { media: "(prefers-color-scheme: dark)", color: "#09090b" },
-  ],
-};
+function hasValidThemeCookie(value: string | undefined): value is Theme {
+  return value === "light" || value === "dark" || value === "system";
+}
+
+function getServerResolvedTheme(theme: Theme) {
+  return theme === "dark" ? "dark" : "light";
+}
+
+export async function generateViewport(): Promise<Viewport> {
+  const cookieStore = await cookies();
+  const theme = parseTheme(cookieStore.get(THEME_COOKIE_NAME)?.value);
+  const resolvedTheme = getServerResolvedTheme(theme);
+
+  return {
+    width: "device-width",
+    initialScale: 1,
+    viewportFit: "cover",
+    interactiveWidget: "resizes-content",
+    colorScheme: theme === "system" ? "light dark" : resolvedTheme,
+    themeColor:
+      theme === "system"
+        ? [
+            {
+              media: "(prefers-color-scheme: light)",
+              color: "#2563eb",
+            },
+            {
+              media: "(prefers-color-scheme: dark)",
+              color: "#09090b",
+            },
+          ]
+        : resolvedTheme === "dark"
+        ? "#09090b"
+        : "#2563eb",
+  };
+}
 
 export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const cookieStore = await cookies();
+  const rawThemeCookie = cookieStore.get(THEME_COOKIE_NAME)?.value;
+  const hasThemeCookie = hasValidThemeCookie(rawThemeCookie);
+  const theme = parseTheme(rawThemeCookie);
+  const serverResolvedTheme = getServerResolvedTheme(theme);
+
   const session = await auth();
-  const themeCookie = (await cookies()).get(THEME_COOKIE_NAME)?.value;
-  const theme = parseTheme(themeCookie);
-  const hasThemeCookie = themeCookie === "light" || themeCookie === "dark" || themeCookie === "system";
-  const initialResolvedTheme = theme === "dark" ? "dark" : "light";
-  const initialBackgroundColor = initialResolvedTheme === "dark" ? "#11131b" : "#ffffff";
-  const initialThemeCss = `html,body{background-color:${initialBackgroundColor};color-scheme:${initialResolvedTheme}}@media (prefers-color-scheme:dark){html[data-theme-preference="system"],html[data-theme-preference="system"] body{background-color:#11131b;color-scheme:dark}}`;
+
   const unreadCommunityActivity = session?.user?.id
-    ? await prisma.workoutNotification.count({ where: { userId: session.user.id, readAt: null } })
+    ? await prisma.workoutNotification.count({
+        where: {
+          userId: session.user.id,
+          readAt: null,
+        },
+      })
     : 0;
+
+  /*
+   * This script is deliberately rendered directly inside <head>.
+   *
+   * The previous version used next/script inside <body>. When the cookie had
+   * not yet been created but localStorage already contained "dark", the server
+   * rendered a light document and the script changed it only after the browser
+   * had already painted that light frame.
+   *
+   * This initializer executes before the body is parsed and before first paint.
+   * It only needs to consult localStorage when there is no valid server-readable
+   * theme cookie. Once the cookie exists, the server-rendered class remains the
+   * source of truth.
+   */
+  const initialThemeScript = `
+(() => {
+  const root = document.documentElement;
+  const storageKey = ${JSON.stringify(THEME_COOKIE_NAME)};
+  const hasServerCookie = root.dataset.themeCookie === "true";
+  const serverPreference = root.dataset.themePreference;
+
+  let preference = serverPreference;
+
+  if (!hasServerCookie) {
+    try {
+      const storedPreference = window.localStorage.getItem(storageKey);
+
+      if (
+        storedPreference === "light" ||
+        storedPreference === "dark" ||
+        storedPreference === "system"
+      ) {
+        preference = storedPreference;
+      }
+    } catch {
+      // localStorage may be unavailable. Keep the server fallback.
+    }
+  }
+
+  const resolved =
+    preference === "system"
+      ? window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light"
+      : preference === "dark"
+        ? "dark"
+        : "light";
+
+  const background =
+    resolved === "dark"
+      ? ${JSON.stringify(DARK_BACKGROUND)}
+      : ${JSON.stringify(LIGHT_BACKGROUND)};
+
+  root.dataset.themePreference = preference;
+  root.classList.remove("light", "dark");
+  root.classList.add(resolved);
+  root.style.backgroundColor = background;
+  root.style.colorScheme = resolved;
+
+  if (!hasServerCookie) {
+    try {
+      document.cookie =
+        storageKey +
+        "=" +
+        preference +
+        "; Path=/; Max-Age=31536000; SameSite=Lax" +
+        (window.location.protocol === "https:" ? "; Secure" : "");
+    } catch {
+      // Cookie persistence failure must not prevent theme application.
+    }
+  }
+})();
+`;
+
+  const criticalThemeCss = `
+html {
+  min-height: 100%;
+  background-color: ${LIGHT_BACKGROUND};
+  color-scheme: light;
+}
+
+html.dark {
+  background-color: ${DARK_BACKGROUND};
+  color-scheme: dark;
+}
+
+html.light {
+  background-color: ${LIGHT_BACKGROUND};
+  color-scheme: light;
+}
+
+html body {
+  min-height: 100%;
+  background-color: inherit;
+}
+
+html[data-theme-preference="system"] {
+  background-color: ${LIGHT_BACKGROUND};
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-theme-preference="system"] {
+    background-color: ${DARK_BACKGROUND};
+    color-scheme: dark;
+  }
+}
+`;
 
   return (
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${spaceGrotesk.variable} ${initialResolvedTheme} h-full antialiased`}
+      className={`${spaceGrotesk.variable} ${serverResolvedTheme} h-full antialiased`}
       data-theme-preference={theme}
       data-theme-cookie={hasThemeCookie ? "true" : "false"}
-      style={{ backgroundColor: initialBackgroundColor, colorScheme: initialResolvedTheme }}
+      style={{
+        backgroundColor:
+          serverResolvedTheme === "dark" ? DARK_BACKGROUND : LIGHT_BACKGROUND,
+        colorScheme: serverResolvedTheme,
+      }}
     >
       <head>
-        <style id="calistheni-initial-theme-css">{initialThemeCss}</style>
+        <style
+          id="calistheni-critical-theme"
+          dangerouslySetInnerHTML={{ __html: criticalThemeCss }}
+        />
+
+        <script
+          id="calistheni-initial-theme"
+          dangerouslySetInnerHTML={{ __html: initialThemeScript }}
+        />
       </head>
-      <body
-        className="min-h-full flex flex-col"
-        style={{ backgroundColor: initialBackgroundColor }}
-      >
-        <Script id="calistheni-initial-theme" strategy="beforeInteractive">
-          {`(()=>{const r=document.documentElement,k='calistheni-theme',v=r.dataset.themePreference,s=r.dataset.themeCookie==='true',l=localStorage.getItem(k),t=!s&&['light','dark','system'].includes(l||'')?l:v,d=t==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):t;r.dataset.themePreference=t;r.classList.remove('light','dark');r.classList.add(d);r.style.colorScheme=d;if(!s&&['light','dark','system'].includes(t)){document.cookie=k+'='+t+'; Path=/; Max-Age=31536000; SameSite=Lax'+(location.protocol==='https:'?'; Secure':'')}})()`}
-        </Script>
-        <ThemeProvider initialTheme={theme} initialResolvedTheme={initialResolvedTheme}>
+
+      <body className="flex min-h-full flex-col">
+        <ThemeProvider
+          initialTheme={theme}
+          initialResolvedTheme={serverResolvedTheme}
+        >
           <NativeShell />
+
           <AppShell
             user={
               session?.user
-                ? { name: session.user.name, email: session.user.email, unreadCommunityActivity }
+                ? {
+                    name: session.user.name,
+                    email: session.user.email,
+                    unreadCommunityActivity,
+                  }
                 : null
             }
           >
             {children}
           </AppShell>
+
           <Toaster />
         </ThemeProvider>
       </body>
