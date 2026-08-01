@@ -1,0 +1,68 @@
+export type NutritionValues = {
+  caloriesKcal?: number;
+  proteinGrams?: number;
+  carbohydrateGrams?: number;
+  fatGrams?: number;
+  fiberGrams?: number;
+  sugarGrams?: number;
+  saturatedFatGrams?: number;
+  transFatGrams?: number;
+  addedSugarGrams?: number;
+  sodiumMg?: number;
+  saltGrams?: number;
+  cholesterolMg?: number;
+  potassiumMg?: number;
+  calciumMg?: number;
+  ironMg?: number;
+};
+
+export type FoodProviderDetails = {
+  productImageUrl?: string;
+  nutritionImageUrl?: string;
+  ingredientsImageUrl?: string;
+  packageQuantityText?: string;
+  packageQuantityGrams?: number;
+  servingSizeText?: string;
+  defaultServingGrams?: number;
+  categories: string[];
+  labels: string[];
+  ingredientsText?: string;
+  allergens: string[];
+  traces: string[];
+  additives: string[];
+  nutriScoreGrade?: string;
+  novaGroup?: number;
+  nutrientLevels?: Record<string, string>;
+  veganStatus?: string;
+  vegetarianStatus?: string;
+  palmOilStatus?: string;
+  providerCreatedAt?: Date;
+  nutrients: Array<{ nutrientKey: string; displayName: string; amount: number; unit: string }>;
+};
+
+export type ExternalFoodResult = {
+  provider: "USDA" | "OPEN_FOOD_FACTS";
+  externalId: string;
+  foodType: "GENERIC" | "BRANDED";
+  name: string;
+  brandName?: string;
+  description?: string;
+  barcode?: string;
+  imageUrl?: string;
+  languageCode?: string;
+  countryCodes: string[];
+  nutritionPer100g: NutritionValues;
+  servings: Array<{ name: string; quantity: number; grams: number; householdUnit?: string; sourceExternalId?: string }>;
+  confidenceScore: number;
+  verificationStatus: "OFFICIAL_SOURCE" | "COMMUNITY_SOURCE" | "UNVERIFIED";
+  isComplete: boolean;
+  sourceUpdatedAt?: Date;
+  providerVersion?: string;
+  details?: FoodProviderDetails;
+  checksum: string;
+  raw: unknown;
+};
+
+export type ProviderState = { attempted: boolean; available: boolean; error: "UNAVAILABLE" | "TIMEOUT" | "RATE_LIMITED" | null };
+export type FoodSearchResponse = { query: string; localResults: FoodSummary[]; externalResults: ExternalFoodResult[]; providers: { usda: ProviderState; openFoodFacts: ProviderState } };
+export type FoodSummary = { id: string; name: string; brandName: string | null; barcode: string | null; imageUrl?: string | null; type: string; source: string; sourceExternalId: string; verificationStatus: string; freshnessStatus: string; confidenceScore: number; nutritionPer100g: NutritionValues; importedAt: string; lastRevalidatedAt: string | null; nextRevalidateAt: string | null; currentRevisionId: string | null; isLocal: true; revalidationRecommended: boolean };

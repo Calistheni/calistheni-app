@@ -74,17 +74,26 @@ export function ActiveWorkoutDock() {
 
     syncDockState();
 
-    const interval = window.setInterval(syncDockState, 1000);
-
     window.addEventListener(ACTIVE_WORKOUT_TIMER_EVENT, syncDockState);
     window.addEventListener("storage", syncDockState);
 
     return () => {
-      window.clearInterval(interval);
       window.removeEventListener(ACTIVE_WORKOUT_TIMER_EVENT, syncDockState);
       window.removeEventListener("storage", syncDockState);
     };
   }, []);
+
+  // Only tick while there is a running timer. Reading localStorage every second
+  // when the user is idle needlessly rerendered this global shell component.
+  useEffect(() => {
+    if (!dockState || dockState.timer.status !== "running") {
+      return;
+    }
+
+    const interval = window.setInterval(() => setNowMs(Date.now()), 1000);
+
+    return () => window.clearInterval(interval);
+  }, [dockState]);
 
   const elapsedSeconds = useMemo(() => {
     if (!dockState) {

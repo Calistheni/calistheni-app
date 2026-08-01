@@ -1,0 +1,50 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { createJsonErrorResponse, createInternalServerErrorResponse } from "@/lib/api-response";
+import { ProviderError } from "@/lib/nutrition/providers/http";
+import { normalizeBarcode } from "@/lib/nutrition/normalization";
+import { normalizeUsdaFdcId } from "@/lib/nutrition/providers/usda";
+import { importExternalFood, toFoodSummary } from "@/lib/nutrition/service";
+import { createUserUnauthorizedResponse, getAuthenticatedUserId } from "@/lib/user-auth";
+const schema = z.object({ provider: z.enum(["USDA", "OPEN_FOOD_FACTS"]), externalId: z.string().trim().min(1).max(100) });
+export async function POST(request: Request) {
+  if (!(await getAuthenticatedUserId())) return createUserUnauthorizedResponse();
+
+  const payload = schema.safeParse(await request.json());
+  if (!payload.success) return createJsonErrorResponse("Invalid food import request.", 400, "INVALID_FOOD_IMPORT");
+
+  try {
+    let externalId: string;
+    if (payload.data.provider === "USDA") {
+      externalId = normalizeUsdaFdcId(payload.data.externalId);
+    } else {
+      const barcode = normalizeBarcode(payload.data.externalId);
+      if (!barcode) throw new ProviderError("INVALID_IDENTIFIER", "Invalid barcode.");
+      externalId = barcode;
+    }
+    const food = await importExternalFood(payload.data.provider, externalId);
+    return NextResponse.json({ food: toFoodSummary(food) }, { status: 201 });
+  } catch (error) {
+    if (error instanceof ProviderError) {
+      const providerName = payload.data.provider === "USDA" ? "USDA" : "Open Food Facts";
+      const response =
+        error.code === "INVALID_IDENTIFIER"
+          ? { status: 400, code: payload.data.provider === "USDA" ? "INVALID_USDA_FDC_ID" : "INVALID_BARCODE", message: payload.data.provider === "USDA" ? "Select a USDA result and try again." : "Invalid barcode." }
+          : error.code === "NOT_FOUND"
+            ? { status: 404, code: payload.data.provider === "USDA" ? "USDA_FOOD_NOT_FOUND" : "OPEN_FOOD_FACTS_NOT_FOUND", message: `This ${providerName} food record could not be retrieved. Refresh the search results and try again.` }
+          : error.code === "RATE_LIMITED"
+              ? { status: 429, code: payload.data.provider === "USDA" ? "USDA_RATE_LIMITED" : "OPEN_FOOD_FACTS_RATE_LIMITED", message: `${providerName} is temporarily busy. Please try again shortly.` }
+          : error.code === "TIMEOUT"
+                ? { status: 503, code: payload.data.provider === "USDA" ? "USDA_UNAVAILABLE" : "OPEN_FOOD_FACTS_UNAVAILABLE", message: `${providerName} did not respond in time. Please try again.` }
+                : error.code === "INVALID_RESPONSE"
+                  ? { status: 502, code: payload.data.provider === "USDA" ? "USDA_INVALID_RESPONSE" : "OPEN_FOOD_FACTS_INVALID_RESPONSE", message: `${providerName} returned an unexpected response. Please try again later.` }
+                : error.code === "INCOMPLETE_DATA"
+                  ? { status: 422, code: payload.data.provider === "USDA" ? "USDA_INCOMPLETE_DATA" : "OPEN_FOOD_FACTS_INCOMPLETE_DATA", message: `This ${providerName} record does not contain usable nutrition data.` }
+                  : { status: 503, code: payload.data.provider === "USDA" ? "USDA_UNAVAILABLE" : "OPEN_FOOD_FACTS_UNAVAILABLE", message: `${providerName} is currently unavailable. Please try again later.` };
+      console.warn("NUTRITION_IMPORT_PROVIDER_ERROR", { provider: payload.data.provider, code: error.code });
+      return NextResponse.json({ error: { code: response.code, message: response.message } }, { status: response.status });
+    }
+    console.error("NUTRITION_IMPORT_FAILED", { provider: payload.data.provider, externalId: payload.data.externalId, error });
+    return createInternalServerErrorResponse("NUTRITION_IMPORT_FAILED");
+  }
+}

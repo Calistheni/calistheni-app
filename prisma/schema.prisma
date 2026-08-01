@@ -29,6 +29,58 @@ enum WorkoutNotificationType {
   WORKOUT_COMMENTED
 }
 
+enum FoodType {
+  GENERIC
+  BRANDED
+  RECIPE
+  USER_CREATED
+}
+
+enum FoodSource {
+  USDA
+  OPEN_FOOD_FACTS
+  USER
+  CALISTHENI
+}
+
+enum FoodVerificationStatus {
+  UNVERIFIED
+  OFFICIAL_SOURCE
+  COMMUNITY_SOURCE
+  COMMUNITY_REVIEWED
+  CALISTHENI_VERIFIED
+  DISPUTED
+}
+
+enum FoodImportStatus {
+  ACTIVE
+  INCOMPLETE
+  ARCHIVED
+}
+
+enum FoodFreshnessStatus {
+  FRESH
+  STALE
+  REVALIDATING
+  PROVIDER_UNAVAILABLE
+  SOURCE_REMOVED
+}
+
+enum FoodRevisionReason {
+  INITIAL_IMPORT
+  PROVIDER_UPDATE
+  ADMIN_CORRECTION
+  USER_CORRECTION
+  NORMALIZATION_CHANGE
+  MANUAL_REFRESH
+}
+
+enum FoodDataValueSource {
+  PROVIDER
+  DERIVED
+  MANUAL
+}
+
 enum ExerciseTrackingType {
   NOT_SELECTED
   BODYWEIGHT_REPS
@@ -138,22 +190,23 @@ model User {
   sessions           Session[]
   nativeAuthAttempts NativeAuthAttempt[]
 
-  submittedParks                Park[]                @relation("ParkSubmitter")
-  parkEditSubmissions           ParkEditSubmission[]  @relation("ParkEditSubmitter")
-  parkPhotos                    ParkPhoto[]           @relation("ParkPhotoUploader")
+  submittedParks                Park[]                   @relation("ParkSubmitter")
+  parkEditSubmissions           ParkEditSubmission[]     @relation("ParkEditSubmitter")
+  parkPhotos                    ParkPhoto[]              @relation("ParkPhotoUploader")
   workouts                      Workout[]
-  following                     UserFollow[]          @relation("UserFollowing")
-  followers                     UserFollow[]          @relation("UserFollowers")
+  following                     UserFollow[]             @relation("UserFollowing")
+  followers                     UserFollow[]             @relation("UserFollowers")
   workoutLikes                  WorkoutLike[]
   workoutComments               WorkoutComment[]
-  workoutNotifications          WorkoutNotification[] @relation("WorkoutNotificationRecipient")
-  triggeredWorkoutNotifications WorkoutNotification[] @relation("WorkoutNotificationActor")
+  workoutNotifications          WorkoutNotification[]    @relation("WorkoutNotificationRecipient")
+  triggeredWorkoutNotifications WorkoutNotification[]    @relation("WorkoutNotificationActor")
   rewardTransactions            RewardTransaction[]
   rewardRedemptions             RewardRedemption[]
   personalRecords               PersonalRecord[]
   workoutTemplates              WorkoutTemplate[]
-  customExercises               Exercise[]            @relation("CustomExerciseOwner")
+  customExercises               Exercise[]               @relation("CustomExerciseOwner")
   subscription                  Subscription?
+  nutritionEntrySnapshots       NutritionEntrySnapshot[]
 
   @@index([username])
 }
@@ -448,6 +501,256 @@ model WorkoutNotification {
 
   @@index([userId, readAt, createdAt])
   @@index([workoutId, createdAt])
+}
+
+model Food {
+  id                  String                 @id @default(cuid())
+  type                FoodType
+  name                String
+  normalizedName      String
+  description         String?
+  brandName           String?
+  barcode             String?                @unique
+  imageUrl            String?
+  languageCode        String?
+  countryCodes        String[]               @default([])
+  nutritionBasisGrams Decimal                @default(100) @db.Decimal(10, 3)
+  caloriesKcal        Decimal?               @db.Decimal(12, 3)
+  proteinGrams        Decimal?               @db.Decimal(12, 3)
+  carbohydrateGrams   Decimal?               @db.Decimal(12, 3)
+  fatGrams            Decimal?               @db.Decimal(12, 3)
+  fiberGrams          Decimal?               @db.Decimal(12, 3)
+  sugarGrams          Decimal?               @db.Decimal(12, 3)
+  saturatedFatGrams   Decimal?               @db.Decimal(12, 3)
+  transFatGrams       Decimal?               @db.Decimal(12, 3)
+  addedSugarGrams     Decimal?               @db.Decimal(12, 3)
+  sodiumMg            Decimal?               @db.Decimal(12, 3)
+  saltGrams           Decimal?               @db.Decimal(12, 3)
+  cholesterolMg       Decimal?               @db.Decimal(12, 3)
+  potassiumMg         Decimal?               @db.Decimal(12, 3)
+  calciumMg           Decimal?               @db.Decimal(12, 3)
+  ironMg              Decimal?               @db.Decimal(12, 3)
+  calorieValueSource  FoodDataValueSource    @default(PROVIDER)
+  source              FoodSource
+  sourceExternalId    String
+  sourceUpdatedAt     DateTime?
+  importedAt          DateTime               @default(now())
+  lastFetchedAt       DateTime?
+  lastRevalidatedAt   DateTime?
+  nextRevalidateAt    DateTime?
+  verificationStatus  FoodVerificationStatus
+  importStatus        FoodImportStatus       @default(ACTIVE)
+  freshnessStatus     FoodFreshnessStatus    @default(FRESH)
+  confidenceScore     Decimal                @default(0) @db.Decimal(5, 4)
+  currentRevisionId   String?                @unique
+  searchCount         Int                    @default(0)
+  selectionCount      Int                    @default(0)
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  servings           FoodServing[]
+  details            FoodDetails?
+  nutrients          FoodNutrient[]
+  aliases            FoodAlias[]
+  sourceRecords      FoodSourceRecord[]
+  revisions          FoodRevision[]           @relation("FoodRevisions")
+  currentRevision    FoodRevision?            @relation("FoodCurrentRevision", fields: [currentRevisionId], references: [id], onDelete: SetNull)
+  nutritionSnapshots NutritionEntrySnapshot[]
+
+  @@unique([source, sourceExternalId])
+  @@index([normalizedName])
+  @@index([brandName])
+  @@index([source])
+  @@index([sourceExternalId])
+  @@index([freshnessStatus])
+  @@index([nextRevalidateAt])
+  @@index([searchCount])
+  @@index([selectionCount])
+}
+
+model FoodDetails {
+  id                   String    @id @default(cuid())
+  foodId               String    @unique
+  productImageUrl      String?
+  nutritionImageUrl    String?
+  ingredientsImageUrl  String?
+  packageQuantityText  String?
+  packageQuantityGrams Decimal?  @db.Decimal(12, 3)
+  servingSizeText      String?
+  defaultServingGrams  Decimal?  @db.Decimal(12, 3)
+  categories           String[]  @default([])
+  labels               String[]  @default([])
+  ingredientsText      String?
+  allergens            String[]  @default([])
+  traces               String[]  @default([])
+  additives            String[]  @default([])
+  nutriScoreGrade      String?
+  novaGroup            Int?
+  nutrientLevels       Json?
+  veganStatus          String?
+  vegetarianStatus     String?
+  palmOilStatus        String?
+  providerCreatedAt    DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  food Food @relation(fields: [foodId], references: [id], onDelete: Cascade)
+}
+
+model FoodNutrient {
+  id               String     @id @default(cuid())
+  foodId           String
+  nutrientKey      String
+  displayName      String
+  amount           Decimal    @db.Decimal(12, 3)
+  unit             String
+  basisGrams       Decimal    @default(100) @db.Decimal(10, 3)
+  source           FoodSource
+  sourceExternalId String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  food Food @relation(fields: [foodId], references: [id], onDelete: Cascade)
+
+  @@unique([foodId, nutrientKey, unit])
+  @@index([foodId])
+}
+
+model FoodServing {
+  id               String     @id @default(cuid())
+  foodId           String
+  name             String
+  quantity         Decimal    @default(1) @db.Decimal(12, 3)
+  grams            Decimal    @db.Decimal(12, 3)
+  householdUnit    String?
+  isDefault        Boolean    @default(false)
+  source           FoodSource
+  sourceExternalId String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  food Food @relation(fields: [foodId], references: [id], onDelete: Cascade)
+
+  @@index([foodId])
+}
+
+model FoodAlias {
+  id             String     @id @default(cuid())
+  foodId         String
+  name           String
+  normalizedName String
+  languageCode   String?
+  source         FoodSource
+  createdAt      DateTime   @default(now())
+
+  food Food @relation(fields: [foodId], references: [id], onDelete: Cascade)
+
+  @@unique([foodId, normalizedName])
+  @@index([normalizedName])
+}
+
+model FoodSourceRecord {
+  id               String     @id @default(cuid())
+  foodId           String
+  source           FoodSource
+  sourceExternalId String
+  rawData          Json
+  fetchedAt        DateTime   @default(now())
+  sourceUpdatedAt  DateTime?
+  checksum         String
+  sourceVersion    String?
+  httpEtag         String?
+  httpLastModified String?
+  responseStatus   Int
+  createdAt        DateTime   @default(now())
+
+  food      Food           @relation(fields: [foodId], references: [id], onDelete: Cascade)
+  revisions FoodRevision[]
+
+  @@index([foodId, fetchedAt])
+  @@index([source, sourceExternalId])
+  @@index([checksum])
+}
+
+model FoodRevision {
+  id                     String                 @id @default(cuid())
+  foodId                 String
+  revisionNumber         Int
+  reason                 FoodRevisionReason
+  source                 FoodSource
+  sourceExternalId       String
+  name                   String
+  brandName              String?
+  barcode                String?
+  imageUrl               String?
+  nutritionBasisGrams    Decimal                @default(100) @db.Decimal(10, 3)
+  caloriesKcal           Decimal?               @db.Decimal(12, 3)
+  proteinGrams           Decimal?               @db.Decimal(12, 3)
+  carbohydrateGrams      Decimal?               @db.Decimal(12, 3)
+  fatGrams               Decimal?               @db.Decimal(12, 3)
+  fiberGrams             Decimal?               @db.Decimal(12, 3)
+  sugarGrams             Decimal?               @db.Decimal(12, 3)
+  saturatedFatGrams      Decimal?               @db.Decimal(12, 3)
+  transFatGrams          Decimal?               @db.Decimal(12, 3)
+  addedSugarGrams        Decimal?               @db.Decimal(12, 3)
+  sodiumMg               Decimal?               @db.Decimal(12, 3)
+  saltGrams              Decimal?               @db.Decimal(12, 3)
+  cholesterolMg          Decimal?               @db.Decimal(12, 3)
+  potassiumMg            Decimal?               @db.Decimal(12, 3)
+  calciumMg              Decimal?               @db.Decimal(12, 3)
+  ironMg                 Decimal?               @db.Decimal(12, 3)
+  confidenceScore        Decimal                @default(0) @db.Decimal(5, 4)
+  verificationStatus     FoodVerificationStatus
+  sourceUpdatedAt        DateTime?
+  sourceRecordId         String?
+  normalizedDataChecksum String
+  createdByUserId        String?
+  createdAt              DateTime               @default(now())
+
+  food               Food                     @relation("FoodRevisions", fields: [foodId], references: [id], onDelete: Cascade)
+  currentFor         Food?                    @relation("FoodCurrentRevision")
+  sourceRecord       FoodSourceRecord?        @relation(fields: [sourceRecordId], references: [id], onDelete: SetNull)
+  nutritionSnapshots NutritionEntrySnapshot[]
+
+  @@unique([foodId, revisionNumber])
+  @@index([foodId, createdAt])
+  @@index([normalizedDataChecksum])
+}
+
+// Future meal logging persists a calculated immutable snapshot instead of
+// recalculating old entries from the mutable Food row.
+model NutritionEntrySnapshot {
+  id                          String     @id @default(cuid())
+  userId                      String
+  foodId                      String
+  foodRevisionId              String
+  foodNameSnapshot            String
+  brandNameSnapshot           String?
+  barcodeSnapshot             String?
+  quantity                    Decimal    @db.Decimal(12, 3)
+  unit                        String
+  gramsConsumed               Decimal    @db.Decimal(12, 3)
+  caloriesKcalSnapshot        Decimal?   @db.Decimal(12, 3)
+  proteinGramsSnapshot        Decimal?   @db.Decimal(12, 3)
+  carbohydrateGramsSnapshot   Decimal?   @db.Decimal(12, 3)
+  fatGramsSnapshot            Decimal?   @db.Decimal(12, 3)
+  fiberGramsSnapshot          Decimal?   @db.Decimal(12, 3)
+  sugarGramsSnapshot          Decimal?   @db.Decimal(12, 3)
+  saturatedFatGramsSnapshot   Decimal?   @db.Decimal(12, 3)
+  sodiumMgSnapshot            Decimal?   @db.Decimal(12, 3)
+  saltGramsSnapshot           Decimal?   @db.Decimal(12, 3)
+  nutritionBasisGramsSnapshot Decimal    @db.Decimal(10, 3)
+  sourceSnapshot              FoodSource
+  sourceExternalIdSnapshot    String
+  createdAt                   DateTime   @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  food         Food         @relation(fields: [foodId], references: [id], onDelete: Restrict)
+  foodRevision FoodRevision @relation(fields: [foodRevisionId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
+  @@index([foodId])
+  @@index([foodRevisionId])
 }
 
 model WorkoutSuperset {
