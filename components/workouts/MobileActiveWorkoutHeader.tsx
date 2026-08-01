@@ -37,10 +37,10 @@ export function MobileActiveWorkoutHeader({
   onSkipRestTimer,
 }: MobileActiveWorkoutHeaderProps) {
   return (
-    <div className="sticky top-0 z-30 -mx-4 md:hidden [overflow-anchor:none]">
+    <div className="sticky top-0 z-30 -mx-4 w-auto max-w-[calc(100%+2rem)] md:hidden [overflow-anchor:none]">
       <div className="bg-background/95 px-4 pt-[calc(env(safe-area-inset-top)+0.375rem)] pb-1.5 backdrop-blur">
         <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
-          <div className="grid grid-cols-[2.25rem_auto_minmax(0,1fr)_auto] gap-1 p-1.5">
+          <div className="grid grid-cols-[2.25rem_3.35rem_minmax(0,1fr)_3.25rem] gap-1 p-1.5">
             <Button
               asChild
               size="icon"
@@ -55,7 +55,7 @@ export function MobileActiveWorkoutHeader({
               type="button"
               size="sm"
               variant="outline"
-              className="h-9 px-1.5"
+              className="h-9 min-w-0 px-1 text-[11px]"
               aria-label={`Rest sounds ${restMuted ? "muted" : "on"}`}
               onClick={onToggleRestSound}
             >
@@ -64,7 +64,7 @@ export function MobileActiveWorkoutHeader({
             <Button
               type="button"
               size="sm"
-              className="h-9 min-w-0 px-2"
+              className="h-9 min-w-0 max-w-full px-1.5 text-xs min-[360px]:px-2 min-[360px]:text-sm"
               onClick={onAddExercise}
             >
               Add Exercise
@@ -73,7 +73,7 @@ export function MobileActiveWorkoutHeader({
               type="button"
               size="sm"
               variant="outline"
-              className="h-9 px-2"
+              className="h-9 min-w-0 px-1 text-[11px]"
               onClick={onFinish}
               disabled={isSaving}
             >

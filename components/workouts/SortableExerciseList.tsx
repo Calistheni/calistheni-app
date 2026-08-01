@@ -99,7 +99,7 @@ export function SortableExerciseItem({
   return (
     <div
       ref={setNodeRef}
-      className={cn(isDragging && "relative z-40 opacity-70")}
+      className={cn("w-full min-w-0 max-w-full", isDragging && "relative z-40 opacity-70")}
       style={{
         transform: CSS.Transform.toString(transform),
         transition,

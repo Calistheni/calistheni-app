@@ -73,9 +73,13 @@ export function SupersetGroupCard({
   const exerciseSummary = exerciseNames.join(" + ");
 
   return (
-    <Collapsible open={open} onOpenChange={onOpenChange}>
+    <Collapsible
+      open={open}
+      onOpenChange={onOpenChange}
+      className="block w-full min-w-0 max-w-full"
+    >
       <section
-        className="relative overflow-hidden rounded-xl border border-border bg-card shadow-sm [overflow-anchor:none]"
+        className="relative w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-border bg-card shadow-sm [overflow-anchor:none]"
         aria-label={label}
       >
         <span
@@ -117,7 +121,10 @@ export function SupersetGroupCard({
                   )}
                 </span>
               </div>
-              <p className="truncate text-sm font-semibold" title={exerciseSummary}>
+              <p
+                className="line-clamp-2 max-w-full break-words text-sm leading-snug font-semibold"
+                title={exerciseSummary}
+              >
                 {exerciseSummary}
               </p>
               <p className="inline-flex items-center gap-1 text-xs text-muted-foreground">

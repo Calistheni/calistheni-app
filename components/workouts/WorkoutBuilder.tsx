@@ -185,7 +185,7 @@ type ActiveWorkoutDraft = {
 const DEFAULT_REST_SECONDS = 90;
 const RPE_VALUES = [6, 7, 7.5, 8, 8.5, 9, 9.5, 10];
 const COMPACT_WORKOUT_NUMBER_INPUT_CLASS =
-  "h-9 min-w-0 rounded-md bg-background/80 px-1.5 text-center font-semibold tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
+  "h-9 min-w-0 text-base rounded-md bg-background/80 px-1.5 text-center font-semibold tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
 
 const EMPTY_SET_VALUES: WorkoutSetInput = {
   reps: null,
@@ -2065,7 +2065,7 @@ export function WorkoutBuilder({
         className="border-b border-border/70 last:border-b-0"
       >
         <div className="flex min-w-0 items-stretch">
-          <AccordionTrigger className="min-w-0 px-3 py-2.5 pl-4 hover:no-underline">
+          <AccordionTrigger className="w-full min-w-0 px-3 py-2.5 pl-4 hover:no-underline">
             <div className="flex min-w-0 flex-1 items-center gap-2.5">
               <Image
                 src={getExerciseThumbnailSrc(exercise.thumbnailUrl)}
@@ -2479,8 +2479,8 @@ export function WorkoutBuilder({
 
   return (
     <>
-      <div className="grid gap-6 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)] lg:pb-8">
-        <section className="space-y-2.5 sm:space-y-4">
+      <div className="grid w-full min-w-0 max-w-full gap-6 overflow-x-clip pb-[calc(env(safe-area-inset-bottom)+1.5rem)] lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)] lg:pb-8">
+        <section className="min-w-0 space-y-2.5 sm:space-y-4">
           {!isEditing ? (
             <MobileActiveWorkoutHeader
               restMuted={restTimer.isMuted}
@@ -2512,7 +2512,7 @@ export function WorkoutBuilder({
             />
           ) : null}
           <div
-            className={`sticky z-30 -mx-4 border-b bg-background/95 px-4 backdrop-blur sm:mx-0 sm:rounded-xl sm:border sm:shadow-sm ${
+                className={`sticky z-30 -mx-4 w-auto max-w-[calc(100%+2rem)] border-b bg-background/95 px-4 backdrop-blur sm:mx-0 sm:max-w-full sm:rounded-xl sm:border sm:shadow-sm ${
               isEditing
                 ? "top-14 py-3"
                 : "top-14 hidden py-2 md:block"
@@ -2941,7 +2941,7 @@ export function WorkoutBuilder({
                 type="multiple"
                 value={openExerciseIds}
                 onValueChange={setOpenExerciseIds}
-                className="space-y-2"
+                className="w-full min-w-0 max-w-full space-y-2"
               >
               {[
                 ...supersets
@@ -3097,7 +3097,7 @@ export function WorkoutBuilder({
                     className="relative overflow-hidden rounded-xl border border-border bg-card shadow-sm [overflow-anchor:none]"
                   >
                     <div className="flex min-w-0 items-stretch">
-                      <AccordionTrigger className="min-w-0 px-2 py-1.5 hover:no-underline">
+                    <AccordionTrigger className="w-full min-w-0 px-2 py-1.5 hover:no-underline">
                         <div className="flex min-w-0 flex-1 items-center gap-2">
                           <Image
                             src={getExerciseThumbnailSrc(exercise.thumbnailUrl)}

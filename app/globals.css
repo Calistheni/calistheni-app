@@ -176,6 +176,14 @@
 }
 
 @layer components {
+  [data-sonner-toaster] {
+    --width: min(22.25rem, calc(100vw - 2rem));
+  }
+
+  [data-sonner-toast] {
+    max-width: calc(100vw - 2rem);
+  }
+
   .app-desktop-nav {
     display: none;
   }
