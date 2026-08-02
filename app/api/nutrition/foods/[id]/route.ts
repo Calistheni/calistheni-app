@@ -7,7 +7,7 @@ import { createUserUnauthorizedResponse, getAuthenticatedUserId } from "@/lib/us
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!(await getAuthenticatedUserId())) return createUserUnauthorizedResponse();
   try {
-    const food = await prisma.food.findUnique({ where: { id: (await params).id }, include: { servings: true, details: true, nutrients: true, currentRevision: { select: { id: true, revisionNumber: true } } } });
+    const food = await prisma.food.findUnique({ where: { id: (await params).id }, include: { aliases: { select: { name: true } }, servings: true, details: true, nutrients: true, currentRevision: { select: { id: true, revisionNumber: true } } } });
     if (!food) return createJsonErrorResponse("Food not found.", 404);
     return NextResponse.json(localFoodDetail(food));
   } catch (error) {

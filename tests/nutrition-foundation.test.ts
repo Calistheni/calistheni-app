@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { calculateNutritionSnapshot } from "../lib/nutrition/snapshots.ts";
 import { checksumExternalFood, normalizeBarcode, normalizeFoodQuery } from "../lib/nutrition/normalization.ts";
@@ -6,6 +7,7 @@ import {
   normalizeUsdaDetailedFood,
   normalizeUsdaFdcId,
   normalizeUsdaSearchFood,
+  rankUsdaGenericResults,
   usdaFoodDetailPath,
 } from "../lib/nutrition/providers/usda.ts";
 import {
@@ -13,6 +15,89 @@ import {
   normalizeOpenFoodFactsStatus,
   parseOpenFoodFactsProductResponse,
 } from "../lib/nutrition/providers/open-food-facts.ts";
+import { availableFoodIcons, normalizeFoodIconKey, resolveFoodIcon } from "../lib/nutrition/food-icons.ts";
+
+test("food icon inventory normalizes actual public filenames once", () => {
+  assert.ok(availableFoodIcons().length >= 100);
+  assert.equal(normalizeFoodIconKey("Chicken Breast.png"), "chicken-breast");
+  assert.equal(normalizeFoodIconKey("Ground_Beef"), "ground-beef");
+  assert.equal(normalizeFoodIconKey("apple.png"), "apple");
+  assert.equal(normalizeFoodIconKey("Apple 1.png"), "apple");
+  assert.equal(normalizeFoodIconKey("apple_1147564 1 1.png"), "apple");
+  assert.equal(normalizeFoodIconKey("Ground Beef 1 1.png"), "ground-beef");
+  const apple = resolveFoodIcon({ name: "Apple", type: "GENERIC", source: "USDA" });
+  assert.equal(apple?.key, "apple");
+  assert.equal(apple?.filename, "apple_1147564 1 1.png");
+  assert.equal(apple?.url, "/food-icons/apple_1147564%201%201.png");
+});
+
+test("food icon resolver uses exact, aliases, controlled matches, and refuses unsafe substrings", () => {
+  assert.equal(resolveFoodIcon({ name: "Ground Beef", type: "GENERIC", source: "USDA" })?.filename, "groundmeat 1 1.png");
+  assert.equal(resolveFoodIcon({ name: "Unmapped local name", aliases: ["Apple"], type: "GENERIC", source: "USDA" })?.filename, "apple_1147564 1 1.png");
+  assert.equal(resolveFoodIcon({ name: "Chicken Fillet", type: "GENERIC", source: "USDA" })?.filename, "chicken 1 1.png");
+  assert.equal(resolveFoodIcon({ name: "Raw Atlantic Salmon", type: "GENERIC", source: "USDA" })?.filename, "salmon 1 1.png");
+  assert.equal(resolveFoodIcon({ name: "Cooked White Rice", type: "GENERIC", source: "USDA" })?.filename, "rice 1 1.png");
+  assert.equal(resolveFoodIcon({ name: "Garbanzo Beans", type: "GENERIC", source: "USDA" })?.filename, "chickpeas 1 1.png");
+  assert.equal(resolveFoodIcon({ name: "Ground Turkey", type: "GENERIC", source: "USDA" })?.filename, "turkey_2276706 1 1.png");
+  assert.equal(resolveFoodIcon({ name: "Rice cake", type: "GENERIC", source: "USDA" }), undefined);
+  assert.equal(resolveFoodIcon({ name: "Beef broth", type: "GENERIC", source: "USDA" }), undefined);
+});
+
+test("common generic foods resolve against the detected asset inventory", () => {
+  const expected: Record<string, string> = {
+    Banana: "banana_13523336 1 1.png", Strawberry: "strawberry_13523359 1 1.png", "Chicken Breast": "chicken 1 1.png", "Chicken Thigh": "chicken 1 1.png", Steak: "steak 1 1.png", Salmon: "salmon 1 1.png", Tuna: "tuna 1 1.png", Egg: "egg 1 1.png", Milk: "milk 1 1.png", "Greek Yogurt": "greek yogurt 1 1.png", Rice: "rice 1 1.png", Bread: "bread 1 1.png", Oats: "oats 1 1.png", Broccoli: "brocoli 1 1.png", Carrot: "carrot 1 1.png", Potato: "potato 1 1.png", "Sweet Potato": "sweetpotato 1 1.png", "Peanut Butter": "peanut butter 1 1.png", "Olive Oil": "olive oil 1 1.png", Pizza: "pizza 1 1.png", Burger: "burger 1 1.png", Fries: "fries 1 1.png", Salad: "salad 1 1.png", "Protein Shake": "protein shake 1 1.png", Coffee: "coffee 1 1.png", Tea: "tea 1 1.png", Beans: "beans 1 1.png", Lentils: "beans 1 1.png", Chickpeas: "chickpeas 1 1.png",
+  };
+  for (const [name, filename] of Object.entries(expected)) {
+    assert.equal(resolveFoodIcon({ name, type: "GENERIC", source: "USDA" })?.filename, filename, name);
+  }
+});
+
+test("packaged provider images win over generic icon resolution", () => {
+  assert.equal(resolveFoodIcon({ name: "Oreo", imageUrl: "https://images.openfoodfacts.org/oreo.jpg", type: "BRANDED", source: "OPEN_FOOD_FACTS" }), undefined);
+  assert.equal(resolveFoodIcon({ name: "Whole Egg", iconKey: "salmon", type: "GENERIC", source: "USDA" })?.filename, "salmon 1 1.png");
+});
+
+test("USDA food-family matching handles plural variants without false substitutions", () => {
+  assert.equal(resolveFoodIcon({ name: "Peach, raw", type: "GENERIC", source: "USDA" })?.filename, "preach 1 1.png");
+  assert.equal(resolveFoodIcon({ name: "Peaches, yellow, raw", type: "GENERIC", source: "USDA" })?.filename, "preach 1 1.png");
+  assert.equal(resolveFoodIcon({ name: "Peaches, frozen", type: "GENERIC", source: "USDA" })?.filename, "preach 1 1.png");
+  // No pie or generic juice asset exists in the current inventory, so fruit is
+  // the only safe fallback. A future pie.png/juice.png takes precedence.
+  assert.equal(resolveFoodIcon({ name: "Peach pie", type: "GENERIC", source: "USDA" })?.filename, "preach 1 1.png");
+  assert.equal(resolveFoodIcon({ name: "Peach juice", type: "GENERIC", source: "USDA" })?.filename, "preach 1 1.png");
+  assert.equal(resolveFoodIcon({ name: "Apricot, raw", type: "GENERIC", source: "USDA" }), undefined);
+  assert.equal(resolveFoodIcon({ name: "Potatoes, boiled, without skin", type: "GENERIC", source: "USDA" })?.filename, "potato 1 1.png");
+});
+
+test("USDA ranking promotes the simplest generic food but respects prepared searches", () => {
+  const result = (fdcId: number, description: string, dataType = "SR Legacy") => ({
+    result: normalizeUsdaSearchFood({ fdcId, description, dataType, foodNutrients: searchEgg.foodNutrients }),
+    dataType,
+    fromGenericFallback: description.includes("raw"),
+  });
+  const peach = [result(1, "Peaches, canned, heavy syrup"), result(2, "Peach, raw"), result(3, "Peaches, frozen")];
+  assert.equal(rankUsdaGenericResults("peach", peach)[0]?.result.name, "Peach, raw");
+  const juice = [result(4, "Peach, raw"), result(5, "Peach juice")];
+  assert.equal(rankUsdaGenericResults("peach juice", juice)[0]?.result.name, "Peach juice");
+  const pie = [result(6, "Peach, raw"), result(7, "Peach pie")];
+  assert.equal(rankUsdaGenericResults("peach pie", pie)[0]?.result.name, "Peach pie");
+});
+
+test("food visuals keep generic icon, product photo, and placeholder treatments separate", () => {
+  const visual = readFileSync(new URL("../components/nutrition/FoodVisual.tsx", import.meta.url), "utf8");
+  const search = readFileSync(new URL("../components/nutrition/NutritionFoodSearch.tsx", import.meta.url), "utf8");
+  const detail = readFileSync(new URL("../components/nutrition/FoodDetailsDialog.tsx", import.meta.url), "utf8");
+  assert.match(visual, /const genericIconContainerClass = "flex shrink-0 items-center justify-center"/);
+  assert.doesNotMatch(visual, /genericIconContainerClass = "[^"]*\b(bg-muted|bg-card|bg-secondary|border|shadow|rounded-[^" ]+|p-[^" ]+)/);
+  assert.match(visual, /<img src=\{iconPath\}[\s\S]*className="block size-full object-contain"/);
+  assert.match(visual, /const productImageContainerClass = "flex shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted"/);
+  assert.match(visual, /<Image src=\{imageUrl\}[\s\S]*quality=\{80\}[\s\S]*className="size-full object-cover"/);
+  assert.match(visual, /const placeholderContainerClass = "flex shrink-0 items-center justify-center rounded-lg bg-muted"/);
+  assert.match(visual, /<Package className="size-5 text-muted-foreground"/);
+  assert.match(search, /<FoodVisual imageUrl=\{food\.imageUrl\} iconPath=\{food\.genericIcon\?\.url\}/);
+  assert.match(detail, /<FoodVisual imageUrl=\{food\.images\.front\} iconPath=\{food\.genericIcon\?\.url\}/);
+  assert.doesNotMatch(`${visual}\n${search}\n${detail}`, /image-rendering:\s*(pixelated|crisp-edges)/);
+});
 
 test("normalizes multilingual queries and validates barcode strings without coercion", () => { assert.equal(normalizeFoodQuery("  Сьомга  "), "сьомга"); assert.equal(normalizeBarcode("0012345678905"), "0012345678905"); assert.equal(normalizeBarcode("4823077625626("), null); assert.equal(normalizeBarcode("4823077625626 "), null); assert.equal(normalizeBarcode("not-a-code"), null); });
 test("food checksum is stable despite raw provider field order", () => { const food = { provider: "USDA" as const, externalId: "175167", foodType: "GENERIC" as const, name: "Salmon", countryCodes: [], nutritionPer100g: { caloriesKcal: 208, proteinGrams: 20 }, servings: [], confidenceScore: 0.98, verificationStatus: "OFFICIAL_SOURCE" as const, isComplete: true }; assert.equal(checksumExternalFood(food), checksumExternalFood({ ...food, nutritionPer100g: { proteinGrams: 20, caloriesKcal: 208 } })); });

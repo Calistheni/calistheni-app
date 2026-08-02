@@ -512,6 +512,9 @@ model Food {
   brandName           String?
   barcode             String?                @unique
   imageUrl            String?
+  /// Optional curator-selected generic icon key. Automatically resolved icons
+  /// remain computed from the local public icon inventory.
+  iconKey             String?
   languageCode        String?
   countryCodes        String[]               @default([])
   nutritionBasisGrams Decimal                @default(100) @db.Decimal(10, 3)

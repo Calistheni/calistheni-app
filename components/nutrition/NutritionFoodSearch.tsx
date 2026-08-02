@@ -1,13 +1,13 @@
 "use client";
 
-import { Barcode, Database, Package, RefreshCw, Search } from "lucide-react";
+import { Barcode, Database, RefreshCw, Search } from "lucide-react";
 import { useState } from "react";
-import Image from "next/image";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { FoodDetailsDialog } from "@/components/nutrition/FoodDetailsDialog";
+import { FoodVisual } from "@/components/nutrition/FoodVisual";
 
 type Result = {
   id?: string;
@@ -17,6 +17,7 @@ type Result = {
   brandName?: string | null;
   barcode?: string | null;
   imageUrl?: string | null;
+  genericIcon?: { key: string; url: string; match: string } | null;
   source?: string;
   verificationStatus: string;
   freshnessStatus?: string;
@@ -119,7 +120,7 @@ export function NutritionFoodSearch() {
     <Card key={`${food.provider ?? "local"}:${food.externalId}`}>
       <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
         <button type="button" className="flex min-w-0 flex-1 items-center gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setSelectedFood(food)} aria-label={`View details for ${food.name}`}>
-          <span className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">{food.imageUrl ? <Image src={food.imageUrl} alt="" width={48} height={48} unoptimized className="size-full object-cover" /> : <Package className="size-5 text-muted-foreground" />}</span>
+          <FoodVisual imageUrl={food.imageUrl} iconPath={food.genericIcon?.url} name={food.name} size="sm" />
           <span className="min-w-0"><span className="block font-semibold">{food.name}</span><span className="block truncate text-sm text-muted-foreground">{food.brandName ?? "Generic food"}</span><span className="mt-1 block text-xs text-muted-foreground">{food.nutritionPer100g.caloriesKcal ?? "—"} kcal · P {food.nutritionPer100g.proteinGrams ?? "—"} · C {food.nutritionPer100g.carbohydrateGrams ?? "—"} · F {food.nutritionPer100g.fatGrams ?? "—"} per 100 g</span>{serving ? <span className="mt-1 block text-xs text-muted-foreground">Serving: {serving.grams} g{servingCalories !== undefined ? ` · ${servingCalories} kcal` : ""}</span> : null}<span className="mt-1 block text-xs text-muted-foreground">{nutritionCompletenessLabel(food)}{freshnessLabel(food.freshnessStatus) ? ` · ${freshnessLabel(food.freshnessStatus)}` : ""}</span></span>
         </button>
         {food.isLocal ? (

@@ -35,10 +35,13 @@ test("theme is server-initialized from a validated cookie and system mode has a 
   assert.match(layout, /export async function generateViewport/);
   assert.match(layout, /colorScheme: theme === "system" \? "light dark" : resolvedTheme/);
   assert.match(layout, /parseTheme/);
-  assert.match(layout, /strategy="beforeInteractive"/);
+  // The initializer is intentionally emitted from the server-rendered head,
+  // rather than through a client component or `next/script`.
+  assert.match(layout, /<head>/);
+  assert.match(layout, /id="calistheni-initial-theme"/);
   assert.match(layout, /initialTheme=\{theme\}/);
-  assert.match(layout, /style=\{\{ backgroundColor: initialBackgroundColor, colorScheme: initialResolvedTheme \}\}/);
-  assert.match(layout, /calistheni-initial-theme-css/);
+  assert.match(layout, /backgroundColor:\s*serverResolvedTheme === "dark" \? DARK_BACKGROUND : LIGHT_BACKGROUND/);
+  assert.match(layout, /id="calistheni-critical-theme"/);
   assert.match(provider, /document\.cookie/);
   assert.match(provider, /SameSite=Lax/);
   assert.doesNotMatch(provider, /useState<Theme>\("light"\)/);

@@ -3,7 +3,7 @@ import { createJsonErrorResponse, createInternalServerErrorResponse } from "@/li
 import { normalizeBarcode } from "@/lib/nutrition/normalization";
 import { ProviderError } from "@/lib/nutrition/providers/http";
 import { getOpenFoodFactsProduct } from "@/lib/nutrition/providers/open-food-facts";
-import { toFoodSummary } from "@/lib/nutrition/service";
+import { toFoodSummary, withResolvedFoodIcon } from "@/lib/nutrition/service";
 import { prisma } from "@/lib/prisma";
 import { createUserUnauthorizedResponse, getAuthenticatedUserId } from "@/lib/user-auth";
 
@@ -14,11 +14,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bar
   if (!barcode) return createJsonErrorResponse("Invalid barcode.", 400, "INVALID_BARCODE");
 
   try {
-    const local = await prisma.food.findUnique({ where: { barcode } });
+    const local = await prisma.food.findUnique({ where: { barcode }, include: { aliases: { select: { name: true } }, details: { select: { categories: true, productImageUrl: true } } } });
     if (local) return NextResponse.json({ local: toFoodSummary(local), external: null });
 
     const external = await getOpenFoodFactsProduct(barcode);
-    return NextResponse.json({ local: null, external: { ...external, raw: undefined } });
+    return NextResponse.json({ local: null, external: { ...withResolvedFoodIcon(external), raw: undefined } });
   } catch (error) {
     if (error instanceof ProviderError) {
       const response =

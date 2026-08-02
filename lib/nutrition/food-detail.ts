@@ -1,4 +1,5 @@
 import type { ExternalFoodResult, NutritionValues } from "./types";
+import { resolveFoodIcon } from "./food-icons";
 
 const primaryNutritionKeys = ["caloriesKcal", "proteinGrams", "carbohydrateGrams", "fatGrams"] as const;
 
@@ -44,6 +45,7 @@ function sourceFrom(result: ExternalFoodResult) {
 
 export function externalFoodDetail(result: ExternalFoodResult) {
   const details = result.details;
+  const icon = result.genericIcon ?? resolveFoodIcon({ name: result.name, categories: details?.categories, imageUrl: result.imageUrl, type: result.foodType, source: result.provider });
   return {
     kind: "EXTERNAL" as const,
     food: {
@@ -52,6 +54,7 @@ export function externalFoodDetail(result: ExternalFoodResult) {
       brandName: result.brandName ?? null,
       barcode: result.barcode ?? null,
       type: result.foodType,
+      genericIcon: icon ? { key: icon.key, url: icon.url, match: icon.match } : null,
       images: { front: details?.productImageUrl ?? result.imageUrl ?? null, nutrition: details?.nutritionImageUrl ?? null, ingredients: details?.ingredientsImageUrl ?? null },
       package: { quantityText: details?.packageQuantityText ?? null, quantityGrams: details?.packageQuantityGrams ?? null },
       servings: result.servings.map((serving) => ({ ...serving, id: `${result.provider}:${result.externalId}:${serving.name}` })),
@@ -67,10 +70,15 @@ export function externalFoodDetail(result: ExternalFoodResult) {
 export function localFoodDetail(food: Record<string, unknown>) {
   const nutrition = serializeNutrition(food);
   const details = (food.details ?? null) as Record<string, unknown> | null;
+  const aliases = Array.isArray(food.aliases) ? food.aliases.flatMap((alias) => alias && typeof alias === "object" && "name" in alias && typeof alias.name === "string" ? [alias.name] : []) : [];
+  const categories = Array.isArray(details?.categories) ? details.categories.filter((category): category is string => typeof category === "string") : [];
+  const productImageUrl = typeof details?.productImageUrl === "string" ? details.productImageUrl : typeof food.imageUrl === "string" ? food.imageUrl : null;
+  const icon = resolveFoodIcon({ name: String(food.name), aliases, categories, imageUrl: productImageUrl, iconKey: typeof food.iconKey === "string" ? food.iconKey : null, type: typeof food.type === "string" ? food.type : null, source: typeof food.source === "string" ? food.source : null });
   return {
     kind: "LOCAL" as const,
     food: {
       id: String(food.id), name: String(food.name), brandName: food.brandName ?? null, barcode: food.barcode ?? null, type: String(food.type),
+      genericIcon: icon ? { key: icon.key, url: icon.url, match: icon.match } : null,
       images: { front: details?.productImageUrl ?? food.imageUrl ?? null, nutrition: details?.nutritionImageUrl ?? null, ingredients: details?.ingredientsImageUrl ?? null },
       package: { quantityText: details?.packageQuantityText ?? null, quantityGrams: numberValue(details?.packageQuantityGrams) ?? null },
       servings: ((food.servings ?? []) as Record<string, unknown>[]).map((serving) => ({ id: String(serving.id), name: String(serving.name), quantity: numberValue(serving.quantity) ?? 1, grams: numberValue(serving.grams) ?? 0, householdUnit: serving.householdUnit ?? null, isDefault: Boolean(serving.isDefault) })),

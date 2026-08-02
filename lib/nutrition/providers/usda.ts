@@ -7,6 +7,7 @@ import {
 } from "@/lib/nutrition/normalization";
 import { ProviderError, providerFetch } from "./http";
 import type { ExternalFoodResult, NutritionValues } from "../types";
+import { resolveFoodIcon } from "../food-icons";
 
 const finiteNumber = z.preprocess(
   (value) => (typeof value === "string" && value.trim() !== "" ? Number(value) : value),
@@ -285,6 +286,73 @@ const dataTypeRank = (dataType: string | undefined) => {
   return 4;
 };
 
+const PREPARED_INTENT_TERMS = ["juice", "nectar", "pie", "dessert", "sauce", "syrup", "cake", "baby", "restaurant", "fast food"];
+const COMPLICATING_TERMS = ["canned", "sweetened", "syrup", "frozen", "baby", "restaurant", "fast food", "branded", "sauce", "juice", "nectar", "pie", "dessert", "mixed", "recipe", "powder", "concentrate"];
+const BASIC_TERMS = ["raw", "fresh"];
+
+function queryTokens(value: string) {
+  return normalizeFoodQuery(value).split(/[\s-]+/).filter(Boolean);
+}
+
+function descriptionHasTerm(description: string, term: string) {
+  return new RegExp(`(?:^|\\s)${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:$|\\s)`, "i").test(normalizeFoodQuery(description));
+}
+
+function hasPreparedIntent(query: string) {
+  const tokens = queryTokens(query);
+  return PREPARED_INTENT_TERMS.some((term) => tokens.includes(term));
+}
+
+type UsdaSearchCandidate = {
+  result: ExternalFoodResult;
+  dataType?: string;
+  fromGenericFallback: boolean;
+};
+
+/**
+ * Scores generic USDA previews for fast food logging. A raw, generic whole
+ * food wins for a broad query; explicit prepared-food terms flip that bias.
+ */
+export function rankUsdaGenericResults(query: string, candidates: UsdaSearchCandidate[]) {
+  const normalizedQuery = normalizeFoodQuery(query);
+  const queryWords = queryTokens(query);
+  const preparedIntent = hasPreparedIntent(query);
+
+  const score = (candidate: UsdaSearchCandidate) => {
+    const name = normalizeFoodQuery(candidate.result.name);
+    let value = 0;
+    if (name === normalizedQuery) value += 120;
+    else if (name.startsWith(`${normalizedQuery} `)) value += 80;
+
+    const matchedQueryWords = queryWords.filter((word) => descriptionHasTerm(name, word)).length;
+    value += matchedQueryWords * 12;
+    if (candidate.result.isComplete) value += 18;
+    if (!candidate.result.brandName) value += 8;
+    const typeRank = dataTypeRank(candidate.dataType);
+    value += typeRank === 0 ? 12 : typeRank === 1 ? 10 : typeRank === 2 ? 7 : typeRank === 3 ? -8 : 0;
+
+    const isBasic = BASIC_TERMS.some((term) => descriptionHasTerm(name, term));
+    if (!preparedIntent && isBasic) value += 32;
+    if (candidate.fromGenericFallback && !preparedIntent && isBasic) value += 8;
+
+    for (const term of COMPLICATING_TERMS) {
+      if (descriptionHasTerm(name, term) && !queryWords.includes(term)) value -= 28;
+    }
+    value -= Math.max(0, name.length - 28) * 0.25;
+
+    if (resolveFoodIcon({ name: candidate.result.name, type: candidate.result.foodType, source: "USDA" })) value += 6;
+    return value;
+  };
+
+  return [...candidates].sort((left, right) => {
+    const scoreDifference = score(right) - score(left);
+    if (scoreDifference !== 0) return scoreDifference;
+    const completenessDifference = Number(right.result.isComplete) - Number(left.result.isComplete);
+    if (completenessDifference !== 0) return completenessDifference;
+    return dataTypeRank(left.dataType) - dataTypeRank(right.dataType);
+  });
+}
+
 export async function searchUsdaFoods(query: string, limit = 8) {
   const configured = config();
   if (!configured) throw new ProviderError("UNAVAILABLE", "USDA is not configured.");
@@ -307,7 +375,7 @@ export async function searchUsdaFoods(query: string, limit = 8) {
   // ahead of a raw generic food (for example, "egg"). A narrowly scoped raw
   // fallback only supplements that generic search; it never changes the
   // external ID or trusts preview nutrients for imports.
-  const genericPage = !normalizedQuery.includes("raw") && normalizedQuery.split(" ").length <= 3
+  const genericPage = !normalizedQuery.includes("raw") && !hasPreparedIntent(normalizedQuery) && normalizedQuery.split(" ").length <= 3
     ? await search(`${normalizedQuery} raw`)
     : [];
   const seen = new Set<string>();
@@ -326,19 +394,7 @@ export async function searchUsdaFoods(query: string, limit = 8) {
       return true;
     });
 
-  return normalized
-    .sort((left, right) => {
-      const leftRawGeneric = left.fromGenericFallback && left.result.name.toLocaleLowerCase().includes("raw");
-      const rightRawGeneric = right.fromGenericFallback && right.result.name.toLocaleLowerCase().includes("raw");
-      if (leftRawGeneric !== rightRawGeneric) return leftRawGeneric ? -1 : 1;
-      const leftExact = left.result.name.toLocaleLowerCase().startsWith(normalizeFoodQuery(query));
-      const rightExact = right.result.name.toLocaleLowerCase().startsWith(normalizeFoodQuery(query));
-      if (leftExact !== rightExact) return leftExact ? -1 : 1;
-      if (left.result.isComplete !== right.result.isComplete) return left.result.isComplete ? -1 : 1;
-      const typeDifference = dataTypeRank(left.dataType) - dataTypeRank(right.dataType);
-      if (typeDifference !== 0) return typeDifference;
-      return right.result.confidenceScore - left.result.confidenceScore;
-    })
+  return rankUsdaGenericResults(query, normalized)
     .slice(0, limit)
     .map(({ result }) => result);
 }

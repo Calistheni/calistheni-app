@@ -4,6 +4,7 @@ import { isMaterialFoodChange, normalizeFoodQuery } from "./normalization";
 import { getOpenFoodFactsProduct, searchOpenFoodFactsFoods } from "./providers/open-food-facts";
 import { ProviderError } from "./providers/http";
 import { getUsdaFood, searchUsdaFoods } from "./providers/usda";
+import { resolveFoodIcon } from "./food-icons";
 import type { ExternalFoodResult, FoodSearchResponse, FoodSummary, NutritionValues, ProviderState } from "./types";
 
 const providerFor = (provider: ExternalFoodResult["provider"]) => provider === "USDA" ? FoodSource.USDA : FoodSource.OPEN_FOOD_FACTS;
@@ -11,9 +12,35 @@ const daysFor = (food: { source: FoodSource; type: FoodType; importStatus: FoodI
 const nextDate = (food: { source: FoodSource; type: FoodType; importStatus: FoodImportStatus }, from = new Date()) => new Date(from.getTime() + daysFor(food) * 86400000);
 const numeric = (value: unknown) => value === null || value === undefined ? undefined : Number(value);
 function nutritionFromRecord(food: Record<string, unknown>): NutritionValues { return { caloriesKcal: numeric(food.caloriesKcal), proteinGrams: numeric(food.proteinGrams), carbohydrateGrams: numeric(food.carbohydrateGrams), fatGrams: numeric(food.fatGrams), fiberGrams: numeric(food.fiberGrams), sugarGrams: numeric(food.sugarGrams), saturatedFatGrams: numeric(food.saturatedFatGrams), transFatGrams: numeric(food.transFatGrams), addedSugarGrams: numeric(food.addedSugarGrams), sodiumMg: numeric(food.sodiumMg), saltGrams: numeric(food.saltGrams), cholesterolMg: numeric(food.cholesterolMg), potassiumMg: numeric(food.potassiumMg), calciumMg: numeric(food.calciumMg), ironMg: numeric(food.ironMg) }; }
-export function toFoodSummary(food: Record<string, unknown>): FoodSummary { const next = food.nextRevalidateAt instanceof Date ? food.nextRevalidateAt : null; return { id: String(food.id), name: String(food.name), brandName: food.brandName ? String(food.brandName) : null, barcode: food.barcode ? String(food.barcode) : null, imageUrl: food.imageUrl ? String(food.imageUrl) : null, type: String(food.type), source: String(food.source), sourceExternalId: String(food.sourceExternalId), verificationStatus: String(food.verificationStatus), freshnessStatus: String(food.freshnessStatus), confidenceScore: Number(food.confidenceScore), nutritionPer100g: nutritionFromRecord(food), importedAt: (food.importedAt as Date).toISOString(), lastRevalidatedAt: food.lastRevalidatedAt ? (food.lastRevalidatedAt as Date).toISOString() : null, nextRevalidateAt: next?.toISOString() ?? null, currentRevisionId: food.currentRevisionId ? String(food.currentRevisionId) : null, isLocal: true, revalidationRecommended: !next || next <= new Date() }; }
+function aliasesFromRecord(food: Record<string, unknown>) {
+  return Array.isArray(food.aliases)
+    ? food.aliases.flatMap((alias) => alias && typeof alias === "object" && "name" in alias && typeof alias.name === "string" ? [alias.name] : [])
+    : [];
+}
+function categoriesFromRecord(food: Record<string, unknown>) {
+  const details = food.details;
+  return details && typeof details === "object" && "categories" in details && Array.isArray(details.categories)
+    ? details.categories.filter((category): category is string => typeof category === "string")
+    : [];
+}
+function productImageFromRecord(food: Record<string, unknown>) {
+  if (typeof food.imageUrl === "string" && food.imageUrl) return food.imageUrl;
+  const details = food.details;
+  return details && typeof details === "object" && "productImageUrl" in details && typeof details.productImageUrl === "string"
+    ? details.productImageUrl
+    : null;
+}
+function foodIconReference(food: Record<string, unknown>) {
+  const icon = resolveFoodIcon({ name: String(food.name), aliases: aliasesFromRecord(food), categories: categoriesFromRecord(food), imageUrl: productImageFromRecord(food), iconKey: typeof food.iconKey === "string" ? food.iconKey : null, type: typeof food.type === "string" ? food.type : null, source: typeof food.source === "string" ? food.source : null });
+  return icon ? { key: icon.key, url: icon.url, match: icon.match } : undefined;
+}
+export function withResolvedFoodIcon(result: ExternalFoodResult): ExternalFoodResult {
+  const icon = resolveFoodIcon({ name: result.name, categories: result.details?.categories, imageUrl: result.imageUrl, type: result.foodType, source: result.provider });
+  return icon ? { ...result, genericIcon: { key: icon.key, url: icon.url, match: icon.match } } : result;
+}
+export function toFoodSummary(food: Record<string, unknown>): FoodSummary { const next = food.nextRevalidateAt instanceof Date ? food.nextRevalidateAt : null; return { id: String(food.id), name: String(food.name), brandName: food.brandName ? String(food.brandName) : null, barcode: food.barcode ? String(food.barcode) : null, imageUrl: productImageFromRecord(food), genericIcon: foodIconReference(food), type: String(food.type), source: String(food.source), sourceExternalId: String(food.sourceExternalId), verificationStatus: String(food.verificationStatus), freshnessStatus: String(food.freshnessStatus), confidenceScore: Number(food.confidenceScore), nutritionPer100g: nutritionFromRecord(food), importedAt: (food.importedAt as Date).toISOString(), lastRevalidatedAt: food.lastRevalidatedAt ? (food.lastRevalidatedAt as Date).toISOString() : null, nextRevalidateAt: next?.toISOString() ?? null, currentRevisionId: food.currentRevisionId ? String(food.currentRevisionId) : null, isLocal: true, revalidationRecommended: !next || next <= new Date() }; }
 export async function searchFoods(query: string): Promise<FoodSearchResponse> {
-  const normalized = normalizeFoodQuery(query); const local = await prisma.food.findMany({ where: { OR: [{ normalizedName: { contains: normalized } }, { name: { contains: query, mode: "insensitive" } }, { brandName: { contains: query, mode: "insensitive" } }, { aliases: { some: { normalizedName: { contains: normalized } } } }] }, orderBy: [{ selectionCount: "desc" }, { updatedAt: "desc" }], take: 12 });
+  const normalized = normalizeFoodQuery(query); const local = await prisma.food.findMany({ where: { OR: [{ normalizedName: { contains: normalized } }, { name: { contains: query, mode: "insensitive" } }, { brandName: { contains: query, mode: "insensitive" } }, { aliases: { some: { normalizedName: { contains: normalized } } } }] }, include: { aliases: { select: { name: true } }, details: { select: { categories: true, productImageUrl: true } } }, orderBy: [{ selectionCount: "desc" }, { updatedAt: "desc" }], take: 12 });
   const localResults = local.map((food) => toFoodSummary(food)); const strong = localResults.filter((food) => food.name.toLocaleLowerCase() === normalized || food.name.toLocaleLowerCase().startsWith(normalized));
   if (strong.length >= 5) return { query, localResults, externalResults: [], providers: { usda: { attempted: false, available: Boolean(process.env.USDA_FDC_API_KEY), error: null }, openFoodFacts: { attempted: false, available: true, error: null } } };
   const [usda, off] = await Promise.allSettled([searchUsdaFoods(query), searchOpenFoodFactsFoods(query)]);
@@ -26,7 +53,7 @@ export async function searchFoods(query: string): Promise<FoodSearchResponse> {
       error: code === "TIMEOUT" || code === "RATE_LIMITED" ? code : "UNAVAILABLE",
     };
   };
-  return { query, localResults, externalResults: [...(usda.status === "fulfilled" ? usda.value : []), ...(off.status === "fulfilled" ? off.value : [])], providers: { usda: state(usda, Boolean(process.env.USDA_FDC_API_KEY)), openFoodFacts: state(off) } };
+  return { query, localResults, externalResults: [...(usda.status === "fulfilled" ? usda.value : []), ...(off.status === "fulfilled" ? off.value : [])].map(withResolvedFoodIcon), providers: { usda: state(usda, Boolean(process.env.USDA_FDC_API_KEY)), openFoodFacts: state(off) } };
 }
 async function fetchExternal(provider: "USDA" | "OPEN_FOOD_FACTS", externalId: string) { return provider === "USDA" ? getUsdaFood(externalId) : getOpenFoodFactsProduct(externalId); }
 const nutritionFields = ["caloriesKcal", "proteinGrams", "carbohydrateGrams", "fatGrams", "fiberGrams", "sugarGrams", "saturatedFatGrams", "transFatGrams", "addedSugarGrams", "sodiumMg", "saltGrams", "cholesterolMg", "potassiumMg", "calciumMg", "ironMg"] as const;
