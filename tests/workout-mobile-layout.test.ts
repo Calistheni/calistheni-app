@@ -11,7 +11,14 @@ test("superset cards and sortable exercise wrappers can shrink within a narrow v
   assert.match(superset, /block w-full min-w-0 max-w-full/);
   assert.match(superset, /w-full min-w-0 max-w-full overflow-hidden/);
   assert.match(superset, /line-clamp-2 max-w-full break-words/);
+  assert.match(superset, /aria-label=\{`\$\{label\}, \$\{exerciseNames\.length\} exercises`\}/);
   assert.match(read("components/workouts/SortableExerciseList.tsx"), /w-full min-w-0 max-w-full/);
+});
+
+test("workout group cards use unique render-entry identities instead of a reused superset key", () => {
+  assert.match(builder, /getSupersetRenderEntries\(supersets, selectedExercises\)\.map\(\(entry\) =>/);
+  assert.match(builder, /<SupersetGroupCard[\s\S]*key=\{entry\.key\}/);
+  assert.doesNotMatch(builder, /<SupersetGroupCard[\s\S]*key=\{superset\.key\}/);
 });
 
 test("active workout shell and headers constrain their own width instead of clipping the site", () => {

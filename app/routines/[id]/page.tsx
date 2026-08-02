@@ -90,18 +90,12 @@ export default async function RoutineDetailPage({
           const fieldConfig = getTrackingTypeFieldConfig(
             routineExercise.exercise.trackingType
           );
-          const superset =
-            routine.supersets.find((item) =>
-              item.exerciseClientIds.includes(routineExercise.clientExerciseId)
-            ) ??
-            (routineExercise.supersetKey
-              ? routine.supersets.find(
-                  (item) => item.key === routineExercise.supersetKey
-                )
-              : null);
-          const supersetIndex = superset
-            ? routine.supersets.findIndex((item) => item.key === superset.key)
-            : -1;
+          const exerciseSupersets = routine.supersets.filter(
+            (item) =>
+              item.exerciseClientIds.includes(routineExercise.clientExerciseId) ||
+              item.key === routineExercise.supersetKey
+          );
+          const superset = exerciseSupersets[0] ?? null;
 
           return (
           <Card key={routineExercise.id}>
@@ -130,17 +124,21 @@ export default async function RoutineDetailPage({
                         routineExercise.exercise.trackingType
                       )}
                     </Badge>
-                    {superset ? (
+                    {exerciseSupersets.map((exerciseSuperset) => (
                       <Badge
+                        key={exerciseSuperset.key}
                         variant="outline"
                         className={
-                          SUPERSET_COLOR_STYLES[superset.colorKey].badge
+                          SUPERSET_COLOR_STYLES[exerciseSuperset.colorKey].badge
                         }
                       >
                         <Layers2 />
-                        {getSupersetDisplayLabel(superset, supersetIndex)}
+                        {getSupersetDisplayLabel(
+                          exerciseSuperset,
+                          routine.supersets.findIndex((item) => item.key === exerciseSuperset.key)
+                        )}
                       </Badge>
-                    ) : null}
+                    ))}
                     {!superset && routineExercise.restSeconds !== null ? (
                       <Badge variant="outline">
                         {getRestBadgeLabel(routineExercise.restSeconds)}

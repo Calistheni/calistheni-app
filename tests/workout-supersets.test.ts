@@ -5,7 +5,42 @@ import {
   getNextSupersetRoundIndex,
   getNextSupersetSetDraft,
   getSupersetRoundProgress,
+  getSupersetDisplayLabel,
+  getSupersetLetter,
+  getSupersetRenderEntries,
+  getSupersetMembershipSortableId,
+  reorderSupersetMembershipIds,
 } from "../lib/workout-supersets.ts";
+
+test("superset labels follow ordered group position and never legacy saved labels", () => {
+  const groups = ["group-a", "group-b", "group-c"].map((key) => ({ key, label: "Superset A" }));
+  assert.deepEqual(groups.map((group, index) => getSupersetDisplayLabel(group, index)), ["Superset A", "Superset B", "Superset C"]);
+  assert.equal(getSupersetLetter(25), "Z");
+  assert.equal(getSupersetLetter(26), "AA");
+  assert.equal(getSupersetLetter(27), "AB");
+});
+
+test("superset render entries use stable unique group and exercise keys", () => {
+  const exercises = [{ localId: "pull-up" }, { localId: "dip" }, { localId: "row" }];
+  const supersets = [
+    { key: "group-a", exerciseLocalIds: ["pull-up", "dip"] },
+    { key: "group-b", exerciseLocalIds: ["pull-up", "row"] },
+  ];
+  const entries = getSupersetRenderEntries(supersets, exercises);
+  assert.deepEqual(entries.map((entry) => entry.key), ["superset-group-group-a", "superset-group-group-b"]);
+  assert.equal(new Set(entries.map((entry) => entry.key)).size, entries.length);
+  assert.deepEqual(getSupersetRenderEntries([...supersets].reverse(), exercises).map((entry) => entry.key), ["superset-group-group-b", "superset-group-group-a"]);
+  assert.deepEqual(getSupersetRenderEntries([supersets[1]], exercises).map((entry) => entry.key), ["superset-group-group-b", "exercise-dip"]);
+});
+
+test("reorders only one normalized superset membership list with stable sortable IDs", () => {
+  const groupA = ["pull-up", "dip", "push-up"];
+  const groupB = ["dip", "row"];
+  assert.equal(getSupersetMembershipSortableId("group-a", "dip"), "superset-membership:group-a:dip");
+  assert.equal(getSupersetMembershipSortableId("group-a", "dip") === getSupersetMembershipSortableId("group-b", "dip"), false);
+  assert.deepEqual(reorderSupersetMembershipIds(groupA, "push-up", "dip"), ["pull-up", "push-up", "dip"]);
+  assert.deepEqual(groupB, ["dip", "row"]);
+});
 
 test("derives the current round from matching set positions", () => {
   const exercises = [

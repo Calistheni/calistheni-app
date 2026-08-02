@@ -223,18 +223,12 @@ export default async function WorkoutDetailPage({
 
       <div className="space-y-4">
         {detail.exercises.map((workoutExercise) => {
-          const superset =
-            detail.supersets.find((item) =>
-              item.exerciseLocalIds.includes(String(workoutExercise.id))
-            ) ??
-            (workoutExercise.supersetKey
-              ? detail.supersets.find(
-                  (item) => item.key === workoutExercise.supersetKey
-                )
-              : null);
-          const supersetIndex = superset
-            ? detail.supersets.findIndex((item) => item.key === superset.key)
-            : -1;
+          const exerciseSupersets = detail.supersets.filter(
+            (item) =>
+              item.exerciseLocalIds.includes(String(workoutExercise.id)) ||
+              item.key === workoutExercise.supersetKey
+          );
+          const superset = exerciseSupersets[0] ?? null;
 
           return (
           <Card key={workoutExercise.id} className="relative overflow-hidden">
@@ -273,17 +267,21 @@ export default async function WorkoutDetailPage({
                     <Badge variant="secondary">
                       {workoutExercise.exercise.muscle}
                     </Badge>
-                    {superset ? (
+                    {exerciseSupersets.map((exerciseSuperset) => (
                       <Badge
+                        key={exerciseSuperset.key}
                         variant="outline"
                         className={
-                          SUPERSET_COLOR_STYLES[superset.colorKey].badge
+                          SUPERSET_COLOR_STYLES[exerciseSuperset.colorKey].badge
                         }
                       >
                         <Layers2 />
-                        {getSupersetDisplayLabel(superset, supersetIndex)}
+                        {getSupersetDisplayLabel(
+                          exerciseSuperset,
+                          detail.supersets.findIndex((item) => item.key === exerciseSuperset.key)
+                        )}
                       </Badge>
-                    ) : null}
+                    ))}
                     {workoutExercise.exercise.secondaryMuscles.length ? (
                       <Badge variant="outline">
                         +{workoutExercise.exercise.secondaryMuscles.length} secondary

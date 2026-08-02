@@ -80,7 +80,7 @@ export function SupersetGroupCard({
     >
       <section
         className="relative w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-border bg-card shadow-sm [overflow-anchor:none]"
-        aria-label={label}
+        aria-label={`${label}, ${exerciseNames.length} exercises`}
       >
         <span
           className={cn("absolute inset-y-0 left-0 w-1", styles.accent)}

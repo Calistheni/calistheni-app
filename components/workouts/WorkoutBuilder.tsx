@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type ReactNode,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -130,6 +131,9 @@ import {
   createSupersetKey,
   getNextSupersetSetDraft,
   getSupersetDisplayLabel,
+  getSupersetMembershipSortableId,
+  getSupersetRenderEntries,
+  reorderSupersetMembershipIds,
   getSupersetRoundProgress,
   SUPERSET_COLOR_KEYS,
 } from "@/lib/workout-supersets";
@@ -1412,6 +1416,27 @@ export function WorkoutBuilder({
     });
   }
 
+  function moveSupersetExercise(
+    supersetKey: string,
+    activeSortableId: string,
+    overSortableId: string
+  ) {
+    setSupersets((current) =>
+      current.map((superset) => {
+        if (superset.key !== supersetKey) return superset;
+        const activeId = superset.exerciseLocalIds.find(
+          (localId) => getSupersetMembershipSortableId(supersetKey, localId) === activeSortableId
+        );
+        const overId = superset.exerciseLocalIds.find(
+          (localId) => getSupersetMembershipSortableId(supersetKey, localId) === overSortableId
+        );
+        return activeId && overId
+          ? { ...superset, exerciseLocalIds: reorderSupersetMembershipIds(superset.exerciseLocalIds, activeId, overId) }
+          : superset;
+      })
+    );
+  }
+
   function replaceExercise(
     localId: string,
     replacementExercise: ExerciseListItem,
@@ -2052,7 +2077,8 @@ export function WorkoutBuilder({
     selectedExercise: LocalWorkoutExercise,
     groupPosition: number,
     supersetLabel: string,
-    supersetKey: string
+    supersetKey: string,
+    dragHandle: ReactNode
   ) {
     const exercise = exercises.find(
       (item) => item.id === selectedExercise.exerciseId
@@ -2105,6 +2131,7 @@ export function WorkoutBuilder({
             </div>
           </AccordionTrigger>
           <div className="flex shrink-0 items-center pr-1">
+            {dragHandle}
             <ExerciseDetailPreview exercise={exercise} compact />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -2947,25 +2974,11 @@ export function WorkoutBuilder({
                 onValueChange={setOpenExerciseIds}
                 className="w-full min-w-0 max-w-full space-y-2"
               >
-              {[
-                ...supersets
-                  .map((superset) =>
-                    selectedExercises.find(
-                      (exercise) =>
-                        exercise.localId === superset.exerciseLocalIds[0]
-                    )
-                  )
-                  .filter(
-                    (exercise): exercise is LocalWorkoutExercise =>
-                      Boolean(exercise)
-                  ),
-                ...selectedExercises.filter(
-                  (exercise) =>
-                    !supersets.some((superset) =>
-                      superset.exerciseLocalIds.includes(exercise.localId)
-                    )
-                ),
-              ].map((selectedExercise, exerciseIndex) => {
+              {getSupersetRenderEntries(supersets, selectedExercises).map((entry) => {
+                const selectedExercise = entry.exercise;
+                const exerciseIndex = selectedExercises.findIndex(
+                  (item) => item.localId === selectedExercise.localId
+                );
                 const exercise = exercises.find(
                   (item) => item.id === selectedExercise.exerciseId
                 );
@@ -2984,17 +2997,13 @@ export function WorkoutBuilder({
                 const completedSets = selectedExercise.sets.filter(
                   (set) => set.completed
                 ).length;
-                const superset = supersets.find(
-                  (item) => item.exerciseLocalIds[0] === selectedExercise.localId
-                ) ?? null;
+                const superset = entry.kind === "superset" ? entry.superset : null;
                 const supersetIndex = superset
                   ? supersets.findIndex((item) => item.key === superset.key)
                   : -1;
                 const supersetMembers = superset
                   ? getSupersetMembers(supersets, selectedExercises, superset.key)
                   : [];
-                const isFirstSupersetMember =
-                  supersetMembers[0]?.localId === selectedExercise.localId;
                 const supersetProgress = superset
                   ? getSupersetRoundProgress(
                       supersetMembers,
@@ -3007,8 +3016,7 @@ export function WorkoutBuilder({
 
                 if (
                   superset &&
-                  supersetProgress &&
-                  isFirstSupersetMember
+                  supersetProgress
                 ) {
                   const label = getSupersetDisplayLabel(
                     superset,
@@ -3027,7 +3035,7 @@ export function WorkoutBuilder({
 
                   return (
                     <SupersetGroupCard
-                      key={superset.key}
+                      key={entry.key}
                       label={label}
                       colorKey={superset.colorKey}
                       exerciseNames={exerciseNames}
@@ -3072,14 +3080,20 @@ export function WorkoutBuilder({
                       }
                       isSavingRound={isCompletingSuperset}
                     >
-                      {supersetMembers.map((member, memberIndex) =>
-                        renderSupersetExerciseRow(
-                          member,
-                          memberIndex,
-                          label,
-                          superset.key
-                        )
-                      )}
+                      <SortableExerciseList
+                        ids={supersetMembers.map((member) => getSupersetMembershipSortableId(superset.key, member.localId))}
+                        onMove={(activeId, overId) => moveSupersetExercise(superset.key, activeId, overId)}
+                      >
+                        <Accordion type="multiple" value={openExerciseIds} onValueChange={setOpenExerciseIds}>
+                          {supersetMembers.map((member, memberIndex) => {
+                            const memberExercise = exercises.find((item) => item.id === member.exerciseId);
+                            if (!memberExercise) return null;
+                            return <SortableExerciseItem key={member.localId} id={getSupersetMembershipSortableId(superset.key, member.localId)} label={`${memberExercise.name} in ${label}`}>
+                              {(dragHandle) => renderSupersetExerciseRow(member, memberIndex, label, superset.key, dragHandle)}
+                            </SortableExerciseItem>;
+                          })}
+                        </Accordion>
+                      </SortableExerciseList>
                     </SupersetGroupCard>
                   );
                 }
@@ -3090,7 +3104,7 @@ export function WorkoutBuilder({
 
                 return (
                   <SortableExerciseItem
-                    key={selectedExercise.localId}
+                    key={entry.key}
                     id={selectedExercise.localId}
                     label={exercise.name}
                   >

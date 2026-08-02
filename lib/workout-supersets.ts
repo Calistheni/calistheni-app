@@ -36,15 +36,76 @@ export const SUPERSET_COLOR_STYLES: Record<
   },
 };
 
+/** Converts a zero-based group position to spreadsheet-style lettering: A…Z, AA… */
 export function getSupersetLetter(order: number) {
-  return String.fromCharCode(65 + (order % 26));
+  let value = Math.max(0, Math.floor(order)) + 1;
+  let label = "";
+
+  while (value > 0) {
+    value -= 1;
+    label = String.fromCharCode(65 + (value % 26)) + label;
+    value = Math.floor(value / 26);
+  }
+
+  return label;
 }
 
 export function getSupersetDisplayLabel(
-  superset: Pick<WorkoutSupersetInput, "label">,
+  _superset: Pick<WorkoutSupersetInput, "label">,
   order: number
 ) {
-  return superset.label?.trim() || `Superset ${getSupersetLetter(order)}`;
+  // Labels are presentation only. Older records may contain the same saved
+  // label for multiple groups, so always derive it from the group's order.
+  return `Superset ${getSupersetLetter(order)}`;
+}
+
+/**
+ * Builds React render entries without using an exercise as a proxy for a
+ * group. This matters when one exercise belongs to more than one superset:
+ * each group remains one sibling with a group-level key.
+ */
+export function getSupersetRenderEntries<
+  TExercise extends { localId: string },
+  TSuperset extends { key: string; exerciseLocalIds: string[] },
+>(supersets: TSuperset[], exercises: TExercise[]) {
+  const groupedExerciseIds = new Set(
+    supersets.flatMap((superset) => superset.exerciseLocalIds)
+  );
+
+  return [
+    ...supersets.flatMap((superset) => {
+      const anchorExercise = exercises.find(
+        (exercise) => exercise.localId === superset.exerciseLocalIds[0]
+      );
+      return anchorExercise
+        ? [{ kind: "superset" as const, key: `superset-group-${superset.key}`, superset, exercise: anchorExercise }]
+        : [];
+    }),
+    ...exercises
+      .filter((exercise) => !groupedExerciseIds.has(exercise.localId))
+      .map((exercise) => ({ kind: "exercise" as const, key: `exercise-${exercise.localId}`, exercise })),
+  ];
+}
+
+export function getSupersetMembershipSortableId(
+  supersetKey: string,
+  exerciseLocalId: string
+) {
+  return `superset-membership:${supersetKey}:${exerciseLocalId}`;
+}
+
+export function reorderSupersetMembershipIds(
+  memberIds: string[],
+  activeId: string,
+  overId: string
+) {
+  const activeIndex = memberIds.indexOf(activeId);
+  const overIndex = memberIds.indexOf(overId);
+  if (activeIndex < 0 || overIndex < 0 || activeIndex === overIndex) return memberIds;
+  const next = [...memberIds];
+  const [member] = next.splice(activeIndex, 1);
+  next.splice(overIndex, 0, member!);
+  return next;
 }
 
 export function getNextIncompleteSetIndex(

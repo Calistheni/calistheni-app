@@ -4,6 +4,7 @@ import {
   resolveRoutineSupersetMemberships,
   UnresolvedRoutineExerciseError,
 } from "../lib/routine-superset-mapping.ts";
+import { readFileSync } from "node:fs";
 
 test("maps unsaved request exercise keys to persisted routine exercise IDs", () => {
   const result = resolveRoutineSupersetMemberships(
@@ -72,4 +73,22 @@ test("never passes an unresolved temporary key through as a foreign key", () => 
       ),
     UnresolvedRoutineExerciseError
   );
+});
+
+test("routine superset creation confirms each additional ordered group", () => {
+  const builder = readFileSync(new URL("../components/routines/RoutineBuilder.tsx", import.meta.url), "utf8");
+  const routines = readFileSync(new URL("../lib/routines.ts", import.meta.url), "utf8");
+  assert.match(builder, /Create \{nextSupersetLabel\}\?/);
+  assert.match(builder, /Create \{nextSupersetLabel\}/);
+  assert.match(builder, /separate from \{previousSupersetLabel\}/);
+  assert.match(builder, /const nextSupersetLabel = getSupersetDisplayLabel\(\{ label: null \}, supersets\.length\)/);
+  assert.match(builder, /item\.exerciseClientIds\.includes\(selectedExercise\.localId\)/);
+  assert.match(routines, /existingSupersetIds\.has\(superset\.key\)[\s\S]*\? superset\.key/);
+});
+
+test("routine superset members use namespaced sortable identities and membership-only reorder", () => {
+  const builder = readFileSync(new URL("../components/routines/RoutineBuilder.tsx", import.meta.url), "utf8");
+  assert.match(builder, /<SortableExerciseList/);
+  assert.match(builder, /getSupersetMembershipSortableId\(primarySuperset\.key, selectedExercise\.localId\)/);
+  assert.match(builder, /reorderSupersetMembershipIds\(superset\.exerciseClientIds, activeId, overId\)/);
 });

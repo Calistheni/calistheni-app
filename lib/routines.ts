@@ -231,7 +231,8 @@ function buildRoutineMetadata(payload: ValidRoutineMutation) {
 async function createRoutineChildren(
   tx: Prisma.TransactionClient,
   templateId: number,
-  payload: ValidRoutineMutation
+  payload: ValidRoutineMutation,
+  existingSupersetIds: ReadonlySet<string> = new Set()
 ) {
   const persistedExerciseIds = new Map<string, number>();
 
@@ -262,7 +263,11 @@ async function createRoutineChildren(
   for (const [supersetIndex, resolvedSuperset] of
     resolvedSupersets.entries()) {
     const superset = payload.supersets[supersetIndex];
-    const persistedSupersetId = `routine-superset-${crypto.randomUUID()}`;
+    // Existing groups keep their stable IDs across routine edits. New draft
+    // keys are deliberately replaced with server-owned stable IDs.
+    const persistedSupersetId = existingSupersetIds.has(superset.key)
+      ? superset.key
+      : `routine-superset-${crypto.randomUUID()}`;
 
     await tx.workoutTemplateSuperset.create({
       data: {
@@ -395,6 +400,9 @@ export async function updateUserRoutine(
           id: true,
         },
       },
+      supersets: {
+        select: { id: true },
+      },
     },
   });
 
@@ -404,6 +412,9 @@ export async function updateUserRoutine(
 
   const existingExerciseIds = new Set(
     existingRoutine.exercises.map((exercise) => exercise.id)
+  );
+  const existingSupersetIds = new Set(
+    existingRoutine.supersets.map((superset) => superset.id)
   );
   if (
     payload.exercises.some(
@@ -436,7 +447,12 @@ export async function updateUserRoutine(
       },
       data: buildRoutineMetadata(normalizedPayload),
     });
-    await createRoutineChildren(tx, routineId, normalizedPayload);
+    await createRoutineChildren(
+      tx,
+      routineId,
+      normalizedPayload,
+      existingSupersetIds
+    );
   });
 
   const routine = await prisma.workoutTemplate.findFirst({
