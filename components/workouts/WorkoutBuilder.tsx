@@ -778,6 +778,17 @@ export function WorkoutBuilder({
       )
       .slice(0, 40);
   }, [exercises, muscleFilter, search]);
+  const getExerciseInstanceLabel = (
+    localId: string,
+    exerciseId: string,
+    name: string
+  ) => {
+    const matches = selectedExercises.filter(
+      (item) => item.exerciseId === exerciseId
+    );
+    if (matches.length < 2) return name;
+    return `${name} · #${matches.findIndex((item) => item.localId === localId) + 1}`;
+  };
   const selectedExercisesWithMetadata = useMemo(
     () =>
       selectedExercises
@@ -1119,10 +1130,6 @@ export function WorkoutBuilder({
   ]);
 
   function addExercise(exerciseId: string) {
-    if (selectedExercises.some((item) => item.exerciseId === exerciseId)) {
-      return;
-    }
-
     const localId = crypto.randomUUID();
 
     setSelectedExercises((current) => [
@@ -2009,17 +2016,15 @@ export function WorkoutBuilder({
           }
         >
           {filteredExercises.map((exercise) => {
-            const selectedElsewhere = selectedExercises.some(
-              (item) =>
-                item.exerciseId === exercise.id &&
-                item.localId !== exerciseToReplaceId
-            );
+            const existingOccurrenceCount = selectedExercises.filter(
+              (item) => item.exerciseId === exercise.id
+            ).length;
             const isCurrentExercise = selectedExercises.some(
               (item) =>
                 item.localId === exerciseToReplaceId &&
                 item.exerciseId === exercise.id
             );
-            const unavailable = selectedElsewhere || isCurrentExercise;
+            const unavailable = isCurrentExercise;
 
             return (
               <button
@@ -2045,6 +2050,11 @@ export function WorkoutBuilder({
                   <span className="text-xs text-muted-foreground">
                     {exercise.muscle}
                   </span>
+                  {existingOccurrenceCount > 0 && !exerciseToReplaceId ? (
+                    <span className="block text-xs text-muted-foreground">
+                      {existingOccurrenceCount} already in workout
+                    </span>
+                  ) : null}
                   {exercise.createdByUserId ? (
                     <Badge variant="outline" className="ml-2">
                       Custom
@@ -2054,9 +2064,7 @@ export function WorkoutBuilder({
                 <Badge variant={unavailable ? "secondary" : "outline"}>
                   {isCurrentExercise
                     ? "Current"
-                    : selectedElsewhere
-                      ? "Added"
-                      : exerciseToReplaceId
+                    : exerciseToReplaceId
                         ? "Replace"
                         : "Add"}
                 </Badge>
@@ -2115,7 +2123,7 @@ export function WorkoutBuilder({
                     {groupPosition + 1}
                   </Badge>
                   <h3 className="truncate text-sm font-semibold">
-                    {exercise.name}
+                    {getExerciseInstanceLabel(selectedExercise.localId, exercise.id, exercise.name)}
                   </h3>
                 </div>
                 <p className="truncate text-xs text-muted-foreground">
@@ -3106,7 +3114,7 @@ export function WorkoutBuilder({
                   <SortableExerciseItem
                     key={entry.key}
                     id={selectedExercise.localId}
-                    label={exercise.name}
+                    label={getExerciseInstanceLabel(selectedExercise.localId, exercise.id, exercise.name)}
                   >
                     {(dragHandle) => (
                     <>
@@ -3130,7 +3138,7 @@ export function WorkoutBuilder({
                               className="line-clamp-2 text-sm leading-tight font-semibold sm:text-base"
                               title={`${exercise.name} · ${exercise.muscle}`}
                             >
-                              <span>{exercise.name}</span>
+                              <span>{getExerciseInstanceLabel(selectedExercise.localId, exercise.id, exercise.name)}</span>
                               <span className="font-normal text-muted-foreground">
                                 {" "}· {exercise.muscle}
                               </span>
@@ -3781,8 +3789,20 @@ export function WorkoutBuilder({
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            <SortableExerciseList
+              ids={supersetSelection.map((localId) => getSupersetMembershipSortableId(supersetEditorKey ?? "new", localId))}
+              onMove={(activeId, overId) => {
+                const key = supersetEditorKey ?? "new";
+                const activeLocalId = supersetSelection.find((localId) => getSupersetMembershipSortableId(key, localId) === activeId);
+                const overLocalId = supersetSelection.find((localId) => getSupersetMembershipSortableId(key, localId) === overId);
+                if (activeLocalId && overLocalId) setSupersetSelection((current) => reorderSupersetMembershipIds(current, activeLocalId, overLocalId));
+              }}
+            >
             <div className="space-y-2">
-              {selectedExercises.map((selectedExercise) => {
+              {[
+                ...supersetSelection.map((id) => selectedExercises.find((exercise) => exercise.localId === id)).filter((exercise): exercise is LocalWorkoutExercise => Boolean(exercise)),
+                ...selectedExercises.filter((exercise) => !supersetSelection.includes(exercise.localId)),
+              ].map((selectedExercise) => {
                 const exercise = exercises.find(
                   (item) => item.id === selectedExercise.exerciseId
                 );
@@ -3791,9 +3811,8 @@ export function WorkoutBuilder({
                   selectedExercise.localId
                 );
 
-                return (
+                const row = (dragHandle: ReactNode) => (
                   <div
-                    key={selectedExercise.localId}
                     className="flex items-center gap-3 rounded-lg border p-3"
                   >
                     <Checkbox
@@ -3813,7 +3832,7 @@ export function WorkoutBuilder({
                       htmlFor={`superset-exercise-${selectedExercise.localId}`}
                       className="min-w-0 flex-1"
                     >
-                      <span className="block truncate">{exercise.name}</span>
+                      <span className="block truncate">{getExerciseInstanceLabel(selectedExercise.localId, exercise.id, exercise.name)}</span>
                       <span className="text-xs font-normal text-muted-foreground">
                         {supersets.some(
                           (superset) =>
@@ -3826,62 +3845,17 @@ export function WorkoutBuilder({
                           : `${selectedExercise.sets.length} sets`}
                       </span>
                     </Label>
-                    {checked ? (
-                      <div className="flex items-center gap-1">
-                        <Button
-                          type="button"
-                          size="icon-sm"
-                          variant="ghost"
-                          aria-label={`Move ${exercise.name} earlier`}
-                          disabled={
-                            supersetSelection.indexOf(
-                              selectedExercise.localId
-                            ) === 0
-                          }
-                          onClick={() =>
-                            setSupersetSelection((current) => {
-                              const index = current.indexOf(
-                                selectedExercise.localId
-                              );
-                              return index > 0
-                                ? arrayMove(current, index, index - 1)
-                                : current;
-                            })
-                          }
-                        >
-                          <ArrowUp />
-                        </Button>
-                        <Button
-                          type="button"
-                          size="icon-sm"
-                          variant="ghost"
-                          aria-label={`Move ${exercise.name} later`}
-                          disabled={
-                            supersetSelection.indexOf(
-                              selectedExercise.localId
-                            ) ===
-                            supersetSelection.length - 1
-                          }
-                          onClick={() =>
-                            setSupersetSelection((current) => {
-                              const index = current.indexOf(
-                                selectedExercise.localId
-                              );
-                              return index >= 0 &&
-                                index < current.length - 1
-                                ? arrayMove(current, index, index + 1)
-                                : current;
-                            })
-                          }
-                        >
-                          <ArrowDown />
-                        </Button>
-                      </div>
-                    ) : null}
+                    {checked ? dragHandle : null}
                   </div>
                 );
+                return checked ? (
+                  <SortableExerciseItem key={selectedExercise.localId} id={getSupersetMembershipSortableId(supersetEditorKey ?? "new", selectedExercise.localId)} label={`${getExerciseInstanceLabel(selectedExercise.localId, exercise.id, exercise.name)} in ${supersetEditorKey === "new" ? "new superset" : "this superset"}`}>
+                    {row}
+                  </SortableExerciseItem>
+                ) : <div key={selectedExercise.localId}>{row(null)}</div>;
               })}
             </div>
+            </SortableExerciseList>
             <div className="space-y-2">
               <Label htmlFor="superset-shared-rest">Shared rest</Label>
               <Select

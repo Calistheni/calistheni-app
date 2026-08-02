@@ -21,6 +21,12 @@ test("workout group cards use unique render-entry identities instead of a reused
   assert.doesNotMatch(builder, /<SupersetGroupCard[\s\S]*key=\{superset\.key\}/);
 });
 
+test("active superset editor uses membership sorting instead of arrow controls", () => {
+  assert.match(builder, /getSupersetMembershipSortableId\(supersetEditorKey \?\? "new", localId\)/);
+  assert.match(builder, /<SortableExerciseItem key=\{selectedExercise\.localId\}/);
+  assert.doesNotMatch(builder, /aria-label=\{`Move \$\{exercise\.name\} earlier`\}|aria-label=\{`Move \$\{exercise\.name\} later`\}/);
+});
+
 test("active workout shell and headers constrain their own width instead of clipping the site", () => {
   assert.match(builder, /grid w-full min-w-0 max-w-full gap-6 overflow-x-clip/);
   assert.match(builder, /w-full min-w-0 max-w-full space-y-2/);

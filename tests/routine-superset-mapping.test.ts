@@ -89,6 +89,19 @@ test("routine superset creation confirms each additional ordered group", () => {
 test("routine superset members use namespaced sortable identities and membership-only reorder", () => {
   const builder = readFileSync(new URL("../components/routines/RoutineBuilder.tsx", import.meta.url), "utf8");
   assert.match(builder, /<SortableExerciseList/);
-  assert.match(builder, /getSupersetMembershipSortableId\(primarySuperset\.key, selectedExercise\.localId\)/);
+  assert.match(builder, /getSupersetMembershipSortableId\(superset\.key, member\.localId\)/);
+  assert.match(builder, /getSupersetMembershipSortableId\(editingSupersetKey \?\? "new", selectedExercise\.localId\)/);
   assert.match(builder, /reorderSupersetMembershipIds\(superset\.exerciseClientIds, activeId, overId\)/);
+});
+
+test("routine editor renders separately editable superset group cards and uses a discard dialog", () => {
+  const builder = readFileSync(new URL("../components/routines/RoutineBuilder.tsx", import.meta.url), "utf8");
+  assert.match(builder, /aria-label="Superset groups"/);
+  assert.match(builder, /onClick=\{\(\) => openSupersetEditor\(superset\.key\)\}/);
+  assert.match(builder, /`Edit \$\{editingSupersetLabel\}`/);
+  assert.match(builder, /Delete group/);
+  assert.match(builder, /Discard unsaved changes\?/);
+  assert.match(builder, /window\.addEventListener\("beforeunload", warnBeforeUnload\)/);
+  assert.match(builder, /window\.addEventListener\("click", interceptLink, true\)/);
+  assert.match(builder, /window\.addEventListener\("popstate", interceptBack\)/);
 });

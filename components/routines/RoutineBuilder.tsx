@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Layers2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -175,6 +175,8 @@ export function RoutineBuilder({
   const [isSupersetDialogOpen, setIsSupersetDialogOpen] = useState(false);
   const [isSupersetConfirmationOpen, setIsSupersetConfirmationOpen] = useState(false);
   const [supersetSelection, setSupersetSelection] = useState<string[]>([]);
+  const [editingSupersetKey, setEditingSupersetKey] = useState<string | null>(null);
+  const [supersetRestSeconds, setSupersetRestSeconds] = useState(90);
   const [customRestExerciseIds, setCustomRestExerciseIds] = useState<string[]>(
     () =>
       buildInitialExercises(initialRoutine)
@@ -190,6 +192,50 @@ export function RoutineBuilder({
   const [isSaving, setIsSaving] = useState(false);
   const [isCreatingSuperset, setIsCreatingSuperset] = useState(false);
   const isCreatingSupersetRef = useRef(false);
+  const draftFingerprint = JSON.stringify({ name, description, visibility, selectedExercises, supersets });
+  const [savedDraftFingerprint, setSavedDraftFingerprint] = useState(draftFingerprint);
+  const isDirty = draftFingerprint !== savedDraftFingerprint;
+  const [discardNavigationHref, setDiscardNavigationHref] = useState<string | null>(null);
+  const allowNextHistoryNavigationRef = useRef(false);
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [isDirty]);
+
+  useEffect(() => {
+    if (!isDirty) return;
+
+    window.history.pushState({ ...window.history.state, routineDraftGuard: true }, "", window.location.href);
+    const interceptBack = () => {
+      if (allowNextHistoryNavigationRef.current) {
+        allowNextHistoryNavigationRef.current = false;
+        return;
+      }
+      window.history.pushState({ ...window.history.state, routineDraftGuard: true }, "", window.location.href);
+      setDiscardNavigationHref("__history_back__");
+    };
+    window.addEventListener("popstate", interceptBack);
+    return () => window.removeEventListener("popstate", interceptBack);
+  }, [isDirty]);
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const interceptLink = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const link = (event.target as Element | null)?.closest<HTMLAnchorElement>("a[href]");
+      if (!link || link.target || link.download || link.origin !== window.location.origin || link.pathname === window.location.pathname) return;
+      event.preventDefault();
+      setDiscardNavigationHref(`${link.pathname}${link.search}${link.hash}`);
+    };
+    window.addEventListener("click", interceptLink, true);
+    return () => window.removeEventListener("click", interceptLink, true);
+  }, [isDirty]);
   const muscles = useMemo(
     () => [...new Set(exercises.map((exercise) => exercise.muscle))].sort(),
     [exercises]
@@ -210,12 +256,19 @@ export function RoutineBuilder({
       )
       .slice(0, 40);
   }, [exercises, muscleFilter, search]);
+  const getExerciseInstanceLabel = (
+    localId: string,
+    exerciseId: string,
+    name: string
+  ) => {
+    const matches = selectedExercises.filter(
+      (item) => item.exerciseId === exerciseId
+    );
+    if (matches.length < 2) return name;
+    return `${name} · #${matches.findIndex((item) => item.localId === localId) + 1}`;
+  };
 
   function addExercise(exerciseId: string) {
-    if (selectedExercises.some((item) => item.exerciseId === exerciseId)) {
-      return;
-    }
-
     setSelectedExercises((current) => [
       ...current,
       {
@@ -258,6 +311,68 @@ export function RoutineBuilder({
     }));
   }
 
+  function openSupersetEditor(supersetKey: string | null) {
+    const superset = supersetKey
+      ? supersets.find((item) => item.key === supersetKey) ?? null
+      : null;
+    setEditingSupersetKey(supersetKey);
+    setSupersetSelection(superset?.exerciseClientIds ?? []);
+    setSupersetRestSeconds(superset?.restSeconds ?? 90);
+    setIsSupersetDialogOpen(true);
+  }
+
+  function moveDialogSupersetExercise(activeSortableId: string, overSortableId: string) {
+    const key = editingSupersetKey ?? "new";
+    const activeId = supersetSelection.find(
+      (localId) => getSupersetMembershipSortableId(key, localId) === activeSortableId
+    );
+    const overId = supersetSelection.find(
+      (localId) => getSupersetMembershipSortableId(key, localId) === overSortableId
+    );
+    if (!activeId || !overId) return;
+    setSupersetSelection((current) =>
+      reorderSupersetMembershipIds(current, activeId, overId)
+    );
+  }
+
+  function saveSupersetEditor() {
+    if (supersetSelection.length < 2) {
+      toast.error("Select at least two exercises.");
+      return;
+    }
+
+    if (!editingSupersetKey) {
+      requestRoutineSupersetCreation();
+      return;
+    }
+
+    setSupersets((current) =>
+      current.map((superset) =>
+        superset.key === editingSupersetKey
+          ? {
+              ...superset,
+              restSeconds: supersetRestSeconds,
+              exerciseClientIds: [...supersetSelection],
+              plannedRounds: Math.max(
+                ...supersetSelection.map(
+                  (localId) =>
+                    selectedExercises.find((exercise) => exercise.localId === localId)
+                      ?.sets.length ?? 1
+                )
+              ),
+            }
+          : superset
+      )
+    );
+    setIsSupersetDialogOpen(false);
+    setEditingSupersetKey(null);
+    setSupersetSelection([]);
+  }
+
+  function deleteSuperset(supersetKey: string) {
+    setSupersets((current) => current.filter((item) => item.key !== supersetKey));
+  }
+
   function createRoutineSuperset() {
     if (isCreatingSupersetRef.current) return;
     if (supersetSelection.length < 2) {
@@ -275,7 +390,7 @@ export function RoutineBuilder({
         label: null,
         colorKey:
           SUPERSET_COLOR_KEYS[current.length % SUPERSET_COLOR_KEYS.length],
-        restSeconds: 90,
+        restSeconds: supersetRestSeconds,
         plannedRounds: Math.max(
           ...supersetSelection.map(
             (localId) =>
@@ -289,6 +404,7 @@ export function RoutineBuilder({
     ]);
     setSupersetSelection([]);
     setIsSupersetDialogOpen(false);
+    setEditingSupersetKey(null);
     setIsSupersetConfirmationOpen(false);
     toast.success("Superset added to routine.");
     queueMicrotask(() => {
@@ -316,6 +432,16 @@ export function RoutineBuilder({
   const previousSupersetLabel = supersets.length > 0
     ? getSupersetDisplayLabel(supersets[supersets.length - 1], supersets.length - 1)
     : null;
+  const editingSuperset = editingSupersetKey
+    ? supersets.find((item) => item.key === editingSupersetKey) ?? null
+    : null;
+  const editingSupersetIndex = editingSuperset
+    ? supersets.findIndex((item) => item.key === editingSuperset.key)
+    : supersets.length;
+  const editingSupersetLabel = getSupersetDisplayLabel(
+    editingSuperset ?? { label: null },
+    editingSupersetIndex
+  );
 
   function addSet(localId: string) {
     setSelectedExercises((current) =>
@@ -483,6 +609,7 @@ export function RoutineBuilder({
       }
 
       const routine = (await response.json()) as RoutineDetail;
+      setSavedDraftFingerprint(draftFingerprint);
       toast.success(isEditing ? "Routine updated." : "Routine created.");
       router.push(`/routines/${routine.id}`);
       router.refresh();
@@ -567,8 +694,7 @@ export function RoutineBuilder({
               type="button"
               variant="outline"
               onClick={() => {
-                setSupersetSelection([]);
-                setIsSupersetDialogOpen(true);
+                openSupersetEditor(null);
               }}
               disabled={selectedExercises.length < 2}
             >
@@ -578,6 +704,73 @@ export function RoutineBuilder({
           </div>
         ) : null}
 
+        {supersets.length > 0 ? (
+          <section aria-label="Superset groups" className="space-y-3">
+            {supersets.map((superset, supersetIndex) => {
+              const label = getSupersetDisplayLabel(superset, supersetIndex);
+              const members = superset.exerciseClientIds
+                .map((localId) => selectedExercises.find((exercise) => exercise.localId === localId))
+                .filter((exercise): exercise is LocalRoutineExercise => Boolean(exercise));
+
+              return (
+                <Card key={superset.key} className="overflow-hidden">
+                  <CardHeader className="space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h2 className="font-semibold">{label}</h2>
+                        <p className="text-sm text-muted-foreground">
+                          {members.length} exercises · {formatRestDuration(superset.restSeconds ?? 90)} shared rest
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button type="button" variant="outline" onClick={() => openSupersetEditor(superset.key)}>
+                          Edit superset
+                        </Button>
+                        <Button type="button" variant="outline" onClick={() => deleteSuperset(superset.key)}>
+                          Delete group
+                        </Button>
+                      </div>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {members.map((member) => exercises.find((item) => item.id === member.exerciseId)?.name).filter(Boolean).join(" + ")}
+                    </p>
+                  </CardHeader>
+                  <CardContent>
+                    <SortableExerciseList
+                      ids={members.map((member) => getSupersetMembershipSortableId(superset.key, member.localId))}
+                      onMove={(activeId, overId) => moveRoutineSupersetExercise(activeId, overId)}
+                    >
+                      <div className="space-y-2">
+                        {members.map((member, memberIndex) => {
+                          const exercise = exercises.find((item) => item.id === member.exerciseId);
+                          if (!exercise) return null;
+                          return (
+                            <SortableExerciseItem
+                              key={member.localId}
+                              id={getSupersetMembershipSortableId(superset.key, member.localId)}
+                              label={`${exercise.name} in ${label}`}
+                            >
+                              {(dragHandle: ReactNode) => (
+                                <div className="flex min-w-0 items-center gap-2 rounded-lg border p-2">
+                                  {dragHandle}
+                                  <span className="w-7 text-xs font-medium text-muted-foreground">
+                                    {getSupersetDisplayLabel({ label: null }, supersetIndex).replace("Superset ", "")}{memberIndex + 1}
+                                  </span>
+                                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{getExerciseInstanceLabel(member.localId, exercise.id, exercise.name)}</span>
+                                </div>
+                              )}
+                            </SortableExerciseItem>
+                          );
+                        })}
+                      </div>
+                    </SortableExerciseList>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </section>
+        ) : null}
+
         {selectedExercises.length === 0 ? (
           <Card>
             <CardContent className="p-6 text-sm text-muted-foreground">
@@ -585,13 +778,7 @@ export function RoutineBuilder({
             </CardContent>
           </Card>
         ) : (
-          <SortableExerciseList
-            ids={selectedExercises.flatMap((exercise) => {
-              const superset = supersets.find((item) => item.exerciseClientIds.includes(exercise.localId));
-              return superset ? [getSupersetMembershipSortableId(superset.key, exercise.localId)] : [];
-            })}
-            onMove={moveRoutineSupersetExercise}
-          >
+          <>
           {selectedExercises.map((selectedExercise) => {
             const exercise = exercises.find(
               (item) => item.id === selectedExercise.exerciseId
@@ -643,7 +830,7 @@ export function RoutineBuilder({
                         className="h-16 w-20 shrink-0 rounded-md bg-muted object-cover"
                       />
                       <div className="min-w-0">
-                        <h2 className="truncate font-semibold">{exercise.name}</h2>
+                        <h2 className="truncate font-semibold">{getExerciseInstanceLabel(selectedExercise.localId, exercise.id, exercise.name)}</h2>
                         <div className="flex min-w-0 flex-wrap gap-1">
                           <Badge variant="secondary">{exercise.muscle}</Badge>
                           <Badge variant="outline">
@@ -657,21 +844,11 @@ export function RoutineBuilder({
                           {exercise.createdByUserId ? (
                             <Badge variant="outline">Custom</Badge>
                           ) : null}
-                          {exerciseSupersets.map((exerciseSuperset) => (
-                            <Badge
-                              key={exerciseSuperset.key}
-                              variant="outline"
-                              className={
-                                SUPERSET_COLOR_STYLES[exerciseSuperset.colorKey].badge
-                              }
-                            >
-                              <Layers2 />
-                              {getSupersetDisplayLabel(
-                                exerciseSuperset,
-                                supersets.findIndex((item) => item.key === exerciseSuperset.key)
-                              )}
+                          {exerciseSupersets.length > 0 ? (
+                            <Badge variant="outline" className={SUPERSET_COLOR_STYLES[exerciseSupersets[0].colorKey].badge}>
+                              <Layers2 /> In {exerciseSupersets.length} {exerciseSupersets.length === 1 ? "superset" : "supersets"}
                             </Badge>
-                          ))}
+                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -903,19 +1080,10 @@ export function RoutineBuilder({
                 </CardContent>
               </Card>
             );
-            const primarySuperset = exerciseSupersets[0];
-            return primarySuperset ? (
-              <SortableExerciseItem
-                key={selectedExercise.localId}
-                id={getSupersetMembershipSortableId(primarySuperset.key, selectedExercise.localId)}
-                label={`${exercise.name} in ${getSupersetDisplayLabel(primarySuperset, supersets.findIndex((item) => item.key === primarySuperset.key))}`}
-              >
-                {(dragHandle) => <div className="flex min-w-0 items-start gap-1"><div className="pt-3">{dragHandle}</div>{card}</div>}
-              </SortableExerciseItem>
-            ) : card;
+            return card;
           })
           }
-          </SortableExerciseList>
+          </>
         )}
       </section>
 
@@ -949,17 +1117,16 @@ export function RoutineBuilder({
                 <Link href="/exercises/custom/new">Create Custom Exercise</Link>
               </Button>
               {filteredExercises.map((exercise) => {
-                const selected = selectedExercises.some(
+                const occurrenceCount = selectedExercises.filter(
                   (item) => item.exerciseId === exercise.id
-                );
+                ).length;
 
                 return (
                   <button
                     key={exercise.id}
                     type="button"
                     onClick={() => addExercise(exercise.id)}
-                    disabled={selected}
-                    className="flex w-full items-center gap-3 rounded-lg border p-2 text-left transition hover:border-primary disabled:cursor-not-allowed disabled:opacity-60"
+                    className="flex w-full items-center gap-3 rounded-lg border p-2 text-left transition hover:border-primary"
                   >
                     <Image
                       src={getExerciseThumbnailSrc(exercise.thumbnailUrl)}
@@ -976,15 +1143,18 @@ export function RoutineBuilder({
                       <span className="text-xs text-muted-foreground">
                         {exercise.muscle}
                       </span>
+                      {occurrenceCount > 0 ? (
+                        <span className="block text-xs text-muted-foreground">
+                          {occurrenceCount} already in routine
+                        </span>
+                      ) : null}
                       {exercise.createdByUserId ? (
                         <Badge variant="outline" className="ml-2">
                           Custom
                         </Badge>
                       ) : null}
                     </span>
-                    <Badge variant={selected ? "secondary" : "outline"}>
-                      {selected ? "Added" : "Add"}
-                    </Badge>
+                    <Badge variant="outline">Add</Badge>
                   </button>
                 );
               })}
@@ -1007,34 +1177,49 @@ export function RoutineBuilder({
     </div>
     <Dialog
       open={isSupersetDialogOpen}
-      onOpenChange={setIsSupersetDialogOpen}
+      onOpenChange={(open) => {
+        setIsSupersetDialogOpen(open);
+        if (!open) {
+          setEditingSupersetKey(null);
+          setSupersetSelection([]);
+        }
+      }}
     >
-      <DialogContent>
+      <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-[calc(100vw-2rem)] overflow-hidden sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Create superset</DialogTitle>
+          <DialogTitle>{editingSuperset ? `Edit ${editingSupersetLabel}` : "Create superset"}</DialogTitle>
           <DialogDescription>
-            Select at least two ungrouped exercises. The 90-second shared rest
-            can be edited in the active workout.
+            Select at least two exercises, then drag selected members into their order for this group.
           </DialogDescription>
         </DialogHeader>
-        <div className="max-h-[55dvh] space-y-2 overflow-y-auto">
-          {selectedExercises.map((selectedExercise) => {
+        <SortableExerciseList
+          ids={supersetSelection.map((localId) => getSupersetMembershipSortableId(editingSupersetKey ?? "new", localId))}
+          onMove={moveDialogSupersetExercise}
+        >
+        <div className="max-h-[50dvh] space-y-2 overflow-y-auto pr-1">
+          {[...selectedExercises]
+            .sort((a, b) => {
+              const aIndex = supersetSelection.indexOf(a.localId);
+              const bIndex = supersetSelection.indexOf(b.localId);
+              return (aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex) - (bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex);
+            })
+            .map((selectedExercise) => {
             const exercise = exercises.find(
               (item) => item.id === selectedExercise.exerciseId
             );
             if (!exercise) return null;
+            const checked = supersetSelection.includes(selectedExercise.localId);
             const usedInAnotherSuperset = supersets.some((superset) =>
-              superset.exerciseClientIds.includes(selectedExercise.localId)
+              superset.key !== editingSupersetKey && superset.exerciseClientIds.includes(selectedExercise.localId)
             );
-
-            return (
+            const row = (dragHandle: ReactNode) => (
               <div
-                key={selectedExercise.localId}
                 className="flex items-center gap-3 rounded-lg border p-3"
               >
+                {checked ? dragHandle : <span className="w-10 shrink-0" aria-hidden="true" />}
                 <Checkbox
                   id={`routine-superset-${selectedExercise.localId}`}
-                  checked={supersetSelection.includes(selectedExercise.localId)}
+                  checked={checked}
                   onCheckedChange={(checked) =>
                     setSupersetSelection((current) =>
                       checked === true
@@ -1049,7 +1234,7 @@ export function RoutineBuilder({
                   htmlFor={`routine-superset-${selectedExercise.localId}`}
                   className="min-w-0 flex-1"
                 >
-                  <span className="block truncate">{exercise.name}</span>
+                  <span className="block truncate">{getExerciseInstanceLabel(selectedExercise.localId, exercise.id, exercise.name)}</span>
                   <span className="text-xs font-normal text-muted-foreground">
                     {usedInAnotherSuperset
                       ? "Also in another superset"
@@ -1058,7 +1243,28 @@ export function RoutineBuilder({
                 </Label>
               </div>
             );
+            return checked ? (
+              <SortableExerciseItem
+                key={selectedExercise.localId}
+                id={getSupersetMembershipSortableId(editingSupersetKey ?? "new", selectedExercise.localId)}
+                label={`${getExerciseInstanceLabel(selectedExercise.localId, exercise.id, exercise.name)} in ${editingSupersetLabel}`}
+              >
+                {row}
+              </SortableExerciseItem>
+            ) : (
+              <div key={selectedExercise.localId}>{row(null)}</div>
+            );
           })}
+        </div>
+        </SortableExerciseList>
+        <div className="space-y-2">
+          <Label htmlFor="routine-superset-rest">Shared rest</Label>
+          <Select value={String(supersetRestSeconds)} onValueChange={(value) => setSupersetRestSeconds(Number(value))}>
+            <SelectTrigger id="routine-superset-rest" aria-label={`${editingSupersetLabel} shared rest`}><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {REST_SELECTOR_SECONDS.map((seconds) => <SelectItem key={seconds} value={String(seconds)}>{formatRestDuration(seconds)}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
         <DialogFooter>
           <Button
@@ -1068,8 +1274,8 @@ export function RoutineBuilder({
           >
             Cancel
           </Button>
-          <Button type="button" onClick={requestRoutineSupersetCreation}>
-            Create superset
+          <Button type="button" onClick={saveSupersetEditor}>
+            {editingSuperset ? `Save ${editingSupersetLabel}` : "Create superset"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1093,6 +1299,27 @@ export function RoutineBuilder({
           >
             Create {nextSupersetLabel}
           </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    <AlertDialog open={discardNavigationHref !== null} onOpenChange={(open) => { if (!open) setDiscardNavigationHref(null); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
+          <AlertDialogDescription>You made changes to this routine that have not been saved.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Keep editing</AlertDialogCancel>
+          <AlertDialogAction onClick={() => {
+            const href = discardNavigationHref;
+            setDiscardNavigationHref(null);
+            if (href === "__history_back__") {
+              allowNextHistoryNavigationRef.current = true;
+              window.history.go(-2);
+              return;
+            }
+            if (href) window.location.assign(href);
+          }}>Discard changes</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

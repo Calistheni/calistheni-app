@@ -100,3 +100,15 @@ test("accepts mixed persisted and unsaved request exercise keys", () => {
   const result = routineMutationSchema.safeParse(payload);
   assert.equal(result.success, true);
 });
+
+test("accepts repeated exercise definitions when their client instance IDs differ", () => {
+  const payload = routinePayload();
+  payload.exercises.push({
+    ...payload.exercises[0],
+    clientExerciseId: "temp-pull-up-2",
+    notes: null,
+  });
+  payload.supersets[0].exerciseClientIds = ["temp-pull-up-2", "temp-dip"];
+  const result = routineMutationSchema.safeParse(payload);
+  assert.equal(result.success, true);
+});
