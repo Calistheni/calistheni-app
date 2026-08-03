@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { classifyFoodQuery, deduplicateExternalFoodResults, isRelevantFoodResult, isUsdaGenericFood, rankExternalFoodResults, selectPrimaryGenericFood } from "../lib/nutrition/search-ranking.ts";
+import { foodResultClassification, meaningfulFoodBrand } from "../lib/nutrition/food-display.ts";
 import type { ExternalFoodResult, FoodSummary } from "../lib/nutrition/types.ts";
 
 function food(provider: "USDA" | "OPEN_FOOD_FACTS", externalId: string, name: string, options: Partial<ExternalFoodResult> = {}): ExternalFoodResult {
@@ -63,13 +64,31 @@ test("filters unrelated loose provider matches while preserving singular and plu
   assert.equal(isRelevantFoodResult("apple", food("USDA", "crab", "Surumi / Crab Flavoured Nuggets")), false);
 });
 
+test("keeps useful food classifications without displaying provider credit or placeholder brands", () => {
+  assert.equal(foodResultClassification({ isLocal: true }), "Saved food");
+  assert.equal(foodResultClassification({ provider: "USDA", searchMetadata: { isBranded: false } }), "Generic food");
+  assert.equal(foodResultClassification({ provider: "USDA", brandName: "NOT A BRANDED ITEM", searchMetadata: { isBranded: false } }), "Generic food");
+  assert.equal(foodResultClassification({ provider: "USDA", searchMetadata: { isBranded: true } }), "Packaged product");
+  assert.equal(foodResultClassification({ provider: "OPEN_FOOD_FACTS" }), "Packaged product");
+  assert.equal(meaningfulFoodBrand("NOT A BRANDED ITEM", "Salmon"), null);
+  assert.equal(meaningfulFoodBrand("N/A", "Apple"), null);
+  assert.equal(meaningfulFoodBrand("GENERIC", "Apple"), null);
+  assert.equal(meaningfulFoodBrand("Coca-Cola", "Coca-Cola Zero"), "Coca-Cola");
+});
+
 test("search UI keeps request identity, aborts stale work, and renders generic before packaged sections", async () => {
   const source = await import("node:fs/promises").then((fs) => fs.readFile(new URL("../components/nutrition/NutritionFoodSearch.tsx", import.meta.url), "utf8"));
+  const page = await import("node:fs/promises").then((fs) => fs.readFile(new URL("../app/nutrition/foods/page.tsx", import.meta.url), "utf8"));
   assert.match(source, /abortController\.current\?\.abort\(\)/);
   assert.match(source, /activeRequest\.current === requestId/);
   assert.match(source, /search\(query\)/);
-  assert.match(source, /resultSourceLabel/);
+  assert.match(source, /foodResultClassification/);
+  assert.doesNotMatch(source, /Generic food · USDA/);
+  assert.doesNotMatch(source, /Packaged product · USDA/);
+  assert.doesNotMatch(source, /Packaged product · Open Food Facts/);
   assert.match(source, /genericResults/);
   assert.match(source, /Packaged products/);
   assert.match(source, /Updating results/);
+  assert.match(page, /Nutrition data sources and terms/);
+  assert.match(page, /\/nutrition\/data-sources/);
 });

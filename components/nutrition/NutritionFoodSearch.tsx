@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { FoodDetailsDialog } from "@/components/nutrition/FoodDetailsDialog";
 import { FoodVisual } from "@/components/nutrition/FoodVisual";
+import { foodResultClassification, meaningfulFoodBrand } from "@/lib/nutrition/food-display";
 
 type Result = {
   id?: string;
@@ -60,13 +61,6 @@ function nutritionCompletenessLabel(food: Result) {
 function freshnessLabel(status: string | undefined) {
   if (!status) return null;
   return status === "FRESH" ? "Recently checked" : status.toLowerCase().replaceAll("_", " ");
-}
-
-function resultSourceLabel(food: Result) {
-  if (food.isLocal) return "Saved food";
-  if (food.provider === "OPEN_FOOD_FACTS") return "Packaged product · Open Food Facts";
-  if (food.provider === "USDA") return `${food.searchMetadata?.isBranded || food.foodType === "BRANDED" || food.brandName ? "Packaged product" : "Generic food"} · USDA`;
-  return "Food result";
 }
 
 export function NutritionFoodSearch() {
@@ -136,6 +130,7 @@ export function NutritionFoodSearch() {
 
   const render = (food: Result) => {
     const serving = food.servings?.find((candidate) => candidate.grams > 0);
+    const brandName = meaningfulFoodBrand(food.brandName, food.name);
     const servingCalories = serving && food.nutritionPer100g.caloriesKcal !== undefined
       ? Math.round((food.nutritionPer100g.caloriesKcal * serving.grams) / 100)
       : undefined;
@@ -144,7 +139,7 @@ export function NutritionFoodSearch() {
       <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
         <button type="button" className="flex min-w-0 flex-1 items-center gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setSelectedFood(food)} aria-label={`View details for ${food.name}`}>
           <FoodVisual imageUrl={food.imageUrl} iconPath={food.genericIcon?.url} name={food.name} size="sm" />
-          <span className="min-w-0"><span className="block font-semibold">{food.name}</span><span className="block truncate text-sm text-muted-foreground">{food.brandName && food.brandName.toLocaleLowerCase() !== food.name.toLocaleLowerCase() ? `${food.brandName} · ` : ""}{resultSourceLabel(food)}</span><span className="mt-1 block text-xs text-muted-foreground">{food.nutritionPer100g.caloriesKcal ?? "—"} kcal · P {food.nutritionPer100g.proteinGrams ?? "—"} · C {food.nutritionPer100g.carbohydrateGrams ?? "—"} · F {food.nutritionPer100g.fatGrams ?? "—"} per 100 g</span>{serving ? <span className="mt-1 block text-xs text-muted-foreground">Serving: {serving.grams} g{servingCalories !== undefined ? ` · ${servingCalories} kcal` : ""}</span> : null}<span className="mt-1 block text-xs text-muted-foreground">{nutritionCompletenessLabel(food)}{freshnessLabel(food.freshnessStatus) ? ` · ${freshnessLabel(food.freshnessStatus)}` : ""}</span></span>
+          <span className="min-w-0"><span className="block font-semibold">{food.name}</span><span className="block truncate text-sm text-muted-foreground">{brandName ? `${brandName} · ` : ""}{foodResultClassification(food)}</span><span className="mt-1 block text-xs text-muted-foreground">{food.nutritionPer100g.caloriesKcal ?? "—"} kcal · P {food.nutritionPer100g.proteinGrams ?? "—"} · C {food.nutritionPer100g.carbohydrateGrams ?? "—"} · F {food.nutritionPer100g.fatGrams ?? "—"} per 100 g</span>{serving ? <span className="mt-1 block text-xs text-muted-foreground">Serving: {serving.grams} g{servingCalories !== undefined ? ` · ${servingCalories} kcal` : ""}</span> : null}<span className="mt-1 block text-xs text-muted-foreground">{nutritionCompletenessLabel(food)}{freshnessLabel(food.freshnessStatus) ? ` · ${freshnessLabel(food.freshnessStatus)}` : ""}</span></span>
         </button>
         {food.isLocal ? (
           <Button variant="outline" disabled>
