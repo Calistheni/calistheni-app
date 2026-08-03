@@ -6,6 +6,7 @@ import { ProviderError } from "./providers/http";
 import { getUsdaFood, searchUsdaFoods } from "./providers/usda";
 import { resolveFoodIcon } from "./food-icons";
 import type { ExternalFoodResult, FoodSearchResponse, FoodSummary, NutritionValues, ProviderState } from "./types";
+import { classifyFoodQuery, deduplicateExternalFoodResults, isPackagedFoodResult, isRelevantFoodResult, isUsdaGenericFood, rankExternalFoodResults, selectPrimaryGenericFood, withSearchMetadata } from "./search-ranking";
 
 const providerFor = (provider: ExternalFoodResult["provider"]) => provider === "USDA" ? FoodSource.USDA : FoodSource.OPEN_FOOD_FACTS;
 const daysFor = (food: { source: FoodSource; type: FoodType; importStatus: FoodImportStatus }) => food.importStatus === FoodImportStatus.INCOMPLETE ? 7 : food.source === FoodSource.OPEN_FOOD_FACTS ? Number(process.env.OPEN_FOOD_FACTS_REVALIDATE_DAYS ?? 30) : food.type === FoodType.BRANDED ? 60 : Number(process.env.USDA_REVALIDATE_DAYS ?? 180);
@@ -40,10 +41,9 @@ export function withResolvedFoodIcon(result: ExternalFoodResult): ExternalFoodRe
 }
 export function toFoodSummary(food: Record<string, unknown>): FoodSummary { const next = food.nextRevalidateAt instanceof Date ? food.nextRevalidateAt : null; return { id: String(food.id), name: String(food.name), brandName: food.brandName ? String(food.brandName) : null, barcode: food.barcode ? String(food.barcode) : null, imageUrl: productImageFromRecord(food), genericIcon: foodIconReference(food), type: String(food.type), source: String(food.source), sourceExternalId: String(food.sourceExternalId), verificationStatus: String(food.verificationStatus), freshnessStatus: String(food.freshnessStatus), confidenceScore: Number(food.confidenceScore), nutritionPer100g: nutritionFromRecord(food), importedAt: (food.importedAt as Date).toISOString(), lastRevalidatedAt: food.lastRevalidatedAt ? (food.lastRevalidatedAt as Date).toISOString() : null, nextRevalidateAt: next?.toISOString() ?? null, currentRevisionId: food.currentRevisionId ? String(food.currentRevisionId) : null, isLocal: true, revalidationRecommended: !next || next <= new Date() }; }
 export async function searchFoods(query: string): Promise<FoodSearchResponse> {
-  const normalized = normalizeFoodQuery(query); const local = await prisma.food.findMany({ where: { OR: [{ normalizedName: { contains: normalized } }, { name: { contains: query, mode: "insensitive" } }, { brandName: { contains: query, mode: "insensitive" } }, { aliases: { some: { normalizedName: { contains: normalized } } } }] }, include: { aliases: { select: { name: true } }, details: { select: { categories: true, productImageUrl: true } } }, orderBy: [{ selectionCount: "desc" }, { updatedAt: "desc" }], take: 12 });
-  const localResults = local.map((food) => toFoodSummary(food)); const strong = localResults.filter((food) => food.name.toLocaleLowerCase() === normalized || food.name.toLocaleLowerCase().startsWith(normalized));
-  if (strong.length >= 5) return { query, localResults, externalResults: [], providers: { usda: { attempted: false, available: Boolean(process.env.USDA_FDC_API_KEY), error: null }, openFoodFacts: { attempted: false, available: true, error: null } } };
-  const [usda, off] = await Promise.allSettled([searchUsdaFoods(query), searchOpenFoodFactsFoods(query)]);
+  const normalized = normalizeFoodQuery(query);
+  const localRequest = prisma.food.findMany({ where: { OR: [{ normalizedName: { contains: normalized } }, { name: { contains: normalized, mode: "insensitive" } }, { brandName: { contains: normalized, mode: "insensitive" } }, { aliases: { some: { normalizedName: { contains: normalized } } } }] }, include: { aliases: { select: { name: true } }, details: { select: { categories: true, productImageUrl: true } } }, orderBy: [{ selectionCount: "desc" }, { updatedAt: "desc" }], take: 12 });
+  const [local, usda, off] = await Promise.allSettled([localRequest, searchUsdaFoods(normalized), searchOpenFoodFactsFoods(normalized)]);
   const state = (result: PromiseSettledResult<ExternalFoodResult[]>, configured = true): ProviderState => {
     if (result.status === "fulfilled") return { attempted: true, available: true, error: null };
     const code = result.reason instanceof ProviderError ? result.reason.code : "UNAVAILABLE";
@@ -53,7 +53,22 @@ export async function searchFoods(query: string): Promise<FoodSearchResponse> {
       error: code === "TIMEOUT" || code === "RATE_LIMITED" ? code : "UNAVAILABLE",
     };
   };
-  return { query, localResults, externalResults: [...(usda.status === "fulfilled" ? usda.value : []), ...(off.status === "fulfilled" ? off.value : [])].map(withResolvedFoodIcon), providers: { usda: state(usda, Boolean(process.env.USDA_FDC_API_KEY)), openFoodFacts: state(off) } };
+  const localResults = local.status === "fulfilled" ? local.value.map((food) => toFoodSummary(food)) : [];
+  const providerResults = deduplicateExternalFoodResults(localResults, [
+    ...(usda.status === "fulfilled" ? usda.value : []),
+    ...(off.status === "fulfilled" ? off.value : []),
+  ]).filter((food) => isRelevantFoodResult(normalized, food)).map(withResolvedFoodIcon).map(withSearchMetadata);
+  const rankedGenericResults = rankExternalFoodResults(normalized, providerResults.filter(isUsdaGenericFood));
+  const primaryGeneric = selectPrimaryGenericFood(normalized, rankedGenericResults);
+  const genericResults = primaryGeneric ? [primaryGeneric, ...rankedGenericResults.filter((food) => food.externalId !== primaryGeneric.externalId)] : rankedGenericResults;
+  const packagedResults = rankExternalFoodResults(normalized, providerResults.filter(isPackagedFoodResult)).slice(0, 8);
+  const providers = { usda: state(usda, Boolean(process.env.USDA_FDC_API_KEY)), openFoodFacts: state(off) };
+  const warnings = [
+    local.status === "rejected" ? "Saved foods are temporarily unavailable; provider results are still shown." : null,
+    providers.usda.error ? "USDA results are temporarily unavailable." : null,
+    providers.openFoodFacts.error ? "Packaged product results are temporarily unavailable." : null,
+  ].filter((message): message is string => Boolean(message));
+  return { query: normalized, queryKind: classifyFoodQuery(normalized), localResults, genericResults, packagedResults, externalResults: [...genericResults, ...packagedResults], providers, warnings };
 }
 async function fetchExternal(provider: "USDA" | "OPEN_FOOD_FACTS", externalId: string) { return provider === "USDA" ? getUsdaFood(externalId) : getOpenFoodFactsProduct(externalId); }
 const nutritionFields = ["caloriesKcal", "proteinGrams", "carbohydrateGrams", "fatGrams", "fiberGrams", "sugarGrams", "saturatedFatGrams", "transFatGrams", "addedSugarGrams", "sodiumMg", "saltGrams", "cholesterolMg", "potassiumMg", "calciumMg", "ironMg"] as const;

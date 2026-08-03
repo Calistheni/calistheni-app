@@ -1,7 +1,7 @@
 "use client";
 
 import { Barcode, Database, RefreshCw, Search } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -19,6 +19,8 @@ type Result = {
   imageUrl?: string | null;
   genericIcon?: { key: string; url: string; match: string } | null;
   source?: string;
+  foodType?: "GENERIC" | "BRANDED";
+  searchMetadata?: { source: "USDA" | "OPEN_FOOD_FACTS"; isGeneric: boolean; isBranded: boolean; usdaDataType?: string | null };
   verificationStatus: string;
   freshnessStatus?: string;
   confidenceScore: number;
@@ -60,25 +62,42 @@ function freshnessLabel(status: string | undefined) {
   return status === "FRESH" ? "Recently checked" : status.toLowerCase().replaceAll("_", " ");
 }
 
+function resultSourceLabel(food: Result) {
+  if (food.isLocal) return "Saved food";
+  if (food.provider === "OPEN_FOOD_FACTS") return "Packaged product · Open Food Facts";
+  if (food.provider === "USDA") return `${food.searchMetadata?.isBranded || food.foodType === "BRANDED" || food.brandName ? "Packaged product" : "Generic food"} · USDA`;
+  return "Food result";
+}
+
 export function NutritionFoodSearch() {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<{ localResults: Result[]; externalResults: Result[] } | null>(null);
+  const [results, setResults] = useState<{ query: string; queryKind?: "GENERIC" | "SPECIFIC_VARIANT" | "PRODUCT" | "BARCODE"; localResults: Result[]; genericResults?: Result[]; packagedResults?: Result[]; externalResults: Result[]; warnings?: string[] } | null>(null);
   const [loading, setLoading] = useState(false);
   const [barcode, setBarcode] = useState("");
   const [selectedFood, setSelectedFood] = useState<Result | null>(null);
+  const activeRequest = useRef(0);
+  const abortController = useRef<AbortController | null>(null);
 
-  async function search() {
-    if (query.trim().length < 2 || loading) return;
+  useEffect(() => () => abortController.current?.abort(), []);
+
+  async function search(submittedQuery: string) {
+    const requestedQuery = submittedQuery.trim();
+    if (requestedQuery.length < 2) return;
+    abortController.current?.abort();
+    const controller = new AbortController();
+    abortController.current = controller;
+    const requestId = activeRequest.current + 1;
+    activeRequest.current = requestId;
     setLoading(true);
     try {
-      const response = await fetch(`/api/nutrition/foods/search?q=${encodeURIComponent(query)}`);
+      const response = await fetch(`/api/nutrition/foods/search?q=${encodeURIComponent(requestedQuery)}`, { signal: controller.signal });
       const data = await response.json();
       if (!response.ok) throw new Error(responseErrorMessage(data, "Search failed."));
-      setResults(data);
+      if (activeRequest.current === requestId) setResults(data);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Search failed.");
+      if (activeRequest.current === requestId && !(error instanceof DOMException && error.name === "AbortError")) toast.error(error instanceof Error ? error.message : "Search failed.");
     } finally {
-      setLoading(false);
+      if (activeRequest.current === requestId) setLoading(false);
     }
   }
 
@@ -93,7 +112,7 @@ export function NutritionFoodSearch() {
       const data = await response.json();
       if (!response.ok) throw new Error(responseErrorMessage(data, "Import failed."));
       toast.success(`${data.food.name} saved to Calistheni.`);
-      void search();
+      void search(query);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Import failed.");
     }
@@ -101,14 +120,18 @@ export function NutritionFoodSearch() {
 
   async function lookupBarcode() {
     if (!barcode.trim()) return;
+    abortController.current?.abort();
+    const requestId = activeRequest.current + 1;
+    activeRequest.current = requestId;
+    setLoading(true);
     try {
       const response = await fetch(`/api/nutrition/foods/barcode/${encodeURIComponent(barcode)}`);
       const data = await response.json();
       if (!response.ok) throw new Error(responseErrorMessage(data, "Barcode lookup failed."));
-      setResults({ localResults: data.local ? [data.local] : [], externalResults: data.external ? [data.external] : [] });
+      if (activeRequest.current === requestId) setResults({ query: barcode, queryKind: "BARCODE", localResults: data.local ? [data.local] : [], genericResults: [], packagedResults: data.external ? [data.external] : [], externalResults: data.external ? [data.external] : [] });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Barcode lookup failed.");
-    }
+      if (activeRequest.current === requestId) toast.error(error instanceof Error ? error.message : "Barcode lookup failed.");
+    } finally { if (activeRequest.current === requestId) setLoading(false); }
   }
 
   const render = (food: Result) => {
@@ -121,7 +144,7 @@ export function NutritionFoodSearch() {
       <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
         <button type="button" className="flex min-w-0 flex-1 items-center gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setSelectedFood(food)} aria-label={`View details for ${food.name}`}>
           <FoodVisual imageUrl={food.imageUrl} iconPath={food.genericIcon?.url} name={food.name} size="sm" />
-          <span className="min-w-0"><span className="block font-semibold">{food.name}</span><span className="block truncate text-sm text-muted-foreground">{food.brandName ?? "Generic food"}</span><span className="mt-1 block text-xs text-muted-foreground">{food.nutritionPer100g.caloriesKcal ?? "—"} kcal · P {food.nutritionPer100g.proteinGrams ?? "—"} · C {food.nutritionPer100g.carbohydrateGrams ?? "—"} · F {food.nutritionPer100g.fatGrams ?? "—"} per 100 g</span>{serving ? <span className="mt-1 block text-xs text-muted-foreground">Serving: {serving.grams} g{servingCalories !== undefined ? ` · ${servingCalories} kcal` : ""}</span> : null}<span className="mt-1 block text-xs text-muted-foreground">{nutritionCompletenessLabel(food)}{freshnessLabel(food.freshnessStatus) ? ` · ${freshnessLabel(food.freshnessStatus)}` : ""}</span></span>
+          <span className="min-w-0"><span className="block font-semibold">{food.name}</span><span className="block truncate text-sm text-muted-foreground">{food.brandName && food.brandName.toLocaleLowerCase() !== food.name.toLocaleLowerCase() ? `${food.brandName} · ` : ""}{resultSourceLabel(food)}</span><span className="mt-1 block text-xs text-muted-foreground">{food.nutritionPer100g.caloriesKcal ?? "—"} kcal · P {food.nutritionPer100g.proteinGrams ?? "—"} · C {food.nutritionPer100g.carbohydrateGrams ?? "—"} · F {food.nutritionPer100g.fatGrams ?? "—"} per 100 g</span>{serving ? <span className="mt-1 block text-xs text-muted-foreground">Serving: {serving.grams} g{servingCalories !== undefined ? ` · ${servingCalories} kcal` : ""}</span> : null}<span className="mt-1 block text-xs text-muted-foreground">{nutritionCompletenessLabel(food)}{freshnessLabel(food.freshnessStatus) ? ` · ${freshnessLabel(food.freshnessStatus)}` : ""}</span></span>
         </button>
         {food.isLocal ? (
           <Button variant="outline" disabled>
@@ -141,11 +164,11 @@ export function NutritionFoodSearch() {
         className="flex gap-2"
         onSubmit={(event) => {
           event.preventDefault();
-          void search();
+          void search(query);
         }}
       >
         <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search foods, e.g. salmon" aria-label="Search foods" />
-        <Button type="submit" disabled={loading || query.trim().length < 2}>
+        <Button type="submit" disabled={query.trim().length < 2}>
           {loading ? <RefreshCw className="animate-spin" /> : <Search />} Search
         </Button>
       </form>
@@ -155,27 +178,42 @@ export function NutritionFoodSearch() {
           <Barcode /> Lookup
         </Button>
       </div>
-      {results ? (
+      {loading && !results ? <Card><CardContent className="flex items-center gap-2 p-5 text-sm text-muted-foreground"><RefreshCw className="size-4 animate-spin" />Searching foods…</CardContent></Card> : results ? (
         <div className="space-y-5">
-          <section>
+          {loading ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><RefreshCw className="size-4 animate-spin" />Updating results…</p> : null}
+          {results.warnings?.length ? <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-muted-foreground">{results.warnings.join(" ")}</p> : null}
+          {results.localResults.length ? <section>
             <h2 className="mb-2 text-lg font-semibold">Local foods</h2>
             <div className="space-y-2">
-              {results.localResults.length ? results.localResults.map(render) : <p className="text-sm text-muted-foreground">No local matches yet.</p>}
+              {results.localResults.map(render)}
             </div>
-          </section>
-          <section>
-            <h2 className="mb-2 text-lg font-semibold">More food results</h2>
+          </section> : null}
+          {results.queryKind === "PRODUCT" && (results.packagedResults ?? results.externalResults).length ? <section>
+            <h2 className="mb-2 text-lg font-semibold">Packaged products</h2>
             <div className="space-y-2">
-              {results.externalResults.length ? results.externalResults.map(render) : <p className="text-sm text-muted-foreground">No additional food results are available for this query.</p>}
+              {(results.packagedResults ?? results.externalResults).map(render)}
             </div>
-          </section>
+          </section> : null}
+          {(results.genericResults ?? results.externalResults).length ? <section>
+            <h2 className="mb-2 text-lg font-semibold">Generic foods</h2>
+            <div className="space-y-2">
+              {(results.genericResults ?? results.externalResults).map(render)}
+            </div>
+          </section> : null}
+          {results.queryKind !== "PRODUCT" && (results.packagedResults ?? []).length ? <section>
+            <h2 className="mb-2 text-lg font-semibold">Packaged products</h2>
+            <div className="space-y-2">
+              {(results.packagedResults ?? []).map(render)}
+            </div>
+          </section> : null}
+          {!results.localResults.length && !(results.genericResults ?? results.externalResults).length && !(results.packagedResults ?? []).length ? <Card><CardContent className="p-5 text-sm text-muted-foreground">No food results are available for this query.</CardContent></Card> : null}
         </div>
       ) : (
         <Card>
           <CardContent className="p-5 text-sm text-muted-foreground">Search a food or barcode. External results stay previews until you explicitly import them.</CardContent>
         </Card>
       )}
-      <FoodDetailsDialog food={selectedFood} open={Boolean(selectedFood)} onOpenChange={(open) => { if (!open) setSelectedFood(null); }} onImported={() => void search()} />
+      <FoodDetailsDialog food={selectedFood} open={Boolean(selectedFood)} onOpenChange={(open) => { if (!open) setSelectedFood(null); }} onImported={() => void search(query)} />
     </section>
   );
 }

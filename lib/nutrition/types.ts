@@ -60,11 +60,12 @@ export type ExternalFoodResult = {
   providerVersion?: string;
   details?: FoodProviderDetails;
   genericIcon?: FoodIconReference;
+  searchMetadata?: { source: "USDA" | "OPEN_FOOD_FACTS"; isGeneric: boolean; isBranded: boolean; usdaDataType?: string | null };
   checksum: string;
   raw: unknown;
 };
 
 export type ProviderState = { attempted: boolean; available: boolean; error: "UNAVAILABLE" | "TIMEOUT" | "RATE_LIMITED" | null };
-export type FoodSearchResponse = { query: string; localResults: FoodSummary[]; externalResults: ExternalFoodResult[]; providers: { usda: ProviderState; openFoodFacts: ProviderState } };
+export type FoodSearchResponse = { query: string; queryKind: "GENERIC" | "SPECIFIC_VARIANT" | "PRODUCT" | "BARCODE"; localResults: FoodSummary[]; genericResults: ExternalFoodResult[]; packagedResults: ExternalFoodResult[]; externalResults: ExternalFoodResult[]; providers: { usda: ProviderState; openFoodFacts: ProviderState }; warnings: string[] };
 export type FoodIconReference = { key: string; url: string; match: "EXPLICIT" | "EXACT" | "ALIAS" | "KEYWORD" | "CATEGORY" };
 export type FoodSummary = { id: string; name: string; brandName: string | null; barcode: string | null; imageUrl?: string | null; genericIcon?: FoodIconReference; type: string; source: string; sourceExternalId: string; verificationStatus: string; freshnessStatus: string; confidenceScore: number; nutritionPer100g: NutritionValues; importedAt: string; lastRevalidatedAt: string | null; nextRevalidateAt: string | null; currentRevisionId: string | null; isLocal: true; revalidationRecommended: boolean };
