@@ -43,8 +43,34 @@ const decimalValue = (field: MeasurementField) => {
 export const measurementSchema = z.object({
   measuredAt: z.coerce.date(),
   note: z.string().trim().max(1000).optional().nullable(),
-  ...Object.fromEntries(MEASUREMENT_FIELDS.map((field) => [field, decimalValue(field).optional().nullable()])),
-}).strict().refine((value) => MEASUREMENT_FIELDS.some((field) => (value as Record<string, unknown>)[field] != null), { message: "Add at least one measurement." });
+  clearFields: z.array(z.enum(MEASUREMENT_FIELDS)).max(MEASUREMENT_FIELDS.length).optional().default([]),
+  ...Object.fromEntries(MEASUREMENT_FIELDS.map((field) => [field, decimalValue(field).optional()])),
+}).strict().refine((value) => MEASUREMENT_FIELDS.some((field) => Object.hasOwn(value, field)) || value.clearFields.length > 0, { message: "Add at least one measurement or choose a field to clear." });
+
+export type MeasurementSnapshotValues = Partial<Record<MeasurementField, number | null | undefined>>;
+
+/**
+ * Builds a complete historical snapshot. Omitted fields retain their latest
+ * value; only an explicit `clearFields` entry removes a value.
+ */
+export function mergeMeasurementSnapshot(
+  latest: MeasurementSnapshotValues | null | undefined,
+  submitted: MeasurementSnapshotValues,
+  clearFields: readonly MeasurementField[] = []
+) {
+  const cleared = new Set(clearFields);
+  const merged: MeasurementSnapshotValues = {};
+  for (const field of MEASUREMENT_FIELDS) {
+    if (cleared.has(field)) {
+      merged[field] = null;
+    } else if (Object.hasOwn(submitted, field)) {
+      merged[field] = submitted[field];
+    } else if (latest && Object.hasOwn(latest, field)) {
+      merged[field] = latest[field];
+    }
+  }
+  return merged;
+}
 
 /** Reusable server-side gate for the established measurement storage format. */
 export function validateStoredMeasurementCapabilities(

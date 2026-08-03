@@ -57,16 +57,18 @@ function MetricCard({ title, value, detail, missing }: { title: string; value: s
   return <Card size="sm"><CardHeader><CardTitle>{title}</CardTitle><CardDescription>{detail}</CardDescription></CardHeader><CardContent>{value !== "—" ? <p className="text-2xl font-semibold tabular-nums">{value}</p> : <div><p className="text-lg font-medium">Unavailable</p>{missing?.length ? <p className="mt-1 text-xs text-muted-foreground">Missing: {missing.join(", ")}</p> : null}</div>}</CardContent></Card>;
 }
 
-function MeasurementInput({ field, value, error, onChange }: { field: MeasurementField; value: string; error?: string; onChange: (value: string) => void }) {
+function MeasurementInput({ field, value, error, onChange, onClear }: { field: MeasurementField; value: string; error?: string; onChange: (value: string) => void; onClear: () => void }) {
   const metadata = MEASUREMENT_CATALOGUE[LEGACY_MEASUREMENT_KEY_MAP[field]];
   const id = `measurement-${field}`;
-  return <div className="min-w-0 space-y-1.5"><Label htmlFor={id}>{label(field)} <span className="text-muted-foreground">({unit(field)})</span></Label><Input id={id} inputMode="decimal" pattern="[0-9]*[.]?[0-9]*" aria-invalid={Boolean(error)} value={value} placeholder={`${metadata.min}–${metadata.max}`} onChange={(event) => { const next = event.target.value; if (/^\d*(?:\.\d*)?$/.test(next)) onChange(next); }} />{error ? <p className="text-xs text-destructive">{error}</p> : null}</div>;
+  return <div className="min-w-0 space-y-1.5"><div className="flex items-center justify-between gap-2"><Label htmlFor={id}>{label(field)} <span className="text-muted-foreground">({unit(field)})</span></Label>{value ? <Button type="button" variant="link" size="xs" className="h-auto px-0 text-muted-foreground" onClick={onClear}>Clear</Button> : null}</div><Input id={id} inputMode="decimal" pattern="[0-9]*[.]?[0-9]*" aria-invalid={Boolean(error)} value={value} placeholder={`${metadata.min}–${metadata.max}`} onChange={(event) => { const next = event.target.value; if (/^\d*(?:\.\d*)?$/.test(next)) onChange(next); }} />{error ? <p className="text-xs text-destructive">{error}</p> : null}</div>;
 }
 
 export function MeasurementTracker({ isPro, initialBodyFatSex, initialHeightCm }: { isPro: boolean; initialBodyFatSex: BodyFatSex | null; initialHeightCm: string | null }) {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<FormValues>({});
+  const [initialValues, setInitialValues] = useState<FormValues>({});
+  const [clearFields, setClearFields] = useState<MeasurementField[]>([]);
   const [sex, setSex] = useState<BodyFatSex | null>(initialBodyFatSex);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -94,23 +96,29 @@ export function MeasurementTracker({ isPro, initialBodyFatSex, initialHeightCm }
 
   function openDialog() {
     const next: FormValues = {};
-    if (initialHeightCm) next.heightCm = initialHeightCm;
-    setValues(next); setErrors({}); setRequestError(null); setOpen(true);
+    for (const [field] of STORAGE_FIELDS) {
+      const existingValue = latest ? numberValue(latest[field]) : null;
+      if (existingValue != null) next[field] = String(existingValue);
+    }
+    if (!next.heightCm && initialHeightCm) next.heightCm = initialHeightCm;
+    setValues(next); setInitialValues(next); setClearFields([]); setErrors({}); setRequestError(null); setOpen(true);
   }
-  function setValue(field: MeasurementField, value: string) { setValues((current) => ({ ...current, [field]: value })); setErrors((current) => ({ ...current, [field]: "" })); }
+  function setValue(field: MeasurementField, value: string) { setValues((current) => ({ ...current, [field]: value })); setClearFields((current) => current.filter((item) => item !== field)); setErrors((current) => ({ ...current, [field]: "" })); }
+  function clearValue(field: MeasurementField) { setValues((current) => ({ ...current, [field]: "" })); setClearFields((current) => current.includes(field) ? current : [...current, field]); }
 
   async function save(event: React.FormEvent) {
     event.preventDefault(); setRequestError(null);
     const nextErrors: Record<string, string> = {};
-    const payload: Record<string, unknown> = { measuredAt: new Date().toISOString() };
+    const payload: Record<string, unknown> = { measuredAt: new Date().toISOString(), clearFields };
     for (const [field, key] of STORAGE_FIELDS) {
       const raw = values[field]?.trim();
       if (!raw) continue;
+      if (raw === initialValues[field]?.trim()) continue;
       const parsed = Number(raw); const metadata = MEASUREMENT_CATALOGUE[key];
       if (!Number.isFinite(parsed) || parsed < metadata.min || parsed > metadata.max) nextErrors[field] = `Enter ${metadata.min}–${metadata.max} ${metadata.unit}.`;
       else payload[field] = parsed;
     }
-    if (!Object.keys(payload).some((key) => key !== "measuredAt")) nextErrors.form = "Add at least one measurement.";
+    if (!Object.keys(payload).some((key) => key !== "measuredAt" && key !== "clearFields") && !clearFields.length) nextErrors.form = "Add at least one measurement.";
     if (Object.keys(nextErrors).length) { setErrors(nextErrors); return; }
     setSaving(true);
     try {
@@ -143,6 +151,6 @@ export function MeasurementTracker({ isPro, initialBodyFatSex, initialHeightCm }
       <AccordionItem value="metrics"><AccordionTrigger>Calculated Metrics</AccordionTrigger><AccordionContent><p className="mb-3 text-sm text-muted-foreground">Calculated from your latest check-in. These are informational estimates, not medical measurements.</p><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"><MetricCard title="Estimated Body Fat" value={estimatedBodyFat == null || !isPro ? "—" : `${format(estimatedBodyFat)}%`} detail="Estimated using the US Navy circumference method. This is an estimate and not a medical measurement." missing={!isPro ? ["Pro access"] : estimateMissing} /><MetricCard title="Fat Mass" value={summary.fatMassKg == null ? "—" : `${format(summary.fatMassKg)} kg`} detail="Estimated kilograms of body fat." /><MetricCard title="Lean Body Mass" value={summary.leanBodyMassKg == null ? "—" : `${format(summary.leanBodyMassKg)} kg`} detail="Body mass excluding estimated fat mass." /><MetricCard title="FFMI" value={format(summary.ffmi, 1)} detail="Lean mass adjusted for height." /><MetricCard title="Waist / Height Ratio" value={format(summary.waistToHeightRatio, 2)} detail="Waist circumference divided by height." /><MetricCard title="Waist / Hip Ratio" value={format(summary.waistToHipRatio, 2)} detail="Waist circumference divided by hip circumference." /></div></AccordionContent></AccordionItem>
       <AccordionItem value="history"><AccordionTrigger>History</AccordionTrigger><AccordionContent>{entries.length ? <div className="grid gap-3">{entries.map((entry) => <Card key={entry.id} size="sm"><CardHeader className="flex flex-row items-start justify-between gap-3"><div><CardTitle>{new Date(entry.measuredAt).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })}</CardTitle><CardDescription>Measurement snapshot</CardDescription></div><Button size="icon-sm" variant="ghost" aria-label="Delete measurement" onClick={async () => { await fetch(`/api/user/measurements/${entry.id}`, { method: "DELETE" }); await load(); }}><Trash2 /></Button></CardHeader><CardContent><div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">{STORAGE_FIELDS.filter(([field]) => numberValue(entry[field]) != null).map(([field]) => <div key={field} className="min-w-0"><p className="text-xs text-muted-foreground">{label(field)}</p><p className="font-medium tabular-nums">{format(numberValue(entry[field]))} {unit(field)}</p></div>)}</div></CardContent></Card>)}</div> : <p className="rounded-lg bg-muted p-4 text-sm text-muted-foreground">No body measurements recorded. Add your first check-in to begin tracking changes.</p>}</AccordionContent></AccordionItem>
     </Accordion>
-    <Dialog open={open} onOpenChange={setOpen}><DialogContent className="inset-0 h-[100dvh] max-h-none w-full max-w-none translate-x-0 translate-y-0 rounded-none border-0 p-0 sm:top-1/2 sm:left-1/2 sm:h-[min(90dvh,54rem)] sm:max-w-3xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl sm:border"><form onSubmit={save} className="flex h-full min-h-0 flex-col"><DialogHeader className="shrink-0 border-b p-4 pr-12"><DialogTitle>Add body check-in</DialogTitle><DialogDescription>Save a complete measurement snapshot. Decimal values are supported.</DialogDescription></DialogHeader><div className="min-h-0 flex-1 overflow-y-auto p-4"><Accordion type="multiple" defaultValue={["Basic", "Torso", "Arms", "Legs"]} className="rounded-xl border px-4">{Object.entries(groups).map(([group, fields]) => <AccordionItem key={group} value={group}><AccordionTrigger>{group}</AccordionTrigger><AccordionContent><div className="grid gap-4 sm:grid-cols-2">{group === "Basic" ? <div className="min-w-0 space-y-1.5"><Label>Sex used for body-fat estimate</Label><Select value={sex ?? undefined} onValueChange={(value) => setSex(value as BodyFatSex)}><SelectTrigger className="w-full"><SelectValue placeholder="Choose Male or Female" /></SelectTrigger><SelectContent><SelectItem value="MALE">Male</SelectItem><SelectItem value="FEMALE">Female</SelectItem></SelectContent></Select><p className="text-xs text-muted-foreground">This optional value chooses the US Navy formula and is never inferred.</p></div> : null}{fields.filter((field) => allowedFields.has(field)).map((field) => <MeasurementInput key={field} field={field} value={values[field] ?? ""} error={errors[field]} onChange={(value) => setValue(field, value)} />)}</div></AccordionContent></AccordionItem>)}</Accordion>{errors.form ? <p className="mt-3 text-sm text-destructive">{errors.form}</p> : null}{requestError ? <p className="mt-3 text-sm text-destructive">{requestError}</p> : null}</div><DialogFooter className="shrink-0 sm:justify-between"><p className="hidden text-xs text-muted-foreground sm:block">Fields available for your current plan are shown.</p><Button type="submit" disabled={saving}>{saving ? "Saving…" : "Save check-in"}</Button></DialogFooter></form></DialogContent></Dialog>
+    <Dialog open={open} onOpenChange={setOpen}><DialogContent className="inset-0 h-[100dvh] max-h-none w-full max-w-none translate-x-0 translate-y-0 rounded-none border-0 p-0 sm:top-1/2 sm:left-1/2 sm:h-[min(90dvh,54rem)] sm:max-w-3xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl sm:border"><form onSubmit={save} className="flex h-full min-h-0 flex-col"><DialogHeader className="shrink-0 border-b p-4 pr-12"><DialogTitle>Add body check-in</DialogTitle><DialogDescription>Save a complete measurement snapshot. Decimal values are supported.</DialogDescription></DialogHeader><div className="min-h-0 flex-1 overflow-y-auto p-4"><Accordion type="multiple" defaultValue={["Basic", "Torso", "Arms", "Legs"]} className="rounded-xl border px-4">{Object.entries(groups).map(([group, fields]) => <AccordionItem key={group} value={group}><AccordionTrigger>{group}</AccordionTrigger><AccordionContent><div className="grid gap-4 sm:grid-cols-2">{group === "Basic" ? <div className="min-w-0 space-y-1.5"><Label>Sex used for body-fat estimate</Label><Select value={sex ?? undefined} onValueChange={(value) => setSex(value as BodyFatSex)}><SelectTrigger className="w-full"><SelectValue placeholder="Choose Male or Female" /></SelectTrigger><SelectContent><SelectItem value="MALE">Male</SelectItem><SelectItem value="FEMALE">Female</SelectItem></SelectContent></Select><p className="text-xs text-muted-foreground">This optional value chooses the US Navy formula and is never inferred.</p></div> : null}{fields.filter((field) => allowedFields.has(field)).map((field) => <MeasurementInput key={field} field={field} value={values[field] ?? ""} error={errors[field]} onChange={(value) => setValue(field, value)} onClear={() => clearValue(field)} />)}</div></AccordionContent></AccordionItem>)}</Accordion>{errors.form ? <p className="mt-3 text-sm text-destructive">{errors.form}</p> : null}{requestError ? <p className="mt-3 text-sm text-destructive">{requestError}</p> : null}</div><DialogFooter className="shrink-0 sm:justify-between"><p className="hidden text-xs text-muted-foreground sm:block">Fields available for your current plan are shown.</p><Button type="submit" disabled={saving}>{saving ? "Saving…" : "Save check-in"}</Button></DialogFooter></form></DialogContent></Dialog>
   </div>;
 }
