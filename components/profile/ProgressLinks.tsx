@@ -1,0 +1,5 @@
+import Link from "next/link";
+import { FileChartColumn, Pill, Ruler } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+const links = [{ href: "/profile/reports", label: "Weekly Reports", description: "Review saved weekly progress", icon: FileChartColumn }, { href: "/profile/measurements", label: "Body Measurements", description: "Track check-ins over time", icon: Ruler }, { href: "/profile/supplements", label: "Supplements", description: "Track your routine and consistency", icon: Pill }];
+export function ProgressLinks() { return <section className="mb-6" aria-label="Progress"><h2 className="mb-3 text-2xl font-bold">Progress</h2><div className="grid gap-3 sm:grid-cols-3">{links.map(({ href, label, description, icon: Icon }) => <Link href={href} key={href} className="rounded-xl focus-visible:ring-3 focus-visible:ring-ring/50"><Card className="h-full transition hover:border-primary/40"><CardContent className="p-4"><Icon className="mb-3 size-5 text-primary" /><p className="font-semibold">{label}</p><p className="text-sm text-muted-foreground">{description}</p></CardContent></Card></Link>)}</div></section>; }

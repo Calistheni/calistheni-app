@@ -24,10 +24,12 @@ type ProfileUpdatePayload = {
   onboardingCompleted?: unknown;
   rpeTrackingEnabled?: unknown;
   weeklyWorkoutGoal?: unknown;
+  bodyFatSex?: unknown;
 };
 
 const TRAINING_STYLES = ["CALISTHENICS", "GYM", "BOTH"] as const;
 const PRIMARY_GOALS = ["FIND_PARKS", "TRACK_WORKOUTS", "BOTH"] as const;
+const BODY_FAT_SEXES = ["MALE", "FEMALE"] as const;
 
 function parseBodyweightKg(value: unknown) {
   if (value === null || value === undefined || value === "") {
@@ -73,6 +75,13 @@ function parsePrimaryGoal(
     : undefined;
 }
 
+function parseBodyFatSex(value: unknown): (typeof BODY_FAT_SEXES)[number] | null | undefined {
+  if (value === null || value === undefined || value === "") return null;
+  return typeof value === "string" && BODY_FAT_SEXES.includes(value as (typeof BODY_FAT_SEXES)[number])
+    ? value as (typeof BODY_FAT_SEXES)[number]
+    : undefined;
+}
+
 export async function PATCH(request: Request) {
   const userId = await getAuthenticatedUserId();
 
@@ -96,6 +105,7 @@ export async function PATCH(request: Request) {
     onboardingCompleted?: boolean;
     rpeTrackingEnabled?: boolean;
     weeklyWorkoutGoal?: number;
+    bodyFatSex?: (typeof BODY_FAT_SEXES)[number] | null;
   } = {};
 
   if (hasField(body, "bodyweightKg")) {
@@ -174,6 +184,12 @@ export async function PATCH(request: Request) {
     data.weeklyWorkoutGoal = weeklyWorkoutGoal;
   }
 
+  if (hasField(body, "bodyFatSex")) {
+    const bodyFatSex = parseBodyFatSex(body.bodyFatSex);
+    if (bodyFatSex === undefined) return createJsonErrorResponse("Invalid body-fat sex value.", 400);
+    data.bodyFatSex = bodyFatSex;
+  }
+
   try {
     const user = await prisma.user.update({
       where: {
@@ -188,6 +204,7 @@ export async function PATCH(request: Request) {
         onboardingCompleted: true,
         rpeTrackingEnabled: true,
         weeklyWorkoutGoal: true,
+        bodyFatSex: true,
       },
     });
 

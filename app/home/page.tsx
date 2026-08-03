@@ -37,6 +37,7 @@ import {
   type PersonalRecordType,
 } from "@/lib/personal-records";
 import { prisma } from "@/lib/prisma";
+import { generatePreviousWeeklyReport } from "@/lib/weekly-progress-reports";
 import { getPersistedVolumeSetCompletion } from "@/lib/workout-volume";
 import { mapWorkoutSummary } from "@/lib/workouts";
 import { calculateWeeklyReport } from "@/lib/weekly-report";
@@ -165,6 +166,7 @@ export default async function HomePage() {
   if (!session?.user) redirect("/");
 
   await redirectIfOnboardingRequired(session.user.id);
+  const generatedWeeklyReport = await generatePreviousWeeklyReport(session.user.id);
 
   const now = new Date();
   const weekStart = getUtcWeekStart(now);
@@ -331,6 +333,14 @@ export default async function HomePage() {
       </header>
 
       <div className="space-y-16 sm:space-y-20 lg:space-y-24">
+        {generatedWeeklyReport.created && !generatedWeeklyReport.report.announcementDismissedAt ? (
+          <Card className="border-primary/30 bg-primary/5">
+            <CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+              <div><p className="font-semibold">Your weekly report is ready</p><p className="text-sm text-muted-foreground">A private snapshot of your completed week is saved in Progress.</p></div>
+              <Button asChild><Link href={`/profile/reports/${generatedWeeklyReport.report.id}`}>View report</Link></Button>
+            </CardContent>
+          </Card>
+        ) : null}
         <section aria-labelledby="week-heading">
           <SectionHeading
             id="week-heading"

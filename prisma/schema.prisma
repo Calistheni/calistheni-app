@@ -167,6 +167,31 @@ enum NativeAuthPlatform {
   ANDROID
 }
 
+enum SupplementFrequency {
+  DAILY
+  SELECTED_WEEKDAYS
+  EVERY_N_DAYS
+  TIMES_PER_WEEK
+  AS_NEEDED
+}
+
+enum SupplementTimeOfDay {
+  MORNING
+  PRE_WORKOUT
+  POST_WORKOUT
+  AFTERNOON
+  EVENING
+  BEDTIME
+  CUSTOM
+}
+
+/// Explicit, optional value used only to choose the appropriate US Navy formula.
+/// It intentionally has no default so existing users are never assigned a formula.
+enum BodyFatSex {
+  MALE
+  FEMALE
+}
+
 model User {
   id                      String         @id @default(cuid())
   name                    String?
@@ -175,6 +200,7 @@ model User {
   image                   String?
   username                String?        @unique
   bodyweightKg            Float?
+  bodyFatSex              BodyFatSex?
   dateOfBirth             DateTime?
   rewardPoints            Int            @default(0)
   onboardingCompleted     Boolean        @default(false)
@@ -207,8 +233,126 @@ model User {
   customExercises               Exercise[]               @relation("CustomExerciseOwner")
   subscription                  Subscription?
   nutritionEntrySnapshots       NutritionEntrySnapshot[]
+  weeklyProgressReports         WeeklyProgressReport[]
+  supplementPlans               UserSupplementPlan[]
+  bodyMeasurementEntries        BodyMeasurementEntry[]
 
   @@index([username])
+}
+
+model WeeklyProgressReport {
+  id                      String    @id @default(cuid())
+  userId                  String
+  weekStart               DateTime
+  weekEnd                 DateTime
+  summary                 String
+  snapshot                Json
+  viewedAt                DateTime?
+  announcementDismissedAt DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, weekStart])
+  @@index([userId, weekStart])
+}
+
+model SupplementDefinition {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  isBuiltIn Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  plans UserSupplementPlan[]
+}
+
+model UserSupplementPlan {
+  id                     String               @id @default(cuid())
+  userId                 String
+  supplementDefinitionId String?
+  customName             String?
+  dosage                 Decimal?             @db.Decimal(10, 3)
+  unit                   String?
+  frequency              SupplementFrequency  @default(DAILY)
+  weekdays               Int[]                @default([])
+  everyNDays             Int?
+  timesPerWeek           Int?
+  preferredTime          SupplementTimeOfDay?
+  preferredTimeCustom    String?
+  notes                  String?
+  isActive               Boolean              @default(true)
+  archivedAt             DateTime?
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  supplementDefinition SupplementDefinition? @relation(fields: [supplementDefinitionId], references: [id], onDelete: SetNull)
+  logs                 SupplementLog[]
+
+  @@index([userId, isActive])
+  @@index([supplementDefinitionId])
+}
+
+model SupplementLog {
+  id                     String   @id @default(cuid())
+  userSupplementPlanId   String
+  scheduledFor           DateTime
+  completedAt            DateTime @default(now())
+  dosageSnapshot         Decimal? @db.Decimal(10, 3)
+  unitSnapshot           String?
+  supplementNameSnapshot String
+  note                   String?
+  createdAt              DateTime @default(now())
+
+  plan UserSupplementPlan @relation(fields: [userSupplementPlanId], references: [id], onDelete: Cascade)
+
+  @@unique([userSupplementPlanId, scheduledFor])
+  @@index([scheduledFor])
+}
+
+model BodyMeasurementEntry {
+  id                     String   @id @default(cuid())
+  userId                 String
+  measuredAt             DateTime
+  note                   String?
+  bodyweightKg           Decimal? @db.Decimal(7, 3)
+  bodyFatPercentage      Decimal? @db.Decimal(5, 2)
+  neckCm                 Decimal? @db.Decimal(7, 3)
+  shouldersCm            Decimal? @db.Decimal(7, 3)
+  chestCm                Decimal? @db.Decimal(7, 3)
+  waistCm                Decimal? @db.Decimal(7, 3)
+  abdomenCm              Decimal? @db.Decimal(7, 3)
+  hipsCm                 Decimal? @db.Decimal(7, 3)
+  leftUpperArmCm         Decimal? @db.Decimal(7, 3)
+  rightUpperArmCm        Decimal? @db.Decimal(7, 3)
+  leftForearmCm          Decimal? @db.Decimal(7, 3)
+  rightForearmCm         Decimal? @db.Decimal(7, 3)
+  leftThighCm            Decimal? @db.Decimal(7, 3)
+  rightThighCm           Decimal? @db.Decimal(7, 3)
+  leftCalfCm             Decimal? @db.Decimal(7, 3)
+  rightCalfCm            Decimal? @db.Decimal(7, 3)
+  heightCm               Decimal? @db.Decimal(7, 3)
+  wristCm                Decimal? @db.Decimal(7, 3)
+  ankleCm                Decimal? @db.Decimal(7, 3)
+  upperChestCm           Decimal? @db.Decimal(7, 3)
+  waistNarrowestCm       Decimal? @db.Decimal(7, 3)
+  glutesCm               Decimal? @db.Decimal(7, 3)
+  pelvisCm               Decimal? @db.Decimal(7, 3)
+  leftUpperArmRelaxedCm  Decimal? @db.Decimal(7, 3)
+  rightUpperArmRelaxedCm Decimal? @db.Decimal(7, 3)
+  leftWristCm            Decimal? @db.Decimal(7, 3)
+  rightWristCm           Decimal? @db.Decimal(7, 3)
+  leftAnkleCm            Decimal? @db.Decimal(7, 3)
+  rightAnkleCm           Decimal? @db.Decimal(7, 3)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, measuredAt])
 }
 
 model Subscription {

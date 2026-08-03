@@ -8,6 +8,7 @@ import { BodyweightForm } from "@/components/profile/BodyweightForm";
 import { CardioGoalCard } from "@/components/profile/CardioGoalCard";
 import { MobileAccountUtilities } from "@/components/profile/MobileAccountUtilities";
 import { ProfileStatCard } from "@/components/profile/ProfileStatCard";
+import { ProgressLinks } from "@/components/profile/ProgressLinks";
 import { SocialConnections } from "@/components/social/SocialConnections";
 import { ManageSubscriptionButton } from "@/components/billing/ManageSubscriptionButton";
 import {
@@ -265,6 +266,8 @@ export default async function ProfilePage() {
         <MuscleActivityRadar data={muscleActivity} />
         <CardioGoalCard initialProgress={cardioProgress} />
       </section>
+
+      <ProgressLinks />
 
       <Card className="mb-6">
         <CardHeader>
