@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
 import { mapWorkoutSummary } from "@/lib/workouts";
+import { ClickableWorkoutCard } from "@/components/community/ClickableWorkoutCard";
 import { displayUsername } from "@/lib/community";
 import { WorkoutSocialActions } from "@/components/community/WorkoutSocialActions";
 
@@ -75,8 +76,9 @@ export default async function UserProfilePage({
               sets: true,
             },
           },
-          _count: { select: { likes: true } },
+          _count: { select: { likes: true, photos: true } },
           likes: { where: { userId: session?.user?.id ?? "" }, select: { userId: true } },
+          photos: { orderBy: { createdAt: "asc" }, take: 4, select: { id: true, width: true, height: true } },
         },
       }),
       prisma.userFollow.count({
@@ -200,7 +202,7 @@ export default async function UserProfilePage({
           </Card>
         ) : (
           summaries.map((workout, index) => (
-              <Card key={workout.id} className="transition hover:border-primary/50">
+              <ClickableWorkoutCard key={workout.id} href={`/workouts/${workout.id}`} label={`Open ${workout.title ?? "workout"}`}><Card className="transition hover:border-primary/50">
                 <CardHeader>
                   <h3 className="text-xl font-semibold">
                     <Link href={`/workouts/${workout.id}`}>
@@ -223,9 +225,10 @@ export default async function UserProfilePage({
                       : `${workout.totalVolume.toLocaleString()} volume`}
                   </Badge>
                   </div>
+                  {workouts[index].photos.length === 1 ? <div className="w-full overflow-hidden rounded-xl bg-muted"><Image src={`/api/workouts/${workout.id}/photos/${workouts[index].photos[0].id}`} alt={`Workout photo from ${workout.title ?? "workout"}`} width={Math.max(1, workouts[index].photos[0].width)} height={Math.max(1, workouts[index].photos[0].height)} unoptimized sizes="(max-width:640px) calc(100vw - 2rem), 768px" className="block h-auto w-full" /></div> : workouts[index].photos.length ? <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{workouts[index].photos.map((photo, photoIndex) => <div key={photo.id} className="relative aspect-square overflow-hidden rounded-lg"><Image src={`/api/workouts/${workout.id}/photos/${photo.id}`} alt={`Workout photo ${photoIndex + 1}`} fill unoptimized sizes="180px" className="object-cover" />{photoIndex===3&&workouts[index]._count.photos>4?<span className="absolute inset-0 grid place-items-center bg-black/50 text-white">+{workouts[index]._count.photos-4}</span>:null}</div>)}</div> : null}
                   {session?.user?.id ? <WorkoutSocialActions workoutId={workout.id} initialLikeCount={workouts[index]._count.likes} initialLiked={workouts[index].likes.length > 0} canCopy={session.user.id !== user.id} /> : null}
                 </CardContent>
-              </Card>
+              </Card></ClickableWorkoutCard>
           ))
         )}
       </section>

@@ -21,6 +21,7 @@ export const metadata: Metadata = {
     follow: false,
   },
 };
+export const dynamic = "force-dynamic";
 
 export default async function FeedPage() {
   const session = await auth();
@@ -176,7 +177,7 @@ export default async function FeedPage() {
                       .map((item) => item.exercise.name)
                       .join(", ")}
                   </p>
-                  {workoutRecord.photos.length ? <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{workoutRecord.photos.map((photo, photoIndex) => <div key={photo.id} className="relative aspect-square overflow-hidden rounded-lg bg-muted"><Image src={`/api/workouts/${workout.id}/photos/${photo.id}`} alt={`Workout photo ${photoIndex + 1}`} fill sizes="(max-width:640px) 45vw, 180px" unoptimized loading="lazy" className="object-cover" />{photoIndex === 3 && workoutRecord._count.photos > 4 ? <span className="absolute inset-0 grid place-items-center bg-black/50 text-lg font-semibold text-white">+{workoutRecord._count.photos - 4}</span> : null}</div>)}</div> : null}
+                  {workoutRecord.photos.length === 1 ? <div className="w-full overflow-hidden rounded-xl bg-muted"><Image src={`/api/workouts/${workout.id}/photos/${workoutRecord.photos[0].id}`} alt={`Workout photo from ${workout.title ?? "workout"}`} width={Math.max(1, workoutRecord.photos[0].width)} height={Math.max(1, workoutRecord.photos[0].height)} sizes="(max-width:768px) calc(100vw - 2rem), 672px" unoptimized loading="lazy" className="block h-auto w-full" /></div> : workoutRecord.photos.length ? <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{workoutRecord.photos.map((photo, photoIndex) => <div key={photo.id} className="relative aspect-square overflow-hidden rounded-lg bg-muted"><Image src={`/api/workouts/${workout.id}/photos/${photo.id}`} alt={`Workout photo ${photoIndex + 1}`} fill sizes="180px" unoptimized loading="lazy" className="object-cover" />{photoIndex === 3 && workoutRecord._count.photos > 4 ? <span className="absolute inset-0 grid place-items-center bg-black/50 text-lg font-semibold text-white">+{workoutRecord._count.photos - 4}</span> : null}</div>)}</div> : null}
                   <WorkoutSocialActions workoutId={workout.id} initialLikeCount={workoutRecord._count.likes} initialLiked={workoutRecord.likes.length > 0} canCopy={workoutRecord.userId !== session.user.id} />
                 </CardContent>
               </Card></ClickableWorkoutCard>

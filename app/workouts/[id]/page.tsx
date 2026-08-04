@@ -12,7 +12,6 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { SaveWorkoutAsRoutineButton } from "@/components/routines/RoutineActions";
 import { DeleteWorkoutButton } from "@/components/workouts/DeleteWorkoutButton";
 import { WorkoutSocialActions } from "@/components/community/WorkoutSocialActions";
-import { WorkoutPhotoManager } from "@/components/workouts/WorkoutPhotoManager";
 import { parsePositiveInteger } from "@/lib/api-response";
 import {
   formatPersonalRecordValue,
@@ -223,28 +222,9 @@ export default async function WorkoutDetailPage({
         </Card>
       ) : null}
 
-      {isOwner && detail.completedAt ? (
-        <WorkoutPhotoManager
-          workoutId={workout.id}
-          initialPhotos={workout.photos.map((photo) => ({
-            id: photo.id,
-            url: `/api/workouts/${workout.id}/photos/${photo.id}`,
-            width: photo.width,
-            height: photo.height,
-          }))}
-        />
-      ) : null}
+      {workout.photos.length ? <div className="mb-6 w-full overflow-hidden rounded-xl bg-muted"><Image src={`/api/workouts/${workout.id}/photos/${workout.photos[0].id}`} alt={`Workout photo from ${detail.title ?? "workout"}`} width={Math.max(1, workout.photos[0].width)} height={Math.max(1, workout.photos[0].height)} unoptimized className="block h-auto w-full" sizes="(max-width: 1024px) calc(100vw - 2rem), 1024px" /></div> : null}
 
-      {!isOwner && workout.photos.length ? (
-        <Card className="mb-6">
-          <CardHeader><h2 className="text-lg font-semibold">Workout photos</h2></CardHeader>
-          <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {workout.photos.map((photo) => (
-              <Image key={photo.id} src={`/api/workouts/${workout.id}/photos/${photo.id}`} alt="Workout photo" width={photo.width} height={photo.height} unoptimized loading="lazy" className="aspect-square w-full rounded-lg object-cover" />
-            ))}
-          </CardContent>
-        </Card>
-      ) : null}
+
 
       <div className="space-y-4">
         {detail.exercises.map((workoutExercise) => {
