@@ -51,3 +51,11 @@ test("supplement filter is binary while both filter scales from workout count", 
   assert.equal(getTrainingActivityIntensity(strongBoth, "both"), 3);
   assert.equal(getTrainingActivityIntensity({ ...strongBoth, workoutCount: 3 }, "both"), 4);
 });
+
+test("calendar imports only the current centralized activity helpers", async () => {
+  const fs = await import("node:fs/promises");
+  const source = await fs.readFile(new URL("../components/home/TrainingActivityCalendar.tsx", import.meta.url), "utf8");
+  assert.match(source, /getTrainingActivityCellClass/);
+  assert.match(source, /getTrainingActivityIntensity/);
+  assert.doesNotMatch(source, /getTrainingCalendarCellState/);
+});

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Dumbbell, ListChecks } from "lucide-react";
+import { ArrowRight, Dumbbell, ListChecks, Pill } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -16,7 +16,7 @@ export function HomeWorkoutActions() {
   }
 
   return (
-    <div className="flex flex-col gap-3 min-[360px]:flex-row">
+    <div className="grid gap-3 min-[360px]:grid-cols-2 lg:grid-cols-3">
       <Button asChild size="lg">
         <Link href="/workouts/new">
           <Dumbbell className="size-4" />
@@ -26,6 +26,11 @@ export function HomeWorkoutActions() {
       <Button asChild size="lg" variant="outline">
         <Link href="/routines">
           <ListChecks className="size-4" /> Choose Routine
+        </Link>
+      </Button>
+      <Button asChild size="lg" variant="outline">
+        <Link href="/profile/supplements" aria-label="Open Supplements">
+          <Pill className="size-4" /> Supplements
         </Link>
       </Button>
     </div>
