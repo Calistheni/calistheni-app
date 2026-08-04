@@ -7,6 +7,8 @@ import { getWorkoutPhotoKey, validateCompressedWorkoutPhoto, WORKOUT_PHOTO_MAX_C
 import { detectParkPhotoFamily } from "@/lib/park-photo-file";
 import { deleteWorkoutPhotoObject, putWorkoutPhoto } from "@/lib/workout-photo-storage";
 
+export const runtime = "nodejs";
+
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   
   const userId = await getAuthenticatedUserId();

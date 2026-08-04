@@ -2031,7 +2031,7 @@ export function WorkoutBuilder({
   function addFinishPhotos(files: FileList | null) {
     if (!files) return;
     const next = Array.from(files);
-    const unsupported = next.find((file) => !["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"].includes(file.type) || file.size > 15 * 1024 * 1024);
+    const unsupported = next.find((file) => { const extension = file.name.split(".").pop()?.toLowerCase(); const declared = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "", "application/octet-stream"].includes(file.type); return !declared || file.size > 15 * 1024 * 1024 || (file.type === "application/octet-stream" && extension && !["jpg", "jpeg", "png", "webp", "heic", "heif"].includes(extension)); });
     if (unsupported) { setFinishPhotoError("Use JPEG, PNG, WebP, HEIC, or HEIF images up to 15 MB."); return; }
     const available = 10 - finishPhotos.length;
     if (next.length > available) setFinishPhotoError(`Only ${available} more photo${available === 1 ? "" : "s"} can be added.`);
