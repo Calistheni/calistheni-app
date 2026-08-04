@@ -5,6 +5,7 @@ import {
   getParkBoundsWhere,
 } from "@/lib/park-map-query";
 import { latestParkPhotoQuery } from "@/lib/parks";
+import { summarizeParkGpsVerification } from "@/lib/photo-location-verification";
 import { prisma } from "@/lib/prisma";
 import type {
   AdminParkDetail,
@@ -180,6 +181,9 @@ export async function getAdminParkDetail(
         include: { equipment: true },
       },
       photos: latestParkPhotoQuery,
+      submittedBy: {
+        select: { id: true, name: true, email: true },
+      },
     },
   });
   if (!park) return null;
@@ -201,5 +205,16 @@ export async function getAdminParkDetail(
     qrInstalledByLabel: park.qrInstalledByLabel,
     qrStatusUpdatedAt: park.qrStatusUpdatedAt?.toISOString() ?? null,
     qrCodeNote: park.qrCodeNote,
+    submission: {
+      source: park.submittedBy ? "USER_SUBMISSION" : "UNKNOWN_LEGACY_SOURCE",
+      submittedAt: park.createdAt.toISOString(),
+      submitter: park.submittedBy,
+    },
+    gpsVerification: summarizeParkGpsVerification(
+      park.photoLocationVerifications,
+      Array.isArray(park.photoLocationVerifications) ? park.photoLocationVerifications.length : 0,
+      park.lat,
+      park.lon
+    ),
   };
 }

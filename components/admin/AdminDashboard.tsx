@@ -1843,6 +1843,28 @@ export default function AdminDashboard() {
                 </p>
               </div>
 
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="rounded-lg border p-4">
+                  <p className="text-sm font-medium">Submission</p>
+                  {selectedPark.submission.submitter ? (
+                    <dl className="mt-3 space-y-2 text-sm">
+                      <div><dt className="text-muted-foreground">Submitted by</dt><dd className="font-medium">{selectedPark.submission.submitter.name ?? selectedPark.submission.submitter.email ?? "Unknown user"}</dd></div>
+                      {selectedPark.submission.submitter.email ? <div><dt className="text-muted-foreground">Email</dt><dd>{selectedPark.submission.submitter.email}</dd></div> : null}
+                      <div><dt className="text-muted-foreground">User ID</dt><dd className="break-all text-xs text-muted-foreground">{selectedPark.submission.submitter.id}</dd></div>
+                    </dl>
+                  ) : <p className="mt-3 text-sm text-muted-foreground">{selectedPark.submission.source === "UNKNOWN_LEGACY_SOURCE" ? "Unknown legacy source" : "Imported park"}</p>}
+                  <dl className="mt-3 space-y-2 text-sm"><div><dt className="text-muted-foreground">Submitted</dt><dd>{new Date(selectedPark.submission.submittedAt).toLocaleString()}</dd></div><div><dt className="text-muted-foreground">Status</dt><dd><Badge variant="outline">{selectedPark.submissionStatus}</Badge></dd></div></dl>
+                </div>
+
+                <div className="rounded-lg border p-4">
+                  <p className="text-sm font-medium">Photo GPS verification</p>
+                  <p className="mt-3 text-sm text-muted-foreground">Pinned coordinates: {selectedPark.gpsVerification.pinned.lat}, {selectedPark.gpsVerification.pinned.lon}</p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2"><Badge variant={getPhotoLocationBadgeVariant(selectedPark.gpsVerification.status)}>{getPhotoLocationBadgeLabel(selectedPark.gpsVerification.status, "PHOTO_EXIF")}</Badge><span className="text-sm text-muted-foreground">{selectedPark.gpsVerification.gpsPhotoCount} photo{selectedPark.gpsVerification.gpsPhotoCount === 1 ? "" : "s"} with GPS metadata</span></div>
+                  {selectedPark.gpsVerification.metadata ? <p className="mt-3 text-sm">Photo {selectedPark.gpsVerification.metadata.photoIndex}: {selectedPark.gpsVerification.metadata.lat}, {selectedPark.gpsVerification.metadata.lon} · {formatPhotoLocationDistance(selectedPark.gpsVerification.distanceMeters)}</p> : <p className="mt-3 text-sm text-muted-foreground">No GPS coordinates found in uploaded photos.</p>}
+                  {selectedPark.gpsVerification.photos.filter((photo) => photo.locationSource === "PHOTO_EXIF").length > 1 ? <details className="mt-3 text-sm"><summary className="cursor-pointer text-muted-foreground">Photo GPS details</summary><ul className="mt-2 space-y-1 text-muted-foreground">{selectedPark.gpsVerification.photos.filter((photo) => photo.locationSource === "PHOTO_EXIF").map((photo) => <li key={photo.photoIndex}>Photo {photo.photoIndex}: {photo.photoLatitude}, {photo.photoLongitude} · {getPhotoLocationBadgeLabel(photo.locationStatus, photo.locationSource)} · {formatPhotoLocationDistance(photo.locationDistanceMeters)}</li>)}</ul></details> : null}
+                </div>
+              </div>
+
 	              <div>
 	                <p className="mb-2 text-sm text-muted-foreground">Equipment</p>
 	

@@ -197,6 +197,7 @@ export async function PATCH(
         equipmentIds: true,
         photoUrls: true,
         photoKeys: true,
+        photoLocationVerifications: true,
       },
     });
 
@@ -283,6 +284,7 @@ export async function PATCH(
               park?.photoUrl ??
               null,
             photoKey: primaryPhoto?.key ?? park?.photoKey ?? null,
+            photoLocationVerifications: submission.photoLocationVerifications ?? undefined,
           },
         });
 

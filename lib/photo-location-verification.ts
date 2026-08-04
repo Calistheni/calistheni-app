@@ -12,6 +12,10 @@ export type StoredPhotoLocationVerification = {
   locationStatus: PhotoLocationStatus;
   locationDistanceMeters: number | null;
   locationSource: PhotoLocationSource;
+  photoLatitude?: number | null;
+  photoLongitude?: number | null;
+  deviceLatitude?: number | null;
+  deviceLongitude?: number | null;
 };
 
 export type PhotoLocationVerificationDraft =
@@ -76,6 +80,19 @@ function normalizeStoredVerification(
       ? Math.round(value.locationDistanceMeters)
       : null;
 
+  const photoLatitude = isValidLatitude(value.photoLatitude)
+    ? value.photoLatitude
+    : null;
+  const photoLongitude = isValidLongitude(value.photoLongitude)
+    ? value.photoLongitude
+    : null;
+  const deviceLatitude = isValidLatitude(value.deviceLatitude)
+    ? value.deviceLatitude
+    : null;
+  const deviceLongitude = isValidLongitude(value.deviceLongitude)
+    ? value.deviceLongitude
+    : null;
+
   return {
     locationStatus: value.locationStatus,
     locationDistanceMeters:
@@ -85,6 +102,10 @@ function normalizeStoredVerification(
       : value.locationStatus === "NO_GPS_DATA"
       ? "NONE"
       : "PHOTO_EXIF",
+    photoLatitude,
+    photoLongitude,
+    deviceLatitude,
+    deviceLongitude,
   };
 }
 
@@ -174,22 +195,34 @@ export function normalizePhotoLocationVerifications(
       isValidLatitude(item.photoLatitude) &&
       isValidLongitude(item.photoLongitude)
     ) {
-      return verifyPhotoLocation({
+      return {
+        ...verifyPhotoLocation({
         photoLatitude: item.photoLatitude,
         photoLongitude: item.photoLongitude,
         locationSource: "PHOTO_EXIF",
         parkLatitude,
         parkLongitude,
-      });
+        }),
+        photoLatitude: item.photoLatitude,
+        photoLongitude: item.photoLongitude,
+        deviceLatitude: null,
+        deviceLongitude: null,
+      };
     }
 
-    return verifyPhotoLocation({
+    return {
+      ...verifyPhotoLocation({
       photoLatitude: item.deviceLatitude,
       photoLongitude: item.deviceLongitude,
       locationSource: "BROWSER_GEOLOCATION",
       parkLatitude,
       parkLongitude,
-    });
+      }),
+      photoLatitude: null,
+      photoLongitude: null,
+      deviceLatitude: isValidLatitude(item.deviceLatitude) ? item.deviceLatitude : null,
+      deviceLongitude: isValidLongitude(item.deviceLongitude) ? item.deviceLongitude : null,
+    };
   });
 }
 
@@ -206,6 +239,54 @@ export function readStoredPhotoLocationVerifications(
   return Array.from({ length: photoCount }, (_, index) =>
     normalizeStoredVerification(items[index])
   );
+}
+
+export type ParkGpsVerification = {
+  pinned: { lat: number; lon: number };
+  metadata: { lat: number; lon: number; photoIndex: number } | null;
+  distanceMeters: number | null;
+  status: PhotoLocationStatus;
+  gpsPhotoCount: number;
+  photos: Array<StoredPhotoLocationVerification & { photoIndex: number }>;
+};
+
+/** Chooses the closest EXIF coordinate while retaining every photo result for admin review. */
+export function summarizeParkGpsVerification(
+  value: unknown,
+  photoCount: number,
+  parkLatitude: number,
+  parkLongitude: number
+): ParkGpsVerification {
+  const photos = readStoredPhotoLocationVerifications(value, photoCount).map(
+    (photo, index) => ({ ...photo, photoIndex: index + 1 })
+  );
+  const gpsPhotos = photos.filter(
+    (photo) => photo.locationSource === "PHOTO_EXIF" && photo.photoLatitude !== null && photo.photoLongitude !== null
+  );
+  const closest = gpsPhotos.reduce<(typeof gpsPhotos)[number] | null>((current, photo) => {
+    if (!current) return photo;
+    return (photo.locationDistanceMeters ?? Infinity) < (current.locationDistanceMeters ?? Infinity)
+      ? photo
+      : current;
+  }, null);
+  // Older records stored the verification result and distance but not the raw
+  // EXIF coordinates. Keep that historical audit signal visible without
+  // inventing coordinates that were never persisted.
+  const legacyVerifiedPhoto = photos.find(
+    (photo) => photo.locationStatus !== "NO_GPS_DATA"
+  ) ?? null;
+  const primary = closest ?? legacyVerifiedPhoto;
+
+  return {
+    pinned: { lat: parkLatitude, lon: parkLongitude },
+    metadata: closest
+      ? { lat: closest.photoLatitude as number, lon: closest.photoLongitude as number, photoIndex: closest.photoIndex }
+      : null,
+    distanceMeters: primary?.locationDistanceMeters ?? null,
+    status: primary?.locationStatus ?? "NO_GPS_DATA",
+    gpsPhotoCount: gpsPhotos.length,
+    photos,
+  };
 }
 
 export function formatPhotoLocationDistance(distanceMeters: number | null) {
