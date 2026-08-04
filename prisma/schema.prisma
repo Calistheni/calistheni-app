@@ -220,6 +220,7 @@ model User {
   parkEditSubmissions           ParkEditSubmission[]     @relation("ParkEditSubmitter")
   parkPhotos                    ParkPhoto[]              @relation("ParkPhotoUploader")
   workouts                      Workout[]
+  workoutPhotos                 WorkoutPhoto[]
   following                     UserFollow[]             @relation("UserFollowing")
   followers                     UserFollow[]             @relation("UserFollowers")
   workoutLikes                  WorkoutLike[]
@@ -592,12 +593,34 @@ model Workout {
   likes           WorkoutLike[]
   comments        WorkoutComment[]
   notifications   WorkoutNotification[]
+  photos          WorkoutPhoto[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([userId, startedAt])
   @@index([visibility, completedAt])
+}
+
+model WorkoutPhoto {
+  id                 String   @id @default(cuid())
+  workoutId          Int
+  userId             String
+  storageKey         String   @unique
+  width              Int
+  height             Int
+  fileSizeBytes      Int
+  mimeType           String
+  originalFileName   String
+  uploadedFrom       String   @default("web")
+  compressionVersion Int      @default(1)
+  createdAt          DateTime @default(now())
+
+  workout Workout @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([workoutId, createdAt])
+  @@index([userId, createdAt])
 }
 
 model WorkoutLike {

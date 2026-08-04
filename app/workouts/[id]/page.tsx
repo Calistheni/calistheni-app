@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { SaveWorkoutAsRoutineButton } from "@/components/routines/RoutineActions";
 import { DeleteWorkoutButton } from "@/components/workouts/DeleteWorkoutButton";
 import { WorkoutSocialActions } from "@/components/community/WorkoutSocialActions";
+import { WorkoutPhotoManager } from "@/components/workouts/WorkoutPhotoManager";
 import { parsePositiveInteger } from "@/lib/api-response";
 import {
   formatPersonalRecordValue,
@@ -107,6 +108,7 @@ export default async function WorkoutDetailPage({
     },
     include: {
       ...userWorkoutInclude,
+      photos: { orderBy: { createdAt: "asc" } },
       user: { select: { id: true, name: true, username: true, image: true, bodyweightKg: true } },
       _count: { select: { likes: true, comments: true } },
       likes: { where: { userId: session?.user?.id ?? "" }, select: { userId: true } },
@@ -217,6 +219,29 @@ export default async function WorkoutDetailPage({
         <Card className="mb-6">
           <CardContent className="p-4 text-sm text-muted-foreground">
             {detail.notes}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {isOwner && detail.completedAt ? (
+        <WorkoutPhotoManager
+          workoutId={workout.id}
+          initialPhotos={workout.photos.map((photo) => ({
+            id: photo.id,
+            url: `/api/workouts/${workout.id}/photos/${photo.id}`,
+            width: photo.width,
+            height: photo.height,
+          }))}
+        />
+      ) : null}
+
+      {!isOwner && workout.photos.length ? (
+        <Card className="mb-6">
+          <CardHeader><h2 className="text-lg font-semibold">Workout photos</h2></CardHeader>
+          <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {workout.photos.map((photo) => (
+              <Image key={photo.id} src={`/api/workouts/${workout.id}/photos/${photo.id}`} alt="Workout photo" width={photo.width} height={photo.height} unoptimized loading="lazy" className="aspect-square w-full rounded-lg object-cover" />
+            ))}
           </CardContent>
         </Card>
       ) : null}

@@ -17,6 +17,7 @@ import {
   userWorkoutInclude,
 } from "@/lib/workouts";
 import { workoutMutationSchema } from "@/lib/validation/workouts";
+import { deleteWorkoutPhotoObject } from "@/lib/workout-photo-storage";
 
 export async function GET(
   _request: Request,
@@ -128,6 +129,7 @@ export async function DELETE(
       },
       select: {
         id: true,
+        photos: { select: { storageKey: true } },
       },
     });
 
@@ -135,6 +137,9 @@ export async function DELETE(
       return createJsonErrorResponse("Workout not found.", 404);
     }
 
+    // R2 has no foreign keys. Remove private objects before the cascading
+    // database delete so a deleted workout cannot leave accessible media behind.
+    await Promise.all(existingWorkout.photos.map((photo) => deleteWorkoutPhotoObject(photo.storageKey)));
     await prisma.workout.delete({
       where: {
         id: workoutId,
