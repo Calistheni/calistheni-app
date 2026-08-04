@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { optionalNoteSchema } from "@/lib/notes";
 
 function sanitizeTextInput(value: string) {
   return value.replace(/\s+/g, " ").trim();
@@ -92,7 +93,7 @@ const supersetSchema = z.object({
 export const workoutMutationSchema = z
   .object({
   title: nullableText(140),
-  notes: nullableText(1000),
+  notes: optionalNoteSchema,
   startedAt: nullableDate,
   completedAt: nullableDate,
   visibility: z.enum(["PRIVATE", "PUBLIC"]).default("PUBLIC"),
@@ -102,7 +103,7 @@ export const workoutMutationSchema = z
       z.object({
         localId: z.string().min(1).max(100),
         exerciseId: z.string().min(1, "Exercise is required."),
-        notes: nullableText(500),
+        notes: optionalNoteSchema,
         restSeconds: nullableInteger(0, 3600),
         supersetKey: z
           .union([z.string().min(1).max(100), z.null(), z.undefined()])
@@ -120,7 +121,7 @@ export const workoutMutationSchema = z
               steps: nullableInteger(0, 1000000),
               floors: nullableInteger(0, 1000000),
               rpe: nullableRpe,
-              notes: nullableText(500),
+              notes: optionalNoteSchema,
               completed: z.boolean().default(false),
               supersetRoundIndex: nullableInteger(0, 9999),
               supersetRoundId: nullableText(100),

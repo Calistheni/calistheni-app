@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { NoteTextarea } from "@/components/ui/note-textarea";
 import type { AdminParkDetail, ParkQrStatus } from "@/types/park";
 
 export function AdminMapParkPopup({
@@ -124,10 +124,9 @@ export function AdminMapParkPopup({
 
       {isEditingNote ? (
         <div className="space-y-2">
-          <Textarea
+          <NoteTextarea
             aria-label="QR deployment note"
             value={note}
-            maxLength={500}
             onChange={(event) => setNote(event.target.value)}
             placeholder="Optional deployment note"
             className="min-h-20 text-xs"

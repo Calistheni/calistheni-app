@@ -1,4 +1,5 @@
 import { z, type ZodIssue } from "zod";
+import { optionalNoteSchema } from "@/lib/notes";
 import type {
   ParkFormErrors,
   ParkFormValues,
@@ -108,7 +109,7 @@ export const parkMutationSchema = z.object({
   // transformed `undefined` branch as a required output otherwise, which
   // rejected normal public submissions that correctly omit admin-only QR
   // deployment metadata.
-  qrCodeNote: optionalText(500).optional(),
+  qrCodeNote: optionalNoteSchema.optional(),
 });
 
 export function mapParkIssuesToFormErrors(issues: ZodIssue[]) {

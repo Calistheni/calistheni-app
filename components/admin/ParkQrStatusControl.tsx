@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { NoteTextarea } from "@/components/ui/note-textarea";
 import type { AdminParkDetail, ParkQrStatus } from "@/types/park";
 
 function formatAdminDate(value: string) {
@@ -134,16 +134,12 @@ export function ParkQrStatusControl({
 
               <div className="grid gap-2">
                 <Label htmlFor="park-qr-note">Deployment note (optional)</Label>
-                <Textarea
+                <NoteTextarea
                   id="park-qr-note"
-                  maxLength={500}
                   value={note}
                   placeholder="Sticker placed on the left side of the information board."
                   onChange={(event) => setNote(event.target.value)}
                 />
-                <p className="text-right text-xs text-muted-foreground">
-                  {note.length}/500
-                </p>
               </div>
             </div>
 

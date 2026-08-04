@@ -1,6 +1,7 @@
 import type { ParkQrStatus } from "@/types/park";
+import { NOTE_MAX_LENGTH, normalizeOptionalNote } from "./notes.ts";
 
-export const MAX_PARK_QR_NOTE_LENGTH = 500;
+export const MAX_PARK_QR_NOTE_LENGTH = NOTE_MAX_LENGTH;
 export const PARK_QR_STATUS_OPTIONS: Array<{
   value: ParkQrStatus;
   label: string;
@@ -14,7 +15,7 @@ export function normalizeParkQrNote(value: unknown) {
   if (value === undefined || value === null || value === "") return null;
   if (typeof value !== "string") return undefined;
 
-  const note = value.trim();
+  const note = normalizeOptionalNote(value);
   if (!note) return null;
   return note.length <= MAX_PARK_QR_NOTE_LENGTH ? note : undefined;
 }

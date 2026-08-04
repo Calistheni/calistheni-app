@@ -29,6 +29,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { ExerciseNoteTextarea, NoteTextarea } from "@/components/ui/note-textarea";
+import { normalizeOptionalNote } from "@/lib/notes";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -95,12 +97,6 @@ const EMPTY_SET: RoutineSetInput = {
 
 function getNumberValue(value: string) {
   return value.trim() === "" ? null : Number(value);
-}
-
-function getTextValue(value: string) {
-  const trimmed = value.trim();
-
-  return trimmed.length > 0 ? trimmed : null;
 }
 
 function getDurationMinutesValue(durationSec: number | null) {
@@ -556,7 +552,7 @@ export function RoutineBuilder({
 
     const payload: RoutineMutationPayload = {
       name: name.trim(),
-      description: getTextValue(description),
+      description: normalizeOptionalNote(description),
       visibility,
       supersets,
       exercises: selectedExercises.map(
@@ -572,7 +568,7 @@ export function RoutineBuilder({
           routineExerciseId: persistedId,
           exerciseId,
           restSeconds,
-          notes,
+          notes: normalizeOptionalNote(notes ?? ""),
           sets: sets.map((set) => {
             const trackingType =
               exercises.find((exercise) => exercise.id === exerciseId)
@@ -656,7 +652,7 @@ export function RoutineBuilder({
               >
                 Description
               </label>
-              <Input
+              <NoteTextarea
                 id="routine-description"
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
@@ -925,16 +921,18 @@ export function RoutineBuilder({
                       )}
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">
+                      <label htmlFor={`routine-exercise-notes-${selectedExercise.localId}`} className="text-sm font-medium">
                         Exercise notes
                       </label>
-                      <Input
+                      <ExerciseNoteTextarea
+                        id={`routine-exercise-notes-${selectedExercise.localId}`}
                         value={selectedExercise.notes ?? ""}
                         onChange={(event) =>
                           updateExercise(selectedExercise.localId, {
-                            notes: getTextValue(event.target.value),
+                            notes: event.target.value,
                           })
                         }
+                        placeholder="Optional note"
                       />
                     </div>
                   </div>

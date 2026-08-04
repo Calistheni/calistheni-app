@@ -57,6 +57,7 @@ export async function POST(request: Request) {
     measuredAt: Date;
     note?: string | null;
   } & MeasurementSnapshotValues;
+  const hasSubmittedNote = typeof body === "object" && body !== null && Object.hasOwn(body, "note");
   const isPro = hasProAccess(await getUserSubscription(userId));
   const capabilityValidation = validateStoredMeasurementCapabilities(submitted, isPro);
   if (!capabilityValidation.success) {
@@ -82,7 +83,7 @@ export async function POST(request: Request) {
       });
       const merged = mergeMeasurementSnapshot(latest as unknown as MeasurementSnapshotValues, submitted, clearFields);
       const created = await tx.bodyMeasurementEntry.create({
-        data: { userId, measuredAt, note: note ?? latest?.note ?? null, ...merged },
+        data: { userId, measuredAt, note: hasSubmittedNote ? note ?? null : latest?.note ?? null, ...merged },
       });
       if (created.bodyweightKg != null) {
         await tx.user.update({

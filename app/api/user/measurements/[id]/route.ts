@@ -20,6 +20,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const { clearFields = [], measuredAt, note, ...submitted } = parsed.data as {
     clearFields?: MeasurementField[]; measuredAt?: Date; note?: string | null;
   } & MeasurementSnapshotValues;
+  const hasSubmittedNote = typeof body === "object" && body !== null && Object.hasOwn(body, "note");
   const isPro = hasProAccess(await getUserSubscription(userId));
   const capabilityValidation = validateStoredMeasurementCapabilities(submitted, isPro);
   if (!capabilityValidation.success) return createJsonValidationErrorResponse("Some measurements require Pro.", validationErrors(capabilityValidation.errors));
@@ -27,7 +28,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!clearValidation.success) return createJsonValidationErrorResponse("Some measurements require Pro.", validationErrors(clearValidation.errors));
   const clearData = Object.fromEntries(clearFields.map((field) => [field, null]));
   try {
-    const result = await prisma.bodyMeasurementEntry.updateMany({ where: { id, userId }, data: { ...submitted, ...clearData, ...(measuredAt ? { measuredAt } : {}), ...(note !== undefined ? { note } : {}) } });
+    const result = await prisma.bodyMeasurementEntry.updateMany({ where: { id, userId }, data: { ...submitted, ...clearData, ...(measuredAt ? { measuredAt } : {}), ...(hasSubmittedNote ? { note: note ?? null } : {}) } });
     return result.count ? NextResponse.json({ ok: true }) : createJsonErrorResponse("Measurement not found.", 404);
   } catch (error) { console.error(error); return createInternalServerErrorResponse(); }
 }

@@ -69,7 +69,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { ExerciseNoteTextarea, NoteTextarea } from "@/components/ui/note-textarea";
+import { normalizeOptionalNote } from "@/lib/notes";
 import {
   Popover,
   PopoverContent,
@@ -1369,7 +1370,7 @@ export function WorkoutBuilder({
             ...entry.set,
             [field]:
               field === "notes"
-                ? getTextValue(value)
+                ? value
                 : getNumberValue(value),
           },
         },
@@ -1596,7 +1597,7 @@ export function WorkoutBuilder({
         item.localId === localId
           ? {
               ...item,
-              notes: getTextValue(value),
+              notes: value,
             }
           : item
       )
@@ -1655,7 +1656,7 @@ export function WorkoutBuilder({
 	                        field === "completed"
 	                          ? Boolean(value)
 	                        : field === "notes"
-	                          ? getTextValue(String(value))
+                          ? String(value)
 	                          : getNumberValue(String(value)),
 	                    }
                   : set
@@ -1905,7 +1906,7 @@ export function WorkoutBuilder({
 
     const payload: WorkoutMutationPayload = {
       title: finalTitle,
-      notes: getTextValue(notes),
+      notes: normalizeOptionalNote(notes),
       startedAt: isEditing
         ? initialWorkout?.startedAt ?? new Date().toISOString()
         : new Date(
@@ -1924,11 +1925,11 @@ export function WorkoutBuilder({
         }) => ({
           localId,
           exerciseId,
-          notes,
+          notes: normalizeOptionalNote(notes ?? ""),
           restSeconds,
           supersetKey: null,
           supersetPosition: null,
-          sets: sets.map(toWorkoutSetInput),
+          sets: sets.map((set) => ({ ...toWorkoutSetInput(set), notes: normalizeOptionalNote(set.notes ?? "") })),
         })
       ),
     };
@@ -2204,7 +2205,7 @@ export function WorkoutBuilder({
                   <Label htmlFor={`exercise-notes-${selectedExercise.localId}`}>
                     Notes for {exercise.name}
                   </Label>
-                  <Input
+                  <ExerciseNoteTextarea
                     id={`exercise-notes-${selectedExercise.localId}`}
                     value={selectedExercise.notes ?? ""}
                     onChange={(event) =>
@@ -2213,7 +2214,7 @@ export function WorkoutBuilder({
                         event.target.value
                       )
                     }
-                    placeholder="Exercise notes"
+                    placeholder="Optional note"
                   />
                 </div>
               </PopoverContent>
@@ -2904,7 +2905,7 @@ export function WorkoutBuilder({
                     >
                       Notes
                     </label>
-                    <Input
+                    <NoteTextarea
                       id="workout-notes"
                       value={notes}
                       onChange={(event) => setNotes(event.target.value)}
@@ -3313,7 +3314,7 @@ export function WorkoutBuilder({
                               <Label htmlFor={`exercise-notes-${selectedExercise.localId}`}>
                                 Notes for {exercise.name}
                               </Label>
-                              <Input
+                              <ExerciseNoteTextarea
                                 id={`exercise-notes-${selectedExercise.localId}`}
                                 value={selectedExercise.notes ?? ""}
                                 onChange={(event) =>
@@ -3322,7 +3323,7 @@ export function WorkoutBuilder({
                                     event.target.value
                                   )
                                 }
-                                placeholder="Exercise notes"
+                                placeholder="Optional note"
                               />
                             </div>
                           </PopoverContent>
@@ -3720,12 +3721,11 @@ export function WorkoutBuilder({
                   How did the workout feel?{" "}
                   <span className="font-normal">(optional)</span>
                 </Label>
-                <Textarea
+                <NoteTextarea
                   id="finish-workout-notes"
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}
                   placeholder="Add a post-workout note"
-                  maxLength={1000}
                   disabled={isSaving}
                 />
               </div>

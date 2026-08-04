@@ -28,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { NoteTextarea } from "@/components/ui/note-textarea";
 import {
   Table,
   TableBody,
@@ -1743,9 +1743,8 @@ export default function AdminDashboard() {
                 <label htmlFor="park-qr-note" className="text-sm font-medium">
                   Deployment note <span className="text-muted-foreground">(optional)</span>
                 </label>
-                <Textarea
+                <NoteTextarea
                   id="park-qr-note"
-                  maxLength={500}
                   value={formValues.qrCodeNote ?? ""}
                   onChange={(event) => updateTextField("qrCodeNote", event.target.value)}
                   placeholder="Sticker placement or replacement note"

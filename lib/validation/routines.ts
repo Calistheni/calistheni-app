@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { optionalNoteSchema } from "@/lib/notes";
 
 function sanitizeTextInput(value: string) {
   return value.replace(/\s+/g, " ").trim();
@@ -73,7 +74,7 @@ export const routineMutationSchema = z
     .transform(sanitizeTextInput)
     .refine((value) => value.length > 0, "Name is required.")
     .refine((value) => value.length <= 140, "Name is too long."),
-  description: nullableText(1000),
+  description: optionalNoteSchema,
   visibility: z.enum(["PRIVATE", "PUBLIC"]).default("PRIVATE"),
   supersets: z.array(supersetSchema).max(25).default([]),
   exercises: z
@@ -85,7 +86,7 @@ export const routineMutationSchema = z
           .transform((value) => value ?? null),
         exerciseId: z.string().min(1, "Exercise is required."),
         restSeconds: nullableInteger(0, 3600),
-        notes: nullableText(500),
+        notes: optionalNoteSchema,
         sets: z
           .array(
             z.object({

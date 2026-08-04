@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { optionalNoteSchema } from "./notes.ts";
 import {
   getMeasurementCapabilities,
   MEASUREMENT_CATALOGUE,
@@ -42,7 +43,7 @@ const decimalValue = (field: MeasurementField) => {
 };
 export const measurementSchema = z.object({
   measuredAt: z.coerce.date(),
-  note: z.string().trim().max(1000).optional().nullable(),
+  note: optionalNoteSchema,
   clearFields: z.array(z.enum(MEASUREMENT_FIELDS)).max(MEASUREMENT_FIELDS.length).optional().default([]),
   ...Object.fromEntries(MEASUREMENT_FIELDS.map((field) => [field, decimalValue(field).optional()])),
 }).strict().refine((value) => MEASUREMENT_FIELDS.some((field) => Object.hasOwn(value, field)) || value.clearFields.length > 0, { message: "Add at least one measurement or choose a field to clear." });
