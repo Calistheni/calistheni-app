@@ -193,6 +193,8 @@ const DEFAULT_REST_SECONDS = 90;
 const RPE_VALUES = [6, 7, 7.5, 8, 8.5, 9, 9.5, 10];
 const COMPACT_WORKOUT_NUMBER_INPUT_CLASS =
   "h-9 min-w-0 text-base rounded-md bg-background/80 px-1.5 text-center font-semibold tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
+const ACTIVE_EXERCISE_HEADER_ROW_CLASS =
+  "flex min-w-0 flex-nowrap items-start gap-2 px-2.5 py-2.5";
 
 const EMPTY_SET_VALUES: WorkoutSetInput = {
   reps: null,
@@ -2144,6 +2146,31 @@ export function WorkoutBuilder({
     );
   }
 
+  function renderExerciseThumbnailDetailsTrigger(exercise: ExerciseListItem) {
+    return (
+      <ExerciseDetailPreview
+        exercise={exercise}
+        trigger={
+          <Button
+            type="button"
+            variant="ghost"
+            className="size-11 shrink-0 rounded-md p-0 focus-visible:ring-2"
+            aria-label={`View details for ${exercise.name}`}
+          >
+            <Image
+              src={getExerciseThumbnailSrc(exercise.thumbnailUrl)}
+              alt=""
+              width={96}
+              height={96}
+              unoptimized
+              className="size-11 rounded-md bg-muted object-cover"
+            />
+          </Button>
+        }
+      />
+    );
+  }
+
   function renderSupersetExerciseRow(
     selectedExercise: LocalWorkoutExercise,
     groupPosition: number,
@@ -2165,19 +2192,12 @@ export function WorkoutBuilder({
         value={selectedExercise.localId}
         className="border-b border-border/70 last:border-b-0"
       >
-        <div className="flex min-w-0 items-stretch">
-          <AccordionTrigger className="w-full min-w-0 px-3 py-2.5 pl-4 hover:no-underline">
-            <div className="flex min-w-0 flex-1 items-center gap-2.5">
-              <Image
-                src={getExerciseThumbnailSrc(exercise.thumbnailUrl)}
-                alt=""
-                width={96}
-                height={96}
-                unoptimized
-                className="size-11 shrink-0 rounded-md bg-muted object-cover"
-              />
+        <div className={ACTIVE_EXERCISE_HEADER_ROW_CLASS}>
+          {renderExerciseThumbnailDetailsTrigger(exercise)}
+          <AccordionTrigger className="min-w-0 flex-1 items-center gap-1 p-0 hover:no-underline">
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
               <div className="min-w-0 flex-1 text-left">
-                <div className="flex min-w-0 items-center gap-1.5">
+                <div className="flex min-w-0 items-start gap-1.5">
                   <Badge
                     variant="outline"
                     className="h-5 shrink-0 px-1.5 text-[10px]"
@@ -2185,25 +2205,24 @@ export function WorkoutBuilder({
                     {supersetLabel.replace("Superset ", "")}
                     {groupPosition + 1}
                   </Badge>
-                  <h3 className="truncate text-sm font-semibold">
+                  <h3 className="min-w-0 flex-1 break-words text-sm leading-tight font-semibold line-clamp-3 min-[375px]:line-clamp-2">
                     {getExerciseInstanceLabel(selectedExercise.localId, exercise.id, exercise.name)}
                   </h3>
                 </div>
-                <p className="truncate text-xs text-muted-foreground">
+                <p className="truncate text-xs leading-tight text-muted-foreground">
                   {exercise.muscle}
                 </p>
               </div>
               <span
-                className="shrink-0 text-xs font-semibold tabular-nums text-muted-foreground"
+                className="shrink-0 whitespace-nowrap text-xs font-semibold tabular-nums text-muted-foreground"
                 aria-label={`${completedSets} of ${selectedExercise.sets.length} sets completed`}
               >
                 {completedSets}/{selectedExercise.sets.length}
               </span>
             </div>
           </AccordionTrigger>
-          <div className="flex shrink-0 items-center pr-1">
+          <div className="flex shrink-0 flex-nowrap items-center gap-1 whitespace-nowrap">
             {dragHandle}
-            <ExerciseDetailPreview exercise={exercise} compact />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -3185,38 +3204,30 @@ export function WorkoutBuilder({
                     value={selectedExercise.localId}
                     className="relative overflow-hidden rounded-xl border border-border bg-card shadow-sm [overflow-anchor:none]"
                   >
-                    <div className="flex min-w-0 items-stretch">
-                    <AccordionTrigger className="w-full min-w-0 px-2 py-1.5 hover:no-underline">
-                        <div className="flex min-w-0 flex-1 items-center gap-2">
-                          <Image
-                            src={getExerciseThumbnailSrc(exercise.thumbnailUrl)}
-                            alt=""
-                            width={96}
-                            height={96}
-                            unoptimized
-                            className="size-11 shrink-0 rounded-md bg-muted object-cover"
-                          />
-                          <div className="min-w-0 flex-1">
+                    <div className={ACTIVE_EXERCISE_HEADER_ROW_CLASS}>
+                    {renderExerciseThumbnailDetailsTrigger(exercise)}
+                    <AccordionTrigger className="min-w-0 flex-1 items-center gap-1 p-0 hover:no-underline">
+                        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                          <div className="min-w-0 flex-1 text-left">
                             <h2
-                              className="line-clamp-2 text-sm leading-tight font-semibold sm:text-base"
+                              className="break-words text-sm leading-tight font-semibold line-clamp-3 min-[375px]:line-clamp-2 sm:text-base"
                               title={`${exercise.name} · ${exercise.muscle}`}
                             >
-                              <span>{getExerciseInstanceLabel(selectedExercise.localId, exercise.id, exercise.name)}</span>
-                              <span className="font-normal text-muted-foreground">
-                                {" "}· {exercise.muscle}
-                              </span>
+                              {getExerciseInstanceLabel(selectedExercise.localId, exercise.id, exercise.name)}
                             </h2>
+                            <p className="truncate text-xs leading-tight text-muted-foreground">
+                              {exercise.muscle}
+                            </p>
                           </div>
                           <span
-                            className="shrink-0 text-xs font-semibold tabular-nums text-muted-foreground"
+                            className="shrink-0 whitespace-nowrap text-xs font-semibold tabular-nums text-muted-foreground"
                             aria-label={`${completedSets} of ${selectedExercise.sets.length} sets completed`}
                           >
                             {completedSets}/{selectedExercise.sets.length}
                           </span>
                         </div>
                       </AccordionTrigger>
-                      <div className="flex shrink-0 items-center py-1 pr-1">
-                        <ExerciseDetailPreview exercise={exercise} compact />
+                      <div className="flex shrink-0 flex-nowrap items-center gap-1 whitespace-nowrap">
                         {dragHandle}
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>

@@ -34,6 +34,59 @@ test("active workout shell and headers constrain their own width instead of clip
   assert.match(mobileHeader, /max-w-\[calc\(100%\+2rem\)\]/);
 });
 
+test("active exercise headers give long regular and superset names a flexible multi-line text region", () => {
+  const detailPreview = read("components/exercises/ExerciseDetailPreview.tsx");
+  const thumbnailDetailsTrigger = builder.slice(
+    builder.indexOf("function renderExerciseThumbnailDetailsTrigger"),
+    builder.indexOf("function renderSupersetExerciseRow")
+  );
+  const supersetMemberHeader = builder.slice(
+    builder.indexOf("function renderSupersetExerciseRow"),
+    builder.indexOf("function closeSupersetRoundForm")
+  );
+  const regularExerciseHeader = builder.slice(
+    builder.lastIndexOf("<AccordionItem", builder.indexOf("relative overflow-hidden rounded-xl")),
+    builder.indexOf('<AccordionContent className="space-y-2 border-t px-2 pt-2 pb-2">')
+  );
+  const longNameFixtures = [
+    "Bicycle Crunch Raised Legs",
+    "Cable Twist (Down to up)",
+    "My very long custom exercise name for narrow mobile screens",
+  ];
+
+  for (const name of longNameFixtures) {
+    assert.ok(name.length > 20);
+  }
+
+  for (const header of [supersetMemberHeader, regularExerciseHeader]) {
+    assert.match(header, /<div className=\{ACTIVE_EXERCISE_HEADER_ROW_CLASS\}>/);
+    assert.match(header, /min-w-0 flex-1 text-left/);
+    assert.match(header, /break-words text-sm leading-tight font-semibold line-clamp-3 min-\[375px\]:line-clamp-2/);
+    assert.match(header, /<p className="truncate text-xs leading-tight text-muted-foreground">/);
+    assert.doesNotMatch(header, /<h[23] className="truncate/);
+    assert.match(header, /items-center gap-1 whitespace-nowrap/);
+    assert.match(header, /flex shrink-0 flex-nowrap items-center gap-1 whitespace-nowrap/);
+    assert.match(header, /shrink-0 whitespace-nowrap text-xs font-semibold tabular-nums/);
+    assert.match(header, /\{renderExerciseThumbnailDetailsTrigger\(exercise\)\}[\s\S]*<AccordionTrigger/);
+    assert.match(header, /<\/AccordionTrigger>[\s\S]*<div className="flex shrink-0 flex-nowrap items-center gap-1 whitespace-nowrap/);
+    assert.doesNotMatch(header, /ExerciseDetailPreview exercise=\{exercise\} compact/);
+  }
+
+  assert.match(thumbnailDetailsTrigger, /aria-label=\{`View details for \$\{exercise\.name\}`\}/);
+  assert.match(thumbnailDetailsTrigger, /getExerciseThumbnailSrc\(exercise\.thumbnailUrl\)/);
+  assert.match(thumbnailDetailsTrigger, /size-11 shrink-0 rounded-md p-0 focus-visible:ring-2/);
+  assert.match(thumbnailDetailsTrigger, /className="size-11 rounded-md bg-muted object-cover"/);
+  assert.doesNotMatch(thumbnailDetailsTrigger, /-m[trblxy]?-/);
+  assert.match(builder, /ACTIVE_EXERCISE_HEADER_ROW_CLASS =\s*"flex min-w-0 flex-nowrap items-start gap-2 px-2\.5 py-2\.5"/);
+  assert.match(detailPreview, /trigger\?: ReactNode/);
+  assert.match(detailPreview, /<SheetTrigger asChild>[\s\S]*\{trigger \?\?/);
+  assert.match(supersetMemberHeader, /<Badge[\s\S]*\{supersetLabel\.replace\("Superset ", ""\)\}[\s\S]*groupPosition \+ 1/);
+  assert.match(supersetMemberHeader, /\{dragHandle\}/);
+  assert.match(supersetMemberHeader, /EllipsisVertical/);
+  assert.match(regularExerciseHeader, /\{dragHandle\}/);
+  assert.match(regularExerciseHeader, /EllipsisVertical/);
+});
+
 test("active-workout number inputs retain a 16px mobile font size to avoid Safari focus zoom", () => {
   assert.match(builder, /h-9 min-w-0 text-base/);
   assert.match(read("components/workouts/SupersetRoundForm.tsx"), /className="text-base"/);

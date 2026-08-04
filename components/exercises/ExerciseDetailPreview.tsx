@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { Info } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,26 +28,30 @@ function formatTrackingType(value: string) {
 export function ExerciseDetailPreview({
   exercise,
   compact = false,
+  trigger,
 }: {
   exercise: ExerciseListItem;
   compact?: boolean;
+  trigger?: ReactNode;
 }) {
   const imageSrc = getExerciseThumbnailSrc(exercise.thumbnailUrl);
 
   return (
     <Sheet>
       <SheetTrigger asChild>
-        <Button
-          type="button"
-          size={compact ? "icon-lg" : "sm"}
-          variant="ghost"
-          className={compact ? "size-11" : "min-h-11"}
-          aria-label={`Preview ${exercise.name}`}
-          title={`Preview ${exercise.name}`}
-        >
-          <Info aria-hidden="true" />
-          {compact ? null : "Exercise details"}
-        </Button>
+        {trigger ?? (
+          <Button
+            type="button"
+            size={compact ? "icon-lg" : "sm"}
+            variant="ghost"
+            className={compact ? "size-11" : "min-h-11"}
+            aria-label={`Preview ${exercise.name}`}
+            title={`Preview ${exercise.name}`}
+          >
+            <Info aria-hidden="true" />
+            {compact ? null : "Exercise details"}
+          </Button>
+        )}
       </SheetTrigger>
       <SheetContent
         side="bottom"
