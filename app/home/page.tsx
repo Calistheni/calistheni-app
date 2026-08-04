@@ -26,6 +26,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   calculateCurrentWorkoutStreak,
   calculateFourWeekGoalConsistency,
+  getTrainingActivityCalendarRange,
   getUtcWeekStart,
   groupCompletedWorkoutActivity,
   toUtcDateKey,
@@ -38,6 +39,7 @@ import {
 } from "@/lib/personal-records";
 import { prisma } from "@/lib/prisma";
 import { generatePreviousWeeklyReport } from "@/lib/weekly-progress-reports";
+import { getDailySupplementCalendarAdherence } from "@/lib/supplement-service";
 import { getPersistedVolumeSetCompletion } from "@/lib/workout-volume";
 import { mapWorkoutSummary } from "@/lib/workouts";
 import { calculateWeeklyReport } from "@/lib/weekly-report";
@@ -172,13 +174,13 @@ export default async function HomePage() {
   const weekStart = getUtcWeekStart(now);
   const previousWeekStart = new Date(weekStart);
   previousWeekStart.setUTCDate(previousWeekStart.getUTCDate() - 7);
-  const calendarStart = new Date(weekStart);
-  calendarStart.setUTCDate(calendarStart.getUTCDate() - 25 * 7);
+  const calendarRange = getTrainingActivityCalendarRange(now);
 
   const [
     profile,
     reportWorkouts,
     calendarWorkouts,
+    calendarSupplements,
     allCompletedDates,
     recentWorkout,
     routines,
@@ -206,11 +208,12 @@ export default async function HomePage() {
     prisma.workout.findMany({
       where: {
         userId: session.user.id,
-        completedAt: { gte: calendarStart },
+        completedAt: { gte: calendarRange.start, lt: calendarRange.end },
       },
       orderBy: { completedAt: "asc" },
       include: workoutInclude,
     }),
+    getDailySupplementCalendarAdherence(session.user.id, calendarRange.start, calendarRange.end),
     prisma.workout.findMany({
       where: { userId: session.user.id, completedAt: { not: null } },
       select: { completedAt: true },
@@ -276,6 +279,8 @@ export default async function HomePage() {
     calendarWorkouts.map((workout) => {
       const summary = mapWorkoutSummary(workout);
       return {
+        id: workout.id,
+        title: workout.title,
         completedAt: workout.completedAt,
         completedSets: completedSetCount(workout),
         totalVolumeKg: summary.totalVolume,
@@ -454,6 +459,8 @@ export default async function HomePage() {
           <TrainingActivityCalendar
             activities={calendarActivities}
             todayKey={toUtcDateKey(now)}
+            supplementStates={calendarSupplements.states}
+            hasSupplementPlans={calendarSupplements.hasPlans}
           />
         </section>
 

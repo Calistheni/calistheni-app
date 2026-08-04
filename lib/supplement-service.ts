@@ -1,21 +1,40 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
-import { isPlanScheduledOn, startOfWeekMonday } from "@/lib/progress";
-
-export function utcDay(value: Date) {
-  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
-}
-
-export function isSupplementExpected(
-  plan: { frequency: string; weekdays: number[]; everyNDays: number | null; createdAt: Date; archivedAt: Date | null },
-  day: Date
-) {
-  return day >= utcDay(plan.createdAt) && (!plan.archivedAt || day < utcDay(plan.archivedAt)) && isPlanScheduledOn(plan, day);
-}
+import { startOfWeekMonday } from "@/lib/progress";
+import { buildDailySupplementCalendarStates, isSupplementExpectedOn, utcDay } from "@/lib/supplement-calendar";
 
 export async function getSupplementAdherence(userId: string, start: Date, end: Date) {
   const plans = await prisma.userSupplementPlan.findMany({ where: { userId, createdAt: { lt: end } }, include: { supplementDefinition: true, logs: { where: { scheduledFor: { gte: start, lt: end } } } } });
-  return plans.map((plan) => { let scheduled = 0; let completed = 0; for (let day = utcDay(start); day < end; day = new Date(day.getTime() + 86400000)) { if (isSupplementExpected(plan, day)) { scheduled++; if (plan.logs.some((log) => log.scheduledFor.getTime() === day.getTime())) completed++; } } return { planId: plan.id, name: plan.supplementDefinition?.name ?? plan.customName ?? "Supplement", scheduled, completed, percentage: scheduled ? Math.round(completed / scheduled * 100) : null }; });
+  return plans.map((plan) => { let scheduled = 0; let completed = 0; for (let day = utcDay(start); day < end; day = new Date(day.getTime() + 86400000)) { if (isSupplementExpectedOn(plan, day)) { scheduled++; if (plan.logs.some((log) => log.scheduledFor.getTime() === day.getTime())) completed++; } } return { planId: plan.id, name: plan.supplementDefinition?.name ?? plan.customName ?? "Supplement", scheduled, completed, percentage: scheduled ? Math.round(completed / scheduled * 100) : null }; });
+}
+
+/** Bounded, authenticated-user-only adherence data for the private home calendar. */
+export async function getDailySupplementCalendarAdherence(userId: string, start: Date, end: Date) {
+  const plans = await prisma.userSupplementPlan.findMany({
+    where: { userId, createdAt: { lt: end }, OR: [{ archivedAt: null }, { archivedAt: { gt: start } }] },
+    select: {
+      frequency: true,
+      weekdays: true,
+      everyNDays: true,
+      createdAt: true,
+      archivedAt: true,
+      logs: {
+        where: { scheduledFor: { gte: start, lt: end } },
+        select: { scheduledFor: true, completedAt: true, dosageSnapshot: true, unitSnapshot: true, supplementNameSnapshot: true },
+      },
+    },
+  });
+  const calendarPlans = plans.map((plan) => ({
+    ...plan,
+    logs: plan.logs.map((log) => ({
+      scheduledFor: log.scheduledFor,
+      completedAt: log.completedAt,
+      dosage: log.dosageSnapshot?.toString() ?? null,
+      unit: log.unitSnapshot,
+      name: log.supplementNameSnapshot,
+    })),
+  }));
+  return { hasPlans: plans.length > 0, states: buildDailySupplementCalendarStates(calendarPlans, start, end) };
 }
 
 export async function getSupplementDashboard(userId: string, now = new Date()) {

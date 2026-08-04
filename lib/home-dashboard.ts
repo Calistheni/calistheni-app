@@ -1,6 +1,8 @@
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type CompletedWorkoutActivityInput = {
+  id?: number | string;
+  title?: string | null;
   completedAt: Date | string | null;
   completedSets?: number;
   totalVolumeKg?: number | null;
@@ -11,6 +13,7 @@ export type DailyWorkoutActivity = {
   workoutCount: number;
   completedSets: number;
   totalVolumeKg: number | null;
+  workouts: Array<{ id: string; name: string; completedAt: string }>;
 };
 
 function asDate(value: Date | string) {
@@ -29,6 +32,15 @@ export function getUtcWeekStart(value: Date | string) {
   const daysSinceMonday = (start.getUTCDay() + 6) % 7;
   start.setUTCDate(start.getUTCDate() - daysSinceMonday);
   return start;
+}
+
+/** Returns the exact UTC range rendered by the 26-week training activity grid. */
+export function getTrainingActivityCalendarRange(value: Date | string, weeks = 26) {
+  const today = new Date(`${toUtcDateKey(value)}T00:00:00.000Z`);
+  const daysUntilSunday = (7 - today.getUTCDay()) % 7;
+  const end = new Date(today.getTime() + (daysUntilSunday + 1) * DAY_MS);
+  const start = new Date(end.getTime() - weeks * 7 * DAY_MS);
+  return { start, end };
 }
 
 export function parseWeeklyWorkoutGoal(value: unknown) {
@@ -91,9 +103,15 @@ export function groupCompletedWorkoutActivity(
       completedSets: 0,
       totalVolumeKg: 0,
       availableVolumeCount: 0,
+      workouts: [],
     };
 
     current.workoutCount += 1;
+    current.workouts.push({
+      id: String(workout.id ?? `${date}-${current.workoutCount}`),
+      name: workout.title?.trim() || "Workout",
+      completedAt: asDate(workout.completedAt).toISOString(),
+    });
     current.completedSets += workout.completedSets ?? 0;
     if (workout.totalVolumeKg !== null && workout.totalVolumeKg !== undefined) {
       current.totalVolumeKg =
