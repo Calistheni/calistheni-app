@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { mapWorkoutSummary } from "@/lib/workouts";
 import { displayUsername, relativeTime } from "@/lib/community";
 import { WorkoutSocialActions } from "@/components/community/WorkoutSocialActions";
+import { ClickableWorkoutCard } from "@/components/community/ClickableWorkoutCard";
 
 export const metadata: Metadata = {
   title: "Workout Feed",
@@ -73,8 +74,9 @@ export default async function FeedPage() {
               sets: true,
             },
           },
-          _count: { select: { likes: true, comments: true } },
           likes: { where: { userId: session.user.id }, select: { userId: true } },
+          photos: { orderBy: { createdAt: "asc" }, take: 4, select: { id: true, width: true, height: true } },
+          _count: { select: { likes: true, comments: true, photos: true } },
         },
       })
     : [];
@@ -119,10 +121,7 @@ export default async function FeedPage() {
             const workoutRecord = workouts[index];
 
             return (
-              <Card
-                key={workout.id}
-                className="transition-colors hover:border-primary/30"
-              >
+              <ClickableWorkoutCard key={workout.id} href={`/workouts/${workout.id}`} label={`Open ${workout.title ?? "workout"} by ${workout.user?.name ?? "athlete"}`}><Card className="transition-colors hover:border-primary/30">
                 <CardHeader className="space-y-3">
                   <div className="flex items-center gap-3">
                     {workout.user?.image ? (
@@ -177,9 +176,10 @@ export default async function FeedPage() {
                       .map((item) => item.exercise.name)
                       .join(", ")}
                   </p>
+                  {workoutRecord.photos.length ? <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{workoutRecord.photos.map((photo, photoIndex) => <div key={photo.id} className="relative aspect-square overflow-hidden rounded-lg bg-muted"><Image src={`/api/workouts/${workout.id}/photos/${photo.id}`} alt={`Workout photo ${photoIndex + 1}`} fill sizes="(max-width:640px) 45vw, 180px" unoptimized loading="lazy" className="object-cover" />{photoIndex === 3 && workoutRecord._count.photos > 4 ? <span className="absolute inset-0 grid place-items-center bg-black/50 text-lg font-semibold text-white">+{workoutRecord._count.photos - 4}</span> : null}</div>)}</div> : null}
                   <WorkoutSocialActions workoutId={workout.id} initialLikeCount={workoutRecord._count.likes} initialLiked={workoutRecord.likes.length > 0} canCopy={workoutRecord.userId !== session.user.id} />
                 </CardContent>
-              </Card>
+              </Card></ClickableWorkoutCard>
             );
           })}
         </div>
