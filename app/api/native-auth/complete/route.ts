@@ -12,6 +12,7 @@ import {
 import { getSiteUrl } from "@/lib/site-url";
 
 export const runtime = "nodejs";
+const HANDOFF_TTL_MS = 5 * 60 * 1000;
 
 function errorRedirect(code: string) {
   const url = new URL(NATIVE_AUTH_CALLBACK_PATH, getSiteUrl());
@@ -60,6 +61,9 @@ export async function GET(request: Request) {
       userId: session.user.id,
       handoffCodeHash: hashNativeAuthSecret(handoffCode),
       handoffIssuedAt: now,
+      // The pre-OAuth attempt has a longer setup lifetime; the usable browser
+      // handoff itself is intentionally limited to five minutes.
+      expiresAt: new Date(now.getTime() + HANDOFF_TTL_MS),
     },
   });
 
@@ -71,7 +75,6 @@ export async function GET(request: Request) {
   }
 
   const callbackUrl = new URL(NATIVE_AUTH_CALLBACK_PATH, getSiteUrl());
-  callbackUrl.searchParams.set("attempt", attemptId);
   callbackUrl.searchParams.set("code", handoffCode);
   const response = NextResponse.redirect(callbackUrl);
   clearNativeAuthAttemptCookie(response);

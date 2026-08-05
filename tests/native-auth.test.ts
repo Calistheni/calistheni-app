@@ -20,11 +20,16 @@ test("native handoff accepts only supported platforms and its verified callback 
   assert.equal(isNativeAuthPlatform("ANDROID"), true);
   assert.equal(isNativeAuthPlatform("web"), false);
   assert.equal(
-    isNativeAuthCallbackUrl("https://calistheni.app/mobile/auth/complete?attempt=x"),
+    isNativeAuthCallbackUrl("https://calistheni.app/auth/mobile/callback?code=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ"),
     true
   );
   assert.equal(
-    isNativeAuthCallbackUrl("https://example.com/mobile/auth/complete"),
+    isNativeAuthCallbackUrl("https://example.com/auth/mobile/callback?code=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ"),
     false
   );
+  assert.equal(
+    isNativeAuthCallbackUrl("http://calistheni.app/auth/mobile/callback?code=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ"),
+    false
+  );
+  assert.equal(isNativeAuthCallbackUrl("https://calistheni.app/auth/mobile/callback"), false);
 });

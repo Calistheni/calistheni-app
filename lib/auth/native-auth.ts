@@ -1,4 +1,6 @@
-export const NATIVE_AUTH_CALLBACK_PATH = "/mobile/auth/complete";
+/** The only public Universal/App Link accepted from the system browser. */
+export const NATIVE_AUTH_CALLBACK_PATH = "/auth/mobile/callback";
+export const NATIVE_AUTH_COMPLETION_PATH = "/api/auth/mobile/complete";
 export const NATIVE_AUTH_DEFAULT_REDIRECT = "/home";
 export const NATIVE_AUTH_ATTEMPT_TTL_MS = 10 * 60 * 1000;
 
@@ -34,9 +36,16 @@ export function isNativeAuthCallbackUrl(value: string, expectedOrigin = "https:/
     const url = new URL(value);
     return (
       url.origin === expectedOrigin &&
-      url.pathname === NATIVE_AUTH_CALLBACK_PATH
+      url.protocol === "https:" &&
+      url.pathname === NATIVE_AUTH_CALLBACK_PATH &&
+      isNativeAuthCode(url.searchParams.get("code"))
     );
   } catch {
     return false;
   }
+}
+
+/** 256-bit base64url secret produced by createNativeAuthSecret(). */
+export function isNativeAuthCode(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9_-]{43}$/.test(value);
 }

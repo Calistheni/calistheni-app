@@ -13,7 +13,7 @@ export default async function NativeAuthErrorPage() {
   );
 
   if (attempt) {
-    return <NativeAuthErrorRedirect attemptId={attempt.attemptId} />;
+    return <NativeAuthErrorRedirect />;
   }
 
   return (

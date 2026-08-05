@@ -136,8 +136,8 @@ attempt starts.
 Set these deployment environment variables before enabling app links:
 
 ```bash
-APPLE_TEAM_ID=
-IOS_BUNDLE_ID=app.calistheni.mobile
+APPLE_TEAM_ID=89RH6XL9R6
+IOS_BUNDLE_ID=com.petershikrenov.calistheni
 ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS=
 ANDROID_APPLICATION_ID=app.calistheni.mobile
 ```
