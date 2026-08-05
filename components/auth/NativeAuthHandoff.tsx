@@ -5,8 +5,8 @@ import { App } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
 import { toast } from "sonner";
 import {
-  isNativeAuthCallbackUrl,
   NATIVE_AUTH_COMPLETION_PATH,
+  parseNativeAuthCallbackUrl,
 } from "@/lib/auth/native-auth";
 import { isNativeApp } from "@/lib/native/platform";
 
@@ -25,24 +25,17 @@ function redirectToNativeLoginError(reason = "handoff_failed") {
 
 /** Receives Universal/App Links once and lets a server navigation set the WebView cookie. */
 export function NativeAuthHandoff() {
-  const handledUrlsRef = useRef(new Set<string>());
+  const handledCodesRef = useRef(new Set<string>());
   const isExchangingRef = useRef(false);
 
   const handleUrl = useCallback(async (rawUrl: string) => {
-    if (
-      !isNativeAuthCallbackUrl(rawUrl, window.location.origin) ||
-      handledUrlsRef.current.has(rawUrl)
-    ) {
-      return;
-    }
-    handledUrlsRef.current.add(rawUrl);
-
-    const url = new URL(rawUrl);
-    const code = url.searchParams.get("code");
-    logNativeAuthClient("universal_link_received", { hasCode: Boolean(code) });
+    const handoff = parseNativeAuthCallbackUrl(rawUrl, window.location.origin);
+    if (!handoff || handledCodesRef.current.has(handoff.code)) return;
+    handledCodesRef.current.add(handoff.code);
+    logNativeAuthClient("native_callback_received", { transport: rawUrl.startsWith("calistheni:") ? "scheme" : "universal-link" });
 
     await Browser.close().catch(() => undefined);
-    if (!code || isExchangingRef.current) {
+    if (isExchangingRef.current) {
       toast.error("Google sign-in did not complete. Please try again.");
       redirectToNativeLoginError();
       return;
@@ -51,7 +44,7 @@ export function NativeAuthHandoff() {
     isExchangingRef.current = true;
     try {
       const completion = new URL(NATIVE_AUTH_COMPLETION_PATH, window.location.origin);
-      completion.searchParams.set("code", code);
+      completion.searchParams.set("code", handoff.code);
       // This full WebView navigation is critical: the server's Set-Cookie is
       // written into WKWebView, never read from Safari.
       window.dispatchEvent(new CustomEvent("native-auth:finished"));

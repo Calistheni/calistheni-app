@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   NATIVE_AUTH_DEFAULT_REDIRECT,
+  createNativeAuthCustomSchemeUrl,
   isNativeAuthCallbackUrl,
   isNativeAuthPlatform,
+  parseNativeAuthCallbackUrl,
   sanitizeNativeRedirectPath,
 } from "../lib/auth/native-auth.ts";
 
@@ -32,4 +34,15 @@ test("native handoff accepts only supported platforms and its verified callback 
     false
   );
   assert.equal(isNativeAuthCallbackUrl("https://calistheni.app/auth/mobile/callback"), false);
+
+  const code = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ";
+  const https = parseNativeAuthCallbackUrl(`https://calistheni.app/auth/mobile/callback?code=${code}`);
+  const scheme = parseNativeAuthCallbackUrl(`calistheni://auth/mobile/callback?code=${code}`);
+  assert.deepEqual(https, { code });
+  assert.deepEqual(scheme, https);
+  assert.equal(createNativeAuthCustomSchemeUrl(code), `calistheni://auth/mobile/callback?code=${code}`);
+  assert.equal(parseNativeAuthCallbackUrl(`calistheni://wrong/mobile/callback?code=${code}`), null);
+  assert.equal(parseNativeAuthCallbackUrl(`calistheni://auth/wrong?code=${code}`), null);
+  assert.equal(parseNativeAuthCallbackUrl(`other://auth/mobile/callback?code=${code}`), null);
+  assert.equal(parseNativeAuthCallbackUrl("calistheni://auth/mobile/callback"), null);
 });
