@@ -43,6 +43,11 @@ const config: CapacitorConfig = {
       resizeOnFullScreen: true,
       autoBackdropColor: "dom",
     },
+
+    // Local-only reminders: no APNs/FCM capability or background remote push.
+    LocalNotifications: {
+      presentationOptions: ["badge", "sound", "banner", "list"],
+    },
   },
 };
 

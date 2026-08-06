@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { Keyboard, KeyboardStyle } from "@capacitor/keyboard";
+import { App } from "@capacitor/app";
 import { SplashScreen } from "@capacitor/splash-screen";
 import { StatusBar, Style } from "@capacitor/status-bar";
 import { NativeAuthHandoff } from "@/components/auth/NativeAuthHandoff";
@@ -10,6 +11,7 @@ import {
   isNativeApp,
   isNativePluginAvailable,
 } from "@/lib/native/platform";
+import { reconcileSupplementReminders, registerSupplementNotificationListeners } from "@/lib/native/supplement-reminders";
 
 const isDevelopment = process.env.NODE_ENV === "development";
 
@@ -31,6 +33,17 @@ export function NativeShell() {
     if (!nativeApp) return;
 
     document.documentElement.dataset.nativeApp = "true";
+    void registerSupplementNotificationListeners();
+    let lastReconciliation = 0;
+    let appListener: { remove: () => Promise<void> } | undefined;
+    void App.addListener("appStateChange", ({ isActive }) => {
+      if (!isActive || Date.now() - lastReconciliation < 10_000) return;
+      lastReconciliation = Date.now();
+      void reconcileSupplementReminders();
+    }).then((listener) => { appListener = listener; });
+    // This runs outside rendering and repairs schedules after a native launch.
+    lastReconciliation = Date.now();
+    void reconcileSupplementReminders();
     void StatusBar.setOverlaysWebView({ overlay: false });
 
     if (isNativePluginAvailable("SplashScreen")) {
@@ -62,6 +75,7 @@ export function NativeShell() {
     return () => {
       delete document.documentElement.dataset.nativeApp;
       document.removeEventListener("focusin", handleFocus);
+      void appListener?.remove();
     };
   }, []);
 

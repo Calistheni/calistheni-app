@@ -216,29 +216,44 @@ model User {
   sessions           Session[]
   nativeAuthAttempts NativeAuthAttempt[]
 
-  submittedParks                Park[]                   @relation("ParkSubmitter")
-  parkEditSubmissions           ParkEditSubmission[]     @relation("ParkEditSubmitter")
-  parkPhotos                    ParkPhoto[]              @relation("ParkPhotoUploader")
+  submittedParks                Park[]                          @relation("ParkSubmitter")
+  parkEditSubmissions           ParkEditSubmission[]            @relation("ParkEditSubmitter")
+  parkPhotos                    ParkPhoto[]                     @relation("ParkPhotoUploader")
   workouts                      Workout[]
   workoutPhotos                 WorkoutPhoto[]
-  following                     UserFollow[]             @relation("UserFollowing")
-  followers                     UserFollow[]             @relation("UserFollowers")
+  following                     UserFollow[]                    @relation("UserFollowing")
+  followers                     UserFollow[]                    @relation("UserFollowers")
   workoutLikes                  WorkoutLike[]
   workoutComments               WorkoutComment[]
-  workoutNotifications          WorkoutNotification[]    @relation("WorkoutNotificationRecipient")
-  triggeredWorkoutNotifications WorkoutNotification[]    @relation("WorkoutNotificationActor")
+  workoutNotifications          WorkoutNotification[]           @relation("WorkoutNotificationRecipient")
+  triggeredWorkoutNotifications WorkoutNotification[]           @relation("WorkoutNotificationActor")
   rewardTransactions            RewardTransaction[]
   rewardRedemptions             RewardRedemption[]
   personalRecords               PersonalRecord[]
   workoutTemplates              WorkoutTemplate[]
-  customExercises               Exercise[]               @relation("CustomExerciseOwner")
+  customExercises               Exercise[]                      @relation("CustomExerciseOwner")
   subscription                  Subscription?
   nutritionEntrySnapshots       NutritionEntrySnapshot[]
   weeklyProgressReports         WeeklyProgressReport[]
   supplementPlans               UserSupplementPlan[]
+  supplementReminderSettings    UserSupplementReminderSettings?
   bodyMeasurementEntries        BodyMeasurementEntry[]
 
   @@index([username])
+}
+
+model UserSupplementReminderSettings {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  enabled         Boolean  @default(false)
+  reminderHour    Int      @default(19)
+  reminderMinute  Int      @default(0)
+  timezone        String?
+  permissionState String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model WeeklyProgressReport {
