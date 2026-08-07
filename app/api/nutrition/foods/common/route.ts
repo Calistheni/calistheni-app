@@ -1,0 +1,3 @@
+import { NextResponse } from "next/server"; import { prisma } from "@/lib/prisma"; import { createUserUnauthorizedResponse, getAuthenticatedUserId } from "@/lib/user-auth"; import { toFoodSummary } from "@/lib/nutrition/service";
+const common = ["chicken breast", "rice", "egg", "banana", "apple", "oats", "greek yogurt", "potato", "broccoli", "salmon"];
+export async function GET() { if (!(await getAuthenticatedUserId())) return createUserUnauthorizedResponse(); const foods = await prisma.food.findMany({ where: { normalizedName: { in: common } }, take: 20 }); return NextResponse.json({ foods: foods.sort((a, b) => common.indexOf(a.normalizedName) - common.indexOf(b.normalizedName)).map(toFoodSummary) }); }
