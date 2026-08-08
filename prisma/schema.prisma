@@ -243,6 +243,7 @@ model User {
   nutritionEntrySnapshots       NutritionEntrySnapshot[]
   nutritionTargets              UserNutritionTargets?
   nutritionSavedMeals           NutritionSavedMeal[]
+  nutritionAiUsage              NutritionAiUsage[]
   weeklyProgressReports         WeeklyProgressReport[]
   supplementPlans               UserSupplementPlan[]
   supplementReminderSettings    UserSupplementReminderSettings?
@@ -995,6 +996,24 @@ model UserNutritionTargets {
   updatedAt         DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// One aggregate row per user and UTC calendar day. Counters are reserved
+/// before an OpenAI call and released if that call fails, preventing races
+/// without creating a row for every request.
+model NutritionAiUsage {
+  id            String   @id @default(cuid())
+  userId        String
+  date          DateTime @db.Date
+  describeCount Int      @default(0)
+  aiScanCount   Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([date])
 }
 
 model WorkoutSuperset {

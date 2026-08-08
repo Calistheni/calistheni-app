@@ -43,7 +43,8 @@ test("Describe parses natural language, resolves canonical foods, and keeps revi
   assert.doesNotMatch(workflow, /\/api\/nutrition\/ai-scan/);
   assert.match(route, /getAuthenticatedUserId/);
   assert.doesNotMatch(route, /canUseNutritionAiScan/);
-  assert.match(route, /consumeNutritionAiRateLimit/);
+  assert.match(route, /reserveNutritionAiQuota/);
+  assert.match(route, /releaseNutritionAiQuota\(reservation\)/);
   assert.match(route, /describeNutritionMeal/);
   assert.match(schema, /estimatedGrams/);
   assert.doesNotMatch(schema, /caloriesKcal/);

@@ -8,13 +8,13 @@ async function source(path: string) {
   return readFile(new URL(path, root), "utf8");
 }
 
-test("Nutrition AI Scan is Pro-gated before parsing, rate limiting, or provider work", async () => {
+test("Nutrition AI Scan is Pro-gated before quota reservation or provider work", async () => {
   const route = await source("app/api/nutrition/ai-scan/route.ts");
   const authenticated = route.indexOf("getAuthenticatedUserId()");
   const entitlements = route.indexOf("getUserEntitlements(userId)");
   const capability = route.indexOf("canUseNutritionAiScan(entitlements)");
   const configured = route.indexOf("nutritionAiConfigured()");
-  const rateLimit = route.indexOf("consumeNutritionAiRateLimit(userId)");
+  const quota = route.indexOf("reserveNutritionAiQuota(userId, true, \"aiScan\")");
   const formData = route.indexOf("request.formData()");
   const provider = route.indexOf("analyzeNutritionImage(");
 
@@ -22,7 +22,7 @@ test("Nutrition AI Scan is Pro-gated before parsing, rate limiting, or provider 
   assert.ok(authenticated < entitlements);
   assert.ok(entitlements < capability);
   assert.ok(capability < configured);
-  assert.ok(capability < rateLimit);
+  assert.ok(capability < quota);
   assert.ok(capability < formData);
   assert.ok(capability < provider);
   assert.match(route, /error: "PRO_REQUIRED"/);

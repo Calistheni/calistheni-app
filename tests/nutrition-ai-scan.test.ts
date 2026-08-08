@@ -5,10 +5,6 @@ import {
   aiMealScanJsonSchema,
   aiMealScanResultSchema,
 } from "../lib/nutrition/ai-scan";
-import {
-  consumeNutritionAiRateLimit,
-  resetNutritionAiRateLimitForTests,
-} from "../lib/nutrition/ai-rate-limit";
 import { analyzeNutritionImage } from "../lib/nutrition/ai-provider";
 
 test("AI scan accepts only bounded structured identification and amount output", () => {
@@ -37,20 +33,6 @@ test("AI scan accepts only bounded structured identification and amount output",
   );
 });
 
-test("AI scan rate limit is scoped to the authenticated user and resets by window", () => {
-  const userId = `test-user-${crypto.randomUUID()}`;
-  const otherUserId = `test-user-${crypto.randomUUID()}`;
-  resetNutritionAiRateLimitForTests(userId);
-  resetNutritionAiRateLimitForTests(otherUserId);
-
-  for (let request = 0; request < 5; request += 1) {
-    assert.equal(consumeNutritionAiRateLimit(userId, 1_000), null);
-  }
-  assert.equal(consumeNutritionAiRateLimit(userId, 1_000), 600);
-  assert.equal(consumeNutritionAiRateLimit(otherUserId, 1_000), null);
-  assert.equal(consumeNutritionAiRateLimit(userId, 601_001), null);
-});
-
 test("AI server validates ephemeral images and uses provider structured output", async () => {
   const [route, provider] = await Promise.all([
     readFile(
@@ -69,7 +51,9 @@ test("AI server validates ephemeral images and uses provider structured output",
   assert.match(route, /image\/png/);
   assert.match(route, /image\/webp/);
   assert.match(route, /description\.length > 200/);
-  assert.match(route, /consumeNutritionAiRateLimit\(userId\)/);
+  assert.match(route, /reserveNutritionAiQuota\(userId, true, "aiScan"\)/);
+  assert.match(route, /releaseNutritionAiQuota\(reservation\)/);
+  assert.match(route, /DAILY_LIMIT_REACHED/);
   assert.doesNotMatch(route, /prisma/);
 
   assert.match(provider, /process\.env\.OPENAI_API_KEY/);
