@@ -94,9 +94,15 @@ export async function describeNutritionMeal(
     } catch {
       throw new Error("AI_MALFORMED_RESPONSE");
     }
-    const parsed = describedMealResultSchema.safeParse(decoded);
-    if (!parsed.success) throw new Error("AI_MALFORMED_RESPONSE");
-    return parsed.data;
+    if (!decoded || typeof decoded !== "object" || !Array.isArray((decoded as { foods?: unknown }).foods)) {
+      throw new Error("AI_MALFORMED_RESPONSE");
+    }
+    const foods = (decoded as { foods: unknown[] }).foods.flatMap((food) => {
+      const parsed = describedMealResultSchema.shape.foods.element.safeParse(food);
+      return parsed.success ? [parsed.data] : [];
+    });
+    if (!foods.length) throw new Error("AI_MALFORMED_RESPONSE");
+    return { foods };
   } finally {
     clearTimeout(timeout);
   }
