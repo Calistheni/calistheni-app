@@ -2,11 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import { Barcode, Camera, ImagePlus, ListPlus, Loader2, Plus, Search, Trash2, X } from "lucide-react";
+import Link from "next/link";
+import { Barcode, Camera, ImagePlus, ListPlus, Loader2, Plus, Search, Sparkles, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -54,17 +57,36 @@ export async function detectBarcodesFromImage(file: File) {
   catch { return []; } finally { URL.revokeObjectURL(url); }
 }
 
-export function NutritionQuickActions({ meal, date, onEntries }: { meal: QuickMeal; date: string; onEntries: (entries: Entry[]) => void }) {
+export type NutritionQuickActionCapabilities = {
+  canUseAiScan: boolean;
+  canUseBarcodeScan: boolean;
+};
+
+export function NutritionQuickActions({ meal, date, onEntries, capabilities }: { meal: QuickMeal; date: string; onEntries: (entries: Entry[]) => void; capabilities: NutritionQuickActionCapabilities }) {
   const [workflow, setWorkflow] = useState<"barcode" | "ai" | "describe" | null>(null);
+  const [upgradeFeature, setUpgradeFeature] = useState<"barcode" | "ai" | null>(null);
+  const isLocked = (feature: "barcode" | "ai") => feature === "barcode" ? !capabilities.canUseBarcodeScan : !capabilities.canUseAiScan;
+  function open(feature: "barcode" | "ai" | "describe") {
+    if (feature !== "describe" && isLocked(feature)) {
+      setUpgradeFeature(feature);
+      return;
+    }
+    setWorkflow(feature);
+  }
+  const upgradeCopy = upgradeFeature === "ai"
+    ? { title: "AI Scan is a Pro feature", description: "Scan your meal with a photo and let Calistheni identify the foods for you.", icon: Sparkles }
+    : { title: "Barcode scanning is a Pro feature", description: "Quickly find packaged foods using their barcode.", icon: Barcode };
+  const UpgradeIcon = upgradeCopy.icon;
   return <>
     <div className="grid grid-cols-3 gap-2">
-      <Button variant="outline" size="sm" onClick={() => setWorkflow("barcode")}><Barcode />Barcode</Button>
-      <Button variant="outline" size="sm" onClick={() => setWorkflow("ai")}><Camera />AI Scan</Button>
-      <Button variant="outline" size="sm" onClick={() => setWorkflow("describe")}><ListPlus />Describe</Button>
+      <Button className="min-w-0 gap-1 px-1 text-xs [&>svg]:size-3" variant="outline" size="sm" aria-label={isLocked("barcode") ? "Barcode, Pro feature" : "Barcode"} onClick={() => open("barcode")}><Barcode /><span className="min-w-0 truncate">Barcode</span>{isLocked("barcode") ? <Badge variant="secondary" className="h-4 shrink-0 px-1 text-[9px]">PRO</Badge> : null}</Button>
+      <Button className="min-w-0 gap-1 px-1 text-xs [&>svg]:size-3" variant="outline" size="sm" aria-label={isLocked("ai") ? "AI Scan, Pro feature" : "AI Scan"} onClick={() => open("ai")}><Camera /><span className="min-w-0 truncate">AI Scan</span>{isLocked("ai") ? <Badge variant="secondary" className="h-4 shrink-0 px-1 text-[9px]">PRO</Badge> : null}</Button>
+      <Button className="min-w-0 gap-1 px-1 text-xs [&>svg]:size-3" variant="outline" size="sm" aria-label="Describe meal" onClick={() => open("describe")}><ListPlus /><span className="min-w-0 truncate">Describe</span></Button>
     </div>
     <BarcodeWorkflow open={workflow === "barcode"} meal={meal} date={date} close={() => setWorkflow(null)} onEntries={onEntries} />
     <AiWorkflow open={workflow === "ai"} meal={meal} date={date} close={() => setWorkflow(null)} onEntries={onEntries} />
     <DescribeWorkflow open={workflow === "describe"} meal={meal} date={date} close={() => setWorkflow(null)} onEntries={onEntries} />
+    <Dialog open={upgradeFeature !== null} onOpenChange={(isOpen) => !isOpen && setUpgradeFeature(null)}><DialogContent><DialogHeader><div className="mb-2 flex size-10 items-center justify-center rounded-full bg-primary/10 text-primary"><UpgradeIcon /></div><DialogTitle>{upgradeCopy.title}</DialogTitle><DialogDescription>{upgradeCopy.description}</DialogDescription></DialogHeader><div className="flex gap-2"><Button asChild className="flex-1"><Link href="/pro">Upgrade to Pro</Link></Button><Button className="flex-1" variant="outline" onClick={() => setUpgradeFeature(null)}>Maybe later</Button></div></DialogContent></Dialog>
   </>;
 }
 

@@ -37,11 +37,11 @@ test("nutrition rows reuse FoodVisual, and explicit menu actions separate edit f
   const source = await readFile(new URL("../components/nutrition/NutritionTracker.tsx", import.meta.url), "utf8");
   assert.match(source, /foodVisual\?\.imageUrl/);
   assert.match(source, /DropdownMenuTrigger asChild/);
-  assert.match(source, /Actions for \$\{e\.foodNameSnapshot\}/);
-  assert.match(source, /DropdownMenuItem onSelect=\{\(\)=>onEdit\(e\)\}>Edit/);
-  assert.match(source, /variant="destructive" onSelect=\{\(\)=>onDelete\(e\.id\)\}>Remove/);
-  assert.match(source, /key=\{pickerKey\} meal=\{meal\}/);
-  assert.match(source, /function dismiss\(\)\{setQuery\(""\);setFoods\(\[\]\);setSelected\(null\);setGrams\("100"\);close\(\)\}/);
+  assert.match(source, /Actions for \$\{entry\.foodNameSnapshot\}/);
+  assert.match(source, /DropdownMenuItem onSelect=\{\(\) => onEdit\(entry\)\}>Edit/);
+  assert.match(source, /variant="destructive" onSelect=\{\(\) => onDelete\(entry\.id\)\}>Remove/);
+  assert.match(source, /key=\{pickerKey\}[\s\S]*meal=\{meal\}/);
+  assert.match(source, /function dismiss\(\) \{\s*setQuery\(""\);\s*setFoods\(\[\]\);\s*setSelected\(null\);\s*setGrams\("100"\);\s*close\(\);/);
 });
 
 test("daily GET, create, and edit all use the canonical entry serializer", async () => {

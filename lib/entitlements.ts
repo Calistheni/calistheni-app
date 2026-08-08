@@ -18,6 +18,24 @@ export type UserEntitlements = {
   hasFullProgressHistory: boolean;
 };
 
+/**
+ * Nutrition capabilities intentionally remain separate even though both are
+ * currently included with Pro. This keeps their product policy explicit and
+ * lets it diverge later without introducing nutrition-specific subscription
+ * state.
+ */
+export function canUseNutritionAiScan(
+  entitlements: Pick<UserEntitlements, "isPro">
+) {
+  return entitlements.isPro;
+}
+
+export function canUseNutritionBarcodeScan(
+  entitlements: Pick<UserEntitlements, "isPro">
+) {
+  return entitlements.isPro;
+}
+
 export function hasProAccess(
   subscription:
     | Pick<Subscription, "plan" | "status" | "lifetimePurchasedAt">

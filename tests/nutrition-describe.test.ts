@@ -58,5 +58,7 @@ test("confirmed batch entries feed the current meal tracker immediately", async 
   assert.match(tracker, /<NutritionQuickActions/);
   assert.match(tracker, /meal=\{meal!\}/);
   assert.match(tracker, /date=\{date\}/);
-  assert.match(tracker, /created\.forEach\(\(entry\) => onAdd/);
+  assert.match(tracker, /onEntries=\{\(created\) => onAddEntries\(created as Entry\[\]\)\}/);
+  assert.match(tracker, /const applyServerEntries = useCallback/);
+  assert.match(tracker, /created\.forEach\(\(entry\) => byId\.set\(entry\.id, entry\)\)/);
 });

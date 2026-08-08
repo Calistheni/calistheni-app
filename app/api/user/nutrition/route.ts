@@ -5,6 +5,9 @@ import { createUserUnauthorizedResponse, getAuthenticatedUserId } from "@/lib/us
 import { serializeNutritionEntry } from "@/lib/nutrition/entry-serializer";
 import { nutritionDate, nutritionDateSchema, nutritionEntrySchema, snapshotForFood } from "@/lib/nutrition/log";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const fields = ["caloriesKcal", "proteinGrams", "carbohydrateGrams", "fatGrams", "fiberGrams", "sugarGrams", "saturatedFatGrams", "sodiumMg", "saltGrams"] as const;
 function values(record: Record<string, unknown>) { return Object.fromEntries(fields.map((key) => [key, record[key] == null ? undefined : Number(record[key])])) as Record<(typeof fields)[number], number | undefined>; }
 function snapshotData(food: { currentRevision: Record<string, unknown> }, grams: number) {
@@ -14,7 +17,7 @@ function snapshotData(food: { currentRevision: Record<string, unknown> }, grams:
 export async function GET(request: Request) {
   const userId = await getAuthenticatedUserId(); if (!userId) return createUserUnauthorizedResponse();
   const parsed = nutritionDateSchema.safeParse(new URL(request.url).searchParams.get("date")); if (!parsed.success) return createJsonValidationErrorResponse("Invalid nutrition date.", { date: ["Use YYYY-MM-DD."] });
-  try { const [entries, targets] = await Promise.all([prisma.nutritionEntrySnapshot.findMany({ where: { userId, loggedFor: nutritionDate(parsed.data) }, include: { food: { include: { aliases: { select: { name: true } }, details: { select: { categories: true, productImageUrl: true } } } } }, orderBy: { createdAt: "asc" } }), prisma.userNutritionTargets.findUnique({ where: { userId } })]); return NextResponse.json({ entries: entries.map(serializeNutritionEntry), targets }); }
+  try { const [entries, targets] = await Promise.all([prisma.nutritionEntrySnapshot.findMany({ where: { userId, loggedFor: nutritionDate(parsed.data) }, include: { food: { include: { aliases: { select: { name: true } }, details: { select: { categories: true, productImageUrl: true } } } } }, orderBy: { createdAt: "asc" } }), prisma.userNutritionTargets.findUnique({ where: { userId } })]); return NextResponse.json({ entries: entries.map(serializeNutritionEntry), targets }, { headers: { "Cache-Control": "private, no-store, max-age=0" } }); }
   catch (error) { console.error("NUTRITION_LOG_GET_FAILED", error); return createInternalServerErrorResponse(); }
 }
 export async function POST(request: Request) {

@@ -6,9 +6,22 @@ import { getOpenFoodFactsProduct } from "@/lib/nutrition/providers/open-food-fac
 import { toFoodSummary, withResolvedFoodIcon } from "@/lib/nutrition/service";
 import { prisma } from "@/lib/prisma";
 import { createUserUnauthorizedResponse, getAuthenticatedUserId } from "@/lib/user-auth";
+import { canUseNutritionBarcodeScan, getUserEntitlements } from "@/lib/entitlements";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ barcode: string }> }) {
-  if (!(await getAuthenticatedUserId())) return createUserUnauthorizedResponse();
+  const userId = await getAuthenticatedUserId();
+  if (!userId) return createUserUnauthorizedResponse();
+  const { entitlements } = await getUserEntitlements(userId);
+  if (!canUseNutritionBarcodeScan(entitlements)) {
+    return NextResponse.json(
+      {
+        error: "PRO_REQUIRED",
+        feature: "nutrition_barcode_scan",
+        message: "Barcode scanning is available with Calistheni Pro.",
+      },
+      { status: 403 }
+    );
+  }
 
   const barcode = normalizeBarcode((await params).barcode);
   if (!barcode) return createJsonErrorResponse("Invalid barcode.", 400, "INVALID_BARCODE");

@@ -5,12 +5,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BadgeEuro,
-  Dumbbell,
   Gift,
   Home,
   MapPin,
   UserRound,
   UsersRound,
+  Utensils,
   type LucideIcon,
 } from "lucide-react";
 import { ActiveWorkoutDock } from "@/components/workouts/ActiveWorkoutDock";
@@ -33,7 +33,7 @@ type AppShellProps = {
 
 const navigationIcons: Record<PrimaryNavigationKey, LucideIcon> = {
   home: Home,
-  train: Dumbbell,
+  nutrition: Utensils,
   parks: MapPin,
   community: UsersRound,
   rewards: Gift,

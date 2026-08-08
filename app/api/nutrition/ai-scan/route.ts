@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createJsonErrorResponse } from "@/lib/api-response";
 import { createUserUnauthorizedResponse, getAuthenticatedUserId } from "@/lib/user-auth";
+import { canUseNutritionAiScan, getUserEntitlements } from "@/lib/entitlements";
 import { analyzeNutritionImage, nutritionAiConfigured } from "@/lib/nutrition/ai-provider";
 import { consumeNutritionAiRateLimit } from "@/lib/nutrition/ai-rate-limit";
 
@@ -14,6 +15,17 @@ function validSignature(bytes: Uint8Array, mime: string) {
 export async function POST(request: Request) {
   const userId = await getAuthenticatedUserId();
   if (!userId) return createUserUnauthorizedResponse();
+  const { entitlements } = await getUserEntitlements(userId);
+  if (!canUseNutritionAiScan(entitlements)) {
+    return NextResponse.json(
+      {
+        error: "PRO_REQUIRED",
+        feature: "nutrition_ai_scan",
+        message: "AI Scan is available with Calistheni Pro.",
+      },
+      { status: 403 }
+    );
+  }
   if (!nutritionAiConfigured()) return createJsonErrorResponse("AI food scanning is not configured. Set OPENAI_API_KEY on the server.", 503, "AI_NOT_CONFIGURED");
   const retryAfterSeconds = consumeNutritionAiRateLimit(userId);
   if (retryAfterSeconds !== null) {

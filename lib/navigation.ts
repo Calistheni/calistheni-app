@@ -1,6 +1,6 @@
 export const desktopPrimaryNavigation = [
   { key: "home", label: "Home", href: "/home" },
-  { key: "train", label: "Train", href: "/workouts" },
+  { key: "nutrition", label: "Nutrition", href: "/nutrition" },
   { key: "parks", label: "Parks", href: "/parks" },
   { key: "community", label: "Community", href: "/feed" },
   { key: "rewards", label: "Rewards", href: "/rewards" },
@@ -24,14 +24,7 @@ export function getActivePrimaryNavigation(
 ): PrimaryNavigationKey | null {
   if (matchesRoute(pathname, "/home")) return "home";
 
-  if (
-    matchesRoute(pathname, "/workouts") ||
-    matchesRoute(pathname, "/routines") ||
-    matchesRoute(pathname, "/exercises") ||
-    matchesRoute(pathname, "/profile/records")
-  ) {
-    return "train";
-  }
+  if (matchesRoute(pathname, "/nutrition")) return "nutrition";
 
   if (
     matchesRoute(pathname, "/parks") ||
@@ -59,6 +52,7 @@ const signedInShellRoutes = [
   "/workouts",
   "/routines",
   "/exercises",
+  "/nutrition",
   "/parks",
   "/my-parks",
   "/submit-park",
