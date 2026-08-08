@@ -31,6 +31,17 @@ function productImageFromRecord(food: Record<string, unknown>) {
     ? details.productImageUrl
     : null;
 }
+function servingsFromRecord(food: Record<string, unknown>) {
+  if (!Array.isArray(food.servings)) return undefined;
+  return food.servings.flatMap((serving) => {
+    if (!serving || typeof serving !== "object" || !("name" in serving) || !("grams" in serving)) return [];
+    const name = String(serving.name);
+    const grams = Number(serving.grams);
+    const quantity = "quantity" in serving ? Number(serving.quantity) : 1;
+    if (!name || !Number.isFinite(grams) || grams <= 0 || !Number.isFinite(quantity) || quantity <= 0) return [];
+    return [{ name, grams, quantity, householdUnit: "householdUnit" in serving && serving.householdUnit ? String(serving.householdUnit) : null }];
+  });
+}
 function foodIconReference(food: Record<string, unknown>) {
   const icon = resolveFoodIcon({ name: String(food.name), aliases: aliasesFromRecord(food), categories: categoriesFromRecord(food), imageUrl: productImageFromRecord(food), iconKey: typeof food.iconKey === "string" ? food.iconKey : null, type: typeof food.type === "string" ? food.type : null, source: typeof food.source === "string" ? food.source : null });
   return icon ? { key: icon.key, url: icon.url, match: icon.match } : undefined;
@@ -39,10 +50,26 @@ export function withResolvedFoodIcon(result: ExternalFoodResult): ExternalFoodRe
   const icon = resolveFoodIcon({ name: result.name, categories: result.details?.categories, imageUrl: result.imageUrl, type: result.foodType, source: result.provider });
   return icon ? { ...result, genericIcon: { key: icon.key, url: icon.url, match: icon.match } } : result;
 }
-export function toFoodSummary(food: Record<string, unknown>): FoodSummary { const next = food.nextRevalidateAt instanceof Date ? food.nextRevalidateAt : null; return { id: String(food.id), name: String(food.name), brandName: food.brandName ? String(food.brandName) : null, barcode: food.barcode ? String(food.barcode) : null, imageUrl: productImageFromRecord(food), genericIcon: foodIconReference(food), type: String(food.type), source: String(food.source), sourceExternalId: String(food.sourceExternalId), verificationStatus: String(food.verificationStatus), freshnessStatus: String(food.freshnessStatus), confidenceScore: Number(food.confidenceScore), nutritionPer100g: nutritionFromRecord(food), importedAt: (food.importedAt as Date).toISOString(), lastRevalidatedAt: food.lastRevalidatedAt ? (food.lastRevalidatedAt as Date).toISOString() : null, nextRevalidateAt: next?.toISOString() ?? null, currentRevisionId: food.currentRevisionId ? String(food.currentRevisionId) : null, isLocal: true, revalidationRecommended: !next || next <= new Date() }; }
+export function toFoodSummary(food: Record<string, unknown>): FoodSummary { const next = food.nextRevalidateAt instanceof Date ? food.nextRevalidateAt : null; return { id: String(food.id), name: String(food.name), brandName: food.brandName ? String(food.brandName) : null, barcode: food.barcode ? String(food.barcode) : null, imageUrl: productImageFromRecord(food), genericIcon: foodIconReference(food), servings: servingsFromRecord(food), type: String(food.type), source: String(food.source), sourceExternalId: String(food.sourceExternalId), verificationStatus: String(food.verificationStatus), freshnessStatus: String(food.freshnessStatus), confidenceScore: Number(food.confidenceScore), nutritionPer100g: nutritionFromRecord(food), importedAt: (food.importedAt as Date).toISOString(), lastRevalidatedAt: food.lastRevalidatedAt ? (food.lastRevalidatedAt as Date).toISOString() : null, nextRevalidateAt: next?.toISOString() ?? null, currentRevisionId: food.currentRevisionId ? String(food.currentRevisionId) : null, isLocal: true, revalidationRecommended: !next || next <= new Date() }; }
 export async function searchFoods(query: string): Promise<FoodSearchResponse> {
   const normalized = normalizeFoodQuery(query);
-  const localRequest = prisma.food.findMany({ where: { OR: [{ normalizedName: { contains: normalized } }, { name: { contains: normalized, mode: "insensitive" } }, { brandName: { contains: normalized, mode: "insensitive" } }, { aliases: { some: { normalizedName: { contains: normalized } } } }] }, include: { aliases: { select: { name: true } }, details: { select: { categories: true, productImageUrl: true } } }, orderBy: [{ selectionCount: "desc" }, { updatedAt: "desc" }], take: 12 });
+  const localRequest = prisma.food.findMany({
+    where: {
+      OR: [
+        { normalizedName: { contains: normalized } },
+        { name: { contains: normalized, mode: "insensitive" } },
+        { brandName: { contains: normalized, mode: "insensitive" } },
+        { aliases: { some: { normalizedName: { contains: normalized } } } },
+      ],
+    },
+    include: {
+      aliases: { select: { name: true } },
+      details: { select: { categories: true, productImageUrl: true } },
+      servings: { select: { name: true, quantity: true, grams: true, householdUnit: true } },
+    },
+    orderBy: [{ selectionCount: "desc" }, { updatedAt: "desc" }],
+    take: 12,
+  });
   const [local, usda, off] = await Promise.allSettled([localRequest, searchUsdaFoods(normalized), searchOpenFoodFactsFoods(normalized)]);
   const state = (result: PromiseSettledResult<ExternalFoodResult[]>, configured = true): ProviderState => {
     if (result.status === "fulfilled") return { attempted: true, available: true, error: null };

@@ -6,6 +6,7 @@ import { normalizeBarcode } from "@/lib/nutrition/normalization";
 import { normalizeUsdaFdcId } from "@/lib/nutrition/providers/usda";
 import { importExternalFood, toFoodSummary } from "@/lib/nutrition/service";
 import { createUserUnauthorizedResponse, getAuthenticatedUserId } from "@/lib/user-auth";
+import { prisma } from "@/lib/prisma";
 const schema = z.object({ provider: z.enum(["USDA", "OPEN_FOOD_FACTS"]), externalId: z.string().trim().min(1).max(100) });
 export async function POST(request: Request) {
   if (!(await getAuthenticatedUserId())) return createUserUnauthorizedResponse();
@@ -22,7 +23,15 @@ export async function POST(request: Request) {
       if (!barcode) throw new ProviderError("INVALID_IDENTIFIER", "Invalid barcode.");
       externalId = barcode;
     }
-    const food = await importExternalFood(payload.data.provider, externalId);
+    const imported = await importExternalFood(payload.data.provider, externalId);
+    const food = await prisma.food.findUniqueOrThrow({
+      where: { id: imported.id },
+      include: {
+        aliases: { select: { name: true } },
+        details: { select: { categories: true, productImageUrl: true } },
+        servings: { select: { name: true, quantity: true, grams: true, householdUnit: true } },
+      },
+    });
     return NextResponse.json({ food: toFoodSummary(food) }, { status: 201 });
   } catch (error) {
     if (error instanceof ProviderError) {

@@ -14,7 +14,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bar
   if (!barcode) return createJsonErrorResponse("Invalid barcode.", 400, "INVALID_BARCODE");
 
   try {
-    const local = await prisma.food.findUnique({ where: { barcode }, include: { aliases: { select: { name: true } }, details: { select: { categories: true, productImageUrl: true } } } });
+    const local = await prisma.food.findUnique({ where: { barcode }, include: { aliases: { select: { name: true } }, details: { select: { categories: true, productImageUrl: true } }, servings: { select: { name: true, quantity: true, grams: true, householdUnit: true } } } });
     if (local) return NextResponse.json({ local: toFoodSummary(local), external: null });
 
     const external = await getOpenFoodFactsProduct(barcode);
