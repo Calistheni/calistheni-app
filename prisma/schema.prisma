@@ -242,6 +242,7 @@ model User {
   subscription                  Subscription?
   nutritionEntrySnapshots       NutritionEntrySnapshot[]
   nutritionTargets              UserNutritionTargets?
+  nutritionSavedMeals           NutritionSavedMeal[]
   weeklyProgressReports         WeeklyProgressReport[]
   supplementPlans               UserSupplementPlan[]
   supplementReminderSettings    UserSupplementReminderSettings?
@@ -741,14 +742,15 @@ model Food {
   createdAt           DateTime               @default(now())
   updatedAt           DateTime               @updatedAt
 
-  servings           FoodServing[]
-  details            FoodDetails?
-  nutrients          FoodNutrient[]
-  aliases            FoodAlias[]
-  sourceRecords      FoodSourceRecord[]
-  revisions          FoodRevision[]           @relation("FoodRevisions")
-  currentRevision    FoodRevision?            @relation("FoodCurrentRevision", fields: [currentRevisionId], references: [id], onDelete: SetNull)
-  nutritionSnapshots NutritionEntrySnapshot[]
+  servings                FoodServing[]
+  details                 FoodDetails?
+  nutrients               FoodNutrient[]
+  aliases                 FoodAlias[]
+  sourceRecords           FoodSourceRecord[]
+  revisions               FoodRevision[]           @relation("FoodRevisions")
+  currentRevision         FoodRevision?            @relation("FoodCurrentRevision", fields: [currentRevisionId], references: [id], onDelete: SetNull)
+  nutritionSnapshots      NutritionEntrySnapshot[]
+  nutritionSavedMealItems NutritionSavedMealItem[]
 
   @@unique([source, sourceExternalId])
   @@index([normalizedName])
@@ -900,10 +902,11 @@ model FoodRevision {
   createdByUserId        String?
   createdAt              DateTime               @default(now())
 
-  food               Food                     @relation("FoodRevisions", fields: [foodId], references: [id], onDelete: Cascade)
-  currentFor         Food?                    @relation("FoodCurrentRevision")
-  sourceRecord       FoodSourceRecord?        @relation(fields: [sourceRecordId], references: [id], onDelete: SetNull)
-  nutritionSnapshots NutritionEntrySnapshot[]
+  food                    Food                     @relation("FoodRevisions", fields: [foodId], references: [id], onDelete: Cascade)
+  currentFor              Food?                    @relation("FoodCurrentRevision")
+  sourceRecord            FoodSourceRecord?        @relation(fields: [sourceRecordId], references: [id], onDelete: SetNull)
+  nutritionSnapshots      NutritionEntrySnapshot[]
+  nutritionSavedMealItems NutritionSavedMealItem[]
 
   @@unique([foodId, revisionNumber])
   @@index([foodId, createdAt])
@@ -945,6 +948,38 @@ model NutritionEntrySnapshot {
 
   @@index([userId, loggedFor])
   @@index([userId, createdAt])
+  @@index([foodId])
+  @@index([foodRevisionId])
+}
+
+model NutritionSavedMeal {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items NutritionSavedMealItem[]
+
+  @@index([userId, updatedAt])
+}
+
+model NutritionSavedMealItem {
+  id             String   @id @default(cuid())
+  mealId         String
+  foodId         String
+  foodRevisionId String
+  grams          Decimal  @db.Decimal(12, 3)
+  quantity       Decimal  @db.Decimal(12, 3)
+  unit           String
+  createdAt      DateTime @default(now())
+
+  meal         NutritionSavedMeal @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  food         Food               @relation(fields: [foodId], references: [id], onDelete: Restrict)
+  foodRevision FoodRevision       @relation(fields: [foodRevisionId], references: [id], onDelete: Restrict)
+
+  @@index([mealId])
   @@index([foodId])
   @@index([foodRevisionId])
 }
