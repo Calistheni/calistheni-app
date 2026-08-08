@@ -1,5 +1,5 @@
 export const NUTRITION_AI_LIMITS = {
-  FREE: { describePerDay: 20 },
+  FREE: { describePerDay: 10 },
   PRO: { describePerDay: 200, aiScanPerDay: 100 },
 } as const;
 

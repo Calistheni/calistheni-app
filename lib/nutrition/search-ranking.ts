@@ -252,49 +252,46 @@ function candidateIdentity(candidate: NutritionFoodCandidate) {
   return `${candidateProvider(candidate)}:${candidate.id ?? candidate.externalId ?? candidate.sourceExternalId ?? candidate.name}`;
 }
 
+/** Scores the shared preview universe before any provider record is imported. */
+export function scoreNutritionFoodCandidate(query: string, candidate: NutritionFoodCandidate) {
+  const normalizedQuery = normalizeFoodQuery(query);
+  const kind = classifyFoodQuery(query);
+  const name = normalizeFoodQuery(candidate.name);
+  const core = candidateCoreName(candidate);
+  const generic = candidateIsGeneric(candidate);
+  const branded = Boolean(candidate.brandName) || candidate.searchMetadata?.isBranded === true || candidateProvider(candidate) === "OPEN_FOOD_FACTS";
+  let value = 0;
+  if (core === normalizedQuery) value += 260;
+  else if (name === normalizedQuery) value += 220;
+  else if (name.startsWith(`${normalizedQuery},`) || name.startsWith(`${normalizedQuery} `)) value += 150;
+  value += tokens(query).filter((token) => tokenMatches(name, token)).length * 32;
+  if (generic) value += 155;
+  if (candidateProvider(candidate) === "USDA") value += 45;
+  if (candidate.isLocal) value += 90;
+  value += defaultFoodVariantScore(tokens(query), name);
+  value += genericIngredientScore(tokens(query), name);
+  const preparedIntent = preparedFoodIntent(tokens(query));
+  const explicitPreparation = preparationIntent(tokens(query));
+  const raw = /(?:^|[ ,])raw(?:$|[ ,])|uncooked/.test(name);
+  if (explicitPreparation.length) for (const preparation of explicitPreparation) value += hasModifier(name, preparation) ? 130 : -45;
+  else if (preparedIntent) {
+    if (preparedIntent.some((term) => hasModifier(name, term))) value += 140;
+    if (raw) value -= 130;
+  } else if (tokens(query).some((token) => NATURALLY_RAW_FOODS.has(token)) && raw) value += 72;
+  for (const modifier of MODIFIERS) if (hasModifier(name, modifier) && !normalizedQuery.includes(modifier) && !preparedIntent?.includes(modifier)) value -= 58;
+  if (kind === "GENERIC" && branded) value -= 280;
+  value -= Math.max(0, name.length - normalizedQuery.length - 10) * 1.7;
+  return value;
+}
+
 /**
  * The common ordered list for Food UI, Describe, AI Scan, and meal templates.
  * It intentionally consumes only preview metadata so candidates are ranked
  * before an external provider record is imported.
  */
 export function rankNutritionFoodCandidates<T extends NutritionFoodCandidate>(query: string, candidates: readonly T[]) {
-  const normalizedQuery = normalizeFoodQuery(query);
-  const kind = classifyFoodQuery(query);
   return [...candidates].sort((left, right) => {
-    const score = (candidate: T) => {
-      const name = normalizeFoodQuery(candidate.name);
-      const core = candidateCoreName(candidate);
-      const generic = candidateIsGeneric(candidate);
-      const branded = Boolean(candidate.brandName) || candidate.searchMetadata?.isBranded === true || candidateProvider(candidate) === "OPEN_FOOD_FACTS";
-      let value = 0;
-      if (core === normalizedQuery) value += 260;
-      else if (name === normalizedQuery) value += 220;
-      else if (name.startsWith(`${normalizedQuery},`) || name.startsWith(`${normalizedQuery} `)) value += 150;
-      value += tokens(query).filter((token) => tokenMatches(name, token)).length * 32;
-      if (generic) value += 155;
-      if (candidateProvider(candidate) === "USDA") value += 45;
-      // A reusable canonical row is safer and faster than re-importing an
-      // equivalent provider preview. The explicit local-first resolver uses
-      // this same score before it ever asks a provider.
-      if (candidate.isLocal) value += 90;
-      value += defaultFoodVariantScore(tokens(query), name);
-      value += genericIngredientScore(tokens(query), name);
-      const preparedIntent = preparedFoodIntent(tokens(query));
-      const explicitPreparation = preparationIntent(tokens(query));
-      const raw = /(?:^|[ ,])raw(?:$|[ ,])|uncooked/.test(name);
-      if (explicitPreparation.length) for (const preparation of explicitPreparation) value += hasModifier(name, preparation) ? 130 : -45;
-      else if (preparedIntent) {
-        if (preparedIntent.some((term) => hasModifier(name, term))) value += 140;
-        // For staple queries, consumed preparations beat an otherwise exact
-        // raw ingredient match unless the user explicitly asks for raw.
-        if (raw) value -= 130;
-      } else if (tokens(query).some((token) => NATURALLY_RAW_FOODS.has(token)) && raw) value += 72;
-      for (const modifier of MODIFIERS) if (hasModifier(name, modifier) && !normalizedQuery.includes(modifier) && !preparedIntent?.includes(modifier)) value -= 58;
-      if (kind === "GENERIC" && branded) value -= 280;
-      value -= Math.max(0, name.length - normalizedQuery.length - 10) * 1.7;
-      return value;
-    };
-    const difference = score(right) - score(left);
+    const difference = scoreNutritionFoodCandidate(query, right) - scoreNutritionFoodCandidate(query, left);
     return difference || candidateIdentity(left).localeCompare(candidateIdentity(right));
   });
 }

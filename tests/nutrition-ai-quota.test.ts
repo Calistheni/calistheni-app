@@ -43,6 +43,8 @@ test("AI routes validate before quota use, return structured daily-limit errors,
   assert.match(describe, /DAILY_LIMIT_REACHED/);
   assert.match(describe, /feature: "nutrition_describe"/);
   assert.match(describe, /releaseNutritionAiQuota\(reservation\)/);
+  assert.equal((describe.match(/reserveNutritionAiQuota\(/g) ?? []).length, 1, "one user Describe action reserves one quota unit even with contextual selection");
+  assert.match(describe, /if \(!extracted\) await releaseNutritionAiQuota\(reservation\)/);
   assert.match(scan, /canUseNutritionAiScan/);
   assert.match(scan, /reserveNutritionAiQuota/);
   assert.match(scan, /feature: "nutrition_ai_scan"/);

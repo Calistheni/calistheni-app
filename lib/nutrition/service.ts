@@ -79,6 +79,12 @@ export async function searchLocalFoods(query: string) {
   return rankNutritionFoodCandidates(normalized, await findLocalFoods(normalized));
 }
 
+/** Shared top-N canonical preview set for smart Nutrition workflows. */
+export async function getNutritionCandidatesForIntent(query: string, limit = 5) {
+  const result = await searchFoods(query);
+  return rankNutritionFoodCandidates(query, result.results).slice(0, Math.max(1, Math.min(limit, 8)));
+}
+
 export async function searchFoods(query: string): Promise<FoodSearchResponse> {
   const normalized = normalizeFoodQuery(query);
   const localRequest = findLocalFoods(normalized);

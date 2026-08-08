@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createJsonErrorResponse, createJsonValidationErrorResponse } from "@/lib/api-response";
 import { describeNutritionMeal, nutritionAiConfigured } from "@/lib/nutrition/ai-provider";
 import { getNutritionAiQuotas, releaseNutritionAiQuota, reserveNutritionAiQuota } from "@/lib/nutrition/ai-quota";
+import { resolveDescribedFoods } from "@/lib/nutrition/describe-resolver";
 import { getUserEntitlements } from "@/lib/entitlements";
 import { createUserUnauthorizedResponse, getAuthenticatedUserId } from "@/lib/user-auth";
 
@@ -44,10 +45,17 @@ export async function POST(request: Request) {
     );
   }
 
+  let extracted = false;
   try {
-    return NextResponse.json(await describeNutritionMeal(parsed.data.description));
+    const concepts = await describeNutritionMeal(parsed.data.description);
+    extracted = true;
+    const foods = await resolveDescribedFoods(parsed.data.description, concepts.foods);
+    return NextResponse.json({ foods });
   } catch (error) {
-    await releaseNutritionAiQuota(reservation);
+    // One Describe action consumes one quota unit after stage-one extraction.
+    // Candidate collection or the optional contextual selector never spends a
+    // second unit, and stage-two failures degrade to review-required items.
+    if (!extracted) await releaseNutritionAiQuota(reservation);
     const code = error instanceof Error ? error.message : "AI_UNAVAILABLE";
     if (code === "AI_MALFORMED_RESPONSE") {
       return createJsonErrorResponse(

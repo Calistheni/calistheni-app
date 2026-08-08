@@ -48,7 +48,7 @@ export type QuickMeal = "BREAKFAST" | "LUNCH" | "DINNER" | "SNACKS";
 type Food = {
   id?: string;
   provider?: "USDA" | "OPEN_FOOD_FACTS";
-  externalId: string;
+  externalId?: string;
   name: string;
   brandName?: string | null;
   imageUrl?: string | null;
@@ -110,7 +110,7 @@ async function responseMessage(response: Response, fallback: string) {
 }
 async function importFood(food: Food): Promise<Food & { id: string }> {
   if (food.id) return food as Food & { id: string };
-  if (!food.provider) throw new Error("This food cannot be logged yet.");
+  if (!food.provider || !food.externalId) throw new Error("This food cannot be logged yet.");
   const response = await fetch("/api/nutrition/foods/import", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1251,32 +1251,26 @@ function DescribeWorkflow({
           preparation?: string | null;
           estimatedGrams?: number | null;
           quantityText?: string | null;
+          confidence?: number | null;
+          food?: Food | null;
         }>;
       };
-      const items: DescribeReviewItem[] = [];
-      for (const detected of result.foods ?? []) {
-        const query = [detected.preparation, detected.label]
-          .filter(Boolean)
-          .join(" ");
-        try {
-          const match = await resolveCanonicalFood(query);
-          if (!match) throw new Error("UNRESOLVED");
-          const food = await importFood(match);
-          items.push({
+      const items: DescribeReviewItem[] = (result.foods ?? []).map((detected) => {
+        if (detected.food?.id) {
+          return {
             key: crypto.randomUUID(),
             type: "resolved",
-            item: draftForDetected(food, detected),
-          });
-        } catch {
-          items.push({
-            key: crypto.randomUUID(),
-            type: "unresolved",
-            label: detected.label,
-            preparation: detected.preparation ?? null,
-            quantityText: detected.quantityText ?? null,
-          });
+            item: draftForDetected(detected.food as Food & { id: string }, detected),
+          };
         }
-      }
+        return {
+          key: crypto.randomUUID(),
+          type: "unresolved",
+          label: detected.label,
+          preparation: detected.preparation ?? null,
+          quantityText: detected.quantityText ?? null,
+        };
+      });
       if (!items.length) {
         setState({
           type: "error",

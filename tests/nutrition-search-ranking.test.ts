@@ -92,6 +92,7 @@ test("plain milk and honey rank generic staples ahead of derivatives while expli
   assert.equal(rankNutritionFoodCandidates("milk", milk)[0]?.externalId, "whole");
   assert.equal(rankNutritionFoodCandidates("coconut milk", milk)[0]?.externalId, "coconut");
   assert.equal(rankNutritionFoodCandidates("skim milk", milk)[0]?.externalId, "skim");
+  assert.equal(rankNutritionFoodCandidates("almond milk", [...milk, food("USDA", "almond", "Almond milk")])[0]?.externalId, "almond");
 
   const honey = [
     food("USDA", "honey", "Honey"),
@@ -232,16 +233,17 @@ test("local canonical matches win Describe resolution and plural lookup remains 
   assert.deepEqual(nutritionFoodQueryVariants("berries"), ["berries", "berry"]);
 });
 
-test("oats with milk banana honey reuses strong local canonical foods", () => {
+test("oats with milk cinnamon honey and banana keeps every obvious ingredient canonical", () => {
   const concepts = [
     ["oats", { id: "oats", source: "USDA", sourceExternalId: "oats", type: "GENERIC", isLocal: true, name: "Oatmeal, cooked" }],
     ["milk", { id: "milk", source: "USDA", sourceExternalId: "milk", type: "GENERIC", isLocal: true, name: "Milk, whole" }],
+    ["cinnamon", { id: "cinnamon", source: "USDA", sourceExternalId: "cinnamon", type: "GENERIC", isLocal: true, name: "Cinnamon, ground" }],
     ["banana", { id: "banana", source: "USDA", sourceExternalId: "banana", type: "GENERIC", isLocal: true, name: "Banana, raw" }],
     ["honey", { id: "honey", source: "USDA", sourceExternalId: "honey", type: "GENERIC", isLocal: true, name: "Honey" }],
   ] as const;
   assert.deepEqual(
     concepts.map(([query, candidate]) => selectNutritionFoodCandidate(query, [candidate])?.id),
-    ["oats", "milk", "banana", "honey"]
+    ["oats", "milk", "cinnamon", "banana", "honey"]
   );
 });
 

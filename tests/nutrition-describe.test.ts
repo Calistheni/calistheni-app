@@ -27,8 +27,8 @@ test("Describe parses natural language, resolves canonical foods, and keeps revi
   assert.match(workflow, /salmon with potatoes/);
   assert.match(workflow, /onSubmit/);
   assert.match(workflow, /\/api\/nutrition\/describe/);
-  assert.match(workflow, /\[detected\.preparation, detected\.label\]/);
-  assert.match(workflow, /resolveCanonicalFood\(query\)/);
+  assert.match(workflow, /detected\.food\?\.id/);
+  assert.doesNotMatch(workflow, /resolveCanonicalFood\(query\)/);
   assert.match(workflow, /detected\.estimatedGrams \?\? serving\?\.grams \?\? 100/);
   assert.match(workflow, /quantityHint/);
   assert.match(workflow, /DraftSearch/);
@@ -47,12 +47,37 @@ test("Describe parses natural language, resolves canonical foods, and keeps revi
   assert.match(route, /reserveNutritionAiQuota/);
   assert.match(route, /releaseNutritionAiQuota\(reservation\)/);
   assert.match(route, /describeNutritionMeal/);
+  assert.match(route, /resolveDescribedFoods/);
+  assert.match(route, /if \(!extracted\) await releaseNutritionAiQuota/);
   assert.match(schema, /estimatedGrams/);
   assert.doesNotMatch(schema, /caloriesKcal/);
   assert.match(provider, /OPENAI_NUTRITION_DESCRIBE_MODEL/);
+  assert.match(provider, /selectDescribeNutritionCandidates/);
+  assert.match(provider, /Choose only from the supplied candidate IDs/);
   assert.match(provider, /Do not return calories, macros/);
   assert.match(schema, /required: \["label", "preparation", "estimatedGrams", "quantityText"\]/);
   assert.match(schema, /anyOf: \[\{ type: "string" \}, \{ type: "null" \}\]/);
+});
+
+test("Describe resolves from a shared top-five candidate list, uses an opaque batch selector, and falls back safely", async () => {
+  const [resolver, schema] = await Promise.all([
+    readFile(new URL("../lib/nutrition/describe-resolver.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/nutrition/describe.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(resolver, /NUTRITION_DESCRIBE_CANDIDATE_LIMIT = 5/);
+  assert.match(resolver, /getNutritionCandidatesForIntent\(query, NUTRITION_DESCRIBE_CANDIDATE_LIMIT\)/);
+  assert.match(resolver, /rankNutritionFoodCandidates/);
+  assert.match(resolver, /getObviousDescribeCandidate/);
+  assert.match(resolver, /NUTRITION_DESCRIBE_AUTO_MATCH_THRESHOLD/);
+  assert.match(resolver, /NUTRITION_DESCRIBE_AUTO_MATCH_MARGIN/);
+  assert.match(resolver, /selectDescribeNutritionCandidates/);
+  assert.match(resolver, /candidate_\$\{index \+ 1\}/);
+  assert.match(resolver, /selection\.confidence >= NUTRITION_DESCRIBE_AI_MATCH_THRESHOLD/);
+  assert.match(resolver, /Ambiguous concepts simply remain review-required/);
+  assert.match(resolver, /importExternalFood/);
+  assert.match(schema, /describeCandidateSelectionsSchema/);
+  assert.match(schema, /candidateId: z\.string\(\)\.trim\(\)\.min\(1\)\.max\(80\)\.nullable\(\)/);
+  assert.match(schema, /confidence: z\.number\(\)\.finite\(\)\.min\(0\)\.max\(1\)/);
 });
 
 test("Describe provider uses strict compatible output and keeps valid foods when another item is malformed", async () => {
