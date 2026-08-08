@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { classifyFoodQuery, deduplicateExternalFoodResults, isRelevantFoodResult, isUsdaGenericFood, rankExternalFoodResults, selectPrimaryGenericFood } from "../lib/nutrition/search-ranking.ts";
+import { classifyFoodQuery, deduplicateExternalFoodResults, isRelevantFoodResult, isUsdaGenericFood, limitFoodSearchResults, NUTRITION_SEARCH_RESULT_LIMIT, rankExternalFoodResults, selectPrimaryGenericFood } from "../lib/nutrition/search-ranking.ts";
 import { foodResultClassification, meaningfulFoodBrand } from "../lib/nutrition/food-display.ts";
 import type { ExternalFoodResult, FoodSummary } from "../lib/nutrition/types.ts";
 
@@ -48,6 +48,49 @@ test("generic USDA records lead generic staples while product searches elevate e
   assert.equal(rankExternalFoodResults("Coca-Cola Zero 330 ml", [generic, soda])[0]?.externalId, "coke");
 });
 
+test("broad staple searches prefer common prepared forms while explicit raw intent wins", () => {
+  const potatoes = [
+    food("USDA", "raw-potato", "Potatoes, russet, flesh and skin, raw"),
+    food("USDA", "boiled-potato", "Potatoes, boiled, cooked, without skin"),
+    food("USDA", "baked-potato", "Potato, baked, flesh and skin"),
+    food("USDA", "mashed-potato", "Potatoes, mashed, home-prepared"),
+  ];
+  assert.notEqual(rankExternalFoodResults("potatoes", potatoes)[0]?.externalId, "raw-potato");
+  assert.equal(rankExternalFoodResults("raw potatoes", potatoes)[0]?.externalId, "raw-potato");
+  assert.equal(rankExternalFoodResults("boiled potatoes", potatoes)[0]?.externalId, "boiled-potato");
+
+  const rice = [food("USDA", "rice-raw", "Rice, white, raw"), food("USDA", "rice-cooked", "Rice, white, cooked")];
+  const pasta = [food("USDA", "pasta-dry", "Pasta, dry"), food("USDA", "pasta-cooked", "Pasta, cooked")];
+  const chicken = [food("USDA", "chicken-raw", "Chicken breast, raw"), food("USDA", "chicken-cooked", "Chicken breast, roasted, cooked")];
+  assert.equal(rankExternalFoodResults("rice", rice)[0]?.externalId, "rice-cooked");
+  assert.equal(rankExternalFoodResults("pasta", pasta)[0]?.externalId, "pasta-cooked");
+  assert.equal(rankExternalFoodResults("chicken breast", chicken)[0]?.externalId, "chicken-cooked");
+  assert.equal(rankExternalFoodResults("raw chicken breast", chicken)[0]?.externalId, "chicken-raw");
+});
+
+test("naturally raw foods remain sensible generic matches instead of desserts or products", () => {
+  const bananas = [
+    food("USDA", "banana-raw", "Banana, raw"),
+    food("USDA", "banana-split", "Banana split"),
+    food("USDA", "banana-chips", "Banana chips"),
+    food("OPEN_FOOD_FACTS", "banana-product", "Banana pudding", { brandName: "Dessert Co" }),
+  ];
+  const apples = [food("USDA", "apple-raw", "Apple, raw"), food("USDA", "apple-pie", "Apple pie")];
+  assert.equal(rankExternalFoodResults("banana", bananas)[0]?.externalId, "banana-raw");
+  assert.equal(rankExternalFoodResults("apple", apples)[0]?.externalId, "apple-raw");
+});
+
+test("result limits apply after ranked categories and retain deterministic source-safe ordering", () => {
+  const genericResults = Array.from({ length: 18 }, (_, index) => ({ id: `g-${index}` }));
+  const localResults = Array.from({ length: 8 }, (_, index) => ({ id: `l-${index}` }));
+  const packagedResults = Array.from({ length: 8 }, (_, index) => ({ id: `p-${index}` }));
+  const limited = limitFoodSearchResults({ genericResults, localResults, packagedResults });
+  assert.equal(limited.genericResults.length + limited.localResults.length + limited.packagedResults.length, NUTRITION_SEARCH_RESULT_LIMIT);
+  assert.deepEqual(limited.genericResults.map((item) => item.id), genericResults.slice(0, 15).map((item) => item.id));
+  assert.deepEqual(limited.localResults.map((item) => item.id), []);
+  assert.deepEqual(limited.packagedResults.map((item) => item.id), ["p-0", "p-1", "p-2", "p-3", "p-4"]);
+});
+
 test("deduplicates only clear source or identical previews while keeping distinct preparations", () => {
   const local = [{ source: "USDA", sourceExternalId: "raw", name: "Apple, raw", brandName: null, nutritionPer100g: { caloriesKcal: 50, proteinGrams: 0.3, carbohydrateGrams: 14, fatGrams: 0.2 }, id: "local" }] as FoodSummary[];
   const raw = food("USDA", "raw", "Apple, raw");
@@ -91,4 +134,12 @@ test("search UI keeps request identity, aborts stale work, and renders generic b
   assert.match(source, /Updating results/);
   assert.match(page, /Nutrition data sources and terms/);
   assert.match(page, /\/nutrition\/data-sources/);
+});
+
+test("tracker picker keeps search controls outside a bounded shadcn result scroller", async () => {
+  const source = await import("node:fs/promises").then((fs) => fs.readFile(new URL("../components/nutrition/NutritionTracker.tsx", import.meta.url), "utf8"));
+  assert.match(source, /NUTRITION_SEARCH_RESULT_LIMIT/);
+  assert.match(source, /<ScrollArea className="h-\[min\(48dvh,26rem\)\] rounded-lg border"/);
+  assert.match(source, /aria-label="Food search results"/);
+  assert.match(source, /No foods found\. Try a more specific search\./);
 });

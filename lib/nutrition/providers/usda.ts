@@ -7,7 +7,7 @@ import {
 } from "@/lib/nutrition/normalization";
 import { ProviderError, providerFetch } from "./http";
 import type { ExternalFoodResult, NutritionValues } from "../types";
-import { resolveFoodIcon } from "../food-icons";
+import { preferredPreparationSearchTerm, scoreFoodResult } from "../search-ranking";
 
 const finiteNumber = z.preprocess(
   (value) => (typeof value === "string" && value.trim() !== "" ? Number(value) : value),
@@ -287,15 +287,9 @@ const dataTypeRank = (dataType: string | undefined) => {
 };
 
 const PREPARED_INTENT_TERMS = ["juice", "nectar", "pie", "dessert", "sauce", "syrup", "cake", "baby", "restaurant", "fast food"];
-const COMPLICATING_TERMS = ["canned", "sweetened", "syrup", "frozen", "baby", "restaurant", "fast food", "branded", "sauce", "juice", "nectar", "pie", "dessert", "mixed", "recipe", "powder", "concentrate"];
-const BASIC_TERMS = ["raw", "fresh"];
 
 function queryTokens(value: string) {
   return normalizeFoodQuery(value).split(/[\s-]+/).filter(Boolean);
-}
-
-function descriptionHasTerm(description: string, term: string) {
-  return new RegExp(`(?:^|\\s)${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:$|\\s)`, "i").test(normalizeFoodQuery(description));
 }
 
 function hasPreparedIntent(query: string) {
@@ -309,38 +303,15 @@ type UsdaSearchCandidate = {
   fromGenericFallback: boolean;
 };
 
-/**
- * Scores generic USDA previews for fast food logging. A raw, generic whole
- * food wins for a broad query; explicit prepared-food terms flip that bias.
- */
+/** Uses the same preparation-aware scorer as every nutrition search surface. */
 export function rankUsdaGenericResults(query: string, candidates: UsdaSearchCandidate[]) {
-  const normalizedQuery = normalizeFoodQuery(query);
-  const queryWords = queryTokens(query);
-  const preparedIntent = hasPreparedIntent(query);
-
   const score = (candidate: UsdaSearchCandidate) => {
-    const name = normalizeFoodQuery(candidate.result.name);
-    let value = 0;
-    if (name === normalizedQuery) value += 120;
-    else if (name.startsWith(`${normalizedQuery} `)) value += 80;
-
-    const matchedQueryWords = queryWords.filter((word) => descriptionHasTerm(name, word)).length;
-    value += matchedQueryWords * 12;
+    let value = scoreFoodResult(query, candidate.result);
     if (candidate.result.isComplete) value += 18;
     if (!candidate.result.brandName) value += 8;
     const typeRank = dataTypeRank(candidate.dataType);
     value += typeRank === 0 ? 12 : typeRank === 1 ? 10 : typeRank === 2 ? 7 : typeRank === 3 ? -8 : 0;
-
-    const isBasic = BASIC_TERMS.some((term) => descriptionHasTerm(name, term));
-    if (!preparedIntent && isBasic) value += 32;
-    if (candidate.fromGenericFallback && !preparedIntent && isBasic) value += 8;
-
-    for (const term of COMPLICATING_TERMS) {
-      if (descriptionHasTerm(name, term) && !queryWords.includes(term)) value -= 28;
-    }
-    value -= Math.max(0, name.length - 28) * 0.25;
-
-    if (resolveFoodIcon({ name: candidate.result.name, type: candidate.result.foodType, source: "USDA" })) value += 6;
+    if (candidate.fromGenericFallback) value += 3;
     return value;
   };
 
@@ -371,12 +342,11 @@ export async function searchUsdaFoods(query: string, limit = 8) {
   };
 
   const firstPage = await search(normalizedQuery);
-  // FDC's broad text ranking often puts branded products and prepared dishes
-  // ahead of a raw generic food (for example, "egg"). A narrowly scoped raw
-  // fallback only supplements that generic search; it never changes the
-  // external ID or trusts preview nutrients for imports.
+  // Supplement broad FDC results with the normal eaten form for cooked
+  // staples, while fruit and fresh vegetables retain the raw fallback.
+  const fallbackPreparation = preferredPreparationSearchTerm(normalizedQuery);
   const genericPage = !normalizedQuery.includes("raw") && !hasPreparedIntent(normalizedQuery) && normalizedQuery.split(" ").length <= 3
-    ? await search(`${normalizedQuery} raw`)
+    ? await search(`${normalizedQuery} ${fallbackPreparation ?? "raw"}`)
     : [];
   const seen = new Set<string>();
   const normalized = [
