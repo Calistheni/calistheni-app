@@ -334,7 +334,7 @@ export async function searchUsdaFoods(query: string, limit = 8) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         query: searchQuery,
-        pageSize: Math.min(Math.max(limit * 3, 12), 36),
+        pageSize: Math.min(Math.max(limit * 3, 12), 100),
         dataType: ["Foundation", "SR Legacy", "Survey (FNDDS)", "Branded"],
       }),
     });

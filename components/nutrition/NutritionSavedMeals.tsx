@@ -90,11 +90,11 @@ async function searchFoods(query: string) {
   );
   if (!response.ok) throw new Error("Unable to search foods.");
   const data = await response.json();
-  return [
+  return (data.results ?? [
     ...(data.genericResults ?? []),
     ...(data.localResults ?? []),
     ...(data.packagedResults ?? []),
-  ] as Food[];
+  ]) as Food[];
 }
 
 export function NutritionSavedMeals({

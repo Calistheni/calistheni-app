@@ -228,7 +228,7 @@ export async function getOpenFoodFactsProduct(barcode: string) {
 
 export async function searchOpenFoodFactsFoods(query: string, limit = 8) {
   const response = await providerFetch(
-    `${base()}/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=${Math.min(limit, 10)}&fields=${encodeURIComponent(fields)}`,
+    `${base()}/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=${Math.min(limit, 30)}&fields=${encodeURIComponent(fields)}`,
     { headers: headers() },
   );
   const parsed = searchResponseSchema.safeParse(await response.json());

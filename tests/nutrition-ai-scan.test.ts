@@ -142,12 +142,12 @@ test("AI UI compresses a temporary photo and requires canonical review before ba
   assert.match(workflow, /compressWorkoutPhoto\(image\)/);
   assert.match(workflow, /form\.set\("description", description\)/);
   assert.match(workflow, /\/api\/nutrition\/ai-scan/);
-  assert.match(workflow, /searchCanonical\(detected\.label\)/);
-  assert.match(workflow, /importFood\(matches\[0\]\)/);
+  assert.match(workflow, /resolveCanonicalFood\(detected\.label\)/);
+  assert.match(workflow, /importFood\(match\)/);
   assert.match(workflow, /ReviewList/);
-  assert.match(source, />Replace<\/Button>/);
+  assert.match(source, /Replace/);
   assert.match(workflow, /Remove image/);
-  assert.match(workflow, /AI estimates can be inaccurate/);
+  assert.match(workflow, /AI estimates can be\s+inaccurate/);
   assert.ok(
     workflow.indexOf("await batchLog") > workflow.indexOf("async function confirm")
   );

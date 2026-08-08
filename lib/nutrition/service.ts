@@ -1,12 +1,12 @@
 import { FoodDataValueSource, FoodFreshnessStatus, FoodImportStatus, FoodRevisionReason, FoodSource, FoodType, FoodVerificationStatus, Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { isMaterialFoodChange, normalizeFoodQuery } from "./normalization";
+import { isMaterialFoodChange, normalizeFoodQuery, nutritionFoodQueryVariants } from "./normalization";
 import { getOpenFoodFactsProduct, searchOpenFoodFactsFoods } from "./providers/open-food-facts";
 import { ProviderError } from "./providers/http";
 import { getUsdaFood, searchUsdaFoods } from "./providers/usda";
 import { resolveFoodIcon } from "./food-icons";
 import type { ExternalFoodResult, FoodSearchResponse, FoodSummary, NutritionValues, ProviderState } from "./types";
-import { classifyFoodQuery, deduplicateExternalFoodResults, isPackagedFoodResult, isRelevantFoodResult, isUsdaGenericFood, limitFoodSearchResults, rankExternalFoodResults, selectPrimaryGenericFood, withSearchMetadata } from "./search-ranking";
+import { classifyFoodQuery, deduplicateExternalFoodResults, diversifyNutritionFoodCandidates, isPackagedFoodResult, isRelevantFoodResult, isUsdaGenericFood, limitFoodSearchResults, NUTRITION_PROVIDER_CANDIDATE_LIMIT, NUTRITION_SEARCH_RESULT_LIMIT, rankExternalFoodResults, rankNutritionFoodCandidates, selectPrimaryGenericFood, withSearchMetadata } from "./search-ranking";
 
 const providerFor = (provider: ExternalFoodResult["provider"]) => provider === "USDA" ? FoodSource.USDA : FoodSource.OPEN_FOOD_FACTS;
 const daysFor = (food: { source: FoodSource; type: FoodType; importStatus: FoodImportStatus }) => food.importStatus === FoodImportStatus.INCOMPLETE ? 7 : food.source === FoodSource.OPEN_FOOD_FACTS ? Number(process.env.OPEN_FOOD_FACTS_REVALIDATE_DAYS ?? 30) : food.type === FoodType.BRANDED ? 60 : Number(process.env.USDA_REVALIDATE_DAYS ?? 180);
@@ -51,16 +51,16 @@ export function withResolvedFoodIcon(result: ExternalFoodResult): ExternalFoodRe
   return icon ? { ...result, genericIcon: { key: icon.key, url: icon.url, match: icon.match } } : result;
 }
 export function toFoodSummary(food: Record<string, unknown>): FoodSummary { const next = food.nextRevalidateAt instanceof Date ? food.nextRevalidateAt : null; return { id: String(food.id), name: String(food.name), brandName: food.brandName ? String(food.brandName) : null, barcode: food.barcode ? String(food.barcode) : null, imageUrl: productImageFromRecord(food), genericIcon: foodIconReference(food), servings: servingsFromRecord(food), type: String(food.type), source: String(food.source), sourceExternalId: String(food.sourceExternalId), verificationStatus: String(food.verificationStatus), freshnessStatus: String(food.freshnessStatus), confidenceScore: Number(food.confidenceScore), nutritionPer100g: nutritionFromRecord(food), importedAt: (food.importedAt as Date).toISOString(), lastRevalidatedAt: food.lastRevalidatedAt ? (food.lastRevalidatedAt as Date).toISOString() : null, nextRevalidateAt: next?.toISOString() ?? null, currentRevisionId: food.currentRevisionId ? String(food.currentRevisionId) : null, isLocal: true, revalidationRecommended: !next || next <= new Date() }; }
-export async function searchFoods(query: string): Promise<FoodSearchResponse> {
-  const normalized = normalizeFoodQuery(query);
-  const localRequest = prisma.food.findMany({
+async function findLocalFoods(normalized: string) {
+  const terms = nutritionFoodQueryVariants(normalized);
+  const localFoods = await prisma.food.findMany({
     where: {
-      OR: [
-        { normalizedName: { contains: normalized } },
-        { name: { contains: normalized, mode: "insensitive" } },
-        { brandName: { contains: normalized, mode: "insensitive" } },
-        { aliases: { some: { normalizedName: { contains: normalized } } } },
-      ],
+      OR: terms.flatMap((term) => [
+        { normalizedName: { contains: term } },
+        { name: { contains: term, mode: "insensitive" as const } },
+        { brandName: { contains: term, mode: "insensitive" as const } },
+        { aliases: { some: { normalizedName: { contains: term } } } },
+      ]),
     },
     include: {
       aliases: { select: { name: true } },
@@ -68,9 +68,25 @@ export async function searchFoods(query: string): Promise<FoodSearchResponse> {
       servings: { select: { name: true, quantity: true, grams: true, householdUnit: true } },
     },
     orderBy: [{ selectionCount: "desc" }, { updatedAt: "desc" }],
-    take: 12,
+    take: 20,
   });
-  const [local, usda, off] = await Promise.allSettled([localRequest, searchUsdaFoods(normalized), searchOpenFoodFactsFoods(normalized)]);
+  return localFoods.map((food) => toFoodSummary(food));
+}
+
+/** Local canonical candidates used before any Describe/AI provider fallback. */
+export async function searchLocalFoods(query: string) {
+  const normalized = normalizeFoodQuery(query);
+  return rankNutritionFoodCandidates(normalized, await findLocalFoods(normalized));
+}
+
+export async function searchFoods(query: string): Promise<FoodSearchResponse> {
+  const normalized = normalizeFoodQuery(query);
+  const localRequest = findLocalFoods(normalized);
+  const [local, usda, off] = await Promise.allSettled([
+    localRequest,
+    searchUsdaFoods(normalized, NUTRITION_PROVIDER_CANDIDATE_LIMIT),
+    searchOpenFoodFactsFoods(normalized, NUTRITION_PROVIDER_CANDIDATE_LIMIT),
+  ]);
   const state = (result: PromiseSettledResult<ExternalFoodResult[]>, configured = true): ProviderState => {
     if (result.status === "fulfilled") return { attempted: true, available: true, error: null };
     const code = result.reason instanceof ProviderError ? result.reason.code : "UNAVAILABLE";
@@ -80,7 +96,9 @@ export async function searchFoods(query: string): Promise<FoodSearchResponse> {
       error: code === "TIMEOUT" || code === "RATE_LIMITED" ? code : "UNAVAILABLE",
     };
   };
-  const localResults = local.status === "fulfilled" ? local.value.map((food) => toFoodSummary(food)) : [];
+  // findLocalFoods already returns canonical FoodSummary DTOs. Re-serializing
+  // them would treat ISO timestamps as Dates and drop the whole local branch.
+  const localResults = local.status === "fulfilled" ? local.value : [];
   const providerResults = deduplicateExternalFoodResults(localResults, [
     ...(usda.status === "fulfilled" ? usda.value : []),
     ...(off.status === "fulfilled" ? off.value : []),
@@ -88,7 +106,17 @@ export async function searchFoods(query: string): Promise<FoodSearchResponse> {
   const rankedGenericResults = rankExternalFoodResults(normalized, providerResults.filter(isUsdaGenericFood));
   const primaryGeneric = selectPrimaryGenericFood(normalized, rankedGenericResults);
   const genericResults = primaryGeneric ? [primaryGeneric, ...rankedGenericResults.filter((food) => food.externalId !== primaryGeneric.externalId)] : rankedGenericResults;
-  const packagedResults = rankExternalFoodResults(normalized, providerResults.filter(isPackagedFoodResult)).slice(0, 8);
+  const rankedPackagedResults = rankExternalFoodResults(normalized, providerResults.filter(isPackagedFoodResult));
+  const packagedResults = rankedPackagedResults.slice(0, 8);
+  // Rank the complete preview pool before applying the user-visible budget.
+  // Describe and AI use this same ordered list, so they never import a
+  // lower-ranked provider candidate merely because it appeared in an earlier
+  // source bucket.
+  const rankedResults = rankNutritionFoodCandidates(normalized, [
+    ...genericResults,
+    ...localResults,
+    ...rankedPackagedResults,
+  ]);
   const limited = limitFoodSearchResults({ genericResults, localResults, packagedResults });
   const providers = { usda: state(usda, Boolean(process.env.USDA_FDC_API_KEY)), openFoodFacts: state(off) };
   const warnings = [
@@ -96,7 +124,8 @@ export async function searchFoods(query: string): Promise<FoodSearchResponse> {
     providers.usda.error ? "USDA results are temporarily unavailable." : null,
     providers.openFoodFacts.error ? "Packaged product results are temporarily unavailable." : null,
   ].filter((message): message is string => Boolean(message));
-  return { query: normalized, queryKind: classifyFoodQuery(normalized), ...limited, externalResults: [...limited.genericResults, ...limited.packagedResults], providers, warnings };
+  const results = diversifyNutritionFoodCandidates(rankedResults).slice(0, NUTRITION_SEARCH_RESULT_LIMIT);
+  return { query: normalized, queryKind: classifyFoodQuery(normalized), ...limited, results, externalResults: [...limited.genericResults, ...limited.packagedResults], providers, warnings };
 }
 async function fetchExternal(provider: "USDA" | "OPEN_FOOD_FACTS", externalId: string) { return provider === "USDA" ? getUsdaFood(externalId) : getOpenFoodFactsProduct(externalId); }
 const nutritionFields = ["caloriesKcal", "proteinGrams", "carbohydrateGrams", "fatGrams", "fiberGrams", "sugarGrams", "saturatedFatGrams", "transFatGrams", "addedSugarGrams", "sodiumMg", "saltGrams", "cholesterolMg", "potassiumMg", "calciumMg", "ironMg"] as const;

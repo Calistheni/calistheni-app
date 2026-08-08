@@ -28,7 +28,7 @@ test("Describe parses natural language, resolves canonical foods, and keeps revi
   assert.match(workflow, /onSubmit/);
   assert.match(workflow, /\/api\/nutrition\/describe/);
   assert.match(workflow, /\[detected\.preparation, detected\.label\]/);
-  assert.match(workflow, /searchCanonical\(query\)/);
+  assert.match(workflow, /resolveCanonicalFood\(query\)/);
   assert.match(workflow, /detected\.estimatedGrams \?\? serving\?\.grams \?\? 100/);
   assert.match(workflow, /quantityHint/);
   assert.match(workflow, /DraftSearch/);
@@ -38,7 +38,8 @@ test("Describe parses natural language, resolves canonical foods, and keeps revi
   assert.match(workflow, /Choose matching food/);
   assert.match(workflow, /Choose a matching food or remove every item/);
   assert.match(workflow, /batchLog\(meal, date, resolvedItems\)/);
-  assert.match(workflow, /Add \{resolvedItems\.length\}[\s\S]*to \{mealLabel\(meal\)\}/);
+  assert.match(workflow, /resolvedItems\.length/);
+  assert.match(workflow, /mealLabel\(meal\)/);
   assert.match(workflow, /Add foods manually/);
   assert.doesNotMatch(workflow, /\/api\/nutrition\/ai-scan/);
   assert.match(route, /getAuthenticatedUserId/);

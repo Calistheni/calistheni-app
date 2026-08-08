@@ -391,7 +391,7 @@ function FoodPicker({ meal, date, close, onAddEntries, quickActionCapabilities }
       const response = await fetch(path, { cache: "no-store" });
       if (!response.ok) return;
       const data = await response.json();
-      setFoods(deduplicateFoodResults(query.trim().length >= 2 ? [...(data.genericResults ?? []), ...(data.localResults ?? []), ...(data.packagedResults ?? [])] : data.foods ?? []).slice(0, NUTRITION_SEARCH_RESULT_LIMIT) as Food[]);
+      setFoods(deduplicateFoodResults(query.trim().length >= 2 ? data.results ?? [...(data.genericResults ?? []), ...(data.localResults ?? []), ...(data.packagedResults ?? [])] : data.foods ?? []).slice(0, NUTRITION_SEARCH_RESULT_LIMIT) as Food[]);
     }, 250);
     return () => window.clearTimeout(timer);
   }, [meal, query]);
