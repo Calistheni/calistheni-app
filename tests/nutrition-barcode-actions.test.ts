@@ -78,7 +78,7 @@ test("native Barcode opens a continuous rear-camera scanner and locks the first 
   ]);
   assert.match(workflow, /canUseNativeLiveBarcodeScanner/);
   assert.match(workflow, /getNativeBarcodeScannerAvailability/);
-  assert.match(workflow, /const allowPhotoFallback\s*=\s*!getNativeBarcodeScannerAvailability\(\)\.nativePlatform/);
+  assert.match(workflow, /const allowPhotoFallback\s*=\s*!nativeRuntime/);
   assert.match(workflow, /startNativeLiveBarcodeScanner/);
   assert.match(workflow, /scanLocked\.current/);
   assert.match(workflow, /stopNativeLiveBarcodeScanner/);
@@ -105,4 +105,25 @@ test("native Barcode opens a continuous rear-camera scanner and locks the first 
   assert.match(nativeScanner, /NutritionBarcodeScanner/);
   assert.match(manifest, /android\.permission\.CAMERA/);
   assert.match(manifest, /com\.google\.mlkit\.vision\.DEPENDENCIES/);
+});
+
+test("a native bridge failure remains an explicit scanner error instead of silently opening manual entry", async () => {
+  const [workflow, nativeScanner] = await Promise.all([
+    readFile(quickActionsUrl, "utf8"),
+    readFile(new URL("../lib/native/barcode-scanner.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(workflow, /const showNativeStartupError\s*=/);
+  assert.match(workflow, /!nativeRuntime/);
+  assert.match(workflow, /Live barcode scanner failed to start/);
+  assert.match(workflow, /This installed app does not include the native live barcode scanner/);
+  assert.match(workflow, /setManualMode\(true\);[\s\S]*setNativeScanner\(false\);[\s\S]*setError\(""\)/);
+  assert.doesNotMatch(
+    workflow,
+    /setManualMode\(true\);\s*setError\(\s*"Live barcode scanning is unavailable/
+  );
+  assert.match(nativeScanner, /\[BarcodeScanner\]/);
+  assert.match(nativeScanner, /pluginAvailable/);
+  assert.match(nativeScanner, /startScan called/);
+  assert.match(nativeScanner, /permission checked/);
 });

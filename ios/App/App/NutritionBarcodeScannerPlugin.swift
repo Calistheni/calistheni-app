@@ -1,6 +1,7 @@
 import AVFoundation
 import Capacitor
 import UIKit
+import WebKit
 
 @objc(NutritionBarcodeScannerPlugin)
 public class NutritionBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptureMetadataOutputObjectsDelegate {
@@ -22,6 +23,10 @@ public class NutritionBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptu
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private var camera: AVCaptureDevice?
     private var configured = false
+    private weak var previewWebView: WKWebView?
+    private var originalWebViewIsOpaque = true
+    private var originalWebViewBackgroundColor: UIColor?
+    private var originalScrollViewBackgroundColor: UIColor?
 
     @objc func isSupported(_ call: CAPPluginCall) { call.resolve(["supported": true]) }
     @objc public override func checkPermissions(_ call: CAPPluginCall) { call.resolve(["camera": permission()]) }
@@ -66,12 +71,33 @@ public class NutritionBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptu
     }
     private func showPreview() {
         guard let webView, let superview = webView.superview else { return }
-        webView.isOpaque = false; webView.backgroundColor = .clear; webView.scrollView.backgroundColor = .clear
+        previewLayer?.removeFromSuperlayer()
+        previewWebView = webView
+        originalWebViewIsOpaque = webView.isOpaque
+        originalWebViewBackgroundColor = webView.backgroundColor
+        originalScrollViewBackgroundColor = webView.scrollView.backgroundColor
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.scrollView.backgroundColor = .clear
         let preview = AVCaptureVideoPreviewLayer(session: session)
-        preview.videoGravity = .resizeAspectFill; preview.frame = superview.bounds
-        superview.layer.insertSublayer(preview, below: webView.layer); previewLayer = preview
+        preview.videoGravity = .resizeAspectFill
+        preview.frame = superview.bounds
+        superview.layer.insertSublayer(preview, below: webView.layer)
+        previewLayer = preview
     }
-    private func stop() { DispatchQueue.main.async { self.session.stopRunning(); self.previewLayer?.removeFromSuperlayer(); self.previewLayer = nil } }
+    private func stop() {
+        DispatchQueue.main.async {
+            self.session.stopRunning()
+            self.previewLayer?.removeFromSuperlayer()
+            self.previewLayer = nil
+            if let webView = self.previewWebView {
+                webView.isOpaque = self.originalWebViewIsOpaque
+                webView.backgroundColor = self.originalWebViewBackgroundColor
+                webView.scrollView.backgroundColor = self.originalScrollViewBackgroundColor
+            }
+            self.previewWebView = nil
+        }
+    }
     public func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
         guard let value = (metadataObjects.first as? AVMetadataMachineReadableCodeObject)?.stringValue else { return }
         notifyListeners("barcodesScanned", data: ["barcodes": [["displayValue": value]]])

@@ -89,6 +89,7 @@
 			buildPhases = (
 				504EC3001FED79650016851F /* Sources */,
 				504EC3011FED79650016851F /* Frameworks */,
+				A10000000000000000000005 /* Register Nutrition Barcode Scanner */,
 				504EC3021FED79650016851F /* Resources */,
 			);
 			buildRules = (
@@ -155,6 +156,23 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		A10000000000000000000005 /* Register Nutrition Barcode Scanner */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Register Nutrition Barcode Scanner";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "CONFIG=\"$SRCROOT/App/capacitor.config.json\"\nif ! /usr/bin/grep -q '\"NutritionBarcodeScannerPlugin\"' \"$CONFIG\"; then\n  /usr/bin/plutil -insert packageClassList.8 -string NutritionBarcodeScannerPlugin \"$CONFIG\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		504EC3001FED79650016851F /* Sources */ = {

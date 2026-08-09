@@ -484,10 +484,12 @@ function BarcodeWorkflow({
   const [torchOn, setTorchOn] = useState(false);
   const scanLocked = useRef(false);
   const lookupRef = useRef<(value: string) => void>(() => undefined);
+  const nativeAvailability = getNativeBarcodeScannerAvailability();
+  const nativeRuntime = nativeAvailability.nativePlatform;
   // Native Barcode is intentionally live-only. Image decoding is retained for
   // desktop browsers, where the Capacitor camera bridge is unavailable.
   const allowPhotoFallback =
-    !getNativeBarcodeScannerAvailability().nativePlatform;
+    !nativeRuntime;
   const liveScannerVisible =
     nativeScanner ||
     (open &&
@@ -495,7 +497,7 @@ function BarcodeWorkflow({
       !error &&
       !manualMode &&
       !scanLocked.current &&
-      canUseNativeLiveBarcodeScanner());
+      nativeRuntime);
   function reset() {
     scanLocked.current = false;
     setNativeScanner(false);
@@ -524,8 +526,13 @@ function BarcodeWorkflow({
   });
   useEffect(() => {
     if (process.env.NODE_ENV !== "development" || !open) return;
-    console.info("Nutrition barcode scanner", getNativeBarcodeScannerAvailability());
-  }, [open]);
+    console.info("[BarcodeScanner]", {
+      platform: nativeAvailability.platform,
+      isNativePlatform: nativeAvailability.nativePlatform,
+      pluginName: nativeAvailability.pluginName,
+      pluginAvailable: nativeAvailability.pluginAvailable,
+    });
+  }, [open, nativeAvailability.nativePlatform, nativeAvailability.platform, nativeAvailability.pluginAvailable, nativeAvailability.pluginName]);
   useEffect(() => {
     if (
       !open ||
@@ -533,12 +540,11 @@ function BarcodeWorkflow({
       error ||
       manualMode ||
       scanLocked.current ||
-      !canUseNativeLiveBarcodeScanner() ||
+      !nativeRuntime ||
       nativeScanner
     ) {
       return;
     }
-    if (!usesNativeBarcodeCameraLayer()) return;
     let cancelled = false;
     void startNativeLiveBarcodeScanner((value) => {
       if (cancelled || scanLocked.current) return;
@@ -558,9 +564,8 @@ function BarcodeWorkflow({
       } else if (result.reason === "denied") {
         setError("Camera access is required to scan barcodes.");
       } else {
-        setManualMode(true);
         setError(
-          "Live barcode scanning is unavailable on this device. Enter the barcode manually."
+          result.detail ?? "Live barcode scanner failed to start."
         );
       }
     });
@@ -568,9 +573,9 @@ function BarcodeWorkflow({
       cancelled = true;
       void stopNativeLiveBarcodeScanner();
     };
-  }, [open, food, error, manualMode, nativeScanner]);
+  }, [open, food, error, manualMode, nativeScanner, nativeRuntime]);
   useEffect(() => {
-    if (!open || !canUseNativeLiveBarcodeScanner()) return;
+    if (!open || !nativeAvailability.pluginAvailable) return;
     let handle: { remove: () => Promise<void> } | undefined;
     void App.addListener("appStateChange", ({ isActive }) => {
       if (!isActive && (nativeScanner || liveScannerVisible)) {
@@ -584,7 +589,7 @@ function BarcodeWorkflow({
     return () => {
       void handle?.remove();
     };
-  }, [open, nativeScanner, liveScannerVisible]);
+  }, [open, nativeScanner, liveScannerVisible, nativeAvailability.pluginAvailable]);
   async function lookup(value: string) {
     const barcode = value.replaceAll(/\s/g, "");
     if (!/^\d{8,14}$/.test(barcode))
@@ -722,13 +727,17 @@ function BarcodeWorkflow({
       </Sheet>
     );
   }
+  const showNativeStartupError =
+    nativeRuntime && Boolean(error) && !manualMode;
   return (
     <Sheet open={open} onOpenChange={(value) => !value && dismiss()}>
       <NutritionMobileSheet
         header={<SheetHeader>
           <SheetTitle>Barcode</SheetTitle>
           <SheetDescription>
-            Scan a barcode from a photo or enter the number manually.
+            {nativeRuntime
+              ? "Scan a barcode live with your camera. Manual entry is available if needed."
+              : "Scan a barcode from a photo or enter the number manually."}
           </SheetDescription>
         </SheetHeader>}
         footer={
@@ -745,7 +754,50 @@ function BarcodeWorkflow({
         }
       >
         <div className="space-y-4">
-          {phase === "looking" && scanLocked.current && !food ? (
+          {showNativeStartupError ? (
+            <>
+              <Alert>
+                <AlertTitle>
+                  {error === "Camera access is required to scan barcodes."
+                    ? "Camera access required"
+                    : "Live barcode scanner failed to start"}
+                </AlertTitle>
+                <AlertDescription>
+                  {error ||
+                    "This installed app does not include the native live barcode scanner."}
+                </AlertDescription>
+              </Alert>
+              <div className="flex flex-wrap gap-2">
+                {error === "Camera access is required to scan barcodes." ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void openNativeBarcodeSettings()}
+                  >
+                    Open Settings
+                  </Button>
+                ) : null}
+                <Button size="sm" variant="outline" onClick={reset}>
+                  Try again
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    void stopNativeLiveBarcodeScanner();
+                    setManualMode(true);
+                    setNativeScanner(false);
+                    setError("");
+                  }}
+                >
+                  Enter manually
+                </Button>
+                <Button size="sm" variant="ghost" onClick={dismiss}>
+                  Cancel
+                </Button>
+              </div>
+            </>
+          ) : phase === "looking" && scanLocked.current && !food ? (
             <div className="space-y-3 py-8 text-center">
               <CheckCircle2 className="mx-auto size-10 text-primary" aria-hidden="true" />
               <p className="font-medium">Barcode found</p>
@@ -858,7 +910,7 @@ function BarcodeWorkflow({
             </TabsContent>
           </Tabs>
           )}
-          {error ? (
+          {error && !showNativeStartupError ? (
             <>
               <Alert>
                 <AlertTitle>Barcode unavailable</AlertTitle>
