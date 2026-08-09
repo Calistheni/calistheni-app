@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { App } from "@capacitor/app";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -566,6 +567,22 @@ function BarcodeWorkflow({
       void stopNativeLiveBarcodeScanner();
     };
   }, [open, food, error, manualMode, nativeScanner]);
+  useEffect(() => {
+    if (!open || !canUseNativeLiveBarcodeScanner()) return;
+    let handle: { remove: () => Promise<void> } | undefined;
+    void App.addListener("appStateChange", ({ isActive }) => {
+      if (!isActive && (nativeScanner || liveScannerVisible)) {
+        void stopNativeLiveBarcodeScanner();
+        setNativeScanner(false);
+        setError("Scanner paused while Calistheni was in the background. Tap Scan again to restart.");
+      }
+    }).then((registered) => {
+      handle = registered;
+    });
+    return () => {
+      void handle?.remove();
+    };
+  }, [open, nativeScanner, liveScannerVisible]);
   async function lookup(value: string) {
     const barcode = value.replaceAll(/\s/g, "");
     if (!/^\d{8,14}$/.test(barcode))
