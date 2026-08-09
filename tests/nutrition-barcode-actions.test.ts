@@ -117,7 +117,7 @@ test("a native bridge failure remains an explicit scanner error instead of silen
   assert.match(workflow, /!nativeRuntime/);
   assert.match(workflow, /Live barcode scanner failed to start/);
   assert.match(workflow, /This installed app does not include the native live barcode scanner/);
-  assert.match(workflow, /setManualMode\(true\);[\s\S]*setNativeScanner\(false\);[\s\S]*setError\(""\)/);
+  assert.match(workflow, /endNativeScannerSession\("manual-entry"\);[\s\S]*setManualMode\(true\)/);
   assert.doesNotMatch(
     workflow,
     /setManualMode\(true\);\s*setError\(\s*"Live barcode scanning is unavailable/
@@ -126,4 +126,39 @@ test("a native bridge failure remains an explicit scanner error instead of silen
   assert.match(nativeScanner, /pluginAvailable/);
   assert.match(nativeScanner, /startScan called/);
   assert.match(nativeScanner, /permission checked/);
+});
+
+test("native scanner lifetime is independent of startup state updates and stops only for a real session end", async () => {
+  const [workflow, nativeScanner, iosPlugin] = await Promise.all([
+    readFile(quickActionsUrl, "utf8"),
+    readFile(new URL("../lib/native/barcode-scanner.ts", import.meta.url), "utf8"),
+    readFile(
+      new URL("../ios/App/App/NutritionBarcodeScannerPlugin.swift", import.meta.url),
+      "utf8"
+    ),
+  ]);
+  const barcodeWorkflow = workflow.slice(
+    workflow.indexOf("function BarcodeWorkflow"),
+    workflow.indexOf("function FoodAmountCard")
+  );
+
+  assert.match(barcodeWorkflow, /scannerSessionRef/);
+  assert.match(barcodeWorkflow, /scannerActiveRef/);
+  assert.match(barcodeWorkflow, /scannerSessionVersion/);
+  assert.match(barcodeWorkflow, /endNativeScannerSession\("barcode-detected"\)/);
+  assert.match(barcodeWorkflow, /endNativeScannerSession\("manual-entry"\)/);
+  assert.match(barcodeWorkflow, /endNativeScannerSession\("app-background"\)/);
+  assert.match(barcodeWorkflow, /endNativeScannerSession\("scanner-session-cleanup"\)/);
+  assert.match(barcodeWorkflow, /\[open, nativeRuntime, scannerSessionVersion, endNativeScannerSession\]/);
+  assert.doesNotMatch(
+    barcodeWorkflow,
+    /\[open, food, error, manualMode, nativeScanner, nativeRuntime\]/
+  );
+  assert.match(nativeScanner, /startAttempt/);
+  assert.match(nativeScanner, /AbortSignal/);
+  assert.match(nativeScanner, /stop requested/);
+  assert.match(iosPlugin, /sessionQueue/);
+  assert.match(iosPlugin, /sessionQueue startRunning begin/);
+  assert.match(iosPlugin, /sessionQueue stopRunning/);
+  assert.match(iosPlugin, /preview layer attached/);
 });

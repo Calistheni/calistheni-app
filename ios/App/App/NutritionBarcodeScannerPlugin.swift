@@ -20,6 +20,7 @@ public class NutritionBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptu
     ]
 
     private let session = AVCaptureSession()
+    private let sessionQueue = DispatchQueue(label: "com.calistheni.nutrition-barcode.capture-session")
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private var camera: AVCaptureDevice?
     private var configured = false
@@ -28,6 +29,12 @@ public class NutritionBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptu
     private var originalWebViewBackgroundColor: UIColor?
     private var originalScrollViewBackgroundColor: UIColor?
 
+    private func debugLog(_ message: String) {
+        #if DEBUG
+        print("[BarcodeScanner] \(message)")
+        #endif
+    }
+
     @objc func isSupported(_ call: CAPPluginCall) { call.resolve(["supported": true]) }
     @objc public override func checkPermissions(_ call: CAPPluginCall) { call.resolve(["camera": permission()]) }
     @objc public override func requestPermissions(_ call: CAPPluginCall) {
@@ -35,23 +42,53 @@ public class NutritionBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptu
     }
     @objc func startScan(_ call: CAPPluginCall) {
         guard permission() == "granted" else { call.reject("Camera permission is required."); return }
-        DispatchQueue.main.async { [weak self] in
+        debugLog("plugin startScan entered")
+        sessionQueue.async { [weak self] in
             guard let self else { return }
             do {
                 try self.configureIfNeeded()
-                self.showPreview()
-                if !self.session.isRunning { self.session.startRunning() }
+                var previewAttached = false
+                DispatchQueue.main.sync { previewAttached = self.showPreview() }
+                guard previewAttached else {
+                    throw NSError(
+                        domain: "Calistheni.NutritionBarcodeScanner",
+                        code: 2,
+                        userInfo: [NSLocalizedDescriptionKey: "Unable to attach the camera preview."]
+                    )
+                }
+                if !self.session.isRunning {
+                    self.debugLog("sessionQueue startRunning begin")
+                    self.session.startRunning()
+                }
+                self.debugLog("capture session started: \(self.session.isRunning)")
                 call.resolve()
-            } catch { call.reject("Unable to start the rear camera.", nil, error) }
+            } catch {
+                self.debugLog("capture session failed to start: \(error.localizedDescription)")
+                call.reject("Unable to start the rear camera.", nil, error)
+            }
         }
     }
-    @objc func stopScan(_ call: CAPPluginCall) { stop(); call.resolve() }
-    @objc func isTorchAvailable(_ call: CAPPluginCall) { call.resolve(["available": camera?.hasTorch ?? false]) }
-    @objc func toggleTorch(_ call: CAPPluginCall) {
-        guard let camera, camera.hasTorch else { call.resolve(); return }
-        do { try camera.lockForConfiguration(); camera.torchMode = camera.torchMode == .on ? .off : .on; camera.unlockForConfiguration(); call.resolve() } catch { call.reject("Unable to change flash.", nil, error) }
+    @objc func stopScan(_ call: CAPPluginCall) {
+        debugLog("stopScan entered")
+        stop { call.resolve() }
     }
-    @objc func isTorchEnabled(_ call: CAPPluginCall) { call.resolve(["enabled": camera?.torchMode == .on]) }
+    @objc func isTorchAvailable(_ call: CAPPluginCall) {
+        sessionQueue.async { [weak self] in call.resolve(["available": self?.camera?.hasTorch ?? false]) }
+    }
+    @objc func toggleTorch(_ call: CAPPluginCall) {
+        sessionQueue.async { [weak self] in
+            guard let self, let camera = self.camera, camera.hasTorch else { call.resolve(); return }
+            do {
+                try camera.lockForConfiguration()
+                camera.torchMode = camera.torchMode == .on ? .off : .on
+                camera.unlockForConfiguration()
+                call.resolve()
+            } catch { call.reject("Unable to change flash.", nil, error) }
+        }
+    }
+    @objc func isTorchEnabled(_ call: CAPPluginCall) {
+        sessionQueue.async { [weak self] in call.resolve(["enabled": self?.camera?.torchMode == .on]) }
+    }
     @objc func openSettings(_ call: CAPPluginCall) { if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }; call.resolve() }
 
     private func permission() -> String { switch AVCaptureDevice.authorizationStatus(for: .video) { case .authorized: return "granted"; case .notDetermined: return "prompt"; default: return "denied" } }
@@ -69,8 +106,9 @@ public class NutritionBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptu
         session.commitConfiguration()
         configured = true
     }
-    private func showPreview() {
-        guard let webView, let superview = webView.superview else { return }
+    @discardableResult
+    private func showPreview() -> Bool {
+        guard let webView, let superview = webView.superview else { return false }
         previewLayer?.removeFromSuperlayer()
         previewWebView = webView
         originalWebViewIsOpaque = webView.isOpaque
@@ -84,18 +122,27 @@ public class NutritionBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptu
         preview.frame = superview.bounds
         superview.layer.insertSublayer(preview, below: webView.layer)
         previewLayer = preview
+        debugLog("preview layer attached")
+        return true
     }
-    private func stop() {
-        DispatchQueue.main.async {
-            self.session.stopRunning()
-            self.previewLayer?.removeFromSuperlayer()
-            self.previewLayer = nil
-            if let webView = self.previewWebView {
-                webView.isOpaque = self.originalWebViewIsOpaque
-                webView.backgroundColor = self.originalWebViewBackgroundColor
-                webView.scrollView.backgroundColor = self.originalScrollViewBackgroundColor
+    private func stop(completion: (() -> Void)? = nil) {
+        sessionQueue.async {
+            if self.session.isRunning {
+                self.debugLog("sessionQueue stopRunning")
+                self.session.stopRunning()
             }
-            self.previewWebView = nil
+            DispatchQueue.main.async {
+                self.previewLayer?.removeFromSuperlayer()
+                self.previewLayer = nil
+                if let webView = self.previewWebView {
+                    webView.isOpaque = self.originalWebViewIsOpaque
+                    webView.backgroundColor = self.originalWebViewBackgroundColor
+                    webView.scrollView.backgroundColor = self.originalScrollViewBackgroundColor
+                }
+                self.previewWebView = nil
+                self.debugLog("preview removed / capture session stopped")
+                completion?()
+            }
         }
     }
     public func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {

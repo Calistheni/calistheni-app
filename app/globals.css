@@ -240,6 +240,15 @@
     visibility: hidden;
   }
 
+  /* The native AVCapture preview sits below the WKWebView. Only the barcode
+     scanner portal may clear Radix's dim/blur layer while that preview is live. */
+  html.native-barcode-scanner-active
+    body:has(.native-barcode-scanner-sheet)
+    [data-slot="sheet-overlay"] {
+    background: transparent;
+    backdrop-filter: none;
+  }
+
   @media (min-width: 48rem) {
     .app-desktop-nav {
       display: flex;

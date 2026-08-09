@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { App } from "@capacitor/app";
 import Image from "next/image";
 import Link from "next/link";
@@ -482,8 +482,11 @@ function BarcodeWorkflow({
   const [manualMode, setManualMode] = useState(false);
   const [torchAvailable, setTorchAvailable] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
+  const [scannerSessionVersion, setScannerSessionVersion] = useState(0);
   const scanLocked = useRef(false);
   const lookupRef = useRef<(value: string) => void>(() => undefined);
+  const scannerSessionRef = useRef(0);
+  const scannerActiveRef = useRef(false);
   const nativeAvailability = getNativeBarcodeScannerAvailability();
   const nativeRuntime = nativeAvailability.nativePlatform;
   // Native Barcode is intentionally live-only. Image decoding is retained for
@@ -498,6 +501,12 @@ function BarcodeWorkflow({
       !manualMode &&
       !scanLocked.current &&
       nativeRuntime);
+  const endNativeScannerSession = useCallback((reason: string) => {
+    scannerActiveRef.current = false;
+    scannerSessionRef.current += 1;
+    setNativeScanner(false);
+    return stopNativeLiveBarcodeScanner(reason);
+  }, []);
   function reset() {
     scanLocked.current = false;
     setNativeScanner(false);
@@ -514,8 +523,18 @@ function BarcodeWorkflow({
     setPhase(null);
     setError("");
   }
+  function restartNativeScanner() {
+    void endNativeScannerSession("scan-again").finally(() => {
+      scanLocked.current = false;
+      setManualMode(false);
+      setTorchAvailable(false);
+      setTorchOn(false);
+      setError("");
+      setScannerSessionVersion((version) => version + 1);
+    });
+  }
   function dismiss() {
-    void stopNativeLiveBarcodeScanner();
+    void endNativeScannerSession("overlay-closed");
     reset();
     close();
   }
@@ -534,36 +553,46 @@ function BarcodeWorkflow({
     });
   }, [open, nativeAvailability.nativePlatform, nativeAvailability.platform, nativeAvailability.pluginAvailable, nativeAvailability.pluginName]);
   useEffect(() => {
-    if (
-      !open ||
-      food ||
-      error ||
-      manualMode ||
-      scanLocked.current ||
-      !nativeRuntime ||
-      nativeScanner
-    ) {
-      return;
+    if (!open || !nativeRuntime) return;
+    const sessionId = scannerSessionRef.current + 1;
+    scannerSessionRef.current = sessionId;
+    scannerActiveRef.current = true;
+    if (process.env.NODE_ENV === "development") {
+      console.info("[BarcodeScanner]", { event: "session created", sessionId });
     }
     let cancelled = false;
+    const controller = new AbortController();
     void startNativeLiveBarcodeScanner((value) => {
-      if (cancelled || scanLocked.current) return;
+      if (
+        cancelled ||
+        sessionId !== scannerSessionRef.current ||
+        scanLocked.current
+      ) {
+        return;
+      }
       scanLocked.current = true;
-      void stopNativeLiveBarcodeScanner().then(() => {
+      void endNativeScannerSession("barcode-detected").then(() => {
         if (cancelled) return;
-        setNativeScanner(false);
         void signalNativeBarcodeSuccess();
         setCode(value);
         lookupRef.current(value);
       });
-    }).then((result) => {
-      if (cancelled) return;
+    }, controller.signal).then((result) => {
+      if (cancelled || sessionId !== scannerSessionRef.current) return;
       if (result.ok) {
         setTorchAvailable(result.torchAvailable);
         setNativeScanner(true);
+        if (process.env.NODE_ENV === "development") {
+          console.info("[BarcodeScanner]", {
+            event: "capture session started",
+            sessionId,
+          });
+        }
       } else if (result.reason === "denied") {
+        scannerActiveRef.current = false;
         setError("Camera access is required to scan barcodes.");
       } else {
+        scannerActiveRef.current = false;
         setError(
           result.detail ?? "Live barcode scanner failed to start."
         );
@@ -571,16 +600,17 @@ function BarcodeWorkflow({
     });
     return () => {
       cancelled = true;
-      void stopNativeLiveBarcodeScanner();
+      controller.abort();
+      if (sessionId !== scannerSessionRef.current) return;
+      void endNativeScannerSession("scanner-session-cleanup");
     };
-  }, [open, food, error, manualMode, nativeScanner, nativeRuntime]);
+  }, [open, nativeRuntime, scannerSessionVersion, endNativeScannerSession]);
   useEffect(() => {
-    if (!open || !nativeAvailability.pluginAvailable) return;
+    if (!open || !nativeRuntime) return;
     let handle: { remove: () => Promise<void> } | undefined;
     void App.addListener("appStateChange", ({ isActive }) => {
-      if (!isActive && (nativeScanner || liveScannerVisible)) {
-        void stopNativeLiveBarcodeScanner();
-        setNativeScanner(false);
+      if (!isActive && scannerActiveRef.current) {
+        void endNativeScannerSession("app-background");
         setError("Scanner paused while Calistheni was in the background. Tap Scan again to restart.");
       }
     }).then((registered) => {
@@ -589,7 +619,7 @@ function BarcodeWorkflow({
     return () => {
       void handle?.remove();
     };
-  }, [open, nativeScanner, liveScannerVisible, nativeAvailability.pluginAvailable]);
+  }, [open, nativeRuntime, endNativeScannerSession]);
   async function lookup(value: string) {
     const barcode = value.replaceAll(/\s/g, "");
     if (!/^\d{8,14}$/.test(barcode))
@@ -665,9 +695,13 @@ function BarcodeWorkflow({
         <SheetContent
           side="bottom"
           showCloseButton={false}
-          className="h-[100dvh] max-h-[100dvh] border-0 bg-transparent p-0 text-white shadow-none"
+          className="native-barcode-scanner-sheet h-[100dvh] max-h-[100dvh] border-0 bg-transparent p-0 text-white shadow-none"
         >
-          <div className="flex h-full min-h-0 flex-col bg-black/20">
+          <SheetTitle className="sr-only">Scan barcode</SheetTitle>
+          <SheetDescription className="sr-only">
+            Align a food barcode inside the frame for automatic scanning.
+          </SheetDescription>
+          <div className="flex h-full min-h-0 flex-col bg-transparent">
             <div className="flex items-center justify-between px-4 pt-[max(1rem,env(safe-area-inset-top))]">
               <Button
                 size="icon"
@@ -697,9 +731,8 @@ function BarcodeWorkflow({
                   variant="secondary"
                   aria-label="Enter barcode manually"
                   onClick={() => {
-                    void stopNativeLiveBarcodeScanner();
+                    void endNativeScannerSession("manual-entry");
                     setManualMode(true);
-                    setNativeScanner(false);
                   }}
                 >
                   <Barcode />
@@ -777,16 +810,15 @@ function BarcodeWorkflow({
                     Open Settings
                   </Button>
                 ) : null}
-                <Button size="sm" variant="outline" onClick={reset}>
+                <Button size="sm" variant="outline" onClick={restartNativeScanner}>
                   Try again
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={() => {
-                    void stopNativeLiveBarcodeScanner();
+                    void endNativeScannerSession("manual-entry");
                     setManualMode(true);
-                    setNativeScanner(false);
                     setError("");
                   }}
                 >
@@ -935,16 +967,15 @@ function BarcodeWorkflow({
                     Open Settings
                   </Button>
                 ) : null}
-                <Button size="sm" variant="outline" onClick={reset}>
+                <Button size="sm" variant="outline" onClick={restartNativeScanner}>
                   {canUseNativeLiveBarcodeScanner() ? "Scan again" : "Try again"}
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={() => {
-                    void stopNativeLiveBarcodeScanner();
+                    void endNativeScannerSession("manual-entry");
                     setManualMode(true);
-                    setNativeScanner(false);
                   }}
                 >
                   Enter manually

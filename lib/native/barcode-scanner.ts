@@ -22,7 +22,7 @@ export type NativeBarcodeScannerStart =
   | { ok: true; torchAvailable: boolean }
   | {
       ok: false;
-      reason: "unsupported" | "denied" | "unavailable";
+      reason: "unsupported" | "denied" | "unavailable" | "cancelled";
       detail?: string;
     };
 
@@ -46,6 +46,7 @@ const IOS_SCANNER_PLUGIN_NAME = "NutritionBarcodeScanner";
 const ANDROID_SCANNER_PLUGIN_NAME = "BarcodeScanner";
 let listener: PluginListenerHandle | null = null;
 let active = false;
+let startAttempt = 0;
 
 export type NativeBarcodeScannerAvailability = {
   nativePlatform: boolean;
@@ -98,8 +99,11 @@ export function usesNativeBarcodeCameraLayer() {
 }
 
 export async function startNativeLiveBarcodeScanner(
-  onBarcode: (value: string) => void
+  onBarcode: (value: string) => void,
+  signal?: AbortSignal
 ): Promise<NativeBarcodeScannerStart> {
+  const attempt = ++startAttempt;
+  const wasCancelled = () => signal?.aborted || attempt !== startAttempt;
   const availability = getNativeBarcodeScannerAvailability();
   debugScanner("startup requested", { startScanCalled: false });
   if (!availability.nativePlatform) {
@@ -120,6 +124,7 @@ export async function startNativeLiveBarcodeScanner(
     debugScanner("isSupported failed", { error: errorDetail(error) });
     return { ok: false, reason: "unavailable", detail: errorDetail(error) };
   }
+  if (wasCancelled()) return { ok: false, reason: "cancelled" };
   if (!support.supported) {
     debugScanner("native scanner unsupported");
     return { ok: false, reason: "unsupported", detail: "The device does not support live barcode scanning." };
@@ -131,6 +136,7 @@ export async function startNativeLiveBarcodeScanner(
     debugScanner("checkPermissions failed", { error: errorDetail(error) });
     return { ok: false, reason: "unavailable", detail: errorDetail(error) };
   }
+  if (wasCancelled()) return { ok: false, reason: "cancelled" };
   debugScanner("permission checked", { permissionState: permission.camera });
   if (permission.camera === "prompt" || permission.camera === "prompt-with-rationale") {
     try {
@@ -141,6 +147,7 @@ export async function startNativeLiveBarcodeScanner(
     }
     debugScanner("permission requested", { permissionState: permission.camera });
   }
+  if (wasCancelled()) return { ok: false, reason: "cancelled" };
   if (permission.camera !== "granted" && permission.camera !== "limited") {
     return { ok: false, reason: "denied" };
   }
@@ -149,6 +156,7 @@ export async function startNativeLiveBarcodeScanner(
   document.body.classList.add("native-barcode-scanner-active");
   active = true;
   try {
+    if (wasCancelled()) return { ok: false, reason: "cancelled" };
     listener = await scanner.addListener("barcodesScanned", ({ barcodes }) => {
       if (!active) return;
       const value = barcodes
@@ -159,6 +167,12 @@ export async function startNativeLiveBarcodeScanner(
         onBarcode(value);
       }
     });
+    if (wasCancelled()) {
+      await listener.remove().catch(() => undefined);
+      listener = null;
+      return { ok: false, reason: "cancelled" };
+    }
+    debugScanner("listener registered");
     debugScanner("startScan called", { startScanCalled: true });
     await scanner.startScan({ formats: [...NUTRITION_BARCODE_FORMATS], lensFacing: LensFacing.Back });
     const torch = await scanner.isTorchAvailable().catch(() => ({ available: false }));
@@ -166,12 +180,14 @@ export async function startNativeLiveBarcodeScanner(
     return { ok: true, torchAvailable: torch.available };
   } catch (error) {
     debugScanner("startScan result", { started: false, error: errorDetail(error) });
-    await stopNativeLiveBarcodeScanner();
+    await stopNativeLiveBarcodeScanner("startup-error");
     return { ok: false, reason: "unavailable", detail: errorDetail(error) };
   }
 }
 
-export async function stopNativeLiveBarcodeScanner() {
+export async function stopNativeLiveBarcodeScanner(reason = "stop-requested") {
+  debugScanner("stop requested", { reason });
+  startAttempt += 1;
   active = false;
   document.documentElement.classList.remove("native-barcode-scanner-active");
   document.body.classList.remove("native-barcode-scanner-active");
@@ -181,6 +197,7 @@ export async function stopNativeLiveBarcodeScanner() {
     const scanner = Capacitor.getPlatform() === "ios" ? IOSBarcodeScanner : BarcodeScanner;
     await scanner.stopScan().catch(() => undefined);
   }
+  debugScanner("capture session stopped", { reason });
 }
 
 export async function toggleNativeBarcodeTorch() {
