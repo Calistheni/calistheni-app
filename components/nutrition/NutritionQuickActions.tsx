@@ -31,13 +31,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Sheet,
-  SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FoodVisual } from "@/components/nutrition/FoodVisual";
+import { NutritionMobileSheet } from "@/components/nutrition/NutritionMobileSheet";
 import { compressWorkoutPhoto } from "@/lib/workout-photo-client";
 import {
   rankNutritionFoodCandidates,
@@ -549,14 +549,16 @@ function BarcodeWorkflow({
   }
   return (
     <Sheet open={open} onOpenChange={(value) => !value && dismiss()}>
-      <SheetContent side="bottom" className="h-[92dvh] overflow-y-auto">
-        <SheetHeader>
+      <NutritionMobileSheet
+        header={<SheetHeader>
           <SheetTitle>Barcode</SheetTitle>
           <SheetDescription>
             Scan a barcode from a photo or enter the number manually.
           </SheetDescription>
-        </SheetHeader>
-        <div className="space-y-4 p-4">
+        </SheetHeader>}
+        footer={food ? <Button className="w-full" disabled={busy} onClick={() => void add()}>Add to {mealLabel(meal)}</Button> : undefined}
+      >
+        <div className="space-y-4">
           <Tabs defaultValue="photo">
             <TabsList>
               <TabsTrigger value="photo">Scan / Photo</TabsTrigger>
@@ -685,17 +687,10 @@ function BarcodeWorkflow({
                 unit={unit}
                 setUnit={setUnit}
               />
-              <Button
-                className="w-full"
-                disabled={busy}
-                onClick={() => void add()}
-              >
-                Add to {mealLabel(meal)}
-              </Button>
             </>
           ) : null}
         </div>
-      </SheetContent>
+      </NutritionMobileSheet>
     </Sheet>
   );
 }
@@ -981,16 +976,18 @@ function AiWorkflow({
   return (
     <>
       <Sheet open={open} onOpenChange={(value) => !value && dismiss()}>
-        <SheetContent side="bottom" className="h-[94dvh] overflow-y-auto">
-          <SheetHeader>
+        <NutritionMobileSheet
+          header={<SheetHeader>
             <SheetTitle>AI food scan</SheetTitle>
             <SheetDescription>
               Take or choose a photo of your food. You can add an optional
               description to improve the estimate.
             </SheetDescription>
             <AiQuotaStatus open={open} feature="aiScan" />
-          </SheetHeader>
-          <div className="space-y-4 p-4">
+          </SheetHeader>}
+          footer={items.length ? <Button className="w-full" disabled={busy} onClick={() => void confirm()}>Add {items.length} {items.length === 1 ? "food" : "foods"} to {mealLabel(meal)}</Button> : undefined}
+        >
+          <div className="space-y-4">
             <Alert>
               <Camera />
               <AlertTitle>Photo privacy</AlertTitle>
@@ -1001,7 +998,7 @@ function AiWorkflow({
               </AlertDescription>
             </Alert>
             {preview ? (
-              <div className="relative h-64 overflow-hidden rounded-xl bg-muted">
+              <div className="relative h-[min(16rem,30dvh)] max-h-[30dvh] overflow-hidden rounded-xl bg-muted">
                 <Image
                   src={preview}
                   alt="Selected meal"
@@ -1098,18 +1095,10 @@ function AiWorkflow({
             {items.length ? (
               <>
                 <MealTotal items={items} />
-                <Button
-                  className="w-full"
-                  disabled={busy}
-                  onClick={() => void confirm()}
-                >
-                  Add {items.length} {items.length === 1 ? "food" : "foods"} to{" "}
-                  {mealLabel(meal)}
-                </Button>
               </>
             ) : null}
           </div>
-        </SheetContent>
+        </NutritionMobileSheet>
       </Sheet>
       <DailyQuotaDialog
         open={limitReached}
@@ -1355,8 +1344,8 @@ function DescribeWorkflow({
   return (
     <>
       <Sheet open={open} onOpenChange={(value) => !value && dismiss()}>
-        <SheetContent side="bottom" className="h-[94dvh] overflow-y-auto">
-          <SheetHeader>
+        <NutritionMobileSheet
+          header={<SheetHeader>
             <SheetTitle>
               {review ? "Review meal" : "Describe your meal"}
             </SheetTitle>
@@ -1366,8 +1355,10 @@ function DescribeWorkflow({
                 : "Tell us what you ate and we'll find the foods for you."}
             </SheetDescription>
             {!review ? <AiQuotaStatus open={open} feature="describe" /> : null}
-          </SheetHeader>
-          <div className="space-y-4 p-4">
+          </SheetHeader>}
+          footer={review && resolvedItems.length ? <Button className="w-full" disabled={isBusy} onClick={() => void confirm()}>{isBusy ? <Loader2 className="animate-spin" /> : null}Add {resolvedItems.length} {resolvedItems.length === 1 ? "food" : "foods"} to {mealLabel(meal)}</Button> : undefined}
+        >
+          <div className="space-y-4">
             {!review ? (
               <form
                 className="space-y-2"
@@ -1508,22 +1499,12 @@ function DescribeWorkflow({
                 {resolvedItems.length ? (
                   <>
                     <MealTotal items={resolvedItems} />
-                    <Button
-                      className="w-full"
-                      disabled={isBusy}
-                      onClick={() => void confirm()}
-                    >
-                      {isBusy ? <Loader2 className="animate-spin" /> : null}Add{" "}
-                      {resolvedItems.length}{" "}
-                      {resolvedItems.length === 1 ? "food" : "foods"} to{" "}
-                      {mealLabel(meal)}
-                    </Button>
                   </>
                 ) : null}
               </>
             ) : null}
           </div>
-        </SheetContent>
+        </NutritionMobileSheet>
       </Sheet>
       <DailyQuotaDialog
         open={limitReached}
