@@ -69,6 +69,7 @@ public class NutritionBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
                 self.finishActiveScanner(with: result)
             }
             self.activeScannerViewController = scanner
+            self.debugLog("scanner assigned to activeScannerViewController")
             presentingController.present(scanner, animated: true) {
                 call.resolve()
             }
@@ -78,6 +79,12 @@ public class NutritionBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func stopScan(_ call: CAPPluginCall) {
         DispatchQueue.main.async { [weak self] in
             guard let self, let scanner = self.activeScannerViewController else {
+                self?.debugLog("stopScan ignored: no active scanner")
+                call.resolve()
+                return
+            }
+            if self.isDismissingScanner {
+                self.debugLog("stopScan ignored: scanner is already finishing")
                 call.resolve()
                 return
             }
@@ -150,6 +157,7 @@ public class NutritionBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
                     self.emit(result)
                 }
                 if self.activeScannerViewController === scanner {
+                    self.debugLog("active scanner clear begin")
                     self.activeScannerViewController = nil
                     self.debugLog("active scanner cleared")
                 }
@@ -162,17 +170,21 @@ public class NutritionBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
     private func emit(_ result: BarcodeScannerResult) {
         switch result {
         case .barcode(let value):
-            debugLog("emitting barcode result to JS")
+            debugLog("event emission begin: barcode")
             notifyListeners("barcodesScanned", data: ["barcodes": [["displayValue": value]]])
+            debugLog("event emission end: barcode")
         case .manual:
-            debugLog("emitting manual result to JS")
+            debugLog("event emission begin: manual")
             notifyListeners("manualRequested", data: [:])
+            debugLog("event emission end: manual")
         case .cancelled:
-            debugLog("emitting cancellation result to JS")
+            debugLog("event emission begin: cancelled")
             notifyListeners("scannerCancelled", data: [:])
+            debugLog("event emission end: cancelled")
         case .failure(let message):
-            debugLog("emitting scanner error to JS")
+            debugLog("event emission begin: error")
             notifyListeners("scannerError", data: ["message": message])
+            debugLog("event emission end: error")
         }
     }
 }

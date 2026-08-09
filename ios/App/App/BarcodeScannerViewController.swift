@@ -15,10 +15,13 @@ final class BarcodeScannerViewController: UIViewController, AVCaptureMetadataOut
     private let sessionQueue = DispatchQueue(label: "com.calistheni.nutrition-barcode.capture-session")
     private var previewLayer: AVCaptureVideoPreviewLayer!
     private var camera: AVCaptureDevice?
+    private var metadataOutput: AVCaptureMetadataOutput?
     private var configured = false
     private var scanLocked = false
     private var completed = false
     private var captureWasInterrupted = false
+    private var captureCleanupComplete = false
+    private var observersRemoved = false
 
     private let header = UIView()
     private let frameView = UIView()
@@ -28,8 +31,19 @@ final class BarcodeScannerViewController: UIViewController, AVCaptureMetadataOut
 
     private let blue = UIColor(red: 37 / 255, green: 99 / 255, blue: 235 / 255, alpha: 1)
 
+    init() {
+        super.init(nibName: nil, bundle: nil)
+        debugLog("init")
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
+        debugLog("viewDidLoad")
         view.backgroundColor = .black
         buildInterface()
         previewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
@@ -41,12 +55,19 @@ final class BarcodeScannerViewController: UIViewController, AVCaptureMetadataOut
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        debugLog("viewDidAppear")
         startCaptureIfNeeded()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        debugLog("viewWillDisappear")
         stopCapture()
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        debugLog("viewDidDisappear")
     }
 
     override func viewDidLayoutSubviews() {
@@ -55,9 +76,10 @@ final class BarcodeScannerViewController: UIViewController, AVCaptureMetadataOut
     }
 
     deinit {
-        NotificationCenter.default.removeObserver(self)
-        stopCapture()
-        debugLog("BarcodeScannerViewController deinit")
+        // Never schedule an async block with [weak self] from deinit. Capture
+        // teardown is completed by prepareForDismissal before plugin release.
+        debugLog("deinit entered")
+        debugLog("deinit finished")
     }
 
     // UIKit dismissal belongs to the Capacitor plugin. This controller only
@@ -65,7 +87,11 @@ final class BarcodeScannerViewController: UIViewController, AVCaptureMetadataOut
     func prepareForDismissal(_ completion: @escaping () -> Void) {
         completed = true
         scanLocked = true
-        stopCapture(completion: completion)
+        finishCaptureCleanup {
+            self.removeObserversIfNeeded()
+            self.onResult = nil
+            completion()
+        }
     }
 
     func torchAvailability(_ completion: @escaping (Bool) -> Void) {
@@ -232,6 +258,7 @@ final class BarcodeScannerViewController: UIViewController, AVCaptureMetadataOut
                 output.metadataObjectTypes = [.ean13, .ean8, .upce, .code128, .code39, .interleaved2of5, .itf14]
                 self.captureSession.commitConfiguration()
                 self.camera = camera
+                self.metadataOutput = output
                 self.configured = true
                 self.debugLog("capture configured with rear camera")
                 DispatchQueue.main.async { [weak self] in
@@ -257,7 +284,7 @@ final class BarcodeScannerViewController: UIViewController, AVCaptureMetadataOut
         }
     }
 
-    private func stopCapture(completion: (() -> Void)? = nil) {
+    private func stopCapture() {
         sessionQueue.async { [weak self] in
             guard let self else { return }
             if self.captureSession.isRunning {
@@ -265,8 +292,24 @@ final class BarcodeScannerViewController: UIViewController, AVCaptureMetadataOut
                 self.captureSession.stopRunning()
                 self.debugLog("capture stopped")
             }
-            guard let completion else { return }
-            DispatchQueue.main.async(execute: completion)
+        }
+    }
+
+    private func finishCaptureCleanup(_ completion: @escaping () -> Void) {
+        sessionQueue.async { [self] in
+            if !captureCleanupComplete {
+                debugLog("capture cleanup begin")
+                metadataOutput?.setMetadataObjectsDelegate(nil, queue: nil)
+                metadataOutput = nil
+                if captureSession.isRunning {
+                    debugLog("capture stop requested")
+                    captureSession.stopRunning()
+                    debugLog("capture stopped")
+                }
+                captureCleanupComplete = true
+                debugLog("capture cleanup complete")
+            }
+            DispatchQueue.main.async { [self] in completion() }
         }
     }
 
@@ -276,6 +319,13 @@ final class BarcodeScannerViewController: UIViewController, AVCaptureMetadataOut
         NotificationCenter.default.addObserver(self, selector: #selector(captureRuntimeError(_:)), name: .AVCaptureSessionRuntimeError, object: captureSession)
         NotificationCenter.default.addObserver(self, selector: #selector(captureInterrupted(_:)), name: .AVCaptureSessionWasInterrupted, object: captureSession)
         NotificationCenter.default.addObserver(self, selector: #selector(captureInterruptionEnded(_:)), name: .AVCaptureSessionInterruptionEnded, object: captureSession)
+    }
+
+    private func removeObserversIfNeeded() {
+        guard !observersRemoved else { return }
+        NotificationCenter.default.removeObserver(self)
+        observersRemoved = true
+        debugLog("notification observers removed")
     }
 
     @objc private func applicationDidEnterBackground() { stopCapture() }
@@ -318,9 +368,12 @@ final class BarcodeScannerViewController: UIViewController, AVCaptureMetadataOut
         completed = true
         scanLocked = true
         debugLog("result accepted: \(result.description)")
-        // The plugin strongly owns this controller until it dismisses and emits
-        // the result, so keep this terminal handoff alive through session stop.
-        stopCapture { [self] in onResult?(result) }
+        // Detach the weak AVCapture delegate and finish the serial capture
+        // queue before the plugin begins UIKit dismissal.
+        finishCaptureCleanup { [self] in
+            debugLog("callback invoked")
+            onResult?(result)
+        }
     }
 
     private func debugLog(_ message: String) {
