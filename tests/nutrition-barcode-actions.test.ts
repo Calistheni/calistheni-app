@@ -83,6 +83,10 @@ test("native Barcode opens a continuous rear-camera scanner and locks the first 
   assert.match(workflow, /scanLocked\.current/);
   assert.match(workflow, /stopNativeLiveBarcodeScanner/);
   assert.match(workflow, /signalNativeBarcodeSuccess/);
+  assert.match(workflow, /Barcode found/);
+  assert.match(workflow, /Looking up product/);
+  assert.match(workflow, /Add to \{mealLabel\(meal\)\}/);
+  assert.match(workflow, /Cancel/);
   assert.match(workflow, /Align the barcode inside the frame/);
   assert.match(workflow, /Toggle flash/);
   assert.match(workflow, /Open Settings/);

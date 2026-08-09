@@ -8,6 +8,7 @@ import {
   Barcode,
   ArrowLeft,
   Camera,
+  CheckCircle2,
   Flashlight,
   ImagePlus,
   ListPlus,
@@ -730,9 +731,27 @@ function BarcodeWorkflow({
             Scan a barcode from a photo or enter the number manually.
           </SheetDescription>
         </SheetHeader>}
-        footer={food ? <Button className="w-full" disabled={busy} onClick={() => void add()}>Add to {mealLabel(meal)}</Button> : undefined}
+        footer={
+          food ? (
+            <div className="flex gap-2">
+              <Button className="flex-1" disabled={busy} onClick={() => void add()}>
+                Add to {mealLabel(meal)}
+              </Button>
+              <Button variant="outline" onClick={dismiss}>
+                Cancel
+              </Button>
+            </div>
+          ) : undefined
+        }
       >
         <div className="space-y-4">
+          {phase === "looking" && scanLocked.current && !food ? (
+            <div className="space-y-3 py-8 text-center">
+              <CheckCircle2 className="mx-auto size-10 text-primary" aria-hidden="true" />
+              <p className="font-medium">Barcode found</p>
+              <p className="text-sm text-muted-foreground">Looking up product…</p>
+            </div>
+          ) : (
           <Tabs defaultValue="manual">
             <TabsList className="w-full">
               {allowPhotoFallback ? (
@@ -838,6 +857,7 @@ function BarcodeWorkflow({
               ) : null}
             </TabsContent>
           </Tabs>
+          )}
           {error ? (
             <>
               <Alert>
@@ -865,6 +885,17 @@ function BarcodeWorkflow({
                 ) : null}
                 <Button size="sm" variant="outline" onClick={reset}>
                   {canUseNativeLiveBarcodeScanner() ? "Scan again" : "Try again"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    void stopNativeLiveBarcodeScanner();
+                    setManualMode(true);
+                    setNativeScanner(false);
+                  }}
+                >
+                  Enter manually
                 </Button>
                 <Button size="sm" variant="ghost" onClick={dismiss}>
                   Search foods
