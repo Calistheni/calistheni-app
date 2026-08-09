@@ -77,6 +77,7 @@ test("native Barcode opens a continuous rear-camera scanner and locks the first 
     readFile(new URL("../android/app/src/main/AndroidManifest.xml", import.meta.url), "utf8"),
   ]);
   assert.match(workflow, /canUseNativeLiveBarcodeScanner/);
+  assert.match(workflow, /getNativeBarcodeScannerAvailability/);
   assert.match(workflow, /startNativeLiveBarcodeScanner/);
   assert.match(workflow, /scanLocked\.current/);
   assert.match(workflow, /stopNativeLiveBarcodeScanner/);
@@ -95,6 +96,8 @@ test("native Barcode opens a continuous rear-camera scanner and locks the first 
   assert.match(nativeScanner, /barcodesScanned/);
   assert.match(nativeScanner, /Haptics\.impact/);
   assert.match(nativeScanner, /native-barcode-scanner-active/);
+  assert.match(nativeScanner, /Capacitor\.isPluginAvailable/);
+  assert.match(nativeScanner, /NutritionBarcodeScanner/);
   assert.match(manifest, /android\.permission\.CAMERA/);
   assert.match(manifest, /com\.google\.mlkit\.vision\.DEPENDENCIES/);
 });

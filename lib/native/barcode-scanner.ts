@@ -38,15 +38,42 @@ type IOSBarcodeScannerPlugin = {
   ): Promise<PluginListenerHandle>;
 };
 const IOSBarcodeScanner = registerPlugin<IOSBarcodeScannerPlugin>("NutritionBarcodeScanner");
+const IOS_SCANNER_PLUGIN_NAME = "NutritionBarcodeScanner";
+const ANDROID_SCANNER_PLUGIN_NAME = "BarcodeScanner";
 let listener: PluginListenerHandle | null = null;
 let active = false;
 
+export type NativeBarcodeScannerAvailability = {
+  nativePlatform: boolean;
+  platform: string;
+  pluginName: string | null;
+  pluginAvailable: boolean;
+};
+
+export function getNativeBarcodeScannerAvailability(): NativeBarcodeScannerAvailability {
+  const nativePlatform = Capacitor.isNativePlatform();
+  const platform = Capacitor.getPlatform();
+  const pluginName =
+    platform === "ios"
+      ? IOS_SCANNER_PLUGIN_NAME
+      : platform === "android"
+        ? ANDROID_SCANNER_PLUGIN_NAME
+        : null;
+  return {
+    nativePlatform,
+    platform,
+    pluginName,
+    pluginAvailable:
+      nativePlatform && pluginName !== null && Capacitor.isPluginAvailable(pluginName),
+  };
+}
+
 export function canUseNativeLiveBarcodeScanner() {
-  return Capacitor.isNativePlatform();
+  return getNativeBarcodeScannerAvailability().pluginAvailable;
 }
 
 export function usesNativeBarcodeCameraLayer() {
-  return Capacitor.isNativePlatform();
+  return canUseNativeLiveBarcodeScanner();
 }
 
 export async function startNativeLiveBarcodeScanner(

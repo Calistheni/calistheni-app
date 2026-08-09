@@ -43,6 +43,7 @@ import { FoodVisual } from "@/components/nutrition/FoodVisual";
 import { NutritionMobileSheet } from "@/components/nutrition/NutritionMobileSheet";
 import {
   canUseNativeLiveBarcodeScanner,
+  getNativeBarcodeScannerAvailability,
   openNativeBarcodeSettings,
   signalNativeBarcodeSuccess,
   startNativeLiveBarcodeScanner,
@@ -484,7 +485,14 @@ function BarcodeWorkflow({
   const allowPhotoFallback =
     !canUseNativeLiveBarcodeScanner() ||
     error.startsWith("Live barcode scanning is unavailable");
-  const liveScannerVisible = nativeScanner;
+  const liveScannerVisible =
+    nativeScanner ||
+    (open &&
+      !food &&
+      !error &&
+      !manualMode &&
+      !scanLocked.current &&
+      canUseNativeLiveBarcodeScanner());
   function reset() {
     scanLocked.current = false;
     setNativeScanner(false);
@@ -511,6 +519,10 @@ function BarcodeWorkflow({
       void lookup(value);
     };
   });
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "development" || !open) return;
+    console.info("Nutrition barcode scanner", getNativeBarcodeScannerAvailability());
+  }, [open]);
   useEffect(() => {
     if (
       !open ||
