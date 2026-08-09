@@ -18,7 +18,10 @@ public class NutritionBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise)
     ]
 
-    private weak var scannerController: BarcodeScannerViewController?
+    // The plugin deliberately owns the presented controller until UIKit has
+    // completed dismissal and the result has crossed the Capacitor bridge.
+    private var activeScannerViewController: BarcodeScannerViewController?
+    private var isDismissingScanner = false
 
     private func debugLog(_ message: String) {
         #if DEBUG
@@ -48,7 +51,7 @@ public class NutritionBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
 
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            guard self.scannerController == nil else {
+            guard self.activeScannerViewController == nil else {
                 call.reject("A barcode scanner is already open.")
                 return
             }
@@ -61,27 +64,11 @@ public class NutritionBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
             let scanner = BarcodeScannerViewController()
             scanner.modalPresentationStyle = .fullScreen
             scanner.modalTransitionStyle = .crossDissolve
-            scanner.onResult = { [weak self, weak scanner] result in
+            scanner.onResult = { [weak self] result in
                 guard let self else { return }
-                if self.scannerController === scanner {
-                    self.scannerController = nil
-                }
-                switch result {
-                case .barcode(let value):
-                    self.debugLog("barcode detected")
-                    self.notifyListeners("barcodesScanned", data: ["barcodes": [["displayValue": value]]])
-                case .manual:
-                    self.debugLog("manual entry requested")
-                    self.notifyListeners("manualRequested", data: [:])
-                case .cancelled:
-                    self.debugLog("scanner cancelled")
-                    self.notifyListeners("scannerCancelled", data: [:])
-                case .failure(let message):
-                    self.debugLog("scanner failed: \(message)")
-                    self.notifyListeners("scannerError", data: ["message": message])
-                }
+                self.finishActiveScanner(with: result)
             }
-            self.scannerController = scanner
+            self.activeScannerViewController = scanner
             presentingController.present(scanner, animated: true) {
                 call.resolve()
             }
@@ -90,25 +77,24 @@ public class NutritionBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func stopScan(_ call: CAPPluginCall) {
         DispatchQueue.main.async { [weak self] in
-            guard let self, let scanner = self.scannerController else {
+            guard let self, let scanner = self.activeScannerViewController else {
                 call.resolve()
                 return
             }
             self.debugLog("native scanner stop requested")
-            self.scannerController = nil
-            scanner.stopAndDismiss(notifyResult: false) {
+            self.dismiss(scanner, emit: nil) {
                 call.resolve()
             }
         }
     }
 
     @objc func isTorchAvailable(_ call: CAPPluginCall) {
-        scannerController?.torchAvailability { available in call.resolve(["available": available]) }
+        activeScannerViewController?.torchAvailability { available in call.resolve(["available": available]) }
             ?? call.resolve(["available": false])
     }
 
     @objc func toggleTorch(_ call: CAPPluginCall) {
-        guard let scanner = scannerController else { call.resolve(); return }
+        guard let scanner = activeScannerViewController else { call.resolve(); return }
         scanner.toggleTorch { result in
             switch result {
             case .success: call.resolve()
@@ -118,7 +104,7 @@ public class NutritionBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func isTorchEnabled(_ call: CAPPluginCall) {
-        scannerController?.torchEnabled { enabled in call.resolve(["enabled": enabled]) }
+        activeScannerViewController?.torchEnabled { enabled in call.resolve(["enabled": enabled]) }
             ?? call.resolve(["enabled": false])
     }
 
@@ -134,6 +120,59 @@ public class NutritionBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin {
         case .authorized: return "granted"
         case .notDetermined: return "prompt"
         default: return "denied"
+        }
+    }
+
+    private func finishActiveScanner(with result: BarcodeScannerResult) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let scanner = self.activeScannerViewController else { return }
+            self.dismiss(scanner, emit: result)
+        }
+    }
+
+    private func dismiss(
+        _ scanner: BarcodeScannerViewController,
+        emit result: BarcodeScannerResult?,
+        completion: (() -> Void)? = nil
+    ) {
+        guard !isDismissingScanner, activeScannerViewController === scanner else {
+            completion?()
+            return
+        }
+        isDismissingScanner = true
+        scanner.prepareForDismissal { [weak self, scanner] in
+            guard let self else { return }
+            self.debugLog("dismiss begin")
+            scanner.dismiss(animated: true) { [weak self, scanner] in
+                guard let self else { return }
+                self.debugLog("dismiss complete")
+                if let result {
+                    self.emit(result)
+                }
+                if self.activeScannerViewController === scanner {
+                    self.activeScannerViewController = nil
+                    self.debugLog("active scanner cleared")
+                }
+                self.isDismissingScanner = false
+                completion?()
+            }
+        }
+    }
+
+    private func emit(_ result: BarcodeScannerResult) {
+        switch result {
+        case .barcode(let value):
+            debugLog("emitting barcode result to JS")
+            notifyListeners("barcodesScanned", data: ["barcodes": [["displayValue": value]]])
+        case .manual:
+            debugLog("emitting manual result to JS")
+            notifyListeners("manualRequested", data: [:])
+        case .cancelled:
+            debugLog("emitting cancellation result to JS")
+            notifyListeners("scannerCancelled", data: [:])
+        case .failure(let message):
+            debugLog("emitting scanner error to JS")
+            notifyListeners("scannerError", data: ["message": message])
         }
     }
 }

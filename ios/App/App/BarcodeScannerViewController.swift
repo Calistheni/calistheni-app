@@ -57,10 +57,15 @@ final class BarcodeScannerViewController: UIViewController, AVCaptureMetadataOut
     deinit {
         NotificationCenter.default.removeObserver(self)
         stopCapture()
+        debugLog("BarcodeScannerViewController deinit")
     }
 
-    func stopAndDismiss(notifyResult: Bool, completion: @escaping () -> Void) {
-        complete(.cancelled, notifyResult: notifyResult, completion: completion)
+    // UIKit dismissal belongs to the Capacitor plugin. This controller only
+    // stops capture and reports one terminal result to its strong owner.
+    func prepareForDismissal(_ completion: @escaping () -> Void) {
+        completed = true
+        scanLocked = true
+        stopCapture(completion: completion)
     }
 
     func torchAvailability(_ completion: @escaping (Bool) -> Void) {
@@ -252,11 +257,16 @@ final class BarcodeScannerViewController: UIViewController, AVCaptureMetadataOut
         }
     }
 
-    private func stopCapture() {
+    private func stopCapture(completion: (() -> Void)? = nil) {
         sessionQueue.async { [weak self] in
-            guard let self, self.captureSession.isRunning else { return }
-            self.captureSession.stopRunning()
-            self.debugLog("capture stopped")
+            guard let self else { return }
+            if self.captureSession.isRunning {
+                self.debugLog("capture stop requested")
+                self.captureSession.stopRunning()
+                self.debugLog("capture stopped")
+            }
+            guard let completion else { return }
+            DispatchQueue.main.async(execute: completion)
         }
     }
 
@@ -300,26 +310,17 @@ final class BarcodeScannerViewController: UIViewController, AVCaptureMetadataOut
               value.range(of: "^[0-9]{8,14}$", options: .regularExpression) != nil else { return }
         scanLocked = true
         UINotificationFeedbackGenerator().notificationOccurred(.success)
-        complete(.barcode(value), delay: 0.28)
+        complete(.barcode(value))
     }
 
-    private func complete(_ result: BarcodeScannerResult, notifyResult: Bool = true, delay: TimeInterval = 0, completion: (() -> Void)? = nil) {
-        guard !completed else { completion?(); return }
+    private func complete(_ result: BarcodeScannerResult) {
+        guard !completed else { return }
         completed = true
         scanLocked = true
-        stopCapture()
-        let dismiss = { [weak self] in
-            guard let self else { return }
-            self.dismiss(animated: true) {
-                if notifyResult { self.onResult?(result) }
-                completion?()
-            }
-        }
-        if delay > 0 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: dismiss)
-        } else {
-            DispatchQueue.main.async(execute: dismiss)
-        }
+        debugLog("result accepted: \(result.description)")
+        // The plugin strongly owns this controller until it dismisses and emits
+        // the result, so keep this terminal handoff alive through session stop.
+        stopCapture { [self] in onResult?(result) }
     }
 
     private func debugLog(_ message: String) {
@@ -329,4 +330,15 @@ final class BarcodeScannerViewController: UIViewController, AVCaptureMetadataOut
     }
 
     private enum ScannerError: Error { case unavailable, input, output }
+}
+
+private extension BarcodeScannerResult {
+    var description: String {
+        switch self {
+        case .barcode: return "barcode"
+        case .manual: return "manual"
+        case .cancelled: return "cancelled"
+        case .failure: return "failure"
+        }
+    }
 }

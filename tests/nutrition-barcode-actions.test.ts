@@ -169,6 +169,10 @@ test("native iOS scanning uses a full-screen controller instead of a WebView und
   assert.match(nativeScanner, /scannerCancelled/);
   assert.match(iosPlugin, /modalPresentationStyle = \.fullScreen/);
   assert.match(iosPlugin, /BarcodeScannerViewController/);
+  assert.match(iosPlugin, /private var activeScannerViewController/);
+  assert.doesNotMatch(iosPlugin, /weak var scannerController/);
+  assert.match(iosPlugin, /dismiss complete/);
+  assert.match(iosPlugin, /emitting barcode result to JS/);
   assert.doesNotMatch(iosPlugin, /previewContainer/);
   assert.doesNotMatch(iosPlugin, /WKWebView/);
   assert.match(scannerController, /AVCaptureVideoPreviewLayer\(session: captureSession\)/);
@@ -180,4 +184,6 @@ test("native iOS scanning uses a full-screen controller instead of a WebView und
   assert.match(scannerController, /UINotificationFeedbackGenerator/);
   assert.match(scannerController, /case manual/);
   assert.match(scannerController, /case cancelled/);
+  assert.match(scannerController, /prepareForDismissal/);
+  assert.match(scannerController, /BarcodeScannerViewController deinit/);
 });
