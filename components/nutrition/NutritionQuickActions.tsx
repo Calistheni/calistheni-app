@@ -46,7 +46,6 @@ import {
   openNativeBarcodeSettings,
   signalNativeBarcodeSuccess,
   startNativeLiveBarcodeScanner,
-  startWebViewLiveBarcodeScanner,
   stopNativeLiveBarcodeScanner,
   toggleNativeBarcodeTorch,
   usesNativeBarcodeCameraLayer,
@@ -482,19 +481,10 @@ function BarcodeWorkflow({
   const [torchOn, setTorchOn] = useState(false);
   const scanLocked = useRef(false);
   const lookupRef = useRef<(value: string) => void>(() => undefined);
-  const livePreviewRef = useRef<HTMLVideoElement>(null);
   const allowPhotoFallback =
     !canUseNativeLiveBarcodeScanner() ||
     error.startsWith("Live barcode scanning is unavailable");
-  const liveScannerVisible =
-    nativeScanner ||
-    (open &&
-      !food &&
-      !error &&
-      !manualMode &&
-      !scanLocked.current &&
-      canUseNativeLiveBarcodeScanner() &&
-      !usesNativeBarcodeCameraLayer());
+  const liveScannerVisible = nativeScanner;
   function reset() {
     scanLocked.current = false;
     setNativeScanner(false);
@@ -564,46 +554,6 @@ function BarcodeWorkflow({
       void stopNativeLiveBarcodeScanner();
     };
   }, [open, food, error, manualMode, nativeScanner]);
-  useEffect(() => {
-    if (
-      !open ||
-      !liveScannerVisible ||
-      usesNativeBarcodeCameraLayer() ||
-      !livePreviewRef.current
-    ) {
-      return;
-    }
-    let cancelled = false;
-    void startWebViewLiveBarcodeScanner(livePreviewRef.current, (value) => {
-      if (cancelled || scanLocked.current) return;
-      scanLocked.current = true;
-      void stopNativeLiveBarcodeScanner().then(() => {
-        if (cancelled) return;
-        setNativeScanner(false);
-        void signalNativeBarcodeSuccess();
-        setCode(value);
-        lookupRef.current(value);
-      });
-    }).then((result) => {
-      if (cancelled) return;
-      if (result.ok) {
-        setTorchAvailable(result.torchAvailable);
-      } else if (result.reason === "denied") {
-        setNativeScanner(false);
-        setError("Camera access is required to scan barcodes.");
-      } else {
-        setNativeScanner(false);
-        setManualMode(true);
-        setError(
-          "Live barcode scanning is unavailable on this device. Enter the barcode manually."
-        );
-      }
-    });
-    return () => {
-      cancelled = true;
-      void stopNativeLiveBarcodeScanner();
-    };
-  }, [open, liveScannerVisible]);
   async function lookup(value: string) {
     const barcode = value.replaceAll(/\s/g, "");
     if (!/^\d{8,14}$/.test(barcode))
@@ -696,16 +646,6 @@ function BarcodeWorkflow({
             </div>
             <div className="flex min-h-0 flex-1 items-center justify-center p-6">
               <div className="relative aspect-[1.6/1] w-full max-w-sm overflow-hidden rounded-2xl border-2 border-white/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]">
-                {!usesNativeBarcodeCameraLayer() ? (
-                  <video
-                    ref={livePreviewRef}
-                    className="absolute inset-0 size-full object-cover"
-                    autoPlay
-                    muted
-                    playsInline
-                    aria-label="Live rear camera barcode preview"
-                  />
-                ) : null}
                 <span
                   className="absolute inset-x-4 top-1/2 h-0.5 animate-pulse bg-primary"
                   aria-hidden="true"
