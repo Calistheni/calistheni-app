@@ -78,6 +78,7 @@ test("native Barcode opens a continuous rear-camera scanner and locks the first 
   ]);
   assert.match(workflow, /canUseNativeLiveBarcodeScanner/);
   assert.match(workflow, /getNativeBarcodeScannerAvailability/);
+  assert.match(workflow, /const allowPhotoFallback\s*=\s*!getNativeBarcodeScannerAvailability\(\)\.nativePlatform/);
   assert.match(workflow, /startNativeLiveBarcodeScanner/);
   assert.match(workflow, /scanLocked\.current/);
   assert.match(workflow, /stopNativeLiveBarcodeScanner/);

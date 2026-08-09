@@ -483,9 +483,10 @@ function BarcodeWorkflow({
   const [torchOn, setTorchOn] = useState(false);
   const scanLocked = useRef(false);
   const lookupRef = useRef<(value: string) => void>(() => undefined);
+  // Native Barcode is intentionally live-only. Image decoding is retained for
+  // desktop browsers, where the Capacitor camera bridge is unavailable.
   const allowPhotoFallback =
-    !canUseNativeLiveBarcodeScanner() ||
-    error.startsWith("Live barcode scanning is unavailable");
+    !getNativeBarcodeScannerAvailability().nativePlatform;
   const liveScannerVisible =
     nativeScanner ||
     (open &&
@@ -863,7 +864,7 @@ function BarcodeWorkflow({
                   </Button>
                 ) : null}
                 <Button size="sm" variant="outline" onClick={reset}>
-                  Try another barcode
+                  {canUseNativeLiveBarcodeScanner() ? "Scan again" : "Try again"}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={dismiss}>
                   Search foods
