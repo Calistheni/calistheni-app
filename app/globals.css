@@ -229,26 +229,6 @@
     padding-bottom: calc(8.75rem + env(safe-area-inset-bottom));
   }
 
-  /* ML Kit renders the native camera behind the Capacitor WebView. Keep the
-     scanner portal visible while making only the ordinary app shell transparent. */
-  html.native-barcode-scanner-active,
-  html.native-barcode-scanner-active body {
-    background: transparent;
-  }
-
-  body.native-barcode-scanner-active .app-shell {
-    visibility: hidden;
-  }
-
-  /* The native AVCapture preview sits below the WKWebView. Only the barcode
-     scanner portal may clear Radix's dim/blur layer while that preview is live. */
-  html.native-barcode-scanner-active
-    body:has(.native-barcode-scanner-sheet)
-    [data-slot="sheet-overlay"] {
-    background: transparent;
-    backdrop-filter: none;
-  }
-
   @media (min-width: 48rem) {
     .app-desktop-nav {
       display: flex;

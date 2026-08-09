@@ -37,14 +37,14 @@ type IOSBarcodeScannerPlugin = {
   isTorchEnabled(): Promise<{ enabled: boolean }>;
   openSettings(): Promise<void>;
   addListener(
-    eventName: "barcodesScanned",
-    listenerFunc: (event: { barcodes: Array<{ displayValue: string }> }) => void
+    eventName: "barcodesScanned" | "manualRequested" | "scannerCancelled" | "scannerError",
+    listenerFunc: (event: { barcodes?: Array<{ displayValue: string }>; message?: string }) => void
   ): Promise<PluginListenerHandle>;
 };
 const IOSBarcodeScanner = registerPlugin<IOSBarcodeScannerPlugin>("NutritionBarcodeScanner");
 const IOS_SCANNER_PLUGIN_NAME = "NutritionBarcodeScanner";
 const ANDROID_SCANNER_PLUGIN_NAME = "BarcodeScanner";
-let listener: PluginListenerHandle | null = null;
+let listeners: PluginListenerHandle[] = [];
 let active = false;
 let startAttempt = 0;
 
@@ -100,6 +100,11 @@ export function usesNativeBarcodeCameraLayer() {
 
 export async function startNativeLiveBarcodeScanner(
   onBarcode: (value: string) => void,
+  handlers: {
+    onManual?: () => void;
+    onCancel?: () => void;
+    onError?: (message: string) => void;
+  } = {},
   signal?: AbortSignal
 ): Promise<NativeBarcodeScannerStart> {
   const attempt = ++startAttempt;
@@ -152,12 +157,10 @@ export async function startNativeLiveBarcodeScanner(
     return { ok: false, reason: "denied" };
   }
 
-  document.documentElement.classList.add("native-barcode-scanner-active");
-  document.body.classList.add("native-barcode-scanner-active");
   active = true;
   try {
     if (wasCancelled()) return { ok: false, reason: "cancelled" };
-    listener = await scanner.addListener("barcodesScanned", ({ barcodes }) => {
+    const barcodeListener = await scanner.addListener("barcodesScanned", ({ barcodes = [] }) => {
       if (!active) return;
       const value = barcodes
         .map((barcode) => barcode.displayValue.replaceAll(/\s/g, ""))
@@ -167,9 +170,24 @@ export async function startNativeLiveBarcodeScanner(
         onBarcode(value);
       }
     });
+    listeners = [barcodeListener];
+    if (availability.platform === "ios") {
+      const [manualListener, cancelListener, errorListener] = await Promise.all([
+        IOSBarcodeScanner.addListener("manualRequested", () => {
+          if (active) handlers.onManual?.();
+        }),
+        IOSBarcodeScanner.addListener("scannerCancelled", () => {
+          if (active) handlers.onCancel?.();
+        }),
+        IOSBarcodeScanner.addListener("scannerError", ({ message }) => {
+          if (active) handlers.onError?.(message ?? "Live barcode scanner failed to start.");
+        }),
+      ]);
+      listeners.push(manualListener, cancelListener, errorListener);
+    }
     if (wasCancelled()) {
-      await listener.remove().catch(() => undefined);
-      listener = null;
+      await Promise.all(listeners.map((item) => item.remove().catch(() => undefined)));
+      listeners = [];
       return { ok: false, reason: "cancelled" };
     }
     debugScanner("listener registered");
@@ -189,10 +207,8 @@ export async function stopNativeLiveBarcodeScanner(reason = "stop-requested") {
   debugScanner("stop requested", { reason });
   startAttempt += 1;
   active = false;
-  document.documentElement.classList.remove("native-barcode-scanner-active");
-  document.body.classList.remove("native-barcode-scanner-active");
-  await listener?.remove().catch(() => undefined);
-  listener = null;
+  await Promise.all(listeners.map((item) => item.remove().catch(() => undefined)));
+  listeners = [];
   if (usesNativeBarcodeCameraLayer()) {
     const scanner = Capacitor.getPlatform() === "ios" ? IOSBarcodeScanner : BarcodeScanner;
     await scanner.stopScan().catch(() => undefined);

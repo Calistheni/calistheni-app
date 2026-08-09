@@ -100,7 +100,7 @@ test("native Barcode opens a continuous rear-camera scanner and locks the first 
   assert.match(nativeScanner, /BarcodeFormat\.Itf/);
   assert.match(nativeScanner, /barcodesScanned/);
   assert.match(nativeScanner, /Haptics\.impact/);
-  assert.match(nativeScanner, /native-barcode-scanner-active/);
+  assert.doesNotMatch(nativeScanner, /native-barcode-scanner-active/);
   assert.match(nativeScanner, /Capacitor\.isPluginAvailable/);
   assert.match(nativeScanner, /NutritionBarcodeScanner/);
   assert.match(manifest, /android\.permission\.CAMERA/);
@@ -128,12 +128,16 @@ test("a native bridge failure remains an explicit scanner error instead of silen
   assert.match(nativeScanner, /permission checked/);
 });
 
-test("native scanner lifetime is independent of startup state updates and stops only for a real session end", async () => {
-  const [workflow, nativeScanner, iosPlugin] = await Promise.all([
+test("native iOS scanning uses a full-screen controller instead of a WebView underlay", async () => {
+  const [workflow, nativeScanner, iosPlugin, scannerController] = await Promise.all([
     readFile(quickActionsUrl, "utf8"),
     readFile(new URL("../lib/native/barcode-scanner.ts", import.meta.url), "utf8"),
     readFile(
       new URL("../ios/App/App/NutritionBarcodeScannerPlugin.swift", import.meta.url),
+      "utf8"
+    ),
+    readFile(
+      new URL("../ios/App/App/BarcodeScannerViewController.swift", import.meta.url),
       "utf8"
     ),
   ]);
@@ -145,13 +149,15 @@ test("native scanner lifetime is independent of startup state updates and stops 
   assert.match(barcodeWorkflow, /scannerSessionRef/);
   assert.match(barcodeWorkflow, /scannerActiveRef/);
   assert.match(barcodeWorkflow, /scannerSessionVersion/);
+  assert.match(barcodeWorkflow, /nativeIosScanner/);
+  assert.match(barcodeWorkflow, /Rendering no web Sheet here/);
   assert.match(barcodeWorkflow, /endNativeScannerSession\("barcode-detected"\)/);
   assert.match(barcodeWorkflow, /endNativeScannerSession\("manual-entry"\)/);
   assert.match(barcodeWorkflow, /endNativeScannerSession\("app-background"\)/);
   assert.match(barcodeWorkflow, /App\.addListener\("pause"/);
   assert.doesNotMatch(barcodeWorkflow, /App\.addListener\("appStateChange"/);
   assert.match(barcodeWorkflow, /endNativeScannerSession\("scanner-session-cleanup"\)/);
-  assert.match(barcodeWorkflow, /\[open, nativeRuntime, scannerSessionVersion, endNativeScannerSession\]/);
+  assert.match(barcodeWorkflow, /\[open, nativeRuntime, nativeIosScanner, scannerSessionVersion, endNativeScannerSession\]/);
   assert.doesNotMatch(
     barcodeWorkflow,
     /\[open, food, error, manualMode, nativeScanner, nativeRuntime\]/
@@ -159,12 +165,19 @@ test("native scanner lifetime is independent of startup state updates and stops 
   assert.match(nativeScanner, /startAttempt/);
   assert.match(nativeScanner, /AbortSignal/);
   assert.match(nativeScanner, /stop requested/);
-  assert.match(iosPlugin, /sessionQueue/);
-  assert.match(iosPlugin, /sessionQueue startRunning begin/);
-  assert.match(iosPlugin, /sessionQueue stopRunning/);
-  assert.match(iosPlugin, /preview layer attached/);
-  assert.match(iosPlugin, /previewContainer/);
-  assert.match(iosPlugin, /systemPink/);
-  assert.match(iosPlugin, /AVCaptureSessionRuntimeError/);
-  assert.match(iosPlugin, /AVCaptureSessionWasInterrupted/);
+  assert.match(nativeScanner, /manualRequested/);
+  assert.match(nativeScanner, /scannerCancelled/);
+  assert.match(iosPlugin, /modalPresentationStyle = \.fullScreen/);
+  assert.match(iosPlugin, /BarcodeScannerViewController/);
+  assert.doesNotMatch(iosPlugin, /previewContainer/);
+  assert.doesNotMatch(iosPlugin, /WKWebView/);
+  assert.match(scannerController, /AVCaptureVideoPreviewLayer\(session: captureSession\)/);
+  assert.match(scannerController, /view\.layer\.insertSublayer\(previewLayer, at: 0\)/);
+  assert.match(scannerController, /override func viewDidAppear/);
+  assert.match(scannerController, /override func viewWillDisappear/);
+  assert.match(scannerController, /sessionQueue/);
+  assert.match(scannerController, /\.ean13, \.ean8, \.upce, \.code128, \.code39/);
+  assert.match(scannerController, /UINotificationFeedbackGenerator/);
+  assert.match(scannerController, /case manual/);
+  assert.match(scannerController, /case cancelled/);
 });

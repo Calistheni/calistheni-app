@@ -489,13 +489,15 @@ function BarcodeWorkflow({
   const scannerActiveRef = useRef(false);
   const nativeAvailability = getNativeBarcodeScannerAvailability();
   const nativeRuntime = nativeAvailability.nativePlatform;
+  const nativeIosScanner = nativeRuntime && nativeAvailability.platform === "ios";
   // Native Barcode is intentionally live-only. Image decoding is retained for
   // desktop browsers, where the Capacitor camera bridge is unavailable.
   const allowPhotoFallback =
     !nativeRuntime;
   const liveScannerVisible =
-    nativeScanner ||
+    (!nativeIosScanner && nativeScanner) ||
     (open &&
+      !nativeIosScanner &&
       !food &&
       !error &&
       !manualMode &&
@@ -573,10 +575,29 @@ function BarcodeWorkflow({
       scanLocked.current = true;
       void endNativeScannerSession("barcode-detected").then(() => {
         if (cancelled) return;
-        void signalNativeBarcodeSuccess();
+        if (!nativeIosScanner) void signalNativeBarcodeSuccess();
         setCode(value);
         lookupRef.current(value);
       });
+    }, {
+      onManual: () => {
+        if (cancelled || sessionId !== scannerSessionRef.current) return;
+        void endNativeScannerSession("manual-entry").then(() => {
+          if (!cancelled) setManualMode(true);
+        });
+      },
+      onCancel: () => {
+        if (cancelled || sessionId !== scannerSessionRef.current) return;
+        void endNativeScannerSession("native-cancel").then(() => {
+          if (!cancelled) dismiss();
+        });
+      },
+      onError: (message) => {
+        if (cancelled || sessionId !== scannerSessionRef.current) return;
+        scannerActiveRef.current = false;
+        setNativeScanner(false);
+        setError(message);
+      },
     }, controller.signal).then((result) => {
       if (cancelled || sessionId !== scannerSessionRef.current) return;
       if (result.ok) {
@@ -604,7 +625,7 @@ function BarcodeWorkflow({
       if (sessionId !== scannerSessionRef.current) return;
       void endNativeScannerSession("scanner-session-cleanup");
     };
-  }, [open, nativeRuntime, scannerSessionVersion, endNativeScannerSession]);
+  }, [open, nativeRuntime, nativeIosScanner, scannerSessionVersion, endNativeScannerSession]);
   useEffect(() => {
     if (!open || !nativeRuntime) return;
     let handle: { remove: () => Promise<void> } | undefined;
@@ -690,6 +711,18 @@ function BarcodeWorkflow({
       );
       setBusy(false);
     }
+  }
+  // iOS owns the scanner surface completely. Rendering no web Sheet here keeps
+  // the full-screen native camera controller free of WebView overlays.
+  if (
+    nativeIosScanner &&
+    open &&
+    !manualMode &&
+    !food &&
+    !error &&
+    phase !== "looking"
+  ) {
+    return null;
   }
   if (liveScannerVisible) {
     return (
