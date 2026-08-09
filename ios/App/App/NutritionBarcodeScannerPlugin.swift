@@ -24,8 +24,8 @@ public class NutritionBarcodeScannerPlugin: CAPPlugin, CAPBridgedPlugin, AVCaptu
     private var configured = false
 
     @objc func isSupported(_ call: CAPPluginCall) { call.resolve(["supported": true]) }
-    @objc func checkPermissions(_ call: CAPPluginCall) { call.resolve(["camera": permission()]) }
-    @objc func requestPermissions(_ call: CAPPluginCall) {
+    @objc public override func checkPermissions(_ call: CAPPluginCall) { call.resolve(["camera": permission()]) }
+    @objc public override func requestPermissions(_ call: CAPPluginCall) {
         AVCaptureDevice.requestAccess(for: .video) { [weak self] _ in call.resolve(["camera": self?.permission() ?? "denied"]) }
     }
     @objc func startScan(_ call: CAPPluginCall) {
