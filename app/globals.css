@@ -229,6 +229,17 @@
     padding-bottom: calc(8.75rem + env(safe-area-inset-bottom));
   }
 
+  /* ML Kit renders the native camera behind the Capacitor WebView. Keep the
+     scanner portal visible while making only the ordinary app shell transparent. */
+  html.native-barcode-scanner-active,
+  html.native-barcode-scanner-active body {
+    background: transparent;
+  }
+
+  body.native-barcode-scanner-active .app-shell {
+    visibility: hidden;
+  }
+
   @media (min-width: 48rem) {
     .app-desktop-nav {
       display: flex;

@@ -5,7 +5,9 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   Barcode,
+  ArrowLeft,
   Camera,
+  Flashlight,
   ImagePlus,
   ListPlus,
   Loader2,
@@ -31,6 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Sheet,
+  SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
@@ -38,6 +41,16 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FoodVisual } from "@/components/nutrition/FoodVisual";
 import { NutritionMobileSheet } from "@/components/nutrition/NutritionMobileSheet";
+import {
+  canUseNativeLiveBarcodeScanner,
+  openNativeBarcodeSettings,
+  signalNativeBarcodeSuccess,
+  startNativeLiveBarcodeScanner,
+  startWebViewLiveBarcodeScanner,
+  stopNativeLiveBarcodeScanner,
+  toggleNativeBarcodeTorch,
+  usesNativeBarcodeCameraLayer,
+} from "@/lib/native/barcode-scanner";
 import { compressWorkoutPhoto } from "@/lib/workout-photo-client";
 import {
   rankNutritionFoodCandidates,
@@ -463,7 +476,31 @@ function BarcodeWorkflow({
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState<"reading" | "looking" | null>(null);
   const [error, setError] = useState("");
+  const [nativeScanner, setNativeScanner] = useState(false);
+  const [manualMode, setManualMode] = useState(false);
+  const [torchAvailable, setTorchAvailable] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
+  const scanLocked = useRef(false);
+  const lookupRef = useRef<(value: string) => void>(() => undefined);
+  const livePreviewRef = useRef<HTMLVideoElement>(null);
+  const allowPhotoFallback =
+    !canUseNativeLiveBarcodeScanner() ||
+    error.startsWith("Live barcode scanning is unavailable");
+  const liveScannerVisible =
+    nativeScanner ||
+    (open &&
+      !food &&
+      !error &&
+      !manualMode &&
+      !scanLocked.current &&
+      canUseNativeLiveBarcodeScanner() &&
+      !usesNativeBarcodeCameraLayer());
   function reset() {
+    scanLocked.current = false;
+    setNativeScanner(false);
+    setManualMode(false);
+    setTorchAvailable(false);
+    setTorchOn(false);
     setCode("");
     setDetected([]);
     setFood(null);
@@ -475,9 +512,98 @@ function BarcodeWorkflow({
     setError("");
   }
   function dismiss() {
+    void stopNativeLiveBarcodeScanner();
     reset();
     close();
   }
+  useEffect(() => {
+    lookupRef.current = (value) => {
+      void lookup(value);
+    };
+  });
+  useEffect(() => {
+    if (
+      !open ||
+      food ||
+      error ||
+      manualMode ||
+      scanLocked.current ||
+      !canUseNativeLiveBarcodeScanner() ||
+      nativeScanner
+    ) {
+      return;
+    }
+    if (!usesNativeBarcodeCameraLayer()) return;
+    let cancelled = false;
+    void startNativeLiveBarcodeScanner((value) => {
+      if (cancelled || scanLocked.current) return;
+      scanLocked.current = true;
+      void stopNativeLiveBarcodeScanner().then(() => {
+        if (cancelled) return;
+        setNativeScanner(false);
+        void signalNativeBarcodeSuccess();
+        setCode(value);
+        lookupRef.current(value);
+      });
+    }).then((result) => {
+      if (cancelled) return;
+      if (result.ok) {
+        setTorchAvailable(result.torchAvailable);
+        setNativeScanner(true);
+      } else if (result.reason === "denied") {
+        setError("Camera access is required to scan barcodes.");
+      } else {
+        setManualMode(true);
+        setError(
+          "Live barcode scanning is unavailable on this device. Enter the barcode manually."
+        );
+      }
+    });
+    return () => {
+      cancelled = true;
+      void stopNativeLiveBarcodeScanner();
+    };
+  }, [open, food, error, manualMode, nativeScanner]);
+  useEffect(() => {
+    if (
+      !open ||
+      !liveScannerVisible ||
+      usesNativeBarcodeCameraLayer() ||
+      !livePreviewRef.current
+    ) {
+      return;
+    }
+    let cancelled = false;
+    void startWebViewLiveBarcodeScanner(livePreviewRef.current, (value) => {
+      if (cancelled || scanLocked.current) return;
+      scanLocked.current = true;
+      void stopNativeLiveBarcodeScanner().then(() => {
+        if (cancelled) return;
+        setNativeScanner(false);
+        void signalNativeBarcodeSuccess();
+        setCode(value);
+        lookupRef.current(value);
+      });
+    }).then((result) => {
+      if (cancelled) return;
+      if (result.ok) {
+        setTorchAvailable(result.torchAvailable);
+      } else if (result.reason === "denied") {
+        setNativeScanner(false);
+        setError("Camera access is required to scan barcodes.");
+      } else {
+        setNativeScanner(false);
+        setManualMode(true);
+        setError(
+          "Live barcode scanning is unavailable on this device. Enter the barcode manually."
+        );
+      }
+    });
+    return () => {
+      cancelled = true;
+      void stopNativeLiveBarcodeScanner();
+    };
+  }, [open, liveScannerVisible]);
   async function lookup(value: string) {
     const barcode = value.replaceAll(/\s/g, "");
     if (!/^\d{8,14}$/.test(barcode))
@@ -547,6 +673,84 @@ function BarcodeWorkflow({
       setBusy(false);
     }
   }
+  if (liveScannerVisible) {
+    return (
+      <Sheet open={open} onOpenChange={(value) => !value && dismiss()}>
+        <SheetContent
+          side="bottom"
+          showCloseButton={false}
+          className="h-[100dvh] max-h-[100dvh] border-0 bg-transparent p-0 text-white shadow-none"
+        >
+          <div className="flex h-full min-h-0 flex-col bg-black/20">
+            <div className="flex items-center justify-between px-4 pt-[max(1rem,env(safe-area-inset-top))]">
+              <Button
+                size="icon"
+                variant="secondary"
+                aria-label="Cancel barcode scan"
+                onClick={dismiss}
+              >
+                <ArrowLeft />
+              </Button>
+              <p className="font-semibold">Scan</p>
+              <span className="size-10" aria-hidden="true" />
+            </div>
+            <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+              <div className="relative aspect-[1.6/1] w-full max-w-sm overflow-hidden rounded-2xl border-2 border-white/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]">
+                {!usesNativeBarcodeCameraLayer() ? (
+                  <video
+                    ref={livePreviewRef}
+                    className="absolute inset-0 size-full object-cover"
+                    autoPlay
+                    muted
+                    playsInline
+                    aria-label="Live rear camera barcode preview"
+                  />
+                ) : null}
+                <span
+                  className="absolute inset-x-4 top-1/2 h-0.5 animate-pulse bg-primary"
+                  aria-hidden="true"
+                />
+              </div>
+            </div>
+            <div className="space-y-3 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+              <p className="text-center text-sm font-medium">
+                Align the barcode inside the frame
+              </p>
+              <div className="flex items-center justify-center gap-3">
+                <Button
+                  variant="secondary"
+                  aria-label="Enter barcode manually"
+                  onClick={() => {
+                    void stopNativeLiveBarcodeScanner();
+                    setManualMode(true);
+                    setNativeScanner(false);
+                  }}
+                >
+                  <Barcode />
+                  Manual entry
+                </Button>
+                {torchAvailable ? (
+                  <Button
+                    variant="secondary"
+                    aria-pressed={torchOn}
+                    aria-label="Toggle flash"
+                    onClick={() =>
+                      void toggleNativeBarcodeTorch().then(({ enabled }) =>
+                        setTorchOn(enabled)
+                      )
+                    }
+                  >
+                    <Flashlight />
+                    Flash
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+    );
+  }
   return (
     <Sheet open={open} onOpenChange={(value) => !value && dismiss()}>
       <NutritionMobileSheet
@@ -561,80 +765,84 @@ function BarcodeWorkflow({
         <div className="space-y-4">
           <Tabs defaultValue="manual">
             <TabsList className="w-full">
-              <TabsTrigger value="photo">Scan / Photo</TabsTrigger>
+              {allowPhotoFallback ? (
+                <TabsTrigger value="photo">Scan / Photo</TabsTrigger>
+              ) : null}
               <TabsTrigger value="manual">Enter manually</TabsTrigger>
             </TabsList>
-            <TabsContent value="photo">
-              <div className="grid grid-cols-2 gap-2">
-                <Button asChild variant="outline">
-                  <Label className="cursor-pointer justify-center">
-                    <Camera />
-                    Take photo
-                    <Input
-                      disabled={busy}
-                      className="sr-only"
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        event.target.value = "";
-                        void photo(file);
-                      }}
-                    />
-                  </Label>
-                </Button>
-                <Button asChild variant="outline">
-                  <Label className="cursor-pointer justify-center">
-                    <ImagePlus />
-                    Choose photo
-                    <Input
-                      disabled={busy}
-                      className="sr-only"
-                      type="file"
-                      accept="image/*"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        event.target.value = "";
-                        void photo(file);
-                      }}
-                    />
-                  </Label>
-                </Button>
-              </div>
-              {phase === "reading" ? (
-                <p className="mt-3 text-sm text-muted-foreground">
-                  Reading barcode…
-                </p>
-              ) : phase === "looking" ? (
-                <p className="mt-3 text-sm text-muted-foreground">
-                  Looking up food…
-                </p>
-              ) : null}
-              {detected.length > 1 ? (
-                <div className="mt-3">
-                  <p className="text-sm font-medium">
-                    Choose a detected barcode
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {detected.map((value) => (
-                      <Button
-                        key={value}
-                        size="sm"
-                        variant="outline"
+            {allowPhotoFallback ? (
+              <TabsContent value="photo">
+                <div className="grid grid-cols-2 gap-2">
+                  <Button asChild variant="outline">
+                    <Label className="cursor-pointer justify-center">
+                      <Camera />
+                      Take photo
+                      <Input
                         disabled={busy}
-                        onClick={() => {
-                          setCode(value);
-                          void lookup(value);
+                        className="sr-only"
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          event.target.value = "";
+                          void photo(file);
                         }}
-                      >
-                        {value}
-                      </Button>
-                    ))}
-                  </div>
+                      />
+                    </Label>
+                  </Button>
+                  <Button asChild variant="outline">
+                    <Label className="cursor-pointer justify-center">
+                      <ImagePlus />
+                      Choose photo
+                      <Input
+                        disabled={busy}
+                        className="sr-only"
+                        type="file"
+                        accept="image/*"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          event.target.value = "";
+                          void photo(file);
+                        }}
+                      />
+                    </Label>
+                  </Button>
                 </div>
-              ) : null}
-            </TabsContent>
+                {phase === "reading" ? (
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    Reading barcode…
+                  </p>
+                ) : phase === "looking" ? (
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    Looking up food…
+                  </p>
+                ) : null}
+                {detected.length > 1 ? (
+                  <div className="mt-3">
+                    <p className="text-sm font-medium">
+                      Choose a detected barcode
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {detected.map((value) => (
+                        <Button
+                          key={value}
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() => {
+                            setCode(value);
+                            void lookup(value);
+                          }}
+                        >
+                          {value}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </TabsContent>
+            ) : null}
             <TabsContent value="manual">
               <Label htmlFor="manual-barcode">Barcode number</Label>
               <div className="mt-1 flex gap-2">
@@ -666,7 +874,25 @@ function BarcodeWorkflow({
                 <AlertTitle>Barcode unavailable</AlertTitle>
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
+              {error === "Camera access is required to scan barcodes." &&
+              canUseNativeLiveBarcodeScanner() &&
+              !usesNativeBarcodeCameraLayer() ? (
+                <p className="text-sm text-muted-foreground">
+                  Enable Camera for Calistheni in iPhone Settings, then try
+                  again.
+                </p>
+              ) : null}
               <div className="flex flex-wrap gap-2">
+                {error === "Camera access is required to scan barcodes." &&
+                usesNativeBarcodeCameraLayer() ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void openNativeBarcodeSettings()}
+                  >
+                    Open Settings
+                  </Button>
+                ) : null}
                 <Button size="sm" variant="outline" onClick={reset}>
                   Try another barcode
                 </Button>

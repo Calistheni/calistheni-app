@@ -69,3 +69,36 @@ test("barcode photos are temporary and do not use a persistence endpoint", async
   assert.doesNotMatch(scanner, /fetch\(/);
   assert.doesNotMatch(scanner, /FormData/);
 });
+
+test("native Barcode opens a continuous rear-camera scanner and locks the first valid result", async () => {
+  const [workflow, nativeScanner, manifest] = await Promise.all([
+    readFile(quickActionsUrl, "utf8"),
+    readFile(new URL("../lib/native/barcode-scanner.ts", import.meta.url), "utf8"),
+    readFile(new URL("../android/app/src/main/AndroidManifest.xml", import.meta.url), "utf8"),
+  ]);
+  assert.match(workflow, /canUseNativeLiveBarcodeScanner/);
+  assert.match(workflow, /startNativeLiveBarcodeScanner/);
+  assert.match(workflow, /startWebViewLiveBarcodeScanner/);
+  assert.match(workflow, /Live rear camera barcode preview/);
+  assert.match(workflow, /scanLocked\.current/);
+  assert.match(workflow, /stopNativeLiveBarcodeScanner/);
+  assert.match(workflow, /signalNativeBarcodeSuccess/);
+  assert.match(workflow, /Align the barcode inside the frame/);
+  assert.match(workflow, /Toggle flash/);
+  assert.match(workflow, /Open Settings/);
+  assert.match(nativeScanner, /LensFacing\.Back/);
+  assert.match(nativeScanner, /BarcodeFormat\.Ean13/);
+  assert.match(nativeScanner, /BarcodeFormat\.Ean8/);
+  assert.match(nativeScanner, /BarcodeFormat\.UpcA/);
+  assert.match(nativeScanner, /BarcodeFormat\.UpcE/);
+  assert.match(nativeScanner, /BarcodeFormat\.Code128/);
+  assert.match(nativeScanner, /BarcodeFormat\.Code39/);
+  assert.match(nativeScanner, /BarcodeFormat\.Itf/);
+  assert.match(nativeScanner, /barcodesScanned/);
+  assert.match(nativeScanner, /Haptics\.impact/);
+  assert.match(nativeScanner, /native-barcode-scanner-active/);
+  assert.match(nativeScanner, /decodeFromConstraints/);
+  assert.match(nativeScanner, /facingMode: \{ ideal: "environment" \}/);
+  assert.match(manifest, /android\.permission\.CAMERA/);
+  assert.match(manifest, /com\.google\.mlkit\.vision\.DEPENDENCIES/);
+});
