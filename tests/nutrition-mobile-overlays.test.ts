@@ -4,13 +4,25 @@ import test from "node:test";
 
 test("Nutrition mobile sheet owns one scroll body and a safe-area sticky footer", async () => {
   const source = await readFile(new URL("../components/nutrition/NutritionMobileSheet.tsx", import.meta.url), "utf8");
-  assert.match(source, /h-\[94dvh\]/);
-  assert.match(source, /max-h-\[calc\(100dvh-env\(safe-area-inset-top\)-0\.5rem\)\]/);
+  assert.match(source, /h-\[100dvh\] max-h-\[100dvh\]/);
+  assert.match(source, /sm:h-\[min\(94dvh,52rem\)\]/);
   assert.match(source, /data-slot="nutrition-sheet-scroll"/);
-  assert.match(source, /min-h-0 flex-1 overflow-y-auto overscroll-contain/);
+  assert.match(source, /min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain/);
+  assert.match(source, /-webkit-overflow-scrolling:touch/);
   assert.match(source, /data-slot="nutrition-sheet-footer"/);
   assert.match(source, /env\(safe-area-inset-bottom\)/);
   assert.match(source, /overflow-hidden p-0/);
+});
+
+test("Nutrition sheets stack above the fixed app navigation", async () => {
+  const [sheet, globals] = await Promise.all([
+    readFile(new URL("../components/ui/sheet.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(sheet, /fixed inset-0 z-\[70\]/);
+  assert.match(sheet, /fixed z-\[70\] flex flex-col/);
+  assert.match(sheet, /safe-area-inset-top/);
+  assert.match(globals, /\.app-mobile-nav[\s\S]*z-index: 60/);
 });
 
 test("AI Scan, Describe, Barcode, and meal sheets keep their final actions reachable", async () => {
@@ -23,6 +35,7 @@ test("AI Scan, Describe, Barcode, and meal sheets keep their final actions reach
   assert.match(quick, /footer=\{items\.length \? <Button/);
   assert.match(quick, /footer=\{review && resolvedItems\.length \? <Button/);
   assert.match(quick, /Add to \{mealLabel\(meal\)\}/);
+  assert.match(quick, /<Tabs defaultValue="manual">/);
   assert.equal((meals.match(/<NutritionMobileSheet/g) ?? []).length, 2);
   assert.match(meals, /Update meal items \(\{selected\.size\}\)/);
   assert.match(meals, /max-h-\[min\(58dvh,34rem\)\].*overflow-y-auto overscroll-contain/);

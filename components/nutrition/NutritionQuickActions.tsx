@@ -559,8 +559,8 @@ function BarcodeWorkflow({
         footer={food ? <Button className="w-full" disabled={busy} onClick={() => void add()}>Add to {mealLabel(meal)}</Button> : undefined}
       >
         <div className="space-y-4">
-          <Tabs defaultValue="photo">
-            <TabsList>
+          <Tabs defaultValue="manual">
+            <TabsList className="w-full">
               <TabsTrigger value="photo">Scan / Photo</TabsTrigger>
               <TabsTrigger value="manual">Enter manually</TabsTrigger>
             </TabsList>
