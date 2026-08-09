@@ -148,6 +148,8 @@ test("native scanner lifetime is independent of startup state updates and stops 
   assert.match(barcodeWorkflow, /endNativeScannerSession\("barcode-detected"\)/);
   assert.match(barcodeWorkflow, /endNativeScannerSession\("manual-entry"\)/);
   assert.match(barcodeWorkflow, /endNativeScannerSession\("app-background"\)/);
+  assert.match(barcodeWorkflow, /App\.addListener\("pause"/);
+  assert.doesNotMatch(barcodeWorkflow, /App\.addListener\("appStateChange"/);
   assert.match(barcodeWorkflow, /endNativeScannerSession\("scanner-session-cleanup"\)/);
   assert.match(barcodeWorkflow, /\[open, nativeRuntime, scannerSessionVersion, endNativeScannerSession\]/);
   assert.doesNotMatch(
@@ -161,4 +163,8 @@ test("native scanner lifetime is independent of startup state updates and stops 
   assert.match(iosPlugin, /sessionQueue startRunning begin/);
   assert.match(iosPlugin, /sessionQueue stopRunning/);
   assert.match(iosPlugin, /preview layer attached/);
+  assert.match(iosPlugin, /previewContainer/);
+  assert.match(iosPlugin, /systemPink/);
+  assert.match(iosPlugin, /AVCaptureSessionRuntimeError/);
+  assert.match(iosPlugin, /AVCaptureSessionWasInterrupted/);
 });

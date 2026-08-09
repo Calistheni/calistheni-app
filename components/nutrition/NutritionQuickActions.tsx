@@ -608,8 +608,10 @@ function BarcodeWorkflow({
   useEffect(() => {
     if (!open || !nativeRuntime) return;
     let handle: { remove: () => Promise<void> } | undefined;
-    void App.addListener("appStateChange", ({ isActive }) => {
-      if (!isActive && scannerActiveRef.current) {
+    // Capacitor maps appStateChange(false) to iOS willResignActive, which also
+    // fires for transient system overlays. Pause maps to didEnterBackground.
+    void App.addListener("pause", () => {
+      if (scannerActiveRef.current) {
         void endNativeScannerSession("app-background");
         setError("Scanner paused while Calistheni was in the background. Tap Scan again to restart.");
       }
