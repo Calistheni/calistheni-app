@@ -143,6 +143,32 @@ test("generic cinnamon spice outranks cinnamon dishes and branded products", () 
   assert.equal(rankNutritionFoodCandidates("cinnamon roll", cinnamon)[0]?.externalId, "roll");
 });
 
+test("mushroom, porcini, and omelette keep useful generic or dish candidates", () => {
+  const mushrooms = [
+    food("USDA", "white-raw", "Mushrooms, white, raw"),
+    food("USDA", "white-cooked", "Mushrooms, white, cooked"),
+    food("USDA", "porcini", "Mushrooms, porcini"),
+    food("USDA", "shiitake", "Mushrooms, shiitake, cooked"),
+    food("OPEN_FOOD_FACTS", "soup", "Mushroom soup", { brandName: "Example" }),
+  ];
+  assert.ok(rankNutritionFoodCandidates("mushroom", mushrooms).length > 0);
+  assert.ok(rankNutritionFoodCandidates("porcini", mushrooms).some((item) => item.externalId === "porcini"));
+
+  const omelettes = [
+    food("USDA", "omelet", "Egg omelet, plain"),
+    food("USDA", "egg", "Egg, whole, cooked"),
+    food("USDA", "salad", "Egg salad"),
+  ];
+  assert.equal(rankNutritionFoodCandidates("omelet", omelettes)[0]?.externalId, "omelet");
+});
+
+test("generic search has a synonym fallback instead of returning an empty provider universe", async () => {
+  const service = await import("node:fs/promises").then((fs) => fs.readFile(new URL("../lib/nutrition/service.ts", import.meta.url), "utf8"));
+  assert.match(service, /if \(!providerResults\.length\)/);
+  assert.match(service, /nutritionFoodIntent\(normalized\)\.searchQueries/);
+  assert.match(service, /empty result diagnostics/);
+});
+
 test("manual, Describe, and AI canonical resolution share ordered generic candidates", () => {
   const cases = [
     ["banana", [food("USDA", "banana", "Banana, raw"), food("USDA", "nectar", "Banana nectar")]],

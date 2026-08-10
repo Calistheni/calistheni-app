@@ -18,9 +18,11 @@ test("AI scan accepts only bounded structured identification and amount output",
       {
         label: "Egg, whole",
         preparation: "cooked",
+        speciesOrVariant: null,
         estimatedGrams: 100,
         quantityText: null,
-        confidence: 0.92,
+        visualConfidence: 0.92,
+        specificityConfidence: 0.92,
       },
     ],
     notes: [],
@@ -30,14 +32,14 @@ test("AI scan accepts only bounded structured identification and amount output",
 
   assert.equal(
     aiMealScanResultSchema.safeParse({
-      foods: [{ label: "Egg", preparation: null, estimatedGrams: -1, quantityText: null, confidence: 2 }],
+      foods: [{ label: "Egg", preparation: null, speciesOrVariant: null, estimatedGrams: -1, quantityText: null, visualConfidence: 2, specificityConfidence: 2 }],
       notes: [],
     }).success,
     false
   );
   assert.equal(
     aiMealScanResultSchema.safeParse({
-      foods: [{ label: "Egg", preparation: null, estimatedGrams: null, quantityText: null, calories: 90, confidence: 0.8 }],
+      foods: [{ label: "Egg", preparation: null, speciesOrVariant: null, estimatedGrams: null, quantityText: null, calories: 90, visualConfidence: 0.8, specificityConfidence: 0.8 }],
       notes: [],
     }).success,
     false
@@ -75,7 +77,7 @@ test("AI server validates ephemeral images and uses provider structured output",
   assert.match(provider, /type: "json_schema"/);
   assert.match(provider, /aiMealScanResultSchema\.safeParse/);
   assert.match(provider, /Do not return nutrition values/);
-  assert.match(provider, /supplemental meal context/);
+  assert.match(provider, /supplemental context/);
   assert.match(provider, /detail: "high"/);
   assert.match(provider, /raw vision response/);
 });
@@ -101,9 +103,11 @@ test("AI provider sends an ephemeral image and accepts only its validated struct
                     {
                       label: "Avocado",
                       preparation: null,
+                      speciesOrVariant: null,
                       estimatedGrams: 75,
                       quantityText: null,
-                      confidence: 0.8,
+                      visualConfidence: 0.8,
+                      specificityConfidence: 0.8,
                     },
                   ],
                   notes: [],
@@ -161,6 +165,8 @@ test("AI UI compresses a temporary photo and requires canonical review before ba
   assert.match(workflow, /form\.set\("description", description\)/);
   assert.match(workflow, /\/api\/nutrition\/ai-scan/);
   assert.match(workflow, /detected\.food\?\.id/);
+  assert.match(workflow, /suggestion\.candidates/);
+  assert.doesNotMatch(workflow, /Choose matching foods manually/);
   assert.doesNotMatch(workflow, /resolveCanonicalFood\(detected\.label\)/);
   assert.match(workflow, /ReviewList/);
   assert.match(source, /Replace/);
@@ -177,8 +183,8 @@ test("AI Scan intent aliases and shared ranking resolve ingredients rather than 
     searchQueries: ["manatarka", "porcini mushroom", "porcini", "mushroom"],
   });
   assert.deepEqual(nutritionFoodIntent("French omelette"), {
-    rankQuery: "egg",
-    searchQueries: ["french omelette", "egg", "omelette"],
+    rankQuery: "omelet",
+    searchQueries: ["french omelette", "omelet", "omelette", "egg omelet", "egg"],
   });
 
   const candidates = [
@@ -194,8 +200,8 @@ test("AI Scan intent aliases and shared ranking resolve ingredients rather than 
 test("omelette, porcini, and butter ingredient intents resolve to safe generic foods", () => {
   const candidate = (name: string) => ({ name, provider: "USDA" as const, type: "GENERIC" });
   assert.equal(
-    selectNutritionFoodCandidate(nutritionFoodIntent("French omelette").rankQuery, [candidate("Egg, whole, cooked")])?.name,
-    "Egg, whole, cooked"
+    selectNutritionFoodCandidate(nutritionFoodIntent("French omelette").rankQuery, [candidate("Egg omelet, plain")])?.name,
+    "Egg omelet, plain"
   );
   assert.equal(
     selectNutritionFoodCandidate(nutritionFoodIntent("manatarka").rankQuery, [candidate("Mushrooms, porcini")])?.name,
@@ -205,4 +211,18 @@ test("omelette, porcini, and butter ingredient intents resolve to safe generic f
     selectNutritionFoodCandidate(nutritionFoodIntent("butter").rankQuery, [candidate("Butter"), candidate("Peanut butter")])?.name,
     "Butter"
   );
+});
+
+test("vision preserves dish identity and separates uncertain mushroom species", () => {
+  const parsed = aiMealScanResultSchema.parse({
+    foods: [
+      { label: "omelette", preparation: "French-style", speciesOrVariant: null, estimatedGrams: null, quantityText: null, visualConfidence: 0.95, specificityConfidence: 0.85 },
+      { label: "mushroom", preparation: "cooked", speciesOrVariant: "porcini", estimatedGrams: null, quantityText: null, visualConfidence: 0.95, specificityConfidence: 0.55 },
+    ],
+    notes: [],
+  });
+  assert.equal(parsed.foods[0]?.label, "omelette");
+  assert.equal(parsed.foods[1]?.label, "mushroom");
+  assert.equal(parsed.foods[1]?.speciesOrVariant, "porcini");
+  assert.equal(parsed.foods[1]?.specificityConfidence, 0.55);
 });

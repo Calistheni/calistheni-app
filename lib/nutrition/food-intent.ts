@@ -8,8 +8,12 @@ import { normalizeFoodQuery } from "./normalization";
  * canonical universe.
  */
 const FOOD_INTENT_ALIASES: Record<string, readonly string[]> = {
-  "french omelette": ["egg", "omelette"],
-  omelette: ["egg", "omelette"],
+  "french omelette": ["omelet", "omelette", "egg omelet", "egg"],
+  "french-style omelette": ["omelet", "omelette", "egg omelet", "egg"],
+  "french style omelette": ["omelet", "omelette", "egg omelet", "egg"],
+  omelette: ["omelet", "omelette", "egg omelet", "egg"],
+  omelet: ["omelet", "omelette", "egg omelet", "egg"],
+  "egg omelette": ["omelet", "omelette", "egg omelet", "egg"],
   "porcini mushroom": ["porcini mushroom", "porcini", "mushroom"],
   porcini: ["porcini mushroom", "porcini", "mushroom"],
   "king bolete": ["porcini mushroom", "porcini", "mushroom"],
@@ -27,6 +31,10 @@ const FOOD_INTENT_ALIASES: Record<string, readonly string[]> = {
   "ground cinnamon": ["ground cinnamon", "cinnamon"],
   "whole milk": ["whole milk", "milk"],
   "semi skimmed milk": ["milk", "reduced fat milk"],
+  mushroom: ["mushroom", "mushrooms"],
+  mushrooms: ["mushroom", "mushrooms"],
+  "cooked mushroom": ["mushroom", "mushrooms"],
+  "cooked mushrooms": ["mushroom", "mushrooms"],
 };
 
 export type NutritionFoodIntent = {
@@ -38,7 +46,11 @@ export type NutritionFoodIntent = {
 
 export function nutritionFoodIntent(query: string): NutritionFoodIntent {
   const normalized = normalizeFoodQuery(query);
-  const aliases = FOOD_INTENT_ALIASES[normalized] ?? [];
+  const withoutPreparation = normalized.replace(
+    /^(?:cooked|raw|fried|boiled|grilled|roasted|sauteed|sautéed|french-style|french style)\s+/,
+    ""
+  );
+  const aliases = FOOD_INTENT_ALIASES[normalized] ?? FOOD_INTENT_ALIASES[withoutPreparation] ?? [];
   const searchQueries = [...new Set([normalized, ...aliases].map(normalizeFoodQuery).filter(Boolean))];
   return {
     rankQuery: aliases[0] ? normalizeFoodQuery(aliases[0]) : normalized,

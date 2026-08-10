@@ -16,6 +16,8 @@ export const NUTRITION_DESCRIBE_CANDIDATE_LIMIT = 5;
 export const NUTRITION_DESCRIBE_AUTO_MATCH_THRESHOLD = 400;
 export const NUTRITION_DESCRIBE_AUTO_MATCH_MARGIN = 85;
 export const NUTRITION_DESCRIBE_AI_MATCH_THRESHOLD = 0.8;
+export const NUTRITION_REVIEW_MATCH_THRESHOLD = 0.6;
+export const NUTRITION_AUTO_MATCH_THRESHOLD = 0.85;
 
 type Candidate = FoodSummary | ExternalFoodResult;
 type Concept = DescribedMealResult["foods"][number];
@@ -29,6 +31,8 @@ function debugCandidateResolution(stage: string, payload: unknown) {
 export type DescribeResolution = Concept & {
   food: FoodSummary | null;
   confidence: number | null;
+  needsReview: boolean;
+  candidates: Candidate[];
 };
 
 function queryFor(concept: Concept) {
@@ -141,11 +145,46 @@ export async function resolveDescribedFoods(description: string, concepts: Descr
         confidence = selection.confidence;
       }
     }
-    if (!selected) return { ...entry.concept, food: null, confidence: null };
+    // A usable generic top candidate is better review material than an empty
+    // row. It remains explicitly review-required unless the deterministic or
+    // contextual selector reached the automatic threshold.
+    if (!selected) {
+      const fallback = entry.candidates.find((candidate) =>
+        isSufficientNutritionFoodCandidate(entry.query, candidate)
+      );
+      if (fallback) {
+        selected = fallback;
+        confidence = Math.max(
+          NUTRITION_REVIEW_MATCH_THRESHOLD,
+          selections.get(entry.key)?.confidence ?? 0
+        );
+      }
+    }
+    if (!selected) {
+      return {
+        ...entry.concept,
+        food: null,
+        confidence: null,
+        needsReview: true,
+        candidates: entry.candidates,
+      };
+    }
     try {
-      return { ...entry.concept, food: await canonicalize(selected), confidence };
+      return {
+        ...entry.concept,
+        food: await canonicalize(selected),
+        confidence,
+        needsReview: (confidence ?? 0) < NUTRITION_AUTO_MATCH_THRESHOLD,
+        candidates: entry.candidates,
+      };
     } catch {
-      return { ...entry.concept, food: null, confidence: null };
+      return {
+        ...entry.concept,
+        food: null,
+        confidence: null,
+        needsReview: true,
+        candidates: entry.candidates,
+      };
     }
   }));
 }

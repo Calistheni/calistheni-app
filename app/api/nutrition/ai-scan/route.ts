@@ -5,8 +5,33 @@ import { canUseNutritionAiScan, getUserEntitlements } from "@/lib/entitlements";
 import { analyzeNutritionImage, nutritionAiConfigured } from "@/lib/nutrition/ai-provider";
 import { getNutritionAiQuotas, releaseNutritionAiQuota, reserveNutritionAiQuota } from "@/lib/nutrition/ai-quota";
 import { resolveDescribedFoods } from "@/lib/nutrition/describe-resolver";
+import { normalizeFoodQuery } from "@/lib/nutrition/normalization";
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+const SPECIES_CONFIDENCE_THRESHOLD = 0.85;
+const MUSHROOM_SPECIES = /\b(?:shiitake|porcini|boletus|chanterelle|oyster|cremini|portobello)\b/;
+const KNOWN_MUSHROOM_SPECIES = ["porcini", "shiitake", "chanterelle", "oyster", "cremini", "portobello"];
+function conceptForVisionFood(food: Awaited<ReturnType<typeof analyzeNutritionImage>>["foods"][number], description: string | null) {
+  const context = normalizeFoodQuery(description ?? "");
+  const modelLabel = normalizeFoodQuery(food.label);
+  const descriptionSpecies = modelLabel.includes("mushroom")
+    ? KNOWN_MUSHROOM_SPECIES.find((candidate) => context.includes(candidate)) ?? null
+    : null;
+  const species = descriptionSpecies ?? food.speciesOrVariant?.trim() ?? null;
+  const descriptionConfirmsSpecies = Boolean(species && context.includes(normalizeFoodQuery(species)));
+  const speciesIsTrusted = food.specificityConfidence >= SPECIES_CONFIDENCE_THRESHOLD || descriptionConfirmsSpecies;
+  const label = species && speciesIsTrusted
+    ? `${species} ${food.label}`
+    : !speciesIsTrusted && MUSHROOM_SPECIES.test(modelLabel) && modelLabel.includes("mushroom")
+      ? "mushroom"
+      : food.label;
+  return {
+    label,
+    preparation: food.preparation,
+    estimatedGrams: food.estimatedGrams,
+    quantityText: food.quantityText,
+  };
+}
 function validSignature(bytes: Uint8Array, mime: string) {
   if (mime === "image/jpeg") return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
   if (mime === "image/png") return bytes.slice(0, 8).every((value, index) => value === [137,80,78,71,13,10,26,10][index]);
@@ -43,8 +68,11 @@ export async function POST(request: Request) {
     const detected = await analyzeNutritionImage(Buffer.from(bytes), image.type, description);
     if (process.env.NODE_ENV === "development") {
       console.info("[Nutrition AI Scan] normalized foods", detected.foods.map((food) => ({
-        label: food.label,
+        label: conceptForVisionFood(food, description).label,
         preparation: food.preparation,
+        speciesOrVariant: food.speciesOrVariant,
+        visualConfidence: food.visualConfidence,
+        specificityConfidence: food.specificityConfidence,
       })));
     }
     // Resolve on the server with the same local/provider candidate collector
@@ -53,22 +81,19 @@ export async function POST(request: Request) {
     // separate, stricter search for every visual label.
     const resolved = await resolveDescribedFoods(
       description ?? "",
-      detected.foods.map(({ label, preparation, estimatedGrams, quantityText }) => ({
-        label,
-        preparation,
-        estimatedGrams,
-        quantityText,
-      }))
+      detected.foods.map((food) => conceptForVisionFood(food, description))
     );
     const foods = detected.foods.map((food, index) => ({
       ...food,
       food: resolved[index]?.food ?? null,
       matchConfidence: resolved[index]?.confidence ?? null,
+      needsReview: resolved[index]?.needsReview ?? true,
+      candidates: resolved[index]?.candidates ?? [],
     }));
     if (process.env.NODE_ENV === "development") {
       console.info("[Nutrition AI Scan] resolved review foods", foods.map((food) => ({
         label: food.label,
-        confidence: food.confidence,
+        visualConfidence: food.visualConfidence,
         matchConfidence: food.matchConfidence,
         match: food.food?.name ?? null,
         discarded: food.food ? null : "no-safe-canonical-match",

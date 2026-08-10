@@ -82,6 +82,14 @@ type DraftItem = {
   quantity: number;
   unit: string;
   confidence?: number;
+  needsReview?: boolean;
+};
+type AiCandidateSuggestion = {
+  key: string;
+  label: string;
+  preparation: string | null;
+  visualConfidence: number;
+  candidates: Food[];
 };
 type DescribeReviewItem =
   | { key: string; type: "resolved"; item: DraftItem }
@@ -1036,6 +1044,7 @@ function FoodAmountCard({
   edit,
   editing,
   confidence,
+  needsReview,
 }: {
   food: Food;
   grams: number;
@@ -1049,6 +1058,7 @@ function FoodAmountCard({
   edit?: () => void;
   editing?: boolean;
   confidence?: number;
+  needsReview?: boolean;
 }) {
   const macro = macrosFor(food, grams * quantity);
   const showEditor = !edit || editing;
@@ -1069,10 +1079,8 @@ function FoodAmountCard({
                 {food.brandName}
               </p>
             ) : null}
-            {confidence !== undefined && confidence < 0.6 ? (
-              <p className="text-xs text-amber-600">
-                Low-confidence match — review carefully
-              </p>
+            {needsReview || (confidence !== undefined && confidence < 0.85) ? (
+              <Badge variant="secondary" className="mt-1">Review</Badge>
             ) : null}
           </div>
           {edit ? (
@@ -1183,6 +1191,7 @@ function AiWorkflow({
   const [preview, setPreview] = useState<string | null>(null);
   const [description, setDescription] = useState("");
   const [items, setItems] = useState<DraftItem[]>([]);
+  const [suggestions, setSuggestions] = useState<AiCandidateSuggestion[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [limitReached, setLimitReached] = useState(false);
@@ -1198,6 +1207,7 @@ function AiWorkflow({
     setImage(file);
     setPreview(URL.createObjectURL(file));
     setItems([]);
+    setSuggestions([]);
     setError("");
   }
   function clearImage() {
@@ -1205,6 +1215,7 @@ function AiWorkflow({
     setImage(null);
     setPreview(null);
     setItems([]);
+    setSuggestions([]);
     setError("");
   }
   function reset() {
@@ -1213,6 +1224,7 @@ function AiWorkflow({
     setPreview(null);
     setDescription("");
     setItems([]);
+    setSuggestions([]);
     setBusy(false);
     setError("");
   }
@@ -1261,10 +1273,16 @@ function AiWorkflow({
       }
       const result = await response.json();
       const resolved: DraftItem[] = [];
-      const unresolved: string[] = [];
+      const unresolved: AiCandidateSuggestion[] = [];
       for (const detected of result.foods) {
         if (!detected.food?.id) {
-          unresolved.push(detected.label);
+          unresolved.push({
+            key: crypto.randomUUID(),
+            label: detected.label,
+            preparation: detected.preparation,
+            visualConfidence: detected.visualConfidence,
+            candidates: (detected.candidates ?? []) as Food[],
+          });
           continue;
         }
         const food = detected.food as Food & { id: string };
@@ -1274,14 +1292,14 @@ function AiWorkflow({
           grams: defaultScanGrams(detected, food),
           quantity: 1,
           unit: "g",
-          confidence: detected.confidence,
+          confidence: detected.matchConfidence ?? detected.visualConfidence,
+          needsReview: Boolean(detected.needsReview),
         });
       }
       setItems(resolved);
-      if (unresolved.length)
-        setError(
-          `Choose matching foods manually for: ${unresolved.join(", ")}.`
-        );
+      setSuggestions(unresolved);
+      if (unresolved.some((item) => !item.candidates.length))
+        setError("One or more items need a manual match. Other detected foods are ready to review.");
       if (!resolved.length && !unresolved.length)
         setError(
           "No foods were detected. Try another photo or add foods manually."
@@ -1290,6 +1308,26 @@ function AiWorkflow({
       setError(
         reason instanceof Error ? reason.message : "AI food scan failed."
       );
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function selectSuggestion(suggestion: AiCandidateSuggestion, candidate: Food) {
+    setBusy(true);
+    try {
+      const food = await importFood(candidate);
+      setItems((current) => [...current, {
+        key: suggestion.key,
+        food,
+        grams: defaultScanGrams({ label: suggestion.label, estimatedGrams: null }, food),
+        quantity: 1,
+        unit: "g",
+        confidence: suggestion.visualConfidence,
+        needsReview: true,
+      }]);
+      setSuggestions((current) => current.filter((item) => item.key !== suggestion.key));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to select this food.");
     } finally {
       setBusy(false);
     }
@@ -1412,9 +1450,40 @@ function AiWorkflow({
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             ) : null}
-            {items.length ? (
-              <ReviewList items={items} setItems={setItems} />
+            {items.length || suggestions.length ? (
+              <p className="text-sm font-medium">We found</p>
             ) : null}
+            {items.length ? <ReviewList items={items} setItems={setItems} /> : null}
+            {suggestions.map((suggestion) => (
+              <Card key={suggestion.key}>
+                <CardContent className="space-y-3 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="font-medium">{suggestion.label}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Needs review — choose a suggested match
+                      </p>
+                    </div>
+                    <Button size="sm" variant="ghost" onClick={() => setSuggestions((current) => current.filter((item) => item.key !== suggestion.key))}>
+                      Remove
+                    </Button>
+                  </div>
+                  {suggestion.candidates.length ? (
+                    <div className="flex flex-wrap gap-2">
+                      {suggestion.candidates.slice(0, 5).map((candidate) => (
+                        <Button key={`${candidate.id ?? candidate.provider}:${candidate.id ?? candidate.externalId}`} size="sm" variant="outline" disabled={busy} onClick={() => void selectSuggestion(suggestion, candidate)}>
+                          {candidate.name}
+                        </Button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No close matches were available. Search below or remove this item.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
             <DraftSearch
               onFood={(food) =>
                 setItems((current) => [
@@ -1957,6 +2026,7 @@ function ReviewList({
             quantity={item.quantity}
             unit={item.unit}
             confidence={item.confidence}
+            needsReview={item.needsReview}
             editing={editingKey === item.key}
             edit={() =>
               setEditingKey((current) =>

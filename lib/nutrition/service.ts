@@ -124,10 +124,44 @@ export async function searchFoods(query: string): Promise<FoodSearchResponse> {
   // findLocalFoods already returns canonical FoodSummary DTOs. Re-serializing
   // them would treat ISO timestamps as Dates and drop the whole local branch.
   const localResults = local.status === "fulfilled" ? local.value : [];
-  const providerResults = deduplicateExternalFoodResults(localResults, [
+  const initialProviderCandidates = deduplicateExternalFoodResults(localResults, [
     ...(usda.status === "fulfilled" ? usda.value : []),
     ...(off.status === "fulfilled" ? off.value : []),
-  ]).filter((food) => isRelevantFoodResult(normalized, food)).map(withResolvedFoodIcon).map(withSearchMetadata);
+  ]);
+  let providerResults = initialProviderCandidates
+    .filter((food) => isRelevantFoodResult(normalized, food))
+    .map(withResolvedFoodIcon)
+    .map(withSearchMetadata);
+  // A generic ingredient must not disappear merely because a provider's first
+  // wording used a close synonym (for example mushroom/mushrooms or omelet/
+  // omelette). Only take this extra USDA pass when the normal merged universe
+  // produced nothing, keeping usual searches fast.
+  if (!providerResults.length) {
+    const fallbackQueries = nutritionFoodIntent(normalized).searchQueries
+      .filter((candidate) => candidate !== normalized)
+      .slice(0, 3);
+    const fallbacks = await Promise.allSettled(
+      fallbackQueries.map((candidate) =>
+        searchUsdaFoods(candidate, NUTRITION_PROVIDER_CANDIDATE_LIMIT)
+      )
+    );
+    const fallbackResults = fallbacks.flatMap((result) =>
+      result.status === "fulfilled" ? result.value : []
+    );
+    providerResults = deduplicateExternalFoodResults(localResults, fallbackResults)
+      .map(withResolvedFoodIcon)
+      .map(withSearchMetadata);
+  }
+  if (process.env.NODE_ENV === "development" && !providerResults.length) {
+    console.info("[Nutrition search] empty result diagnostics", {
+      query: normalized,
+      localCount: localResults.length,
+      usdaCount: usda.status === "fulfilled" ? usda.value.length : 0,
+      openFoodFactsCount: off.status === "fulfilled" ? off.value.length : 0,
+      mergedCount: initialProviderCandidates.length,
+      filteredCount: providerResults.length,
+    });
+  }
   const rankedGenericResults = rankExternalFoodResults(normalized, providerResults.filter(isUsdaGenericFood));
   const primaryGeneric = selectPrimaryGenericFood(normalized, rankedGenericResults);
   const genericResults = primaryGeneric ? [primaryGeneric, ...rankedGenericResults.filter((food) => food.externalId !== primaryGeneric.externalId)] : rankedGenericResults;
@@ -150,6 +184,15 @@ export async function searchFoods(query: string): Promise<FoodSearchResponse> {
     providers.openFoodFacts.error ? "Packaged product results are temporarily unavailable." : null,
   ].filter((message): message is string => Boolean(message));
   const results = diversifyNutritionFoodCandidates(rankedResults).slice(0, NUTRITION_SEARCH_RESULT_LIMIT);
+  if (process.env.NODE_ENV === "development" && !results.length) {
+    console.info("[Nutrition search] final empty response", {
+      query: normalized,
+      localCount: localResults.length,
+      genericCount: genericResults.length,
+      packagedCount: packagedResults.length,
+      finalCount: results.length,
+    });
+  }
   return { query: normalized, queryKind: classifyFoodQuery(normalized), ...limited, results, externalResults: [...limited.genericResults, ...limited.packagedResults], providers, warnings };
 }
 async function fetchExternal(provider: "USDA" | "OPEN_FOOD_FACTS", externalId: string) { return provider === "USDA" ? getUsdaFood(externalId) : getOpenFoodFactsProduct(externalId); }
