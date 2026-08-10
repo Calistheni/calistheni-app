@@ -41,7 +41,7 @@ function servingsFromRecord(food: Record<string, unknown>) {
     const grams = Number(serving.grams);
     const quantity = "quantity" in serving ? Number(serving.quantity) : 1;
     if (!name || !Number.isFinite(grams) || grams <= 0 || !Number.isFinite(quantity) || quantity <= 0) return [];
-    return [{ name, grams, quantity, householdUnit: "householdUnit" in serving && serving.householdUnit ? String(serving.householdUnit) : null }];
+    return [{ name, grams, quantity, householdUnit: "householdUnit" in serving && serving.householdUnit ? String(serving.householdUnit) : null, isDefault: "isDefault" in serving && Boolean(serving.isDefault) }];
   });
 }
 function foodIconReference(food: Record<string, unknown>) {
@@ -70,7 +70,7 @@ async function findLocalFoods(normalized: string, userId?: string) {
     include: {
       aliases: { select: { name: true } },
       details: { select: { categories: true, productImageUrl: true } },
-      servings: { select: { name: true, quantity: true, grams: true, householdUnit: true } },
+      servings: { select: { name: true, quantity: true, grams: true, householdUnit: true, isDefault: true } },
     },
     orderBy: [{ selectionCount: "desc" }, { updatedAt: "desc" }],
     take: 20,

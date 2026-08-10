@@ -29,7 +29,7 @@ export async function POST(request: Request) {
       include: {
         aliases: { select: { name: true } },
         details: { select: { categories: true, productImageUrl: true } },
-        servings: { select: { name: true, quantity: true, grams: true, householdUnit: true } },
+        servings: { select: { name: true, quantity: true, grams: true, householdUnit: true, isDefault: true } },
       },
     });
     return NextResponse.json({ food: toFoodSummary(food) }, { status: 201 });
