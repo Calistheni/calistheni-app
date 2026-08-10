@@ -101,3 +101,13 @@ test("ADD exposes loading, diagnostics, and an inline retry instead of failing s
   assert.match(source, /proposalError/);
   assert.match(source, /Try again/);
 });
+
+test("AI Scan validates a successful proposal response and renders review inside its active sheet", async () => {
+  const source = await import("node:fs/promises").then((fs) => fs.readFile(new URL("../components/nutrition/NutritionQuickActions.tsx", import.meta.url), "utf8"));
+  assert.match(source, /missingFoodProposalSchema\.safeParse\(data\?\.proposal\)/);
+  assert.match(source, /Food suggestion was created, but its details could not be loaded/);
+  assert.match(source, /\[Nutrition food proposal\] proposal state updated/);
+  assert.match(source, /Save contribution/);
+  assert.match(source, /Add \{missingProposal\.canonicalName\}/);
+  assert.match(source, /suggestionKey/);
+});

@@ -1212,7 +1212,7 @@ export default function AdminDashboard() {
             <Link href="/admin/exercises">Classify Exercises</Link>
           </Button>
           <Button asChild variant="outline">
-            <Link href="/admin/nutrition/foods">Pending Foods</Link>
+            <Link href="/admin/nutrition/foods">Food Contributions</Link>
           </Button>
           <form action="/admin/logout" method="post">
             <Button type="submit" variant="outline">

@@ -33,7 +33,7 @@ export function FoodVisual({
   const { container, display } = dimensions[size];
 
   if (imageUrl) {
-    return <span className={`${container} ${productImageContainerClass}`}><Image src={imageUrl} alt="" width={display} height={display} sizes={`${display}px`} quality={80} className="size-full object-cover" /><span className="sr-only">{name}</span></span>;
+    return <span className={`${container} ${productImageContainerClass}`}><Image src={imageUrl} alt="" width={display} height={display} sizes={`${display}px`} quality={75} className="size-full object-cover" /><span className="sr-only">{name}</span></span>;
   }
 
   if (iconPath) {
