@@ -8,7 +8,23 @@ const GENERATED_SUFFIX = /(?:[-_]\d{5,}|\s+\d{5,})$/;
 const REPEATED_EXPORT_SUFFIX = /\s+\d+(?:\s+\d+)+$/;
 const SINGLE_EXPORT_SUFFIX = /\s+\d+$/;
 const DESCRIPTORS = new Set([
-  "raw", "cooked", "grilled", "boiled", "baked", "roasted", "skinless", "boneless", "fresh", "frozen", "organic", "plain", "whole", "low-fat", "reduced-fat", "unsalted", "salted",
+  "raw",
+  "cooked",
+  "grilled",
+  "boiled",
+  "baked",
+  "roasted",
+  "skinless",
+  "boneless",
+  "fresh",
+  "frozen",
+  "organic",
+  "plain",
+  "whole",
+  "low-fat",
+  "reduced-fat",
+  "unsalted",
+  "salted",
 ]);
 
 export type FoodIcon = {
@@ -72,10 +88,13 @@ function inventory(): IconInventory {
   // Production inventory is immutable for a server process. In development,
   // re-scan after files are replaced so Turbopack hot reload does not retain
   // an obsolete filename map.
-  if (cachedInventory && (
-    process.env.NODE_ENV !== "development" ||
-    cachedInventory.directoryMtimeMs === directoryMtimeMs
-  )) return cachedInventory;
+  //test
+  if (
+    cachedInventory &&
+    (process.env.NODE_ENV !== "development" ||
+      cachedInventory.directoryMtimeMs === directoryMtimeMs)
+  )
+    return cachedInventory;
 
   const byKey = new Map<string, { key: string; filename: string }>();
   try {
@@ -88,8 +107,11 @@ function inventory(): IconInventory {
       byKey.set(fullKey, icon);
       // Icon libraries frequently append an asset-library numeric id. Expose
       // the meaningful name as an additional lookup key without hardcoding it.
-      const withoutGeneratedSuffix = normalizeFoodIconKey(basename.replace(GENERATED_SUFFIX, ""));
-      if (withoutGeneratedSuffix && !byKey.has(withoutGeneratedSuffix)) byKey.set(withoutGeneratedSuffix, icon);
+      const withoutGeneratedSuffix = normalizeFoodIconKey(
+        basename.replace(GENERATED_SUFFIX, "")
+      );
+      if (withoutGeneratedSuffix && !byKey.has(withoutGeneratedSuffix))
+        byKey.set(withoutGeneratedSuffix, icon);
     }
   } catch {
     // A missing optional icon directory should gracefully retain the existing
@@ -103,23 +125,37 @@ function iconForKeys(keys: readonly string[], match: FoodIcon["match"]) {
   const icons = inventory().byKey;
   for (const key of keys) {
     const icon = icons.get(normalizeFoodIconKey(key));
-    if (icon) return { ...icon, url: `/food-icons/${encodeURIComponent(icon.filename)}`, match } satisfies FoodIcon;
+    if (icon)
+      return {
+        ...icon,
+        url: `/food-icons/${encodeURIComponent(icon.filename)}`,
+        match,
+      } satisfies FoodIcon;
   }
   return undefined;
 }
 
 function tokens(value: string) {
-  return normalizeFoodQuery(value).split(/[\s-]+/).filter(Boolean);
+  return normalizeFoodQuery(value)
+    .split(/[\s-]+/)
+    .filter(Boolean);
 }
 
 function foodFamilyToken(token: string) {
   // USDA descriptions frequently pluralize the leading family name ("Peaches,
   // yellow, raw"), while the icon asset is singular. These are intentionally
   // conservative English inflections, not substring matching.
-  if (token.endsWith("ies") && token.length > 4) return `${token.slice(0, -3)}y`;
+  if (token.endsWith("ies") && token.length > 4)
+    return `${token.slice(0, -3)}y`;
   if (token.endsWith("oes") && token.length > 4) return token.slice(0, -2);
-  if (token.endsWith("es") && token.length > 4 && /(?:ch|sh|ss|x|z)$/.test(token.slice(0, -2))) return token.slice(0, -2);
-  if (token.endsWith("s") && token.length > 3 && !token.endsWith("ss")) return token.slice(0, -1);
+  if (
+    token.endsWith("es") &&
+    token.length > 4 &&
+    /(?:ch|sh|ss|x|z)$/.test(token.slice(0, -2))
+  )
+    return token.slice(0, -2);
+  if (token.endsWith("s") && token.length > 3 && !token.endsWith("ss"))
+    return token.slice(0, -1);
   return token;
 }
 
@@ -128,7 +164,9 @@ function familyTokens(value: string) {
 }
 
 function withoutDescriptors(value: string) {
-  return tokens(value).filter((token) => !DESCRIPTORS.has(token)).join("-");
+  return tokens(value)
+    .filter((token) => !DESCRIPTORS.has(token))
+    .join("-");
 }
 
 function hasAll(value: string, required: readonly string[]) {
@@ -136,7 +174,11 @@ function hasAll(value: string, required: readonly string[]) {
   return required.every((token) => available.has(token));
 }
 
-type ControlledMatch = { iconKeys: string[]; required: string[]; excluded?: string[] };
+type ControlledMatch = {
+  iconKeys: string[];
+  required: string[];
+  excluded?: string[];
+};
 
 // These are food concepts, not individual database records. Each concept is
 // only used if a matching asset exists in the dynamically discovered library.
@@ -149,8 +191,16 @@ const CONTROLLED_MATCHES: ControlledMatch[] = [
   { iconKeys: ["orange-juice"], required: ["orange", "juice"] },
   { iconKeys: ["apple-juice"], required: ["apple", "juice"] },
   { iconKeys: ["sweet-potato", "sweetpotato"], required: ["sweet", "potato"] },
-  { iconKeys: ["ground-meat", "groundmeat"], required: ["ground", "beef"], excluded: ["turkey", "chicken", "pork", "lamb"] },
-  { iconKeys: ["ground-meat", "groundmeat"], required: ["minced", "beef"], excluded: ["turkey", "chicken", "pork", "lamb"] },
+  {
+    iconKeys: ["ground-meat", "groundmeat"],
+    required: ["ground", "beef"],
+    excluded: ["turkey", "chicken", "pork", "lamb"],
+  },
+  {
+    iconKeys: ["ground-meat", "groundmeat"],
+    required: ["minced", "beef"],
+    excluded: ["turkey", "chicken", "pork", "lamb"],
+  },
   { iconKeys: ["chicken"], required: ["chicken", "breast"] },
   { iconKeys: ["chicken"], required: ["chicken", "thigh"] },
   { iconKeys: ["chicken"], required: ["chicken", "fillet"] },
@@ -158,16 +208,32 @@ const CONTROLLED_MATCHES: ControlledMatch[] = [
   { iconKeys: ["tuna"], required: ["tuna"] },
   { iconKeys: ["turkey"], required: ["turkey"] },
   { iconKeys: ["egg"], required: ["egg"] },
-  { iconKeys: ["rice"], required: ["rice"], excluded: ["cake", "pudding", "paper"] },
+  {
+    iconKeys: ["rice"],
+    required: ["rice"],
+    excluded: ["cake", "pudding", "paper"],
+  },
   { iconKeys: ["oats"], required: ["oat"] },
   { iconKeys: ["oats"], required: ["oats"] },
-  { iconKeys: ["steak"], required: ["steak"], excluded: ["broth", "stock", "sauce"] },
-  { iconKeys: ["beef"], required: ["beef"], excluded: ["broth", "stock", "sauce", "ground"] },
+  {
+    iconKeys: ["steak"],
+    required: ["steak"],
+    excluded: ["broth", "stock", "sauce"],
+  },
+  {
+    iconKeys: ["beef"],
+    required: ["beef"],
+    excluded: ["broth", "stock", "sauce", "ground"],
+  },
   { iconKeys: ["chickpeas"], required: ["garbanzo"] },
   { iconKeys: ["chickpeas"], required: ["chickpea"] },
   { iconKeys: ["beans"], required: ["lentil"] },
   { iconKeys: ["beans"], required: ["lentils"] },
-  { iconKeys: ["brown-rice", "brownrice"], required: ["brown", "rice"], excluded: ["cake"] },
+  {
+    iconKeys: ["brown-rice", "brownrice"],
+    required: ["brown", "rice"],
+    excluded: ["cake"],
+  },
   { iconKeys: ["broccoli", "brocoli"], required: ["broccoli"] },
   { iconKeys: ["cauliflower"], required: ["cauliflower"] },
   { iconKeys: ["zucchini", "zuccini"], required: ["zucchini"] },
@@ -184,7 +250,15 @@ const UNSAFE_FAMILY_COMBINATIONS = [
   ["beef", "stock"],
   ["peanut", "butter"],
 ] as const;
-const SPECIFIC_PRODUCT_TERMS = ["pie", "juice", "nectar", "cake", "dessert", "sauce", "drink"];
+const SPECIFIC_PRODUCT_TERMS = [
+  "pie",
+  "juice",
+  "nectar",
+  "cake",
+  "dessert",
+  "sauce",
+  "drink",
+];
 
 // Asset-file spelling corrections and food-family names that cannot be inferred
 // from the filename are kept here. All ordinary keys are still discovered from
@@ -205,7 +279,10 @@ const FAMILY_ICON_ALIASES: Record<string, string[]> = {
   tuna: ["tuna"],
 };
 
-const CATEGORY_FALLBACKS: Array<{ categoryTokens: string[]; iconKeys: string[] }> = [
+const CATEGORY_FALLBACKS: Array<{
+  categoryTokens: string[];
+  iconKeys: string[];
+}> = [
   { categoryTokens: ["berry", "fruit"], iconKeys: ["fruit"] },
   { categoryTokens: ["fish", "seafood"], iconKeys: ["fish"] },
   { categoryTokens: ["vegetable", "leafy"], iconKeys: ["vegetable"] },
@@ -221,7 +298,8 @@ function exactIcon(value: string, match: FoodIcon["match"]) {
 
 function keywordIcon(value: string) {
   for (const candidate of CONTROLLED_MATCHES) {
-    if (candidate.excluded?.some((token) => tokens(value).includes(token))) continue;
+    if (candidate.excluded?.some((token) => tokens(value).includes(token)))
+      continue;
     if (hasAll(value, candidate.required)) {
       const icon = iconForKeys(candidate.iconKeys, "KEYWORD");
       if (icon) return icon;
@@ -240,12 +318,20 @@ function familyIcon(value: string) {
       if (specific) return specific;
     }
   }
-  if (UNSAFE_FAMILY_COMBINATIONS.some((combination) => combination.every((token) => foodTokens.includes(token)))) return undefined;
+  if (
+    UNSAFE_FAMILY_COMBINATIONS.some((combination) =>
+      combination.every((token) => foodTokens.includes(token))
+    )
+  )
+    return undefined;
 
   for (const token of foodTokens) {
     // First permit a new sensibly named asset to work without changing this
     // resolver. Then try the small set of legacy filename aliases above.
-    const icon = iconForKeys([token, ...(FAMILY_ICON_ALIASES[token] ?? [])], "KEYWORD");
+    const icon = iconForKeys(
+      [token, ...(FAMILY_ICON_ALIASES[token] ?? [])],
+      "KEYWORD"
+    );
     if (icon) return icon;
   }
   return undefined;
@@ -254,7 +340,11 @@ function familyIcon(value: string) {
 function categoryIcon(categories: readonly string[]) {
   const categoryText = categories.join(" ");
   for (const fallback of CATEGORY_FALLBACKS) {
-    if (fallback.categoryTokens.some((token) => tokens(categoryText).includes(token))) {
+    if (
+      fallback.categoryTokens.some((token) =>
+        tokens(categoryText).includes(token)
+      )
+    ) {
       const icon = iconForKeys(fallback.iconKeys, "CATEGORY");
       if (icon) return icon;
     }
@@ -266,8 +356,12 @@ function categoryIcon(categories: readonly string[]) {
  * Resolves a generic icon without ever replacing an actual packaged product
  * image. Undefined means callers should keep their existing generic fallback.
  */
-export function resolveFoodIcon(candidate: FoodIconCandidate): FoodIcon | undefined {
-  const isPackagedImage = Boolean(candidate.imageUrl) && (candidate.source === "OPEN_FOOD_FACTS" || candidate.type === "BRANDED");
+export function resolveFoodIcon(
+  candidate: FoodIconCandidate
+): FoodIcon | undefined {
+  const isPackagedImage =
+    Boolean(candidate.imageUrl) &&
+    (candidate.source === "OPEN_FOOD_FACTS" || candidate.type === "BRANDED");
   if (isPackagedImage) return undefined;
 
   if (candidate.iconKey) {
@@ -295,5 +389,8 @@ export function resolveFoodIcon(candidate: FoodIconCandidate): FoodIcon | undefi
 
 /** Exposed for diagnostics/tests; the scan is cached per server process. */
 export function availableFoodIcons() {
-  return [...new Set(inventory().byKey.values())].map((icon) => ({ key: icon.key, filename: icon.filename }));
+  return [...new Set(inventory().byKey.values())].map((icon) => ({
+    key: icon.key,
+    filename: icon.filename,
+  }));
 }
