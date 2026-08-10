@@ -8,6 +8,7 @@ import {
   scoreNutritionFoodCandidate,
 } from "./search-ranking";
 import { getNutritionCandidatesForIntent, importExternalFood, toFoodSummary } from "./service";
+import { nutritionFoodIntent } from "./food-intent";
 import type { ExternalFoodResult, FoodSummary } from "./types";
 import { prisma } from "@/lib/prisma";
 
@@ -19,13 +20,21 @@ export const NUTRITION_DESCRIBE_AI_MATCH_THRESHOLD = 0.8;
 type Candidate = FoodSummary | ExternalFoodResult;
 type Concept = DescribedMealResult["foods"][number];
 
+function debugCandidateResolution(stage: string, payload: unknown) {
+  if (process.env.NODE_ENV === "development") {
+    console.info(`[Nutrition candidate resolver] ${stage}`, payload);
+  }
+}
+
 export type DescribeResolution = Concept & {
   food: FoodSummary | null;
   confidence: number | null;
 };
 
 function queryFor(concept: Concept) {
-  return [concept.preparation, concept.label].filter(Boolean).join(" ");
+  return nutritionFoodIntent(
+    [concept.preparation, concept.label].filter(Boolean).join(" ")
+  ).rankQuery;
 }
 
 function providerFor(candidate: ExternalFoodResult) {
@@ -52,12 +61,23 @@ async function canonicalize(candidate: Candidate): Promise<FoodSummary> {
 
 export function getObviousDescribeCandidate(query: string, candidates: Candidate[]) {
   const [top, second] = rankNutritionFoodCandidates(query, candidates);
-  if (!top || !isSufficientNutritionFoodCandidate(query, top)) return null;
+  if (!top || !isSufficientNutritionFoodCandidate(query, top)) {
+    debugCandidateResolution("rejected automatic match", {
+      query,
+      top: top ? { name: top.name, score: scoreNutritionFoodCandidate(query, top), reason: "weak-or-derivative" } : null,
+    });
+    return null;
+  }
   const topScore = scoreNutritionFoodCandidate(query, top);
   const margin = topScore - (second ? scoreNutritionFoodCandidate(query, second) : 0);
-  return topScore >= NUTRITION_DESCRIBE_AUTO_MATCH_THRESHOLD && margin >= NUTRITION_DESCRIBE_AUTO_MATCH_MARGIN
-    ? top
-    : null;
+  const obvious = topScore >= NUTRITION_DESCRIBE_AUTO_MATCH_THRESHOLD && margin >= NUTRITION_DESCRIBE_AUTO_MATCH_MARGIN;
+  debugCandidateResolution(obvious ? "selected deterministic match" : "ambiguous deterministic match", {
+    query,
+    top: { name: top.name, score: topScore },
+    second: second ? { name: second.name, score: scoreNutritionFoodCandidate(query, second) } : null,
+    margin,
+  });
+  return obvious ? top : null;
 }
 
 /**
@@ -70,6 +90,15 @@ export async function resolveDescribedFoods(description: string, concepts: Descr
     const query = queryFor(concept);
     try {
       const candidates = await getNutritionCandidatesForIntent(query, NUTRITION_DESCRIBE_CANDIDATE_LIMIT) as Candidate[];
+      debugCandidateResolution("candidate pool", {
+        label: concept.label,
+        query,
+        candidates: candidates.map((candidate) => ({
+          name: candidate.name,
+          source: "provider" in candidate ? candidate.provider : candidate.source,
+          score: scoreNutritionFoodCandidate(query, candidate),
+        })),
+      });
       return { concept, key: `concept_${index + 1}`, query, candidates, obvious: getObviousDescribeCandidate(query, candidates) };
     } catch {
       return { concept, key: `concept_${index + 1}`, query, candidates: [] as Candidate[], obvious: null };

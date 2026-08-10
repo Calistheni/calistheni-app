@@ -4,6 +4,7 @@ import { createUserUnauthorizedResponse, getAuthenticatedUserId } from "@/lib/us
 import { canUseNutritionAiScan, getUserEntitlements } from "@/lib/entitlements";
 import { analyzeNutritionImage, nutritionAiConfigured } from "@/lib/nutrition/ai-provider";
 import { getNutritionAiQuotas, releaseNutritionAiQuota, reserveNutritionAiQuota } from "@/lib/nutrition/ai-quota";
+import { resolveDescribedFoods } from "@/lib/nutrition/describe-resolver";
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 function validSignature(bytes: Uint8Array, mime: string) {
@@ -38,6 +39,42 @@ export async function POST(request: Request) {
     const quota = (await getNutritionAiQuotas(userId, true)).aiScan!;
     return NextResponse.json({ error: "DAILY_LIMIT_REACHED", feature: "nutrition_ai_scan", limit: quota.limit, message: "You've reached today's AI Scan limit. Your quota resets tomorrow." }, { status: 429 });
   }
-  try { return NextResponse.json(await analyzeNutritionImage(Buffer.from(bytes), image.type, description)); }
+  try {
+    const detected = await analyzeNutritionImage(Buffer.from(bytes), image.type, description);
+    if (process.env.NODE_ENV === "development") {
+      console.info("[Nutrition AI Scan] normalized foods", detected.foods.map((food) => ({
+        label: food.label,
+        preparation: food.preparation,
+      })));
+    }
+    // Resolve on the server with the same local/provider candidate collector
+    // used by Food search and Describe. This ranks before importing and only
+    // imports the chosen winner, rather than asking the browser to make a
+    // separate, stricter search for every visual label.
+    const resolved = await resolveDescribedFoods(
+      description ?? "",
+      detected.foods.map(({ label, preparation, estimatedGrams, quantityText }) => ({
+        label,
+        preparation,
+        estimatedGrams,
+        quantityText,
+      }))
+    );
+    const foods = detected.foods.map((food, index) => ({
+      ...food,
+      food: resolved[index]?.food ?? null,
+      matchConfidence: resolved[index]?.confidence ?? null,
+    }));
+    if (process.env.NODE_ENV === "development") {
+      console.info("[Nutrition AI Scan] resolved review foods", foods.map((food) => ({
+        label: food.label,
+        confidence: food.confidence,
+        matchConfidence: food.matchConfidence,
+        match: food.food?.name ?? null,
+        discarded: food.food ? null : "no-safe-canonical-match",
+      })));
+    }
+    return NextResponse.json({ foods, notes: detected.notes });
+  }
   catch (error) { await releaseNutritionAiQuota(reservation); const code = error instanceof Error ? error.message : "AI_UNAVAILABLE"; const malformed = code === "AI_MALFORMED_RESPONSE"; const rateLimited = code === "AI_RATE_LIMITED"; return createJsonErrorResponse(malformed ? "The food scan returned an invalid result. Try another photo." : rateLimited ? "AI food scanning is busy. Try again shortly." : "AI food scanning is temporarily unavailable.", malformed ? 502 : rateLimited ? 429 : 503, code); }
 }

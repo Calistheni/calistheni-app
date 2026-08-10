@@ -6,11 +6,22 @@ import {
   aiMealScanResultSchema,
 } from "../lib/nutrition/ai-scan";
 import { analyzeNutritionImage } from "../lib/nutrition/ai-provider";
+import { nutritionFoodIntent } from "../lib/nutrition/food-intent";
+import {
+  rankNutritionFoodCandidates,
+  selectNutritionFoodCandidate,
+} from "../lib/nutrition/search-ranking";
 
 test("AI scan accepts only bounded structured identification and amount output", () => {
   const parsed = aiMealScanResultSchema.parse({
     foods: [
-      { label: "Egg, whole", estimatedGrams: 100, confidence: 0.92 },
+      {
+        label: "Egg, whole",
+        preparation: "cooked",
+        estimatedGrams: 100,
+        quantityText: null,
+        confidence: 0.92,
+      },
     ],
     notes: [],
   });
@@ -19,14 +30,14 @@ test("AI scan accepts only bounded structured identification and amount output",
 
   assert.equal(
     aiMealScanResultSchema.safeParse({
-      foods: [{ label: "Egg", estimatedGrams: -1, confidence: 2 }],
+      foods: [{ label: "Egg", preparation: null, estimatedGrams: -1, quantityText: null, confidence: 2 }],
       notes: [],
     }).success,
     false
   );
   assert.equal(
     aiMealScanResultSchema.safeParse({
-      foods: [{ label: "Egg", calories: 90 }],
+      foods: [{ label: "Egg", preparation: null, estimatedGrams: null, quantityText: null, calories: 90, confidence: 0.8 }],
       notes: [],
     }).success,
     false
@@ -53,6 +64,8 @@ test("AI server validates ephemeral images and uses provider structured output",
   assert.match(route, /description\.length > 200/);
   assert.match(route, /reserveNutritionAiQuota\(userId, true, "aiScan"\)/);
   assert.match(route, /releaseNutritionAiQuota\(reservation\)/);
+  assert.match(route, /resolveDescribedFoods/);
+  assert.match(route, /resolved review foods/);
   assert.match(route, /DAILY_LIMIT_REACHED/);
   assert.doesNotMatch(route, /prisma/);
 
@@ -61,7 +74,10 @@ test("AI server validates ephemeral images and uses provider structured output",
   assert.match(provider, /store: false/);
   assert.match(provider, /type: "json_schema"/);
   assert.match(provider, /aiMealScanResultSchema\.safeParse/);
-  assert.match(provider, /Do not provide nutrition values/);
+  assert.match(provider, /Do not return nutrition values/);
+  assert.match(provider, /supplemental meal context/);
+  assert.match(provider, /detail: "high"/);
+  assert.match(provider, /raw vision response/);
 });
 
 test("AI provider sends an ephemeral image and accepts only its validated structured result", async () => {
@@ -84,7 +100,9 @@ test("AI provider sends an ephemeral image and accepts only its validated struct
                   foods: [
                     {
                       label: "Avocado",
+                      preparation: null,
                       estimatedGrams: 75,
+                      quantityText: null,
                       confidence: 0.8,
                     },
                   ],
@@ -142,13 +160,49 @@ test("AI UI compresses a temporary photo and requires canonical review before ba
   assert.match(workflow, /compressWorkoutPhoto\(image\)/);
   assert.match(workflow, /form\.set\("description", description\)/);
   assert.match(workflow, /\/api\/nutrition\/ai-scan/);
-  assert.match(workflow, /resolveCanonicalFood\(detected\.label\)/);
-  assert.match(workflow, /importFood\(match\)/);
+  assert.match(workflow, /detected\.food\?\.id/);
+  assert.doesNotMatch(workflow, /resolveCanonicalFood\(detected\.label\)/);
   assert.match(workflow, /ReviewList/);
   assert.match(source, /Replace/);
   assert.match(workflow, /Remove image/);
   assert.match(workflow, /AI estimates can be\s+inaccurate/);
   assert.ok(
     workflow.indexOf("await batchLog") > workflow.indexOf("async function confirm")
+  );
+});
+
+test("AI Scan intent aliases and shared ranking resolve ingredients rather than derivatives", () => {
+  assert.deepEqual(nutritionFoodIntent("manatarka"), {
+    rankQuery: "porcini mushroom",
+    searchQueries: ["manatarka", "porcini mushroom", "porcini", "mushroom"],
+  });
+  assert.deepEqual(nutritionFoodIntent("French omelette"), {
+    rankQuery: "egg",
+    searchQueries: ["french omelette", "egg", "omelette"],
+  });
+
+  const candidates = [
+    { name: "Peanut butter", provider: "USDA" as const, type: "GENERIC" },
+    { name: "Butter, salted", provider: "USDA" as const, type: "GENERIC" },
+    { name: "Butter", provider: "USDA" as const, type: "GENERIC" },
+  ];
+  const ranked = rankNutritionFoodCandidates("butter", candidates);
+  assert.equal(ranked[0]?.name, "Butter");
+  assert.equal(selectNutritionFoodCandidate("butter", ranked)?.name, "Butter");
+});
+
+test("omelette, porcini, and butter ingredient intents resolve to safe generic foods", () => {
+  const candidate = (name: string) => ({ name, provider: "USDA" as const, type: "GENERIC" });
+  assert.equal(
+    selectNutritionFoodCandidate(nutritionFoodIntent("French omelette").rankQuery, [candidate("Egg, whole, cooked")])?.name,
+    "Egg, whole, cooked"
+  );
+  assert.equal(
+    selectNutritionFoodCandidate(nutritionFoodIntent("manatarka").rankQuery, [candidate("Mushrooms, porcini")])?.name,
+    "Mushrooms, porcini"
+  );
+  assert.equal(
+    selectNutritionFoodCandidate(nutritionFoodIntent("butter").rankQuery, [candidate("Butter"), candidate("Peanut butter")])?.name,
+    "Butter"
   );
 });

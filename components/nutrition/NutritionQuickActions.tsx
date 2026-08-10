@@ -56,7 +56,6 @@ import {
 import { compressWorkoutPhoto } from "@/lib/workout-photo-client";
 import {
   rankNutritionFoodCandidates,
-  selectNutritionFoodCandidate,
 } from "@/lib/nutrition/search-ranking";
 
 export type QuickMeal = "BREAKFAST" | "LUNCH" | "DINNER" | "SNACKS";
@@ -153,22 +152,6 @@ async function searchCanonical(query: string) {
     ...(data.packagedResults ?? []),
   ]) as Food[];
   return rankNutritionFoodCandidates(query, candidates) as Food[];
-}
-async function searchLocalCanonical(query: string) {
-  const response = await fetch(
-    `/api/nutrition/foods/search?q=${encodeURIComponent(query)}&localOnly=1`
-  );
-  if (!response.ok) return [] as Food[];
-  const data = await response.json();
-  return rankNutritionFoodCandidates(query, (data.results ?? []) as Food[]) as Food[];
-}
-async function resolveCanonicalFood(query: string) {
-  const localMatch = selectNutritionFoodCandidate(
-    query,
-    await searchLocalCanonical(query)
-  ) as Food | null;
-  if (localMatch) return localMatch;
-  return selectNutritionFoodCandidate(query, await searchCanonical(query)) as Food | null;
 }
 async function batchLog(meal: QuickMeal, date: string, items: DraftItem[]) {
   const response = await fetch("/api/nutrition/entries/batch", {
@@ -1237,6 +1220,20 @@ function AiWorkflow({
     reset();
     close();
   }
+  function defaultScanGrams(
+    detected: { label: string; estimatedGrams: number | null },
+    food: Food
+  ) {
+    if (detected.estimatedGrams && detected.estimatedGrams > 0)
+      return detected.estimatedGrams;
+    const serving = food.servings?.find((candidate) => candidate.grams > 0);
+    if (serving) return serving.grams;
+    const label = detected.label.toLowerCase();
+    if (/(cinnamon|spice|salt)/.test(label)) return 3;
+    if (/honey/.test(label)) return 21;
+    if (/(butter|oil)/.test(label)) return 14;
+    return 100;
+  }
   async function analyze() {
     if (!image || busy) return setError("Take or choose a food photo first.");
     setBusy(true);
@@ -1266,24 +1263,19 @@ function AiWorkflow({
       const resolved: DraftItem[] = [];
       const unresolved: string[] = [];
       for (const detected of result.foods) {
-        const match = await resolveCanonicalFood(detected.label);
-        if (!match) {
+        if (!detected.food?.id) {
           unresolved.push(detected.label);
           continue;
         }
-        try {
-          const food = await importFood(match);
-          resolved.push({
-            key: crypto.randomUUID(),
-            food,
-            grams: detected.estimatedGrams,
-            quantity: 1,
-            unit: "g",
-            confidence: detected.confidence,
-          });
-        } catch {
-          unresolved.push(detected.label);
-        }
+        const food = detected.food as Food & { id: string };
+        resolved.push({
+          key: crypto.randomUUID(),
+          food,
+          grams: defaultScanGrams(detected, food),
+          quantity: 1,
+          unit: "g",
+          confidence: detected.confidence,
+        });
       }
       setItems(resolved);
       if (unresolved.length)

@@ -1,6 +1,7 @@
 import { FoodDataValueSource, FoodFreshnessStatus, FoodImportStatus, FoodRevisionReason, FoodSource, FoodType, FoodVerificationStatus, Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isMaterialFoodChange, normalizeFoodQuery, nutritionFoodQueryVariants } from "./normalization";
+import { nutritionFoodIntent } from "./food-intent";
 import { getOpenFoodFactsProduct, searchOpenFoodFactsFoods } from "./providers/open-food-facts";
 import { ProviderError } from "./providers/http";
 import { getUsdaFood, searchUsdaFoods } from "./providers/usda";
@@ -81,8 +82,26 @@ export async function searchLocalFoods(query: string) {
 
 /** Shared top-N canonical preview set for smart Nutrition workflows. */
 export async function getNutritionCandidatesForIntent(query: string, limit = 5) {
-  const result = await searchFoods(query);
-  return rankNutritionFoodCandidates(query, result.results).slice(0, Math.max(1, Math.min(limit, 8)));
+  const intent = nutritionFoodIntent(query);
+  if (process.env.NODE_ENV === "development") {
+    console.info("[Nutrition candidate resolver] search queries", {
+      input: query,
+      rankQuery: intent.rankQuery,
+      queries: intent.searchQueries,
+    });
+  }
+  const results = await Promise.all(intent.searchQueries.map(searchFoods));
+  const seen = new Set<string>();
+  const candidates = results.flatMap((result) => result.results).filter((candidate) => {
+    const identity = "id" in candidate
+      ? `${candidate.source}:${candidate.id}`
+      : `${candidate.provider}:${candidate.externalId}`;
+    if (seen.has(identity)) return false;
+    seen.add(identity);
+    return true;
+  });
+  return rankNutritionFoodCandidates(intent.rankQuery, candidates)
+    .slice(0, Math.max(1, Math.min(limit, 8)));
 }
 
 export async function searchFoods(query: string): Promise<FoodSearchResponse> {

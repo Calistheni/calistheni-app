@@ -296,9 +296,8 @@ test("Food, Describe, AI Scan, and saved-meal search consume the shared ranked r
   assert.ok(service.indexOf("const rankedResults") < service.indexOf("const limited"));
   assert.match(service, /diversifyNutritionFoodCandidates\(rankedResults\)\.slice\(0, NUTRITION_SEARCH_RESULT_LIMIT\)/);
   assert.match(tracker, /data\.results \?\?/);
-  assert.match(quickActions, /selectNutritionFoodCandidate/);
-  assert.match(quickActions, /searchLocalCanonical/);
-  assert.ok(quickActions.indexOf("searchLocalCanonical") < quickActions.indexOf("return selectNutritionFoodCandidate\(query, await searchCanonical"));
-  assert.match(quickActions, /resolveCanonicalFood/);
+  assert.match(quickActions, /detected\.food\?\.id/);
+  assert.doesNotMatch(quickActions, /resolveCanonicalFood\(detected\.label\)/);
+  assert.match(service, /getNutritionCandidatesForIntent/);
   assert.match(savedMeals, /data\.results \?\?/);
 });
