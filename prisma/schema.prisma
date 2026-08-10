@@ -52,6 +52,12 @@ enum FoodVerificationStatus {
   DISPUTED
 }
 
+enum FoodContributionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum FoodImportStatus {
   ACTIVE
   INCOMPLETE
@@ -248,6 +254,7 @@ model User {
   supplementPlans               UserSupplementPlan[]
   supplementReminderSettings    UserSupplementReminderSettings?
   bodyMeasurementEntries        BodyMeasurementEntry[]
+  contributedFoods              Food[]                          @relation("FoodContributor")
 
   @@index([username])
 }
@@ -696,52 +703,54 @@ model WorkoutNotification {
 }
 
 model Food {
-  id                  String                 @id @default(cuid())
+  id                  String                  @id @default(cuid())
   type                FoodType
   name                String
   normalizedName      String
   description         String?
   brandName           String?
-  barcode             String?                @unique
+  barcode             String?                 @unique
   imageUrl            String?
   /// Optional curator-selected generic icon key. Automatically resolved icons
   /// remain computed from the local public icon inventory.
   iconKey             String?
   languageCode        String?
-  countryCodes        String[]               @default([])
-  nutritionBasisGrams Decimal                @default(100) @db.Decimal(10, 3)
-  caloriesKcal        Decimal?               @db.Decimal(12, 3)
-  proteinGrams        Decimal?               @db.Decimal(12, 3)
-  carbohydrateGrams   Decimal?               @db.Decimal(12, 3)
-  fatGrams            Decimal?               @db.Decimal(12, 3)
-  fiberGrams          Decimal?               @db.Decimal(12, 3)
-  sugarGrams          Decimal?               @db.Decimal(12, 3)
-  saturatedFatGrams   Decimal?               @db.Decimal(12, 3)
-  transFatGrams       Decimal?               @db.Decimal(12, 3)
-  addedSugarGrams     Decimal?               @db.Decimal(12, 3)
-  sodiumMg            Decimal?               @db.Decimal(12, 3)
-  saltGrams           Decimal?               @db.Decimal(12, 3)
-  cholesterolMg       Decimal?               @db.Decimal(12, 3)
-  potassiumMg         Decimal?               @db.Decimal(12, 3)
-  calciumMg           Decimal?               @db.Decimal(12, 3)
-  ironMg              Decimal?               @db.Decimal(12, 3)
-  calorieValueSource  FoodDataValueSource    @default(PROVIDER)
+  countryCodes        String[]                @default([])
+  nutritionBasisGrams Decimal                 @default(100) @db.Decimal(10, 3)
+  caloriesKcal        Decimal?                @db.Decimal(12, 3)
+  proteinGrams        Decimal?                @db.Decimal(12, 3)
+  carbohydrateGrams   Decimal?                @db.Decimal(12, 3)
+  fatGrams            Decimal?                @db.Decimal(12, 3)
+  fiberGrams          Decimal?                @db.Decimal(12, 3)
+  sugarGrams          Decimal?                @db.Decimal(12, 3)
+  saturatedFatGrams   Decimal?                @db.Decimal(12, 3)
+  transFatGrams       Decimal?                @db.Decimal(12, 3)
+  addedSugarGrams     Decimal?                @db.Decimal(12, 3)
+  sodiumMg            Decimal?                @db.Decimal(12, 3)
+  saltGrams           Decimal?                @db.Decimal(12, 3)
+  cholesterolMg       Decimal?                @db.Decimal(12, 3)
+  potassiumMg         Decimal?                @db.Decimal(12, 3)
+  calciumMg           Decimal?                @db.Decimal(12, 3)
+  ironMg              Decimal?                @db.Decimal(12, 3)
+  calorieValueSource  FoodDataValueSource     @default(PROVIDER)
   source              FoodSource
   sourceExternalId    String
   sourceUpdatedAt     DateTime?
-  importedAt          DateTime               @default(now())
+  importedAt          DateTime                @default(now())
   lastFetchedAt       DateTime?
   lastRevalidatedAt   DateTime?
   nextRevalidateAt    DateTime?
   verificationStatus  FoodVerificationStatus
-  importStatus        FoodImportStatus       @default(ACTIVE)
-  freshnessStatus     FoodFreshnessStatus    @default(FRESH)
-  confidenceScore     Decimal                @default(0) @db.Decimal(5, 4)
-  currentRevisionId   String?                @unique
-  searchCount         Int                    @default(0)
-  selectionCount      Int                    @default(0)
-  createdAt           DateTime               @default(now())
-  updatedAt           DateTime               @updatedAt
+  importStatus        FoodImportStatus        @default(ACTIVE)
+  freshnessStatus     FoodFreshnessStatus     @default(FRESH)
+  confidenceScore     Decimal                 @default(0) @db.Decimal(5, 4)
+  contributionStatus  FoodContributionStatus?
+  createdByUserId     String?
+  currentRevisionId   String?                 @unique
+  searchCount         Int                     @default(0)
+  selectionCount      Int                     @default(0)
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
 
   servings                FoodServing[]
   details                 FoodDetails?
@@ -750,6 +759,7 @@ model Food {
   sourceRecords           FoodSourceRecord[]
   revisions               FoodRevision[]           @relation("FoodRevisions")
   currentRevision         FoodRevision?            @relation("FoodCurrentRevision", fields: [currentRevisionId], references: [id], onDelete: SetNull)
+  createdByUser           User?                    @relation("FoodContributor", fields: [createdByUserId], references: [id], onDelete: SetNull)
   nutritionSnapshots      NutritionEntrySnapshot[]
   nutritionSavedMealItems NutritionSavedMealItem[]
 
@@ -762,6 +772,7 @@ model Food {
   @@index([nextRevalidateAt])
   @@index([searchCount])
   @@index([selectionCount])
+  @@index([contributionStatus, createdByUserId])
 }
 
 model FoodDetails {

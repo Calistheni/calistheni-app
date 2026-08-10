@@ -49,7 +49,7 @@ export async function POST(request: Request) {
   try {
     const concepts = await describeNutritionMeal(parsed.data.description);
     extracted = true;
-    const foods = await resolveDescribedFoods(parsed.data.description, concepts.foods);
+    const foods = await resolveDescribedFoods(parsed.data.description, concepts.foods, userId);
     return NextResponse.json({ foods });
   } catch (error) {
     // One Describe action consumes one quota unit after stage-one extraction.

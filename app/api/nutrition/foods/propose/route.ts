@@ -15,15 +15,15 @@ export async function POST(request: Request) {
   if (!parsed.success) return createJsonValidationErrorResponse("Enter a valid generic food proposal.", parsed.error.flatten().fieldErrors);
   if (parsed.data.action === "save") {
     if (!parsed.data.proposal) return createJsonErrorResponse("Missing food proposal.", 400);
-    const saved = await saveMissingFood(userId, parsed.data.proposal);
-    return NextResponse.json(saved, { status: saved.duplicate ? 200 : 201 });
+    try { const saved = await saveMissingFood(userId, parsed.data.proposal); return NextResponse.json(saved, { status: saved.duplicate ? 200 : 201 }); }
+    catch (error) { if (error instanceof Error && error.message === "PENDING_CONTRIBUTION_EXISTS") return createJsonErrorResponse("A matching community contribution is already awaiting review.", 409, "PENDING_CONTRIBUTION_EXISTS"); throw error; }
   }
   if (!parsed.data.name) return createJsonErrorResponse("Missing food name.", 400);
   const { entitlements } = await getUserEntitlements(userId);
   const reservation = await reserveNutritionAiQuota(userId, entitlements.isPro, "describe");
   if (!reservation) return createJsonErrorResponse("You've reached today's AI proposal limit.", 429, "DAILY_LIMIT_REACHED");
   try {
-    return NextResponse.json(await proposeMissingFood({ name: parsed.data.name, context: parsed.data.context }));
+    return NextResponse.json(await proposeMissingFood({ name: parsed.data.name, context: parsed.data.context, userId }));
   } catch (error) {
     await releaseNutritionAiQuota(reservation);
     const code = error instanceof Error ? error.message : "AI_UNAVAILABLE";

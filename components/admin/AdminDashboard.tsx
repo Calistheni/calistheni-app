@@ -1211,6 +1211,9 @@ export default function AdminDashboard() {
           <Button asChild variant="outline">
             <Link href="/admin/exercises">Classify Exercises</Link>
           </Button>
+          <Button asChild variant="outline">
+            <Link href="/admin/nutrition/foods">Pending Foods</Link>
+          </Button>
           <form action="/admin/logout" method="post">
             <Button type="submit" variant="outline">
               Logout

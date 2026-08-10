@@ -5,6 +5,7 @@ import { createInternalServerErrorResponse, createJsonErrorResponse, createJsonV
 import { createUserUnauthorizedResponse, getAuthenticatedUserId } from "@/lib/user-auth";
 import { mealCategorySchema, nutritionDate, nutritionDateSchema, snapshotForFood } from "@/lib/nutrition/log";
 import { serializeNutritionEntry } from "@/lib/nutrition/entry-serializer";
+import { nutritionFoodVisibilityWhere } from "@/lib/nutrition/food-visibility";
 
 const itemSchema = z.object({
   foodId: z.string().cuid(),
@@ -33,7 +34,7 @@ export async function POST(request: Request) {
   const parsed = batchSchema.safeParse(body); if (!parsed.success) return createJsonValidationErrorResponse("Invalid nutrition batch.", parsed.error.flatten().fieldErrors);
   try {
     const ids = [...new Set(parsed.data.items.map((item) => item.foodId))];
-    const foods = await prisma.food.findMany({ where: { id: { in: ids } }, include: { currentRevision: true } });
+    const foods = await prisma.food.findMany({ where: { AND: [{ id: { in: ids } }, nutritionFoodVisibilityWhere(userId)] }, include: { currentRevision: true } });
     if (foods.length !== ids.length || foods.some((food) => !food.currentRevision)) return createJsonErrorResponse("One or more foods are unavailable for logging.", 404);
     const byId = new Map(foods.map((food) => [food.id, food]));
     const created = await prisma.$transaction(parsed.data.items.map((item) => {

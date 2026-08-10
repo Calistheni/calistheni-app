@@ -77,3 +77,27 @@ test("search and AI Scan expose an explicit contribution only after the shared c
   assert.match(searchUi, /Not in Calistheni yet/);
   assert.match(searchUi, /action: "generate"/);
 });
+
+test("pending contributions use one creator-scoped visibility policy across search and logging", async () => {
+  const fs = await import("node:fs/promises");
+  const [visibility, service, entries, meals] = await Promise.all([
+    fs.readFile(new URL("../lib/nutrition/food-visibility.ts", import.meta.url), "utf8"),
+    fs.readFile(new URL("../lib/nutrition/service.ts", import.meta.url), "utf8"),
+    fs.readFile(new URL("../app/api/nutrition/entries/batch/route.ts", import.meta.url), "utf8"),
+    fs.readFile(new URL("../app/api/nutrition/meals/route.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(visibility, /FoodContributionStatus\.PENDING/);
+  assert.match(visibility, /createdByUserId: userId/);
+  assert.match(visibility, /FoodContributionStatus\.APPROVED/);
+  assert.match(service, /nutritionFoodVisibilityWhere\(userId\)/);
+  assert.match(entries, /nutritionFoodVisibilityWhere\(userId\)/);
+  assert.match(meals, /nutritionFoodVisibilityWhere\(userId\)/);
+});
+
+test("ADD exposes loading, diagnostics, and an inline retry instead of failing silently", async () => {
+  const source = await import("node:fs/promises").then((fs) => fs.readFile(new URL("../components/nutrition/NutritionFoodSearch.tsx", import.meta.url), "utf8"));
+  assert.match(source, /\[MissingFood\] ADD clicked/);
+  assert.match(source, /Preparing nutrition suggestion/);
+  assert.match(source, /proposalError/);
+  assert.match(source, /Try again/);
+});

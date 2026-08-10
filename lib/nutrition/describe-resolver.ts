@@ -89,11 +89,11 @@ export function getObviousDescribeCandidate(query: string, candidates: Candidate
  * local/USDA/OFF search universe as Food search, then sends only opaque top-N
  * choices to the contextual selector. No provider record is imported here.
  */
-export async function resolveDescribedFoods(description: string, concepts: DescribedMealResult["foods"]): Promise<DescribeResolution[]> {
+export async function resolveDescribedFoods(description: string, concepts: DescribedMealResult["foods"], userId?: string): Promise<DescribeResolution[]> {
   const gathered = await Promise.all(concepts.map(async (concept, index) => {
     const query = queryFor(concept);
     try {
-      const candidates = await getNutritionCandidatesForIntent(query, NUTRITION_DESCRIBE_CANDIDATE_LIMIT) as Candidate[];
+      const candidates = await getNutritionCandidatesForIntent(query, NUTRITION_DESCRIBE_CANDIDATE_LIMIT, userId) as Candidate[];
       debugCandidateResolution("candidate pool", {
         label: concept.label,
         query,

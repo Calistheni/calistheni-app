@@ -2,6 +2,7 @@ import { FoodDataValueSource, FoodFreshnessStatus, FoodImportStatus, FoodRevisio
 import { prisma } from "@/lib/prisma";
 import { isMaterialFoodChange, normalizeFoodQuery, nutritionFoodQueryVariants } from "./normalization";
 import { nutritionFoodIntent } from "./food-intent";
+import { nutritionFoodVisibilityWhere } from "./food-visibility";
 import { getOpenFoodFactsProduct, searchOpenFoodFactsFoods } from "./providers/open-food-facts";
 import { ProviderError } from "./providers/http";
 import { getUsdaFood, searchUsdaFoods } from "./providers/usda";
@@ -51,17 +52,20 @@ export function withResolvedFoodIcon(result: ExternalFoodResult): ExternalFoodRe
   const icon = resolveFoodIcon({ name: result.name, categories: result.details?.categories, imageUrl: result.imageUrl, type: result.foodType, source: result.provider });
   return icon ? { ...result, genericIcon: { key: icon.key, url: icon.url, match: icon.match } } : result;
 }
-export function toFoodSummary(food: Record<string, unknown>): FoodSummary { const next = food.nextRevalidateAt instanceof Date ? food.nextRevalidateAt : null; return { id: String(food.id), name: String(food.name), brandName: food.brandName ? String(food.brandName) : null, barcode: food.barcode ? String(food.barcode) : null, imageUrl: productImageFromRecord(food), genericIcon: foodIconReference(food), servings: servingsFromRecord(food), type: String(food.type), source: String(food.source), sourceExternalId: String(food.sourceExternalId), verificationStatus: String(food.verificationStatus), freshnessStatus: String(food.freshnessStatus), confidenceScore: Number(food.confidenceScore), nutritionPer100g: nutritionFromRecord(food), importedAt: (food.importedAt as Date).toISOString(), lastRevalidatedAt: food.lastRevalidatedAt ? (food.lastRevalidatedAt as Date).toISOString() : null, nextRevalidateAt: next?.toISOString() ?? null, currentRevisionId: food.currentRevisionId ? String(food.currentRevisionId) : null, isLocal: true, revalidationRecommended: !next || next <= new Date() }; }
-async function findLocalFoods(normalized: string) {
+export function toFoodSummary(food: Record<string, unknown>): FoodSummary { const next = food.nextRevalidateAt instanceof Date ? food.nextRevalidateAt : null; return { id: String(food.id), name: String(food.name), brandName: food.brandName ? String(food.brandName) : null, barcode: food.barcode ? String(food.barcode) : null, imageUrl: productImageFromRecord(food), genericIcon: foodIconReference(food), servings: servingsFromRecord(food), type: String(food.type), source: String(food.source), sourceExternalId: String(food.sourceExternalId), verificationStatus: String(food.verificationStatus), contributionStatus: typeof food.contributionStatus === "string" ? food.contributionStatus : null, freshnessStatus: String(food.freshnessStatus), confidenceScore: Number(food.confidenceScore), nutritionPer100g: nutritionFromRecord(food), importedAt: (food.importedAt as Date).toISOString(), lastRevalidatedAt: food.lastRevalidatedAt ? (food.lastRevalidatedAt as Date).toISOString() : null, nextRevalidateAt: next?.toISOString() ?? null, currentRevisionId: food.currentRevisionId ? String(food.currentRevisionId) : null, isLocal: true, revalidationRecommended: !next || next <= new Date() }; }
+async function findLocalFoods(normalized: string, userId?: string) {
   const terms = nutritionFoodQueryVariants(normalized);
   const localFoods = await prisma.food.findMany({
     where: {
-      OR: terms.flatMap((term) => [
+      AND: [
+        ...(userId ? [nutritionFoodVisibilityWhere(userId)] : [{ type: { not: FoodType.USER_CREATED } }]),
+        { OR: terms.flatMap((term) => [
         { normalizedName: { contains: term } },
         { name: { contains: term, mode: "insensitive" as const } },
         { brandName: { contains: term, mode: "insensitive" as const } },
         { aliases: { some: { normalizedName: { contains: term } } } },
-      ]),
+        ]) },
+      ],
     },
     include: {
       aliases: { select: { name: true } },
@@ -75,13 +79,13 @@ async function findLocalFoods(normalized: string) {
 }
 
 /** Local canonical candidates used before any Describe/AI provider fallback. */
-export async function searchLocalFoods(query: string) {
+export async function searchLocalFoods(query: string, userId?: string) {
   const normalized = normalizeFoodQuery(query);
-  return rankNutritionFoodCandidates(normalized, await findLocalFoods(normalized));
+  return rankNutritionFoodCandidates(normalized, await findLocalFoods(normalized, userId));
 }
 
 /** Shared top-N canonical preview set for smart Nutrition workflows. */
-export async function getNutritionCandidatesForIntent(query: string, limit = 5) {
+export async function getNutritionCandidatesForIntent(query: string, limit = 5, userId?: string) {
   const intent = nutritionFoodIntent(query);
   if (process.env.NODE_ENV === "development") {
     console.info("[Nutrition candidate resolver] search queries", {
@@ -90,7 +94,7 @@ export async function getNutritionCandidatesForIntent(query: string, limit = 5) 
       queries: intent.searchQueries,
     });
   }
-  const results = await Promise.all(intent.searchQueries.map(searchFoods));
+  const results = await Promise.all(intent.searchQueries.map((intentQuery) => searchFoods(intentQuery, userId)));
   const seen = new Set<string>();
   const candidates = results.flatMap((result) => result.results).filter((candidate) => {
     const identity = "id" in candidate
@@ -104,9 +108,9 @@ export async function getNutritionCandidatesForIntent(query: string, limit = 5) 
     .slice(0, Math.max(1, Math.min(limit, 8)));
 }
 
-export async function searchFoods(query: string): Promise<FoodSearchResponse> {
+export async function searchFoods(query: string, userId?: string): Promise<FoodSearchResponse> {
   const normalized = normalizeFoodQuery(query);
-  const localRequest = findLocalFoods(normalized);
+  const localRequest = findLocalFoods(normalized, userId);
   const [local, usda, off] = await Promise.allSettled([
     localRequest,
     searchUsdaFoods(normalized, NUTRITION_PROVIDER_CANDIDATE_LIMIT),

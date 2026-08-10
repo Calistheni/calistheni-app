@@ -25,6 +25,7 @@ type Result = {
   foodType?: "GENERIC" | "BRANDED";
   searchMetadata?: { source: "USDA" | "OPEN_FOOD_FACTS"; isGeneric: boolean; isBranded: boolean; usdaDataType?: string | null };
   verificationStatus: string;
+  contributionStatus?: string | null;
   freshnessStatus?: string;
   confidenceScore: number;
   nutritionPer100g: {
@@ -84,6 +85,7 @@ export function NutritionFoodSearch() {
   const [selectedFood, setSelectedFood] = useState<Result | null>(null);
   const [proposal, setProposal] = useState<Record<string, unknown> | null>(null);
   const [proposalBusy, setProposalBusy] = useState(false);
+  const [proposalError, setProposalError] = useState("");
   const activeRequest = useRef(0);
   const abortController = useRef<AbortController | null>(null);
 
@@ -128,14 +130,20 @@ export function NutritionFoodSearch() {
   }
 
   async function startProposal(name: string) {
+    if (proposalBusy) return;
+    if (process.env.NODE_ENV === "development") console.info("[MissingFood] ADD clicked", { name });
+    setProposalError("");
     setProposalBusy(true);
     try {
+      if (process.env.NODE_ENV === "development") console.info("[MissingFood] POST /api/nutrition/foods/propose");
       const response = await fetch("/api/nutrition/foods/propose", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "generate", name, context: query }) });
       const data = await response.json();
+      if (process.env.NODE_ENV === "development") console.info("[MissingFood] proposal response", { status: response.status, kind: data?.kind ?? null, error: data?.error ?? null });
       if (!response.ok) throw new Error(responseErrorMessage(data, "Unable to prepare a food proposal."));
       if (data.kind === "existing") return void importFood(data.food as Result);
       setProposal(data.proposal);
-    } catch (error) { toast.error(error instanceof Error ? error.message : "Unable to prepare a food proposal."); }
+      if (process.env.NODE_ENV === "development") console.info("[MissingFood] opening review dialog");
+    } catch (error) { const message = error instanceof Error ? error.message : "Unable to prepare a food proposal."; setProposalError(message); toast.error(message); }
     finally { setProposalBusy(false); }
   }
   async function saveProposal() {
@@ -243,10 +251,11 @@ export function NutritionFoodSearch() {
           </section> : null}
           {results.missingIntent ? <Card>
             <CardContent className="flex items-center justify-between gap-3 p-4">
-              <div><p className="font-medium">{results.missingIntent}</p><p className="text-sm text-muted-foreground">Not in Calistheni yet</p></div>
-              <Button disabled={proposalBusy} onClick={() => void startProposal(results.missingIntent!)}>ADD</Button>
+              <div><p className="font-medium">{results.missingIntent}</p><p className="text-sm text-muted-foreground">Not in Calistheni yet</p>{proposalBusy ? <p className="mt-1 text-xs text-muted-foreground">Preparing nutrition suggestion…</p> : null}</div>
+              <Button disabled={proposalBusy} onClick={() => void startProposal(results.missingIntent!)}>{proposalBusy ? <RefreshCw className="animate-spin" /> : null}ADD</Button>
             </CardContent>
           </Card> : null}
+          {proposalError ? <Card><CardContent className="flex items-center justify-between gap-3 p-4 text-sm"><span>{proposalError}</span><Button size="sm" variant="outline" onClick={() => void startProposal(results?.missingIntent ?? query)}>Try again</Button></CardContent></Card> : null}
           {!results.localResults.length && !(results.genericResults ?? results.externalResults).length && !(results.packagedResults ?? []).length ? <Card><CardContent className="p-5 text-sm text-muted-foreground">No food results are available for this query.</CardContent></Card> : null}
         </div>
       ) : (

@@ -65,7 +65,7 @@ test("Describe resolves from a shared top-five candidate list, uses an opaque ba
     readFile(new URL("../lib/nutrition/describe.ts", import.meta.url), "utf8"),
   ]);
   assert.match(resolver, /NUTRITION_DESCRIBE_CANDIDATE_LIMIT = 5/);
-  assert.match(resolver, /getNutritionCandidatesForIntent\(query, NUTRITION_DESCRIBE_CANDIDATE_LIMIT\)/);
+  assert.match(resolver, /getNutritionCandidatesForIntent\(query, NUTRITION_DESCRIBE_CANDIDATE_LIMIT, userId\)/);
   assert.match(resolver, /rankNutritionFoodCandidates/);
   assert.match(resolver, /getObviousDescribeCandidate/);
   assert.match(resolver, /NUTRITION_DESCRIBE_AUTO_MATCH_THRESHOLD/);

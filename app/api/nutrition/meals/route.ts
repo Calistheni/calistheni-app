@@ -8,6 +8,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { serializeSavedMeal } from "@/lib/nutrition/saved-meals";
 import { createUserUnauthorizedResponse, getAuthenticatedUserId } from "@/lib/user-auth";
+import { nutritionFoodVisibilityWhere } from "@/lib/nutrition/food-visibility";
 
 const itemSchema = z.object({
   foodId: z.string().cuid(),
@@ -73,7 +74,7 @@ export async function POST(request: Request) {
   try {
     const foodIds = [...new Set(parsed.data.items.map((item) => item.foodId))];
     const foods = await prisma.food.findMany({
-      where: { id: { in: foodIds } },
+      where: { AND: [{ id: { in: foodIds } }, nutritionFoodVisibilityWhere(userId)] },
       select: { id: true, currentRevisionId: true },
     });
     if (foods.length !== foodIds.length || foods.some((food) => !food.currentRevisionId)) {

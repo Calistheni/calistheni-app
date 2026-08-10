@@ -14,6 +14,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { nutritionAiConfigured } from "./ai-provider";
 import { nutritionFoodIntent } from "./food-intent";
+import { nutritionFoodVisibilityWhere } from "./food-visibility";
 import { normalizeFoodQuery } from "./normalization";
 import { getNutritionCandidatesForIntent, toFoodSummary } from "./service";
 import { selectNutritionFoodCandidate } from "./search-ranking";
@@ -32,15 +33,15 @@ function outputText(payload: unknown) {
   return null;
 }
 
-export async function findExistingFoodForIntent(input: string): Promise<Candidate | null> {
+export async function findExistingFoodForIntent(input: string, userId?: string): Promise<Candidate | null> {
   const intent = nutritionFoodIntent(input);
-  const candidates = await getNutritionCandidatesForIntent(intent.rankQuery, 8) as Candidate[];
+  const candidates = await getNutritionCandidatesForIntent(intent.rankQuery, 8, userId) as Candidate[];
   return selectNutritionFoodCandidate(intent.rankQuery, candidates) as Candidate | null;
 }
 
-export async function proposeMissingFood(input: { name: string; context?: string | null }) {
+export async function proposeMissingFood(input: { name: string; context?: string | null; userId?: string }) {
   const intent = nutritionFoodIntent(input.name);
-  const existing = await findExistingFoodForIntent(intent.rankQuery);
+  const existing = await findExistingFoodForIntent(intent.rankQuery, input.userId);
   if (existing) return { kind: "existing" as const, food: existing };
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey || !nutritionAiConfigured()) throw new Error("AI_NOT_CONFIGURED");
@@ -68,7 +69,7 @@ export async function proposeMissingFood(input: { name: string; context?: string
 
 export async function saveMissingFood(userId: string, proposal: MissingFoodProposal) {
   const normalizedName = normalizeFoodQuery(proposal.canonicalName);
-  const existing = await prisma.food.findFirst({ where: { OR: [{ normalizedName }, { aliases: { some: { normalizedName } } }] }, include: { aliases: { select: { name: true } }, details: { select: { categories: true, productImageUrl: true } }, servings: { select: { name: true, quantity: true, grams: true, householdUnit: true } } } });
+  const existing = await prisma.food.findFirst({ where: { AND: [{ OR: [{ normalizedName }, { aliases: { some: { normalizedName } } }] }, nutritionFoodVisibilityWhere(userId)] }, include: { aliases: { select: { name: true } }, details: { select: { categories: true, productImageUrl: true } }, servings: { select: { name: true, quantity: true, grams: true, householdUnit: true } } } });
   if (existing) return { food: toFoodSummary(existing), duplicate: true };
   const sourceExternalId = `community:${normalizedName}`;
   const checksum = createHash("sha256").update(JSON.stringify(proposal)).digest("hex");
@@ -77,7 +78,7 @@ export async function saveMissingFood(userId: string, proposal: MissingFoodPropo
   const communityConfidence = Math.min(proposal.confidence, 0.75);
   try {
     const food = await prisma.$transaction(async (tx) => {
-      const created = await tx.food.create({ data: { type: FoodType.USER_CREATED, name: proposal.canonicalName, normalizedName, description: proposal.description, nutritionBasisGrams: 100, ...proposal.nutrition, calorieValueSource: FoodDataValueSource.MANUAL, source: FoodSource.USER, sourceExternalId, verificationStatus: FoodVerificationStatus.UNVERIFIED, importStatus: FoodImportStatus.ACTIVE, freshnessStatus: FoodFreshnessStatus.FRESH, confidenceScore: communityConfidence } });
+      const created = await tx.food.create({ data: { type: FoodType.USER_CREATED, name: proposal.canonicalName, normalizedName, description: proposal.description, nutritionBasisGrams: 100, ...proposal.nutrition, calorieValueSource: FoodDataValueSource.MANUAL, source: FoodSource.USER, sourceExternalId, verificationStatus: FoodVerificationStatus.UNVERIFIED, importStatus: FoodImportStatus.ACTIVE, freshnessStatus: FoodFreshnessStatus.FRESH, confidenceScore: communityConfidence, contributionStatus: "PENDING", createdByUserId: userId } });
       const sourceRecord = await tx.foodSourceRecord.create({ data: { foodId: created.id, source: FoodSource.USER, sourceExternalId, rawData: { createdByUserId: userId, aiAssisted: true, proposal } as Prisma.InputJsonValue, checksum, responseStatus: 201 } });
       const revision = await tx.foodRevision.create({ data: { foodId: created.id, revisionNumber: 1, reason: FoodRevisionReason.USER_CORRECTION, source: FoodSource.USER, sourceExternalId, name: proposal.canonicalName, nutritionBasisGrams: 100, ...proposal.nutrition, confidenceScore: communityConfidence, verificationStatus: FoodVerificationStatus.UNVERIFIED, sourceRecordId: sourceRecord.id, normalizedDataChecksum: checksum, createdByUserId: userId } });
       await tx.food.update({ where: { id: created.id }, data: { currentRevisionId: revision.id } });
@@ -88,7 +89,8 @@ export async function saveMissingFood(userId: string, proposal: MissingFoodPropo
     return { food: toFoodSummary(food), duplicate: false };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      const duplicate = await prisma.food.findUniqueOrThrow({ where: { source_sourceExternalId: { source: FoodSource.USER, sourceExternalId } }, include: { aliases: { select: { name: true } }, details: { select: { categories: true, productImageUrl: true } }, servings: { select: { name: true, quantity: true, grams: true, householdUnit: true } } } });
+      const duplicate = await prisma.food.findFirst({ where: { AND: [{ source: FoodSource.USER, sourceExternalId }, nutritionFoodVisibilityWhere(userId)] }, include: { aliases: { select: { name: true } }, details: { select: { categories: true, productImageUrl: true } }, servings: { select: { name: true, quantity: true, grams: true, householdUnit: true } } } });
+      if (!duplicate) throw new Error("PENDING_CONTRIBUTION_EXISTS");
       return { food: toFoodSummary(duplicate), duplicate: true };
     }
     throw error;
