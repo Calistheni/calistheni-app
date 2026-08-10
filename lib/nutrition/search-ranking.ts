@@ -230,6 +230,7 @@ export type NutritionFoodCandidate = {
   name: string;
   brandName?: string | null;
   type?: string;
+  verificationStatus?: string;
   isLocal?: boolean;
   searchMetadata?: { isGeneric?: boolean; isBranded?: boolean };
 };
@@ -237,8 +238,12 @@ export type NutritionFoodCandidate = {
 function candidateProvider(candidate: NutritionFoodCandidate): "USDA" | "OPEN_FOOD_FACTS" {
   return candidate.provider ?? (candidate.source === "USDA" ? "USDA" : "OPEN_FOOD_FACTS");
 }
+function candidateIsCommunity(candidate: NutritionFoodCandidate) {
+  return candidate.source === "USER" || candidate.type === "USER_CREATED";
+}
 function candidateIsGeneric(candidate: NutritionFoodCandidate) {
   if (candidate.searchMetadata?.isGeneric !== undefined) return candidate.searchMetadata.isGeneric;
+  if (candidateIsCommunity(candidate)) return true;
   if (candidate.type) return candidate.type === "GENERIC";
   return candidateProvider(candidate) === "USDA";
 }
@@ -259,7 +264,8 @@ export function scoreNutritionFoodCandidate(query: string, candidate: NutritionF
   const name = normalizeFoodQuery(candidate.name);
   const core = candidateCoreName(candidate);
   const generic = candidateIsGeneric(candidate);
-  const branded = Boolean(candidate.brandName) || candidate.searchMetadata?.isBranded === true || candidateProvider(candidate) === "OPEN_FOOD_FACTS";
+  const community = candidateIsCommunity(candidate);
+  const branded = !community && (Boolean(candidate.brandName) || candidate.searchMetadata?.isBranded === true || candidateProvider(candidate) === "OPEN_FOOD_FACTS");
   let value = 0;
   if (core === normalizedQuery) value += 260;
   else if (name === normalizedQuery) value += 220;
@@ -268,6 +274,9 @@ export function scoreNutritionFoodCandidate(query: string, candidate: NutritionF
   if (generic) value += 155;
   if (candidateProvider(candidate) === "USDA") value += 45;
   if (candidate.isLocal) value += 90;
+  // Community contributions are immediately useful to their creator, but an
+  // unverified one must not outrank an equally exact trusted provider record.
+  if (community && candidate.verificationStatus === "UNVERIFIED") value -= 75;
   value += defaultFoodVariantScore(tokens(query), name);
   value += genericIngredientScore(tokens(query), name);
   const preparedIntent = preparedFoodIntent(tokens(query));
@@ -332,9 +341,11 @@ export function isSufficientNutritionFoodCandidate(query: string, candidate: Nut
 
 /** Reject brand/derivative-only matches instead of silently logging them. */
 export function selectNutritionFoodCandidate<T extends NutritionFoodCandidate>(query: string, candidates: readonly T[]) {
-  const top = rankNutritionFoodCandidates(query, candidates)[0];
-  if (!top || !isSufficientNutritionFoodCandidate(query, top)) return null;
-  return top;
+  // Search the ranked universe, rather than treating one bad derivative at
+  // the top as proof that no valid food exists farther down the provider set.
+  return rankNutritionFoodCandidates(query, candidates).find((candidate) =>
+    isSufficientNutritionFoodCandidate(query, candidate)
+  ) ?? null;
 }
 
 function nutritionKey(result: ExternalFoodResult) {

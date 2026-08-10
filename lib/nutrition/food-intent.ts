@@ -42,7 +42,12 @@ export type NutritionFoodIntent = {
   rankQuery: string;
   /** Ordered provider/local lookup queries, with the visual label first. */
   searchQueries: string[];
+  canonicalName: string;
 };
+
+function displayName(value: string) {
+  return value ? value.slice(0, 1).toLocaleUpperCase() + value.slice(1) : value;
+}
 
 export function nutritionFoodIntent(query: string): NutritionFoodIntent {
   const normalized = normalizeFoodQuery(query);
@@ -55,5 +60,6 @@ export function nutritionFoodIntent(query: string): NutritionFoodIntent {
   return {
     rankQuery: aliases[0] ? normalizeFoodQuery(aliases[0]) : normalized,
     searchQueries,
+    canonicalName: displayName(aliases[0] ? normalizeFoodQuery(aliases[0]) : normalized),
   };
 }

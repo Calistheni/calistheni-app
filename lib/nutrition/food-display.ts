@@ -1,6 +1,8 @@
 type FoodResultPresentation = {
   isLocal?: boolean;
   provider?: "USDA" | "OPEN_FOOD_FACTS";
+  source?: string;
+  verificationStatus?: string;
   foodType?: "GENERIC" | "BRANDED";
   brandName?: string | null;
   searchMetadata?: { isBranded: boolean };
@@ -30,6 +32,11 @@ export function meaningfulFoodBrand(brandName: string | null | undefined, foodNa
 
 /** User-facing classification only; provider identity remains available in result metadata. */
 export function foodResultClassification(food: FoodResultPresentation) {
+  if (food.source === "USER") {
+    return food.verificationStatus === "UNVERIFIED"
+      ? "Community · Unverified"
+      : "Community food";
+  }
   if (food.isLocal) return "Saved food";
   if (food.provider === "OPEN_FOOD_FACTS") return "Packaged product";
   if (food.provider === "USDA") {

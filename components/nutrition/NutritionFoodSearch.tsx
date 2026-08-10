@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { FoodDetailsDialog } from "@/components/nutrition/FoodDetailsDialog";
 import { FoodVisual } from "@/components/nutrition/FoodVisual";
 import { foodResultClassification, meaningfulFoodBrand } from "@/lib/nutrition/food-display";
@@ -63,12 +65,25 @@ function freshnessLabel(status: string | undefined) {
   return status === "FRESH" ? "Recently checked" : status.toLowerCase().replaceAll("_", " ");
 }
 
+function proposalNeedsNutritionReview(proposal: Record<string, unknown>) {
+  const nutrition = proposal.nutrition as Record<string, unknown> | undefined;
+  if (!nutrition) return false;
+  const calories = Number(nutrition.caloriesKcal);
+  const protein = Number(nutrition.proteinGrams);
+  const carbs = Number(nutrition.carbohydrateGrams);
+  const fat = Number(nutrition.fatGrams);
+  if (![calories, protein, carbs, fat].every(Number.isFinite)) return false;
+  return Math.abs(protein * 4 + carbs * 4 + fat * 9 - calories) > Math.max(80, calories * 0.6);
+}
+
 export function NutritionFoodSearch() {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<{ query: string; queryKind?: "GENERIC" | "SPECIFIC_VARIANT" | "PRODUCT" | "BARCODE"; localResults: Result[]; genericResults?: Result[]; packagedResults?: Result[]; externalResults: Result[]; warnings?: string[] } | null>(null);
+  const [results, setResults] = useState<{ query: string; queryKind?: "GENERIC" | "SPECIFIC_VARIANT" | "PRODUCT" | "BARCODE"; localResults: Result[]; genericResults?: Result[]; packagedResults?: Result[]; externalResults: Result[]; warnings?: string[]; missingIntent?: string | null } | null>(null);
   const [loading, setLoading] = useState(false);
   const [barcode, setBarcode] = useState("");
   const [selectedFood, setSelectedFood] = useState<Result | null>(null);
+  const [proposal, setProposal] = useState<Record<string, unknown> | null>(null);
+  const [proposalBusy, setProposalBusy] = useState(false);
   const activeRequest = useRef(0);
   const abortController = useRef<AbortController | null>(null);
 
@@ -110,6 +125,31 @@ export function NutritionFoodSearch() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Import failed.");
     }
+  }
+
+  async function startProposal(name: string) {
+    setProposalBusy(true);
+    try {
+      const response = await fetch("/api/nutrition/foods/propose", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "generate", name, context: query }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(responseErrorMessage(data, "Unable to prepare a food proposal."));
+      if (data.kind === "existing") return void importFood(data.food as Result);
+      setProposal(data.proposal);
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Unable to prepare a food proposal."); }
+    finally { setProposalBusy(false); }
+  }
+  async function saveProposal() {
+    if (!proposal) return;
+    setProposalBusy(true);
+    try {
+      const response = await fetch("/api/nutrition/foods/propose", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "save", proposal }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(responseErrorMessage(data, "Unable to save this food."));
+      toast.success(data.duplicate ? "We found the existing food." : "Thanks for contributing! This food is now available.");
+      setProposal(null);
+      void search(query);
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Unable to save this food."); }
+    finally { setProposalBusy(false); }
   }
 
   async function lookupBarcode() {
@@ -201,6 +241,12 @@ export function NutritionFoodSearch() {
               {(results.packagedResults ?? []).map(render)}
             </div>
           </section> : null}
+          {results.missingIntent ? <Card>
+            <CardContent className="flex items-center justify-between gap-3 p-4">
+              <div><p className="font-medium">{results.missingIntent}</p><p className="text-sm text-muted-foreground">Not in Calistheni yet</p></div>
+              <Button disabled={proposalBusy} onClick={() => void startProposal(results.missingIntent!)}>ADD</Button>
+            </CardContent>
+          </Card> : null}
           {!results.localResults.length && !(results.genericResults ?? results.externalResults).length && !(results.packagedResults ?? []).length ? <Card><CardContent className="p-5 text-sm text-muted-foreground">No food results are available for this query.</CardContent></Card> : null}
         </div>
       ) : (
@@ -209,6 +255,23 @@ export function NutritionFoodSearch() {
         </Card>
       )}
       <FoodDetailsDialog food={selectedFood} open={Boolean(selectedFood)} onOpenChange={(open) => { if (!open) setSelectedFood(null); }} onImported={() => void search(query)} />
+      <Dialog open={Boolean(proposal)} onOpenChange={(open) => { if (!open) setProposal(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Add missing food</DialogTitle><DialogDescription>This food isn&apos;t currently available in the Calistheni database. AI values are estimates—please review them before saving.</DialogDescription></DialogHeader>
+          {proposal ? <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">By adding it, you&apos;re helping Calistheni grow.</p>
+            {(["canonicalName", "caloriesKcal", "proteinGrams", "carbohydrateGrams", "fatGrams", "defaultServingGrams"] as const).map((field) => {
+              const nutrition = proposal.nutrition as Record<string, unknown> | undefined;
+              const isNutrition = field !== "canonicalName" && field !== "defaultServingGrams";
+              const value = isNutrition ? nutrition?.[field] : proposal[field];
+              return <Label key={field} className="block text-sm">{field === "canonicalName" ? "Name" : field.replace(/([A-Z])/g, " $1").replace("Kcal", "kcal")}<Input className="mt-1" type={field === "canonicalName" ? "text" : "number"} min="0" value={String(value ?? "")} onChange={(event) => setProposal((current) => { if (!current) return current; if (isNutrition) return { ...current, nutrition: { ...(current.nutrition as Record<string, unknown>), [field]: Number(event.target.value) } }; return { ...current, [field]: field === "canonicalName" ? event.target.value : Number(event.target.value) }; })} /></Label>;
+            })}
+            <p className="text-xs text-muted-foreground">These values are estimated and may be inaccurate. Check a reliable source when possible.</p>
+            {proposalNeedsNutritionReview(proposal) ? <p className="text-xs text-amber-700 dark:text-amber-400">These values look inconsistent. Please review them before saving.</p> : null}
+            <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setProposal(null)}>Cancel</Button><Button disabled={proposalBusy} onClick={() => void saveProposal()}>Save food</Button></div>
+          </div> : null}
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

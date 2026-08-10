@@ -7,7 +7,7 @@ import { ProviderError } from "./providers/http";
 import { getUsdaFood, searchUsdaFoods } from "./providers/usda";
 import { resolveFoodIcon } from "./food-icons";
 import type { ExternalFoodResult, FoodSearchResponse, FoodSummary, NutritionValues, ProviderState } from "./types";
-import { classifyFoodQuery, deduplicateExternalFoodResults, diversifyNutritionFoodCandidates, isPackagedFoodResult, isRelevantFoodResult, isUsdaGenericFood, limitFoodSearchResults, NUTRITION_PROVIDER_CANDIDATE_LIMIT, NUTRITION_SEARCH_RESULT_LIMIT, rankExternalFoodResults, rankNutritionFoodCandidates, selectPrimaryGenericFood, withSearchMetadata } from "./search-ranking";
+import { classifyFoodQuery, deduplicateExternalFoodResults, diversifyNutritionFoodCandidates, isPackagedFoodResult, isRelevantFoodResult, isUsdaGenericFood, limitFoodSearchResults, NUTRITION_PROVIDER_CANDIDATE_LIMIT, NUTRITION_SEARCH_RESULT_LIMIT, rankExternalFoodResults, rankNutritionFoodCandidates, selectNutritionFoodCandidate, selectPrimaryGenericFood, withSearchMetadata } from "./search-ranking";
 
 const providerFor = (provider: ExternalFoodResult["provider"]) => provider === "USDA" ? FoodSource.USDA : FoodSource.OPEN_FOOD_FACTS;
 const daysFor = (food: { source: FoodSource; type: FoodType; importStatus: FoodImportStatus }) => food.importStatus === FoodImportStatus.INCOMPLETE ? 7 : food.source === FoodSource.OPEN_FOOD_FACTS ? Number(process.env.OPEN_FOOD_FACTS_REVALIDATE_DAYS ?? 30) : food.type === FoodType.BRANDED ? 60 : Number(process.env.USDA_REVALIDATE_DAYS ?? 180);
@@ -193,7 +193,11 @@ export async function searchFoods(query: string): Promise<FoodSearchResponse> {
       finalCount: results.length,
     });
   }
-  return { query: normalized, queryKind: classifyFoodQuery(normalized), ...limited, results, externalResults: [...limited.genericResults, ...limited.packagedResults], providers, warnings };
+  const intent = nutritionFoodIntent(normalized);
+  const missingIntent = classifyFoodQuery(normalized) === "GENERIC" && !selectNutritionFoodCandidate(intent.rankQuery, results)
+    ? intent.canonicalName
+    : null;
+  return { query: normalized, queryKind: classifyFoodQuery(normalized), ...limited, results, externalResults: [...limited.genericResults, ...limited.packagedResults], providers, warnings, missingIntent };
 }
 async function fetchExternal(provider: "USDA" | "OPEN_FOOD_FACTS", externalId: string) { return provider === "USDA" ? getUsdaFood(externalId) : getOpenFoodFactsProduct(externalId); }
 const nutritionFields = ["caloriesKcal", "proteinGrams", "carbohydrateGrams", "fatGrams", "fiberGrams", "sugarGrams", "saturatedFatGrams", "transFatGrams", "addedSugarGrams", "sodiumMg", "saltGrams", "cholesterolMg", "potassiumMg", "calciumMg", "ironMg"] as const;

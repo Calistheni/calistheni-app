@@ -181,10 +181,12 @@ test("AI Scan intent aliases and shared ranking resolve ingredients rather than 
   assert.deepEqual(nutritionFoodIntent("manatarka"), {
     rankQuery: "porcini mushroom",
     searchQueries: ["manatarka", "porcini mushroom", "porcini", "mushroom"],
+    canonicalName: "Porcini mushroom",
   });
   assert.deepEqual(nutritionFoodIntent("French omelette"), {
     rankQuery: "omelet",
     searchQueries: ["french omelette", "omelet", "omelette", "egg omelet", "egg"],
+    canonicalName: "Omelet",
   });
 
   const candidates = [

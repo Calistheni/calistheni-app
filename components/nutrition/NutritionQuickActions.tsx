@@ -90,6 +90,7 @@ type AiCandidateSuggestion = {
   preparation: string | null;
   visualConfidence: number;
   candidates: Food[];
+  missingIntent?: string | null;
 };
 type DescribeReviewItem =
   | { key: string; type: "resolved"; item: DraftItem }
@@ -125,6 +126,15 @@ const macrosFor = (food: Food, grams: number) => ({
 });
 const format = (value: number) =>
   Number.isInteger(value) ? String(value) : value.toFixed(1);
+const proposalNeedsNutritionReview = (proposal: Record<string, unknown>) => {
+  const nutrition = proposal.nutrition as Record<string, unknown> | undefined;
+  const calories = Number(nutrition?.caloriesKcal);
+  const protein = Number(nutrition?.proteinGrams);
+  const carbs = Number(nutrition?.carbohydrateGrams);
+  const fat = Number(nutrition?.fatGrams);
+  return [calories, protein, carbs, fat].every(Number.isFinite)
+    && Math.abs(protein * 4 + carbs * 4 + fat * 9 - calories) > Math.max(80, calories * 0.6);
+};
 
 async function responseMessage(response: Response, fallback: string) {
   const body = await response.json().catch(() => null);
@@ -1192,6 +1202,7 @@ function AiWorkflow({
   const [description, setDescription] = useState("");
   const [items, setItems] = useState<DraftItem[]>([]);
   const [suggestions, setSuggestions] = useState<AiCandidateSuggestion[]>([]);
+  const [missingProposal, setMissingProposal] = useState<Record<string, unknown> | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [limitReached, setLimitReached] = useState(false);
@@ -1282,6 +1293,7 @@ function AiWorkflow({
             preparation: detected.preparation,
             visualConfidence: detected.visualConfidence,
             candidates: (detected.candidates ?? []) as Food[],
+            missingIntent: detected.missingIntent ?? null,
           });
           continue;
         }
@@ -1328,6 +1340,47 @@ function AiWorkflow({
       setSuggestions((current) => current.filter((item) => item.key !== suggestion.key));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to select this food.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function proposeMissingSuggestion(suggestion: AiCandidateSuggestion) {
+    const name = suggestion.missingIntent ?? suggestion.label;
+    setBusy(true);
+    try {
+      const response = await fetch("/api/nutrition/foods/propose", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "generate", name, context: description || suggestion.preparation }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message ?? data?.error ?? "Unable to prepare a food proposal.");
+      if (data.kind === "existing") return void selectSuggestion(suggestion, data.food as Food);
+      setMissingProposal({ ...data.proposal, suggestionKey: suggestion.key });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to prepare a food proposal.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function saveMissingSuggestion() {
+    if (!missingProposal) return;
+    setBusy(true);
+    try {
+      const { suggestionKey, ...proposal } = missingProposal;
+      const response = await fetch("/api/nutrition/foods/propose", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "save", proposal }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message ?? data?.error ?? "Unable to save this food.");
+      const suggestion = suggestions.find((item) => item.key === suggestionKey);
+      if (suggestion) await selectSuggestion(suggestion, data.food as Food);
+      setMissingProposal(null);
+      toast.success(data.duplicate ? "We found the existing food." : "Thanks for contributing! This food is ready to review.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to save this food.");
     } finally {
       setBusy(false);
     }
@@ -1477,10 +1530,9 @@ function AiWorkflow({
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground">
-                      No close matches were available. Search below or remove this item.
-                    </p>
+                    <p className="text-sm text-muted-foreground">No close matches were available.</p>
                   )}
+                  {suggestion.missingIntent ? <Button size="sm" disabled={busy} onClick={() => void proposeMissingSuggestion(suggestion)}>Add {suggestion.missingIntent}</Button> : null}
                 </CardContent>
               </Card>
             ))}
@@ -1512,6 +1564,25 @@ function AiWorkflow({
         feature="aiScan"
         isPro
       />
+      <Dialog open={Boolean(missingProposal)} onOpenChange={(value) => !value && setMissingProposal(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add missing food</DialogTitle>
+            <DialogDescription>This food is missing from Calistheni. Suggested nutrition is estimated—review it before saving.</DialogDescription>
+          </DialogHeader>
+          {missingProposal ? <div className="space-y-3">
+            {(["canonicalName", "caloriesKcal", "proteinGrams", "carbohydrateGrams", "fatGrams", "defaultServingGrams"] as const).map((field) => {
+              const nutrition = missingProposal.nutrition as Record<string, unknown> | undefined;
+              const isNutrition = !["canonicalName", "defaultServingGrams"].includes(field);
+              const value = isNutrition ? nutrition?.[field] : missingProposal[field];
+              return <Label key={field} className="block text-sm">{field === "canonicalName" ? "Name" : field.replace(/([A-Z])/g, " $1").replace("Kcal", "kcal")}<Input className="mt-1" type={field === "canonicalName" ? "text" : "number"} min="0" value={String(value ?? "")} onChange={(event) => setMissingProposal((current) => { if (!current) return current; if (isNutrition) return { ...current, nutrition: { ...(current.nutrition as Record<string, unknown>), [field]: Number(event.target.value) } }; return { ...current, [field]: field === "canonicalName" ? event.target.value : Number(event.target.value) }; })} /></Label>;
+            })}
+            <p className="text-xs text-muted-foreground">These values are estimated and may be inaccurate. Check a reliable source when possible.</p>
+            {proposalNeedsNutritionReview(missingProposal) ? <p className="text-xs text-amber-700 dark:text-amber-400">These values look inconsistent. Please review them before saving.</p> : null}
+            <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setMissingProposal(null)}>Cancel</Button><Button disabled={busy} onClick={() => void saveMissingSuggestion()}>Save food</Button></div>
+          </div> : null}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -1536,6 +1607,7 @@ function DescribeWorkflow({
     description: "",
   });
   const [choosingKey, setChoosingKey] = useState<string | null>(null);
+  const [missingProposal, setMissingProposal] = useState<Record<string, unknown> | null>(null);
   const [reviewNotice, setReviewNotice] = useState("");
   const [limitReached, setLimitReached] = useState(false);
   const description = state.description;
@@ -1548,6 +1620,7 @@ function DescribeWorkflow({
   function dismiss() {
     setState({ type: "input", description: "" });
     setChoosingKey(null);
+    setMissingProposal(null);
     setReviewNotice("");
     close();
   }
@@ -1746,6 +1819,40 @@ function DescribeWorkflow({
     );
     setChoosingKey(null);
   }
+  async function proposeMissingFood(item: Extract<DescribeReviewItem, { type: "unresolved" }>) {
+    setReviewNotice("");
+    try {
+      const response = await fetch("/api/nutrition/foods/propose", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "generate", name: item.label, context: description }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message ?? data?.error ?? "Unable to prepare a food proposal.");
+      if (data.kind === "existing") return void chooseMatch(item.key, await importFood(data.food as Food));
+      setMissingProposal({ ...data.proposal, itemKey: item.key });
+    } catch (reason) {
+      setReviewNotice(reason instanceof Error ? reason.message : "Unable to prepare a food proposal.");
+    }
+  }
+  async function saveMissingFood() {
+    if (!missingProposal) return;
+    try {
+      const { itemKey, ...proposal } = missingProposal;
+      const response = await fetch("/api/nutrition/foods/propose", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "save", proposal }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message ?? data?.error ?? "Unable to save this food.");
+      chooseMatch(String(itemKey), await importFood(data.food as Food));
+      setMissingProposal(null);
+      toast.success(data.duplicate ? "We found the existing food." : "Thanks for contributing! This food is ready to review.");
+    } catch (reason) {
+      setReviewNotice(reason instanceof Error ? reason.message : "Unable to save this food.");
+    }
+  }
   const review = state.type === "review";
   return (
     <>
@@ -1870,6 +1977,9 @@ function DescribeWorkflow({
                           >
                             Choose matching food
                           </Button>
+                          <Button size="sm" variant="outline" onClick={() => void proposeMissingFood(item)}>
+                            Add {item.label}
+                          </Button>
                           <Button
                             size="sm"
                             variant="ghost"
@@ -1918,6 +2028,25 @@ function DescribeWorkflow({
         feature="describe"
         isPro={isPro}
       />
+      <Dialog open={Boolean(missingProposal)} onOpenChange={(value) => !value && setMissingProposal(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add missing food</DialogTitle>
+            <DialogDescription>This food is missing from Calistheni. Suggested nutrition is estimated—review it before saving.</DialogDescription>
+          </DialogHeader>
+          {missingProposal ? <div className="space-y-3">
+            {(["canonicalName", "caloriesKcal", "proteinGrams", "carbohydrateGrams", "fatGrams", "defaultServingGrams"] as const).map((field) => {
+              const nutrition = missingProposal.nutrition as Record<string, unknown> | undefined;
+              const isNutrition = !["canonicalName", "defaultServingGrams"].includes(field);
+              const value = isNutrition ? nutrition?.[field] : missingProposal[field];
+              return <Label key={field} className="block text-sm">{field === "canonicalName" ? "Name" : field.replace(/([A-Z])/g, " $1").replace("Kcal", "kcal")}<Input className="mt-1" type={field === "canonicalName" ? "text" : "number"} min="0" value={String(value ?? "")} onChange={(event) => setMissingProposal((current) => { if (!current) return current; if (isNutrition) return { ...current, nutrition: { ...(current.nutrition as Record<string, unknown>), [field]: Number(event.target.value) } }; return { ...current, [field]: field === "canonicalName" ? event.target.value : Number(event.target.value) }; })} /></Label>;
+            })}
+            <p className="text-xs text-muted-foreground">These values are estimated and may be inaccurate. Check a reliable source when possible.</p>
+            {proposalNeedsNutritionReview(missingProposal) ? <p className="text-xs text-amber-700 dark:text-amber-400">These values look inconsistent. Please review them before saving.</p> : null}
+            <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setMissingProposal(null)}>Cancel</Button><Button onClick={() => void saveMissingFood()}>Save food</Button></div>
+          </div> : null}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

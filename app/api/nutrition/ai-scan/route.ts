@@ -5,6 +5,7 @@ import { canUseNutritionAiScan, getUserEntitlements } from "@/lib/entitlements";
 import { analyzeNutritionImage, nutritionAiConfigured } from "@/lib/nutrition/ai-provider";
 import { getNutritionAiQuotas, releaseNutritionAiQuota, reserveNutritionAiQuota } from "@/lib/nutrition/ai-quota";
 import { resolveDescribedFoods } from "@/lib/nutrition/describe-resolver";
+import { nutritionFoodIntent } from "@/lib/nutrition/food-intent";
 import { normalizeFoodQuery } from "@/lib/nutrition/normalization";
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
@@ -83,13 +84,22 @@ export async function POST(request: Request) {
       description ?? "",
       detected.foods.map((food) => conceptForVisionFood(food, description))
     );
-    const foods = detected.foods.map((food, index) => ({
-      ...food,
-      food: resolved[index]?.food ?? null,
-      matchConfidence: resolved[index]?.confidence ?? null,
-      needsReview: resolved[index]?.needsReview ?? true,
-      candidates: resolved[index]?.candidates ?? [],
-    }));
+    const foods = detected.foods.map((food, index) => {
+      const concept = conceptForVisionFood(food, description);
+      const match = resolved[index];
+      return {
+        ...food,
+        ...concept,
+        food: match?.food ?? null,
+        matchConfidence: match?.confidence ?? null,
+        needsReview: match?.needsReview ?? true,
+        candidates: match?.candidates ?? [],
+        // The browser can offer an explicit contribution only after the same
+        // provider-backed resolver found no safe canonical match. It never
+        // creates a Food record merely because vision was uncertain.
+        missingIntent: match?.food ? null : nutritionFoodIntent(concept.label).canonicalName,
+      };
+    });
     if (process.env.NODE_ENV === "development") {
       console.info("[Nutrition AI Scan] resolved review foods", foods.map((food) => ({
         label: food.label,
