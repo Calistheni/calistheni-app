@@ -7,6 +7,7 @@ import { auth } from "@/auth";
 import { AppShell } from "@/components/navigation/AppShell";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { NativeShell } from "@/components/native/NativeShell";
+import { UserActivityHeartbeat } from "@/components/user/UserActivityHeartbeat";
 import { Toaster } from "@/components/ui/sonner";
 import { getSiteUrl } from "@/lib/site-url";
 import { prisma } from "@/lib/prisma";
@@ -267,6 +268,8 @@ html[data-theme-preference="system"] {
           initialResolvedTheme={serverResolvedTheme}
         >
           <NativeShell />
+
+          {session?.user?.id ? <UserActivityHeartbeat /> : null}
 
           <AppShell
             user={

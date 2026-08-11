@@ -7,6 +7,7 @@ import { toFoodSummary, withResolvedFoodIcon } from "@/lib/nutrition/service";
 import { prisma } from "@/lib/prisma";
 import { createUserUnauthorizedResponse, getAuthenticatedUserId } from "@/lib/user-auth";
 import { canUseNutritionBarcodeScan, getUserEntitlements } from "@/lib/entitlements";
+import { recordBarcodeLookup } from "@/lib/user-activity";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ barcode: string }> }) {
   const userId = await getAuthenticatedUserId();
@@ -28,9 +29,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bar
 
   try {
     const local = await prisma.food.findUnique({ where: { barcode }, include: { aliases: { select: { name: true } }, details: { select: { categories: true, productImageUrl: true } }, servings: { select: { name: true, quantity: true, grams: true, householdUnit: true } } } });
-    if (local) return NextResponse.json({ local: toFoodSummary(local), external: null });
+    if (local) {
+      await recordBarcodeLookup({ userId, succeeded: true, foodId: local.id }).catch((error) => console.warn("NUTRITION_BARCODE_ACTIVITY_FAILED", { error }));
+      return NextResponse.json({ local: toFoodSummary(local), external: null });
+    }
 
     const external = await getOpenFoodFactsProduct(barcode);
+    await recordBarcodeLookup({ userId, succeeded: true }).catch((error) => console.warn("NUTRITION_BARCODE_ACTIVITY_FAILED", { error }));
     return NextResponse.json({ local: null, external: { ...withResolvedFoodIcon(external), raw: undefined } });
   } catch (error) {
     if (error instanceof ProviderError) {
@@ -46,7 +51,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bar
                 : error.code === "INVALID_RESPONSE"
                   ? { status: 502, code: "OPEN_FOOD_FACTS_INVALID_RESPONSE", message: "Open Food Facts returned an unexpected response. Please try again later." }
                   : { status: 503, code: "OPEN_FOOD_FACTS_UNAVAILABLE", message: "Open Food Facts is currently unavailable. Please try again later." };
-      console.warn("NUTRITION_BARCODE_PROVIDER_ERROR", { barcode, code: error.code });
+      console.warn("NUTRITION_BARCODE_PROVIDER_ERROR", { code: error.code });
+      await recordBarcodeLookup({ userId, succeeded: false }).catch((activityError) => console.warn("NUTRITION_BARCODE_ACTIVITY_FAILED", { error: activityError }));
       return NextResponse.json({ error: { code: response.code, message: response.message } }, { status: response.status });
     }
 
