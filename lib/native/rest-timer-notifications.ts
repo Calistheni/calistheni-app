@@ -37,3 +37,12 @@ export async function cancelRestTimerNotification(timerId: string, reason: strin
   await LocalNotifications.cancel({ notifications: [{ id: restTimerNotificationId(timerId) }] });
   if (process.env.NODE_ENV === "development") console.info("[RestTimer] notification cancelled", { id: restTimerNotificationId(timerId), reason });
 }
+
+/** Targeted cleanup only; supplement notifications never share this ID range. */
+export async function removeDeliveredRestTimerNotification(timerId: string) {
+  if (!available()) return;
+  const id = restTimerNotificationId(timerId);
+  const delivered = await LocalNotifications.getDeliveredNotifications();
+  const matching = delivered.notifications.filter((notification) => notification.id === id);
+  if (matching.length) await LocalNotifications.removeDeliveredNotifications({ notifications: matching });
+}

@@ -3,7 +3,8 @@
 import { App } from "@capacitor/app";
 import { Haptics, NotificationType } from "@capacitor/haptics";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { cancelRestTimerNotification, scheduleRestTimerNotification } from "@/lib/native/rest-timer-notifications";
+import { cancelRestTimerNotification, removeDeliveredRestTimerNotification, scheduleRestTimerNotification } from "@/lib/native/rest-timer-notifications";
+import { LocalNotifications } from "@capacitor/local-notifications";
 import { isNativeApp, isNativePluginAvailable } from "@/lib/native/platform";
 
 type ActiveRestTimer = { id: string; exerciseLocalId: string; exerciseName: string; durationSeconds: number; endsAtMs: number };
@@ -22,6 +23,8 @@ export function useRestTimer() {
   const appStateRef = useRef<AppState>("foreground");
   const audioContextRef = useRef<AudioContext | null>(null);
   const completedTimerIdRef = useRef<string | null>(null);
+  const backgroundNotificationTimerIdRef = useRef<string | null>(null);
+  const backgroundNotificationDeliveredTimerIdRef = useRef<string | null>(null);
 
   const initializeAudio = useCallback(async () => {
     if (isMuted || typeof window === "undefined") return;
@@ -40,15 +43,16 @@ export function useRestTimer() {
     catch (error) { debug("foreground audio failed", error); }
   }, [initializeAudio, isMuted]);
   const haptic = useCallback(async () => { if (isNativePluginAvailable("Haptics")) await Haptics.notification({ type: NotificationType.Success }).catch((error) => debug("haptic failed", error)); }, []);
-  const schedule = useCallback((timer: ActiveRestTimer, muted = isMuted) => {
+  const scheduleForBackground = useCallback((timer: ActiveRestTimer, muted = isMuted) => {
     if (!isNativeApp()) return;
+    if (timer.endsAtMs <= Date.now()) return;
     void scheduleRestTimerNotification(timer.id, timer.endsAtMs, !muted).then((scheduled) => { if (scheduled) debug("notification scheduled", { timer: timer.id, sound: !muted }); }).catch((error) => debug("notification schedule failed", error));
   }, [isMuted]);
-  const cancel = useCallback((timerId: string, reason: string) => { void cancelRestTimerNotification(timerId, reason); }, []);
+  const cancel = useCallback((timerId: string, reason: string) => { backgroundNotificationTimerIdRef.current = backgroundNotificationTimerIdRef.current === timerId ? null : backgroundNotificationTimerIdRef.current; void cancelRestTimerNotification(timerId, reason); }, []);
   const completeForeground = useCallback(async (timer: ActiveRestTimer) => {
     if (completedTimerIdRef.current === timer.id) return;
     completedTimerIdRef.current = timer.id; debug("foreground completion", { timer: timer.id });
-    cancel(timer.id, "foreground-completion"); debug("notification cancelled for foreground completion", { timer: timer.id });
+    cancel(timer.id, "foreground-completion"); void removeDeliveredRestTimerNotification(timer.id); debug("notification cancelled for foreground completion", { timer: timer.id });
     await playForegroundSound(); await haptic(); setActiveTimer((current) => current?.id === timer.id ? null : current);
   }, [cancel, haptic, playForegroundSound]);
   const completeAfterBackground = useCallback((timer: ActiveRestTimer) => {
@@ -61,19 +65,20 @@ export function useRestTimer() {
   useEffect(() => { if (!activeTimer) return; const tick = () => { const now = Date.now(); setNowMs(now); if (appStateRef.current === "foreground" && now >= activeTimer.endsAtMs) void completeForeground(activeTimer); }; tick(); const interval = window.setInterval(tick, 250); return () => clearInterval(interval); }, [activeTimer, completeForeground]);
   useEffect(() => {
     if (!isNativeApp()) return;
-    let pause: { remove: () => Promise<void> } | undefined; let resume: { remove: () => Promise<void> } | undefined;
-    void App.addListener("pause", () => { appStateRef.current = "background"; debug("app background"); debug("notification remains scheduled"); }).then((handle) => { pause = handle; });
-    void App.addListener("resume", () => { appStateRef.current = "foreground"; debug("app foreground"); const timer = activeTimer; if (!timer) return; if (Date.now() >= timer.endsAtMs) completeAfterBackground(timer); else setNowMs(Date.now()); }).then((handle) => { resume = handle; });
-    return () => { void pause?.remove(); void resume?.remove(); };
-  }, [activeTimer, completeAfterBackground]);
+    let pause: { remove: () => Promise<void> } | undefined; let resume: { remove: () => Promise<void> } | undefined; let delivered: { remove: () => Promise<void> } | undefined;
+    void App.addListener("pause", () => { appStateRef.current = "background"; debug("app background"); const timer = activeTimer; if (!timer || timer.endsAtMs <= Date.now()) return; backgroundNotificationTimerIdRef.current = timer.id; scheduleForBackground(timer); }).then((handle) => { pause = handle; });
+    void App.addListener("resume", () => { appStateRef.current = "foreground"; debug("app foreground"); const timer = activeTimer; if (!timer) return; const deliveredInBackground = backgroundNotificationDeliveredTimerIdRef.current === timer.id || backgroundNotificationTimerIdRef.current === timer.id; cancel(timer.id, "app-foreground"); if (Date.now() >= timer.endsAtMs) { if (deliveredInBackground) completeAfterBackground(timer); else void completeForeground(timer); } else setNowMs(Date.now()); }).then((handle) => { resume = handle; });
+    if (isNativePluginAvailable("LocalNotifications")) void LocalNotifications.addListener("localNotificationReceived", (notification) => { const extra = notification.extra as { type?: string; timerId?: string } | undefined; if (extra?.type === "rest-timer" && typeof extra.timerId === "string") backgroundNotificationDeliveredTimerIdRef.current = extra.timerId; }).then((handle) => { delivered = handle; });
+    return () => { void pause?.remove(); void resume?.remove(); void delivered?.remove(); };
+  }, [activeTimer, cancel, completeAfterBackground, completeForeground, scheduleForBackground]);
   const replace = useCallback((next: ActiveRestTimer | null, reason: string) => { if (activeTimer && activeTimer.id !== next?.id) cancel(activeTimer.id, reason); setActiveTimer(next); }, [activeTimer, cancel]);
   const remainingSeconds = activeTimer ? Math.max(0, Math.ceil((activeTimer.endsAtMs - nowMs) / 1000)) : 0;
 
   return useMemo(() => ({ activeTimer, remainingSeconds, isMuted, showTestSoundButton: SHOW_TEST_SOUND_BUTTON, initializeAudio, testSound: async () => { await playForegroundSound(); },
-    startRestTimer: ({ exerciseLocalId, exerciseName, restSeconds }: { exerciseLocalId: string; exerciseName: string; restSeconds: number }) => { if (restSeconds <= 0) return; const now = Date.now(); const timer = { id: crypto.randomUUID(), exerciseLocalId, exerciseName, durationSeconds: restSeconds, endsAtMs: now + restSeconds * 1000 }; completedTimerIdRef.current = null; appStateRef.current = "foreground"; setNowMs(now); replace(timer, "replaced"); schedule(timer); debug("started", { timer: timer.id, endsAt: timer.endsAtMs }); void initializeAudio(); },
-    addSeconds: (seconds: number) => setActiveTimer((current) => { if (!current) return current; cancel(current.id, "timer-adjusted"); const next = { ...current, endsAtMs: Math.max(current.endsAtMs, Date.now()) + seconds * 1000 }; schedule(next); return next; }),
-    resetRestTimer: () => setActiveTimer((current) => { if (!current) return current; cancel(current.id, "timer-reset"); completedTimerIdRef.current = null; const next = { ...current, endsAtMs: Date.now() + current.durationSeconds * 1000 }; schedule(next); return next; }),
+    startRestTimer: ({ exerciseLocalId, exerciseName, restSeconds }: { exerciseLocalId: string; exerciseName: string; restSeconds: number }) => { if (restSeconds <= 0) return; const now = Date.now(); const timer = { id: crypto.randomUUID(), exerciseLocalId, exerciseName, durationSeconds: restSeconds, endsAtMs: now + restSeconds * 1000 }; completedTimerIdRef.current = null; backgroundNotificationTimerIdRef.current = null; backgroundNotificationDeliveredTimerIdRef.current = null; appStateRef.current = "foreground"; setNowMs(now); replace(timer, "replaced"); debug("started", { timer: timer.id, endsAt: timer.endsAtMs }); void initializeAudio(); },
+    addSeconds: (seconds: number) => setActiveTimer((current) => { if (!current) return current; cancel(current.id, "timer-adjusted"); const next = { ...current, endsAtMs: Math.max(current.endsAtMs, Date.now()) + seconds * 1000 }; if (appStateRef.current === "background") scheduleForBackground(next); return next; }),
+    resetRestTimer: () => setActiveTimer((current) => { if (!current) return current; cancel(current.id, "timer-reset"); completedTimerIdRef.current = null; const next = { ...current, endsAtMs: Date.now() + current.durationSeconds * 1000 }; if (appStateRef.current === "background") scheduleForBackground(next); return next; }),
     skipRestTimer: () => replace(null, "skipped"), clearRestTimer: () => { completedTimerIdRef.current = null; replace(null, "cleared"); },
-    toggleMuted: () => setIsMuted((current) => { const next = !current; if (activeTimer) { cancel(activeTimer.id, "mute-changed"); schedule(activeTimer, next); } return next; }),
-  }), [activeTimer, cancel, initializeAudio, isMuted, playForegroundSound, remainingSeconds, replace, schedule]);
+    toggleMuted: () => setIsMuted((current) => { const next = !current; if (activeTimer && appStateRef.current === "background") { cancel(activeTimer.id, "mute-changed"); scheduleForBackground(activeTimer, next); } return next; }),
+  }), [activeTimer, cancel, initializeAudio, isMuted, playForegroundSound, remainingSeconds, replace, scheduleForBackground]);
 }

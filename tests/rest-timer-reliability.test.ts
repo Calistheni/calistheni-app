@@ -48,3 +48,13 @@ test("foreground and background have exactly one distinct feedback mechanism", a
   assert.match(source, /feedback already handled by notification/);
   assert.match(source, /await playForegroundSound\(\); await haptic\(\)/);
 });
+
+test("rest notifications are scheduled only on true native pause and cancelled on resume", async () => {
+  const source = await readFile(new URL("../components/workouts/hooks/useRestTimer.ts", import.meta.url), "utf8");
+  const start = source.indexOf("startRestTimer:");
+  const startBlock = source.slice(start, source.indexOf("addSeconds:", start));
+  assert.doesNotMatch(startBlock, /scheduleForBackground\(timer\)/);
+  assert.match(source, /App\.addListener\("pause"[\s\S]*scheduleForBackground\(timer\)/);
+  assert.match(source, /App\.addListener\("resume"[\s\S]*cancel\(timer\.id, "app-foreground"\)/);
+  assert.match(source, /localNotificationReceived/);
+});
