@@ -110,12 +110,25 @@ export async function getNutritionCandidatesForIntent(query: string, limit = 5, 
 
 export async function searchFoods(query: string, userId?: string): Promise<FoodSearchResponse> {
   const normalized = normalizeFoodQuery(query);
+  const intent = nutritionFoodIntent(normalized);
+  const providerQueries = intent.searchQueries.slice(0, 3);
+  // The primary call remains equivalent to searchUsdaFoods(normalized, NUTRITION_PROVIDER_CANDIDATE_LIMIT)
+  // and searchOpenFoodFactsFoods(normalized, NUTRITION_PROVIDER_CANDIDATE_LIMIT); variants supplement it.
   const localRequest = findLocalFoods(normalized, userId);
-  const [local, usda, off] = await Promise.allSettled([
+  // Always collect from both providers. Local hits are ranking evidence, never
+  // a reason to suppress the broader canonical/provider universe.
+  const [local, ...providerCalls] = await Promise.allSettled([
     localRequest,
-    searchUsdaFoods(normalized, NUTRITION_PROVIDER_CANDIDATE_LIMIT),
-    searchOpenFoodFactsFoods(normalized, NUTRITION_PROVIDER_CANDIDATE_LIMIT),
+    ...providerQueries.flatMap((providerQuery) => [
+      searchUsdaFoods(providerQuery, NUTRITION_PROVIDER_CANDIDATE_LIMIT),
+      searchOpenFoodFactsFoods(providerQuery, NUTRITION_PROVIDER_CANDIDATE_LIMIT),
+    ]),
   ]);
+  const usdaCalls = providerCalls.filter((_, index) => index % 2 === 0);
+  const offCalls = providerCalls.filter((_, index) => index % 2 === 1);
+  const usda = usdaCalls[0]!;
+  const off = offCalls[0]!;
+  const fulfilled = (calls: PromiseSettledResult<ExternalFoodResult>[][] | PromiseSettledResult<ExternalFoodResult[]>[]) => (calls as PromiseSettledResult<ExternalFoodResult[]>[]).flatMap((result) => result.status === "fulfilled" ? result.value : []);
   const state = (result: PromiseSettledResult<ExternalFoodResult[]>, configured = true): ProviderState => {
     if (result.status === "fulfilled") return { attempted: true, available: true, error: null };
     const code = result.reason instanceof ProviderError ? result.reason.code : "UNAVAILABLE";
@@ -125,12 +138,16 @@ export async function searchFoods(query: string, userId?: string): Promise<FoodS
       error: code === "TIMEOUT" || code === "RATE_LIMITED" ? code : "UNAVAILABLE",
     };
   };
+  const providerState = (calls: PromiseSettledResult<ExternalFoodResult[]>[], configured = true): ProviderState => {
+    if (calls.some((call) => call.status === "fulfilled")) return { attempted: true, available: true, error: null };
+    return state(calls[0]!, configured);
+  };
   // findLocalFoods already returns canonical FoodSummary DTOs. Re-serializing
   // them would treat ISO timestamps as Dates and drop the whole local branch.
   const localResults = local.status === "fulfilled" ? local.value : [];
   const initialProviderCandidates = deduplicateExternalFoodResults(localResults, [
-    ...(usda.status === "fulfilled" ? usda.value : []),
-    ...(off.status === "fulfilled" ? off.value : []),
+    ...fulfilled(usdaCalls),
+    ...fulfilled(offCalls),
   ]);
   let providerResults = initialProviderCandidates
     .filter((food) => isRelevantFoodResult(normalized, food))
@@ -181,23 +198,14 @@ export async function searchFoods(query: string, userId?: string): Promise<FoodS
     ...rankedPackagedResults,
   ]);
   const limited = limitFoodSearchResults({ genericResults, localResults, packagedResults });
-  const providers = { usda: state(usda, Boolean(process.env.USDA_FDC_API_KEY)), openFoodFacts: state(off) };
+  const providers = { usda: providerState(usdaCalls, Boolean(process.env.USDA_FDC_API_KEY)), openFoodFacts: providerState(offCalls) };
   const warnings = [
     local.status === "rejected" ? "Saved foods are temporarily unavailable; provider results are still shown." : null,
     providers.usda.error ? "USDA results are temporarily unavailable." : null,
     providers.openFoodFacts.error ? "Packaged product results are temporarily unavailable." : null,
   ].filter((message): message is string => Boolean(message));
   const results = diversifyNutritionFoodCandidates(rankedResults).slice(0, NUTRITION_SEARCH_RESULT_LIMIT);
-  if (process.env.NODE_ENV === "development" && !results.length) {
-    console.info("[Nutrition search] final empty response", {
-      query: normalized,
-      localCount: localResults.length,
-      genericCount: genericResults.length,
-      packagedCount: packagedResults.length,
-      finalCount: results.length,
-    });
-  }
-  const intent = nutritionFoodIntent(normalized);
+  if (process.env.NODE_ENV === "development") console.info("[FoodSearch]", { query, normalized, local: localResults.length, usda: fulfilled(usdaCalls).length, off: fulfilled(offCalls).length, merged: providerResults.length, final: results.length });
   const missingIntent = classifyFoodQuery(normalized) === "GENERIC" && !selectNutritionFoodCandidate(intent.rankQuery, results)
     ? intent.canonicalName
     : null;

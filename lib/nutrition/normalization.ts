@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import type { ExternalFoodResult, NutritionValues } from "./types";
 
 const nutrients = ["caloriesKcal", "proteinGrams", "carbohydrateGrams", "fatGrams", "fiberGrams", "sugarGrams", "saturatedFatGrams", "transFatGrams", "addedSugarGrams", "sodiumMg", "saltGrams", "cholesterolMg", "potassiumMg", "calciumMg", "ironMg"] as const;
-export function normalizeFoodQuery(value: string) { return value.normalize("NFKC").trim().toLocaleLowerCase().replace(/[\u2018\u2019]/g, "'").replace(/[^\p{L}\p{N}\s'\-]/gu, " ").replace(/\s+/g, " "); }
+/** Keep Unicode for display/language matching, but make search accent-insensitive. */
+export function normalizeFoodQuery(value: string) { return value.normalize("NFKD").replace(/\p{M}/gu, "").normalize("NFKC").trim().toLocaleLowerCase().replace(/[\u2018\u2019]/g, "'").replace(/[^\p{L}\p{N}\s'\-]/gu, " ").replace(/\s+/g, " "); }
 /**
  * Conservative singular/plural equivalents for canonical food lookup.
  * This is deliberately not general stemming: it only helps the common

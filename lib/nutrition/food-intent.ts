@@ -20,6 +20,12 @@ const FOOD_INTENT_ALIASES: Record<string, readonly string[]> = {
   "boletus edulis": ["porcini mushroom", "porcini", "mushroom"],
   manatarka: ["porcini mushroom", "porcini", "mushroom"],
   "манатарка": ["porcini mushroom", "porcini", "mushroom"],
+  salchicon: ["salchichon", "salchichón", "spanish cured sausage"],
+  salchichon: ["salchichon", "salchichón", "spanish cured sausage"],
+  cinnamon: ["cinnamon"],
+  cinamon: ["cinnamon"],
+  yoghurt: ["yogurt"],
+  yogurt: ["yogurt"],
   "cooking butter": ["butter"],
   "unsalted butter": ["butter"],
   "salted butter": ["butter"],
@@ -56,7 +62,9 @@ export function nutritionFoodIntent(query: string): NutritionFoodIntent {
     ""
   );
   const aliases = FOOD_INTENT_ALIASES[normalized] ?? FOOD_INTENT_ALIASES[withoutPreparation] ?? [];
-  const searchQueries = [...new Set([normalized, ...aliases].map(normalizeFoodQuery).filter(Boolean))];
+  // This intentionally remains tiny: provider expansion is deterministic and
+  // bounded, not a spelling-correction fan-out.
+  const searchQueries = [...new Set([normalized, ...aliases].map(normalizeFoodQuery).filter(Boolean))].slice(0, 5);
   return {
     rankQuery: aliases[0] ? normalizeFoodQuery(aliases[0]) : normalized,
     searchQueries,

@@ -79,6 +79,10 @@ function serializeContribution(
   return {
     id: food.id,
     name: food.name,
+    barcode: food.barcode,
+    brandName: food.brandName,
+    contributionKind: submittedProposal?.kind === "BARCODE_PRODUCT" ? "BARCODE_PRODUCT" as const : "GENERIC_FOOD" as const,
+    submissionMethod: typeof submittedProposal?.method === "string" ? submittedProposal.method : null,
     status: food.contributionStatus ?? FoodContributionStatus.PENDING,
     createdAt: food.createdAt.toISOString(),
     reviewedAt: food.reviewedAt?.toISOString() ?? null,

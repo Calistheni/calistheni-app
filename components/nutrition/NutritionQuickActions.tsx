@@ -66,6 +66,7 @@ type Food = {
   externalId?: string;
   name: string;
   brandName?: string | null;
+  contributionStatus?: "PENDING" | "APPROVED" | "REJECTED" | null;
   imageUrl?: string | null;
   genericIcon?: { url: string } | null;
   nutritionPer100g: Record<string, number | undefined>;
@@ -481,6 +482,9 @@ function BarcodeWorkflow({
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState<"reading" | "looking" | null>(null);
   const [error, setError] = useState("");
+  const [missingBarcode, setMissingBarcode] = useState(false);
+  const [contributionMode, setContributionMode] = useState<"manual" | "label" | null>(null);
+  const [draft, setDraft] = useState({ productName: "", brandName: "", caloriesKcal: "", proteinGrams: "", carbohydrateGrams: "", fatGrams: "", servingGrams: "", servingLabel: "" });
   const [nativeScanner, setNativeScanner] = useState(false);
   const [manualMode, setManualMode] = useState(false);
   const [torchAvailable, setTorchAvailable] = useState(false);
@@ -527,6 +531,7 @@ function BarcodeWorkflow({
     setBusy(false);
     setPhase(null);
     setError("");
+    setMissingBarcode(false); setContributionMode(null); setDraft({ productName: "", brandName: "", caloriesKcal: "", proteinGrams: "", carbohydrateGrams: "", fatGrams: "", servingGrams: "", servingLabel: "" });
   }
   function restartNativeScanner() {
     void endNativeScannerSession("scan-again").finally(() => {
@@ -653,14 +658,15 @@ function BarcodeWorkflow({
     setBusy(true);
     setPhase("looking");
     setError("");
+    setMissingBarcode(false); setContributionMode(null);
     try {
       const response = await fetch(`/api/nutrition/foods/barcode/${barcode}`);
-      if (!response.ok)
-        throw new Error(
-          response.status === 404
-            ? "We couldn't find a food for this barcode."
-            : await responseMessage(response, "Barcode lookup failed.")
-        );
+      if (!response.ok) {
+        // "We couldn't find a food for this barcode." is now a recoverable
+        // branch: retain the decoded string and open contribution choices.
+        if (response.status === 404) { setMissingBarcode(true); setError(""); return; }
+        throw new Error(await responseMessage(response, "Barcode lookup failed."));
+      }
       const data = await response.json();
       const match = await importFood(data.local ?? data.external);
       setFood(match);
@@ -714,6 +720,23 @@ function BarcodeWorkflow({
       );
       setBusy(false);
     }
+  }
+  async function saveContribution(addAfterSave = false) {
+    const number = (value: string) => Number(value);
+    if (!code || !draft.productName.trim()) return setError("Enter the product name and nutrition per 100 g.");
+    setBusy(true); setError("");
+    try {
+      const response = await fetch("/api/nutrition/foods/barcode/contribute", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ barcode: code, productName: draft.productName, brandName: draft.brandName || null, nutrition: { caloriesKcal: number(draft.caloriesKcal), proteinGrams: number(draft.proteinGrams), carbohydrateGrams: number(draft.carbohydrateGrams), fatGrams: number(draft.fatGrams) }, servingGrams: draft.servingGrams ? number(draft.servingGrams) : null, servingLabel: draft.servingLabel || null, method: contributionMode === "label" ? "AI_LABEL" : "MANUAL" }) });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.message ?? payload?.error ?? "Unable to save contribution.");
+      const saved = payload.food as Food & { id: string }; const savedGrams = saved.servings?.[0]?.grams ?? 100; const savedUnit = saved.servings?.[0]?.name ?? "g";
+      if (addAfterSave) { const entries = await batchLog(meal, date, [{ key: saved.id, food: saved, grams: savedGrams, quantity: 1, unit: savedUnit }]); onEntries(entries); toast.success(`Added to ${mealLabel(meal)} · Pending review`); dismiss(); return; }
+      setFood(saved); setMissingBarcode(false); setContributionMode(null); setGrams(savedGrams); setUnit(savedUnit); toast.success("Product saved · Pending review, but ready for you to use.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to save contribution."); } finally { setBusy(false); }
+  }
+  async function extractLabel(file?: File) {
+    if (!file) return; setBusy(true); setError("");
+    try { const compressed = await compressWorkoutPhoto(file); const form = new FormData(); form.set("barcode", code); form.set("image", compressed); const response = await fetch("/api/nutrition/foods/barcode/extract-label", { method: "POST", body: form }); const payload = await response.json().catch(() => null); if (!response.ok) throw new Error(payload?.message ?? "We couldn't read the nutrition label."); const converted = payload.converted; if (!converted) throw new Error("Enter the serving grams or complete the product manually."); setDraft({ productName: payload.extraction.productName ?? "", brandName: payload.extraction.brandName ?? "", caloriesKcal: String(converted.nutrition.caloriesKcal ?? ""), proteinGrams: String(converted.nutrition.proteinGrams ?? ""), carbohydrateGrams: String(converted.nutrition.carbohydrateGrams ?? ""), fatGrams: String(converted.nutrition.fatGrams ?? ""), servingGrams: String(converted.servingGrams ?? ""), servingLabel: converted.servingLabel ?? "" }); setContributionMode("label"); } catch (reason) { setError(reason instanceof Error ? reason.message : "We couldn't read the nutrition label."); } finally { setBusy(false); }
   }
   // iOS owns the scanner surface completely. Rendering no web Sheet here keeps
   // the full-screen native camera controller free of WebView overlays.
@@ -980,6 +1003,7 @@ function BarcodeWorkflow({
             </TabsContent>
           </Tabs>
           )}
+          {missingBarcode ? <div className="space-y-4"><Alert><AlertTitle>Product not found</AlertTitle><AlertDescription>We couldn&apos;t find this barcode in Calistheni or our food providers.</AlertDescription></Alert><div className="rounded-lg bg-muted p-3 text-sm"><span className="text-muted-foreground">Barcode</span><p className="font-mono font-semibold">{code}</p></div>{!contributionMode ? <div className="grid gap-2"><Button onClick={() => setContributionMode("label")}><Sparkles />Scan nutrition label with AI</Button><Button variant="outline" onClick={() => setContributionMode("manual")}>Enter product manually</Button><Button variant="ghost" onClick={restartNativeScanner}>Scan another barcode</Button><Button variant="ghost" onClick={dismiss}>Cancel</Button></div> : <div className="space-y-3"><p className="font-medium">Add missing product</p>{contributionMode === "label" ? <Button asChild variant="outline" className="w-full"><Label className="cursor-pointer"><Camera />Take or choose nutrition label photo<Input className="sr-only" type="file" accept="image/*" capture="environment" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; void extractLabel(file); }} /></Label></Button> : null}<div className="grid gap-2 sm:grid-cols-2">{([['productName','Product name'],['brandName','Brand'],['caloriesKcal','Calories / 100 g'],['proteinGrams','Protein / 100 g'],['carbohydrateGrams','Carbs / 100 g'],['fatGrams','Fat / 100 g'],['servingGrams','Serving grams'],['servingLabel','Serving label']] as const).map(([key,label]) => <div key={key}><Label>{label}{key === 'productName' || key.endsWith('Grams') && key !== 'servingGrams' ? ' *' : ''}</Label><Input type={key.includes('Grams') || key === 'caloriesKcal' ? 'number' : 'text'} value={draft[key]} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))} /></div>)}</div><div className="flex flex-wrap gap-2"><Button disabled={busy} onClick={() => void saveContribution(true)}>{busy ? <Loader2 className="animate-spin" /> : null}Save and add to {mealLabel(meal)}</Button><Button variant="outline" disabled={busy} onClick={() => void saveContribution(false)}>Save product</Button><Button variant="outline" onClick={() => setContributionMode(null)}>Back</Button></div></div>}</div> : null}
           {error && !showNativeStartupError ? (
             <>
               <Alert>
@@ -1026,6 +1050,7 @@ function BarcodeWorkflow({
           ) : null}
           {food ? (
             <>
+              {food.contributionStatus === "PENDING" ? <Badge variant="secondary">Your contribution · Pending review</Badge> : null}
               <FoodAmountCard
                 food={food}
                 grams={grams}

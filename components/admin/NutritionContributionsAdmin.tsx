@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Copy } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,10 @@ type ContributionFilter = "ALL" | ContributionStatus;
 export type FoodContribution = {
   id: string;
   name: string;
+  barcode?: string | null;
+  brandName?: string | null;
+  contributionKind?: "GENERIC_FOOD" | "BARCODE_PRODUCT";
+  submissionMethod?: string | null;
   status: ContributionStatus;
   createdAt: string;
   reviewedAt: string | null;
@@ -79,6 +84,11 @@ function statusVariant(status: ContributionStatus) {
 
 function contributorLabel(food: FoodContribution) {
   return food.createdByUser?.name ?? food.createdByUser?.email ?? "Unknown user";
+}
+
+async function copyBarcode(barcode: string) {
+  try { await navigator.clipboard.writeText(barcode); toast.success("Barcode copied."); }
+  catch { toast.error("Could not copy barcode."); }
 }
 
 export function NutritionContributionsAdmin({ initialHistory }: { initialHistory: HistoryResponse }) {
@@ -151,6 +161,8 @@ export function NutritionContributionsAdmin({ initialHistory }: { initialHistory
       <CardHeader className="flex-row items-start justify-between gap-3">
         <div className="min-w-0 space-y-1">
           <p className="font-semibold">{food.name}</p>
+          {food.brandName ? <p className="text-sm text-muted-foreground">{food.brandName}</p> : null}
+          {food.contributionKind === "BARCODE_PRODUCT" ? <div className="space-y-1 text-xs text-muted-foreground"><p>Barcode product{food.submissionMethod ? ` · ${food.submissionMethod === "AI_LABEL" ? "AI label scan" : "Manual"}` : ""}</p><div className="flex items-center gap-1"><span>Barcode:</span><code className="rounded bg-muted px-1.5 py-0.5 font-mono font-semibold text-foreground">{food.barcode ?? "—"}</code>{food.barcode ? <Button size="icon" variant="ghost" className="size-6" aria-label={`Copy barcode ${food.barcode}`} onClick={() => void copyBarcode(food.barcode!)}><Copy className="size-3.5" /></Button> : null}</div></div> : <p className="text-xs text-muted-foreground">Generic food · Barcode: —</p>}
           <p className="text-sm text-muted-foreground">Submitted by {contributorLabel(food)}</p>
           {food.createdByUser?.email ? <p className="text-xs text-muted-foreground">{food.createdByUser.email}</p> : null}
         </div>
