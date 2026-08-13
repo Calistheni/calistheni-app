@@ -233,7 +233,6 @@ export function DateOfBirthPicker({
           timeZone="UTC"
           fixedWeeks
           hideNavigation
-          autoFocus
           className="mx-auto w-full px-2 pb-3 pt-2 sm:pb-4 sm:pt-3"
           style={
             {

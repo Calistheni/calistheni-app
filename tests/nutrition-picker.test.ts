@@ -33,6 +33,44 @@ test("picker uses accessible Radix tabs with one value-bound content panel per s
   assert.match(tabs, /min-w-0 flex-1/);
 });
 
+test("food picker opens with a stable viewport and never autofocuses a search input", async () => {
+  const [tracker, sheet, dialog, drawer, popover] = await Promise.all([
+    readFile(new URL("../components/nutrition/NutritionTracker.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/ui/sheet.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/ui/dialog.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/ui/drawer.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/ui/popover.tsx", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(tracker, /h-\[92dvh\] max-h-\[calc\(100dvh-env\(safe-area-inset-top\)-0\.5rem\)\]/);
+  assert.match(tracker, /ScrollArea className="h-\[min\(48dvh,26rem\)\]/);
+  assert.match(tracker, /placeholder="Search foods" aria-label="Search foods" value=\{query\}/);
+  assert.doesNotMatch(tracker, /autoFocus/);
+
+  for (const source of [sheet, dialog, drawer, popover]) {
+    assert.match(source, /onOpenAutoFocus=\{\(event\) =>/);
+    assert.match(source, /event\.preventDefault\(\)/);
+    assert.match(source, /content\.focus\(\{ preventScroll: true \}\)/);
+  }
+});
+
+test("nutrition overlay inputs require an explicit user interaction before focus", async () => {
+  const [quickActions, savedMeals, workoutBuilder, dateOfBirth] = await Promise.all([
+    readFile(new URL("../components/nutrition/NutritionQuickActions.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/nutrition/NutritionSavedMeals.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/workouts/WorkoutBuilder.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/profile/DateOfBirthPicker.tsx", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(quickActions, /id="manual-barcode"/);
+  assert.match(quickActions, /id="nutrition-description"/);
+  assert.match(quickActions, /id="draft-food-search"/);
+  assert.doesNotMatch(quickActions, /autoFocus|\.focus\(/);
+  assert.doesNotMatch(savedMeals, /autoFocus|\.focus\(/);
+  assert.doesNotMatch(workoutBuilder, /autoFocus/);
+  assert.doesNotMatch(dateOfBirth, /autoFocus/);
+});
+
 test("nutrition rows reuse FoodVisual, and explicit menu actions separate edit from removal", async () => {
   const source = await readFile(new URL("../components/nutrition/NutritionTracker.tsx", import.meta.url), "utf8");
   assert.match(source, /foodVisual\?\.imageUrl/);

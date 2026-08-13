@@ -21,6 +21,7 @@ function PopoverContent({
   className,
   align = "center",
   sideOffset = 4,
+  onOpenAutoFocus,
   ...props
 }: React.ComponentProps<typeof PopoverPrimitive.Content>) {
   return (
@@ -33,6 +34,14 @@ function PopoverContent({
           "z-50 w-72 origin-(--radix-popover-content-transform-origin) rounded-lg border border-border bg-popover p-4 text-popover-foreground shadow-lg outline-hidden data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
           className
         )}
+        onOpenAutoFocus={(event) => {
+          onOpenAutoFocus?.(event)
+          if (event.defaultPrevented) return
+
+          event.preventDefault()
+          const content = event.currentTarget
+          if (content instanceof HTMLElement) content.focus({ preventScroll: true })
+        }}
         {...props}
       />
     </PopoverPrimitive.Portal>

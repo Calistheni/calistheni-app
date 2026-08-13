@@ -4282,7 +4282,6 @@ export function WorkoutBuilder({
                   value={bodyweightInput}
                   onChange={(event) => setBodyweightInput(event.target.value)}
                   disabled={isSavingBodyweight}
-                  autoFocus
                 />
                 <span className="shrink-0 text-sm text-muted-foreground">kg</span>
               </div>
