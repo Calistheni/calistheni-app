@@ -89,6 +89,7 @@ export default async function NewWorkoutPage({
       },
       select: {
         bodyweightKg: true,
+        measurementSystem: true,
         rpeTrackingEnabled: true,
       },
     }),
@@ -195,6 +196,7 @@ export default async function NewWorkoutPage({
         initialWorkout={initialWorkoutFromRoutine}
         saveMode="create"
         userBodyweightKg={user?.bodyweightKg ?? null}
+        measurementSystem={user?.measurementSystem ?? "METRIC"}
         rpeTrackingEnabled={user?.rpeTrackingEnabled ?? false}
       />
     </main>

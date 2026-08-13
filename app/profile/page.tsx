@@ -103,6 +103,7 @@ export default async function ProfilePage() {
       },
       select: {
         bodyweightKg: true,
+        measurementSystem: true,
         dateOfBirth: true,
         rpeTrackingEnabled: true,
         rewardPoints: true,
@@ -327,7 +328,8 @@ export default async function ProfilePage() {
                     <p className="text-lg font-bold">
                       {formatPersonalRecordValue(
                         record.type as PersonalRecordType,
-                        record.value
+                        record.value,
+                        profile?.measurementSystem ?? "METRIC"
                       )}
                     </p>
                   </div>
@@ -350,6 +352,7 @@ export default async function ProfilePage() {
             initialBodyweightKg={profile?.bodyweightKg ?? null}
             initialDateOfBirth={formatDateOfBirth(profile?.dateOfBirth)}
             initialRpeTrackingEnabled={profile?.rpeTrackingEnabled ?? false}
+            initialMeasurementSystem={profile?.measurementSystem ?? "METRIC"}
           />
         </CardContent>
       </Card>

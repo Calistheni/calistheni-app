@@ -18,6 +18,7 @@ import { prisma } from "@/lib/prisma";
 
 type ProfileUpdatePayload = {
   bodyweightKg?: unknown;
+  measurementSystem?: unknown;
   dateOfBirth?: unknown;
   trainingStyle?: unknown;
   primaryGoal?: unknown;
@@ -30,6 +31,7 @@ type ProfileUpdatePayload = {
 const TRAINING_STYLES = ["CALISTHENICS", "GYM", "BOTH"] as const;
 const PRIMARY_GOALS = ["FIND_PARKS", "TRACK_WORKOUTS", "BOTH"] as const;
 const BODY_FAT_SEXES = ["MALE", "FEMALE"] as const;
+const MEASUREMENT_SYSTEMS = ["METRIC", "IMPERIAL"] as const;
 
 function parseBodyweightKg(value: unknown) {
   if (value === null || value === undefined || value === "") {
@@ -82,6 +84,12 @@ function parseBodyFatSex(value: unknown): (typeof BODY_FAT_SEXES)[number] | null
     : undefined;
 }
 
+function parseMeasurementSystem(value: unknown): (typeof MEASUREMENT_SYSTEMS)[number] | undefined {
+  return typeof value === "string" && MEASUREMENT_SYSTEMS.includes(value as (typeof MEASUREMENT_SYSTEMS)[number])
+    ? value as (typeof MEASUREMENT_SYSTEMS)[number]
+    : undefined;
+}
+
 export async function PATCH(request: Request) {
   const userId = await getAuthenticatedUserId();
 
@@ -99,6 +107,7 @@ export async function PATCH(request: Request) {
 
   const data: {
     bodyweightKg?: number | null;
+    measurementSystem?: (typeof MEASUREMENT_SYSTEMS)[number];
     dateOfBirth?: Date | null;
     trainingStyle?: (typeof TRAINING_STYLES)[number] | null;
     primaryGoal?: (typeof PRIMARY_GOALS)[number] | null;
@@ -120,6 +129,12 @@ export async function PATCH(request: Request) {
     }
 
     data.bodyweightKg = bodyweightKg;
+  }
+
+  if (hasField(body, "measurementSystem")) {
+    const measurementSystem = parseMeasurementSystem(body.measurementSystem);
+    if (!measurementSystem) return createJsonErrorResponse("Invalid measurement system.", 400);
+    data.measurementSystem = measurementSystem;
   }
 
   if (hasField(body, "dateOfBirth")) {
@@ -198,6 +213,7 @@ export async function PATCH(request: Request) {
       data,
       select: {
         bodyweightKg: true,
+        measurementSystem: true,
         dateOfBirth: true,
         trainingStyle: true,
         primaryGoal: true,

@@ -92,6 +92,7 @@ export default async function EditWorkoutPage({
       },
       select: {
         bodyweightKg: true,
+        measurementSystem: true,
         rpeTrackingEnabled: true,
       },
     }),
@@ -110,6 +111,7 @@ export default async function EditWorkoutPage({
         exerciseUsage={exerciseUsage}
         initialWorkout={mapWorkoutDetail(workout)}
         userBodyweightKg={user?.bodyweightKg ?? null}
+        measurementSystem={user?.measurementSystem ?? "METRIC"}
         rpeTrackingEnabled={user?.rpeTrackingEnabled ?? false}
       />
     </main>

@@ -8,11 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { calculateAge, validateDateOfBirth } from "@/lib/date-of-birth";
+import { displayWeightInputValue, displayWeightToKg, type MeasurementSystem, weightUnit } from "@/lib/measurement-units";
 
 type BodyweightFormProps = {
   initialBodyweightKg: number | null;
   initialDateOfBirth: string | null;
   initialRpeTrackingEnabled: boolean;
+  initialMeasurementSystem: MeasurementSystem;
 };
 
 async function getApiError(response: Response) {
@@ -35,11 +37,11 @@ export function BodyweightForm({
   initialBodyweightKg,
   initialDateOfBirth,
   initialRpeTrackingEnabled,
+  initialMeasurementSystem,
 }: BodyweightFormProps) {
   const router = useRouter();
-  const [bodyweightKg, setBodyweightKg] = useState(
-    initialBodyweightKg?.toString() ?? ""
-  );
+  const [measurementSystem, setMeasurementSystem] = useState<MeasurementSystem>(initialMeasurementSystem);
+  const [bodyweightInput, setBodyweightInput] = useState(displayWeightInputValue(initialBodyweightKg, initialMeasurementSystem));
   const [dateOfBirth, setDateOfBirth] = useState(initialDateOfBirth ?? "");
   const [dateOfBirthError, setDateOfBirthError] = useState<string | null>(null);
   const [bodyweightError, setBodyweightError] = useState<string | null>(null);
@@ -57,9 +59,9 @@ export function BodyweightForm({
       return;
     }
 
-    const trimmedBodyweight = bodyweightKg.trim();
+    const trimmedBodyweight = bodyweightInput.trim();
     const nextBodyweightKg =
-      trimmedBodyweight.length === 0 ? null : Number(trimmedBodyweight);
+      trimmedBodyweight.length === 0 ? null : displayWeightToKg(Number(trimmedBodyweight), measurementSystem);
 
     if (
       nextBodyweightKg !== null &&
@@ -85,6 +87,7 @@ export function BodyweightForm({
         },
         body: JSON.stringify({
           bodyweightKg: nextBodyweightKg,
+          measurementSystem,
           dateOfBirth: dateResult.dateOnly,
           rpeTrackingEnabled,
         }),
@@ -99,10 +102,12 @@ export function BodyweightForm({
 
       const payload = (await response.json()) as {
         bodyweightKg: number | null;
+        measurementSystem: MeasurementSystem;
         dateOfBirth: string | null;
         rpeTrackingEnabled: boolean;
       };
-      setBodyweightKg(payload.bodyweightKg?.toString() ?? "");
+      setMeasurementSystem(payload.measurementSystem);
+      setBodyweightInput(displayWeightInputValue(payload.bodyweightKg, payload.measurementSystem));
       setDateOfBirth(payload.dateOfBirth ?? "");
       setRpeTrackingEnabled(payload.rpeTrackingEnabled);
       toast.success("Personal details saved.");
@@ -120,6 +125,23 @@ export function BodyweightForm({
 
   return (
     <div className="space-y-4">
+      <div className="space-y-2">
+        <p className="text-sm font-medium">Measurement units</p>
+        <div className="grid grid-cols-2 gap-2" role="group" aria-label="Measurement units">
+          {(["METRIC", "IMPERIAL"] as const).map((system) => (
+            <Button key={system} type="button" variant={measurementSystem === system ? "default" : "outline"} disabled={isSaving} onClick={() => {
+              if (measurementSystem === system) return;
+              const canonical = bodyweightInput.trim() ? displayWeightToKg(Number(bodyweightInput), measurementSystem) : null;
+              setMeasurementSystem(system);
+              setBodyweightInput(displayWeightInputValue(canonical, system));
+            }}>
+              {system === "METRIC" ? "Metric · kg · km" : "Imperial · lb · mi"}
+            </Button>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground">This changes display and entry units only; workout history remains canonical.</p>
+      </div>
+
       <div className="space-y-2">
         <label htmlFor="profile-date-of-birth" className="text-sm font-medium">
           Date of birth
@@ -165,16 +187,17 @@ export function BodyweightForm({
         <Input
           id="profile-bodyweight"
           type="number"
-          min="20"
-          max="300"
+          min={measurementSystem === "IMPERIAL" ? "44" : "20"}
+          max={measurementSystem === "IMPERIAL" ? "661" : "300"}
           step="0.1"
-          value={bodyweightKg}
+          value={bodyweightInput}
           onChange={(event) => {
-            setBodyweightKg(event.target.value);
+            setBodyweightInput(event.target.value);
             setBodyweightError(null);
           }}
           disabled={isSaving}
-          placeholder="80"
+          placeholder={measurementSystem === "IMPERIAL" ? "176" : "80"}
+          aria-label={`Bodyweight in ${weightUnit(measurementSystem) === "lb" ? "pounds" : "kilograms"}`}
           aria-invalid={Boolean(bodyweightError)}
           aria-describedby={
             bodyweightError
@@ -186,7 +209,7 @@ export function BodyweightForm({
           id="profile-bodyweight-help"
           className="text-xs text-muted-foreground"
         >
-          Used for bodyweight and weighted-bodyweight workout volume.
+          Used for bodyweight and weighted-bodyweight workout volume. Entered in {weightUnit(measurementSystem)} and stored canonically in kg.
         </p>
         {bodyweightError ? (
           <p

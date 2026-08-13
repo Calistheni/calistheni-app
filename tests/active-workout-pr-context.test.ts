@@ -34,7 +34,7 @@ test("weighted-bodyweight PRs use the same no-plus formatter as external weight"
 test("timed and distance PR context uses completed historical duration or distance", () => {
   const context = buildExercisePersonalRecordContext([{ durationSeconds: 45, distanceMeters: 1000 }, { durationSeconds: 60, distanceMeters: 2000 }], { LONGEST_DURATION: 60 });
   assert.equal(getActiveSetPersonalRecordDisplay({ context, trackingType: "DURATION", set: emptySet })?.value, "1:00");
-  assert.equal(getActiveSetPersonalRecordDisplay({ context, trackingType: "DISTANCE_DURATION", set: emptySet })?.value, "2 km");
+  assert.equal(getActiveSetPersonalRecordDisplay({ context, trackingType: "DISTANCE_DURATION", set: emptySet })?.value, "2km");
 });
 
 test("weight buckets deduplicate equivalent decimal input while retaining plate precision", () => {

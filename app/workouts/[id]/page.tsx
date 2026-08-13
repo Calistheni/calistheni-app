@@ -19,6 +19,7 @@ import {
   type PersonalRecordType,
 } from "@/lib/personal-records";
 import { prisma } from "@/lib/prisma";
+import { formatDistance, formatWeight, type MeasurementSystem } from "@/lib/measurement-units";
 import { mapWorkoutDetail, userWorkoutInclude } from "@/lib/workouts";
 import {
   getSupersetDisplayLabel,
@@ -121,6 +122,10 @@ export default async function WorkoutDetailPage({
 
     notFound();
   }
+
+  const viewerMeasurementSystem: MeasurementSystem = session?.user?.id
+    ? (await prisma.user.findUnique({ where: { id: session.user.id }, select: { measurementSystem: true } }))?.measurementSystem ?? "METRIC"
+    : "METRIC";
 
   const detail = mapWorkoutDetail(workout);
   const isOwner = session?.user?.id === workout.userId;
@@ -327,7 +332,8 @@ export default async function WorkoutDetailPage({
                         ]}{" "}
                         {formatPersonalRecordValue(
                           record.type as PersonalRecordType,
-                          record.value
+                          record.value,
+                          viewerMeasurementSystem
                         )}
                         {record.workoutId === workout.id
                           ? " · achieved here"
@@ -386,7 +392,7 @@ export default async function WorkoutDetailPage({
                       "WEIGHTED_BODYWEIGHT"
                         ? "Added weight"
                         : "Weight"}
-                      : {set.weight ?? "-"}
+                      : {set.weight === null ? "-" : formatWeight(set.weight, viewerMeasurementSystem)}
                     </div>
                   ) : null}
                   {shouldShowDuration(
@@ -396,7 +402,7 @@ export default async function WorkoutDetailPage({
                     <div>Duration: {formatDuration(set.durationSeconds)}</div>
                   ) : null}
                   {set.distanceMeters !== null ? (
-                    <div>Meters: {set.distanceMeters}</div>
+                    <div>Distance: {formatDistance(set.distanceMeters, viewerMeasurementSystem)}</div>
                   ) : null}
                   {set.steps !== null ? <div>Steps: {set.steps}</div> : null}
                   {set.floors !== null ? (

@@ -150,6 +150,17 @@ import { rankExercisesForPicker } from "@/lib/exercise-picker-ranking";
 import type { ExerciseUsage } from "@/lib/workout-exercise-usage";
 import { dismissActiveTextInput } from "@/lib/mobile-keyboard";
 import {
+  displayDistanceInputValue,
+  displayDistanceToMeters,
+  displayWeightInputValue,
+  displayWeightToKg,
+  distanceInputUnit,
+  formatDistance,
+  formatWeight,
+  type MeasurementSystem,
+  weightUnit,
+} from "@/lib/measurement-units";
+import {
   formatPerformanceReferenceValue,
   formatWeightedPerformance,
   getActiveSetPersonalRecordDisplay,
@@ -173,6 +184,7 @@ type WorkoutBuilderProps = {
   exercises: ExerciseListItem[];
   initialWorkout?: WorkoutDetail;
   userBodyweightKg: number | null;
+  measurementSystem: MeasurementSystem;
   rpeTrackingEnabled: boolean;
   exerciseUsage: ExerciseUsage[];
   saveMode?: "create" | "edit";
@@ -271,6 +283,21 @@ function normalizeCustomRestSeconds(value: string) {
 
 function getDurationMinutesValue(durationSeconds: number | null) {
   return durationSeconds === null ? "" : durationSeconds / 60;
+}
+
+function canonicalWorkoutInputValue(
+  value: string,
+  metric: "weight" | "distanceMeters",
+  measurementSystem: MeasurementSystem
+) {
+  if (value.trim() === "") return "";
+  const displayValue = Number(value);
+  if (!Number.isFinite(displayValue)) return value;
+  return String(
+    metric === "weight"
+      ? displayWeightToKg(displayValue, measurementSystem)
+      : displayDistanceToMeters(displayValue, measurementSystem)
+  );
 }
 
 function formatTrackingTypeLabel(value: string) {
@@ -393,15 +420,16 @@ type SetMetricColumn = {
 };
 
 function getSetMetricColumns(
-  trackingType: ExerciseListItem["trackingType"]
+  trackingType: ExerciseListItem["trackingType"],
+  measurementSystem: MeasurementSystem = "METRIC"
 ): SetMetricColumn[] {
   const columns: SetMetricColumn[] = [];
 
   if (isWeightFieldVisible(trackingType)) {
     columns.push({
       metric: "weight",
-      label: trackingType === "WEIGHTED_BODYWEIGHT" ? "+KG" : "KG",
-      inputLabel: trackingType === "WEIGHTED_BODYWEIGHT" ? "added weight" : "weight",
+      label: weightUnit(measurementSystem).toUpperCase(),
+      inputLabel: `${trackingType === "WEIGHTED_BODYWEIGHT" ? "added " : ""}weight in ${measurementSystem === "IMPERIAL" ? "pounds" : "kilograms"}`,
       inputMode: "decimal",
       step: "0.5",
     });
@@ -410,7 +438,7 @@ function getSetMetricColumns(
     columns.push({ metric: "reps", label: "REPS", inputLabel: "reps", inputMode: "numeric", step: "1" });
   }
   if (isDistanceFieldVisible(trackingType)) {
-    columns.push({ metric: "distanceMeters", label: "DIST", inputLabel: "distance meters", inputMode: "decimal", step: "1" });
+    columns.push({ metric: "distanceMeters", label: distanceInputUnit(measurementSystem).toUpperCase(), inputLabel: `distance in ${measurementSystem === "IMPERIAL" ? "miles" : "kilometers"}`, inputMode: "decimal", step: "0.01" });
   }
   if (isDurationFieldVisible(trackingType)) {
     columns.push({ metric: "durationSeconds", label: "TIME", inputLabel: "duration minutes", inputMode: "decimal", step: "0.25" });
@@ -503,7 +531,8 @@ function formatPreviousSetPerformance(
 function getPreviousSetPerformance(
   reference: ExercisePerformanceReference | undefined,
   trackingType: ExerciseListItem["trackingType"],
-  setIndex: number
+  setIndex: number,
+  measurementSystem: MeasurementSystem = "METRIC"
 ) {
   const previous = reference?.previousWorkout;
   if (!previous) return { primary: "—", secondary: null, weight: null };
@@ -512,9 +541,13 @@ function getPreviousSetPerformance(
   const values = getSetMetricColumns(trackingType).flatMap(({ metric }) => {
     const value = set[metric];
     if (typeof value !== "number" || value <= 0) return [];
-    const formatted = formatPerformanceReferenceValue(metric, value);
+    const formatted = metric === "weight"
+      ? formatWeight(value, measurementSystem)
+      : metric === "distanceMeters"
+        ? formatDistance(value, measurementSystem)
+        : formatPerformanceReferenceValue(metric, value);
     if (metric === "weight") {
-      return [`${formatted}kg`];
+      return [formatted];
     }
     if (metric === "reps") return [`${formatted} reps`];
     return [formatted];
@@ -527,6 +560,7 @@ function getPreviousSetPerformance(
       ? formatWeightedPerformance({
           weight: set.weight,
           reps: set.reps,
+          measurementSystem,
         })
       : null;
 
@@ -752,6 +786,7 @@ export function WorkoutBuilder({
   exercises,
   initialWorkout,
   userBodyweightKg,
+  measurementSystem,
   rpeTrackingEnabled,
   exerciseUsage,
   saveMode,
@@ -2311,7 +2346,7 @@ export function WorkoutBuilder({
     selectedExercise: LocalWorkoutExercise,
     exercise: ExerciseListItem
   ) {
-    const metricColumns = getSetMetricColumns(exercise.trackingType);
+    const metricColumns = getSetMetricColumns(exercise.trackingType, measurementSystem);
     const reference = performanceReferences[exercise.id];
 
     return (
@@ -2346,13 +2381,15 @@ export function WorkoutBuilder({
           const previous = getPreviousSetPerformance(
             reference,
             exercise.trackingType,
-            setIndex
+            setIndex,
+            measurementSystem
           );
           const pr = getActiveSetPersonalRecordDisplay({
             context: reference?.personalRecordContext,
             trackingType: exercise.trackingType,
             set,
             previousWeight: previous.weight,
+            measurementSystem,
           });
 
           return (
@@ -2393,8 +2430,8 @@ export function WorkoutBuilder({
                       placeholder=""
                       aria-description={description}
                       aria-label={`${exercise.name} set ${setIndex + 1} ${column.inputLabel}`}
-                      value={column.metric === "durationSeconds" ? getDurationMinutesValue(set.durationSeconds) : value ?? ""}
-                      onChange={(event) => column.metric === "durationSeconds" ? updateSetDurationMinutes(selectedExercise.localId, setIndex, event.target.value) : updateSet(selectedExercise.localId, setIndex, column.metric, event.target.value)}
+                      value={column.metric === "durationSeconds" ? getDurationMinutesValue(set.durationSeconds) : column.metric === "weight" ? displayWeightInputValue(set.weight, measurementSystem) : column.metric === "distanceMeters" ? displayDistanceInputValue(set.distanceMeters, measurementSystem) : value ?? ""}
+                      onChange={(event) => column.metric === "durationSeconds" ? updateSetDurationMinutes(selectedExercise.localId, setIndex, event.target.value) : column.metric === "weight" || column.metric === "distanceMeters" ? updateSet(selectedExercise.localId, setIndex, column.metric, canonicalWorkoutInputValue(event.target.value, column.metric, measurementSystem)) : updateSet(selectedExercise.localId, setIndex, column.metric, event.target.value)}
                     />
                   );
                 })}

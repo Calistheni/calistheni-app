@@ -40,7 +40,7 @@ export default async function PersonalRecordsPage() {
     redirect("/login");
   }
 
-  const exercises = await prisma.exercise.findMany({
+  const [user, exercises] = await Promise.all([prisma.user.findUnique({ where: { id: session.user.id }, select: { measurementSystem: true } }), prisma.exercise.findMany({
     where: {
       ...exerciseVisibilityWhere(session.user.id),
       workoutExercises: {
@@ -98,7 +98,7 @@ export default async function PersonalRecordsPage() {
         },
       },
     },
-  });
+  })]);
   const groupedExercises = exercises
     .map((exercise) => ({
       ...exercise,
@@ -186,7 +186,8 @@ export default async function PersonalRecordsPage() {
                             : {" "}
                             {formatPersonalRecordValue(
                               record.type as PersonalRecordType,
-                              record.value
+                              record.value,
+                              user?.measurementSystem ?? "METRIC"
                             )}
                           </Badge>
                         ))

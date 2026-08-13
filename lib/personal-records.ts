@@ -6,6 +6,7 @@ import {
   getSetPersonalRecordValues,
   type PersonalRecordType,
 } from "@/lib/personal-record-rules";
+import { formatWeight, type MeasurementSystem } from "@/lib/measurement-units";
 
 export type { PersonalRecordType } from "@/lib/personal-record-rules";
 
@@ -30,14 +31,16 @@ export const PERSONAL_RECORD_LABELS: Record<PersonalRecordType, string> = {
 
 export function formatPersonalRecordValue(
   type: PersonalRecordType,
-  value: number
+  value: number,
+  measurementSystem: MeasurementSystem = "METRIC"
 ) {
   switch (type) {
     case "MAX_EXTERNAL_WEIGHT":
     case "MAX_ADDED_WEIGHT":
+      return formatWeight(value, measurementSystem);
     case "MAX_SET_VOLUME":
     case "MAX_EXERCISE_VOLUME":
-      return `${Math.round(value).toLocaleString()} kg`;
+      return formatWeight(value, measurementSystem);
     case "MAX_REPS":
       return `${Math.round(value).toLocaleString()} reps`;
     case "LONGEST_DURATION": {

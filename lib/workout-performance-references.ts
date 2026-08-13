@@ -1,5 +1,10 @@
 import type { ExerciseTrackingType, WorkoutSetInput } from "@/types/workout";
 import type { PersonalRecordValueMap } from "@/lib/personal-record-rules";
+import {
+  formatDistance,
+  formatWeight,
+  type MeasurementSystem,
+} from "@/lib/measurement-units";
 
 export type WorkoutPerformanceMetric =
   | "reps"
@@ -91,11 +96,13 @@ export function getActiveSetPersonalRecordDisplay({
   trackingType,
   set,
   previousWeight,
+  measurementSystem = "METRIC",
 }: {
   context: ExercisePersonalRecordContext | undefined;
   trackingType: ExerciseTrackingType;
   set: WorkoutSetInput;
   previousWeight?: number | null;
+  measurementSystem?: MeasurementSystem;
 }): ActiveSetPersonalRecordDisplay | null {
   if (!context) return null;
   const weighted = trackingType === "EXTERNAL_WEIGHT" || trackingType === "WEIGHTED_BODYWEIGHT";
@@ -109,10 +116,10 @@ export function getActiveSetPersonalRecordDisplay({
     if (effectiveWeight === null) return null;
     const record = context.repsByWeight[getWeightBucket(effectiveWeight)] ?? null;
     return {
-      value: record === null ? null : formatWeightedPerformance({ weight: effectiveWeight, reps: record }),
+      value: record === null ? null : formatWeightedPerformance({ weight: effectiveWeight, reps: record, measurementSystem }),
       isNew: typeof set.reps === "number" && set.reps > 0 && (record === null || set.reps > record),
-      newValue: typeof set.reps === "number" && set.reps > 0 ? formatWeightedPerformance({ weight: effectiveWeight, reps: set.reps }) : null,
-      label: `All-time best performance at ${formatPerformanceReferenceValue("weight", effectiveWeight)} kg`,
+      newValue: typeof set.reps === "number" && set.reps > 0 ? formatWeightedPerformance({ weight: effectiveWeight, reps: set.reps, measurementSystem }) : null,
+      label: `All-time best performance at ${formatWeight(effectiveWeight, measurementSystem)}`,
     };
   }
   if (trackingType === "BODYWEIGHT_REPS" || trackingType === "NOT_SELECTED") {
@@ -125,7 +132,7 @@ export function getActiveSetPersonalRecordDisplay({
   }
   if (typeof set.distanceMeters === "number" && set.distanceMeters > 0) {
     const record = context.longestDistance;
-    return { value: record === null ? null : formatPerformanceReferenceValue("distanceMeters", record), isNew: record === null || set.distanceMeters > record, label: "All-time longest distance for this exercise" };
+    return { value: record === null ? null : formatDistance(record, measurementSystem), isNew: record === null || set.distanceMeters > record, label: "All-time longest distance for this exercise" };
   }
   if (trackingType === "STEPS_DISTANCE_DURATION") {
     const record = context.maxSteps;
@@ -136,7 +143,7 @@ export function getActiveSetPersonalRecordDisplay({
     return { value: record === null ? null : `${record}`, isNew: typeof set.floors === "number" && set.floors > 0 && (record === null || set.floors > record), label: "All-time most floors for this exercise" };
   }
   const record = context.longestDistance;
-  return { value: record === null ? null : formatPerformanceReferenceValue("distanceMeters", record), isNew: false, label: "All-time longest distance for this exercise" };
+  return { value: record === null ? null : formatDistance(record, measurementSystem), isNew: false, label: "All-time longest distance for this exercise" };
 }
 
 function isPerformanceValue(value: number | undefined): value is number {
@@ -165,11 +172,13 @@ export function formatPerformanceReferenceValue(
 export function formatWeightedPerformance({
   weight,
   reps,
+  measurementSystem = "METRIC",
 }: {
   weight: number;
   reps: number;
+  measurementSystem?: MeasurementSystem;
 }) {
-  return `${formatPerformanceReferenceValue("weight", weight)}kg × ${formatPerformanceReferenceValue("reps", reps)}`;
+  return `${formatWeight(weight, measurementSystem)} × ${formatPerformanceReferenceValue("reps", reps)}`;
 }
 
 function formatAccessiblePerformanceReferenceValue(

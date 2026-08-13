@@ -209,28 +209,34 @@ enum BodyFatSex {
   FEMALE
 }
 
+enum MeasurementSystem {
+  METRIC
+  IMPERIAL
+}
+
 model User {
-  id                      String         @id @default(cuid())
+  id                      String            @id @default(cuid())
   name                    String?
-  email                   String?        @unique
+  email                   String?           @unique
   emailVerified           DateTime?
   image                   String?
-  username                String?        @unique
+  username                String?           @unique
   bodyweightKg            Float?
+  measurementSystem       MeasurementSystem @default(METRIC)
   bodyFatSex              BodyFatSex?
   dateOfBirth             DateTime?
-  rewardPoints            Int            @default(0)
-  onboardingCompleted     Boolean        @default(false)
+  rewardPoints            Int               @default(0)
+  onboardingCompleted     Boolean           @default(false)
   trainingStyle           TrainingStyle?
   primaryGoal             PrimaryGoal?
-  rpeTrackingEnabled      Boolean        @default(false)
-  weeklyWorkoutGoal       Int            @default(3)
+  rpeTrackingEnabled      Boolean           @default(false)
+  weeklyWorkoutGoal       Int               @default(3)
   weeklyCardioGoalMinutes Int?
   /// Updated at most once per ten minutes by an authenticated client heartbeat.
   /// This is intentionally an account-presence signal, not click tracking.
   lastActiveAt            DateTime?
-  createdAt               DateTime       @default(now())
-  updatedAt               DateTime       @updatedAt
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
 
   accounts           Account[]
   sessions           Session[]
