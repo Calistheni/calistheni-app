@@ -1,4 +1,5 @@
-import type { WorkoutSetInput } from "@/types/workout";
+import type { ExerciseTrackingType, WorkoutSetInput } from "@/types/workout";
+import type { PersonalRecordValueMap } from "@/lib/personal-record-rules";
 
 export type WorkoutPerformanceMetric =
   | "reps"
@@ -9,11 +10,15 @@ export type WorkoutPerformanceMetric =
   | "floors";
 
 export type ExercisePerformanceReference = {
+  personalRecords?: PersonalRecordValueMap;
   personalBest: Partial<Record<WorkoutPerformanceMetric, number>>;
   previousWorkout: {
-    sets: Array<Partial<Record<WorkoutPerformanceMetric, number>>>;
+    sets: Array<
+      Partial<Record<WorkoutPerformanceMetric, number>> & { rpe?: number }
+    >;
     fallbackBest: Partial<Record<WorkoutPerformanceMetric, number>>;
   } | null;
+  personalRecordContext?: ExercisePersonalRecordContext;
 };
 
 export type ExercisePerformanceReferenceMap = Record<
@@ -29,6 +34,110 @@ const METRIC_LABELS: Record<WorkoutPerformanceMetric, string> = {
   steps: "steps",
   floors: "floors",
 };
+
+type HistoricalSet = Partial<Record<WorkoutPerformanceMetric, number | null>> & {
+  rpe?: number | null;
+};
+
+export type ExercisePersonalRecordContext = {
+  maxReps: number | null;
+  repsByWeight: Record<string, number>;
+  longestDuration: number | null;
+  longestDistance: number | null;
+  maxSteps: number | null;
+  maxFloors: number | null;
+};
+
+export type ActiveSetPersonalRecordDisplay = {
+  value: string | null;
+  isNew: boolean;
+  newValue?: string | null;
+  label: string;
+};
+
+function maxPositive(values: Array<number | null | undefined>) {
+  const valid = values.filter(
+    (value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0
+  );
+  return valid.length ? Math.max(...valid) : null;
+}
+
+export function getWeightBucket(weight: number) {
+  return String(Math.round(weight * 100) / 100);
+}
+
+export function buildExercisePersonalRecordContext(
+  sets: HistoricalSet[],
+  persistedRecords: PersonalRecordValueMap = {}
+): ExercisePersonalRecordContext {
+  const repsByWeight: Record<string, number> = {};
+  for (const set of sets) {
+    if (typeof set.weight !== "number" || set.weight <= 0 || typeof set.reps !== "number" || set.reps <= 0) continue;
+    const bucket = getWeightBucket(set.weight);
+    repsByWeight[bucket] = Math.max(repsByWeight[bucket] ?? 0, set.reps);
+  }
+  return {
+    maxReps: persistedRecords.MAX_REPS ?? maxPositive(sets.map((set) => set.reps)),
+    repsByWeight,
+    longestDuration: persistedRecords.LONGEST_DURATION ?? maxPositive(sets.map((set) => set.durationSeconds)),
+    longestDistance: maxPositive(sets.map((set) => set.distanceMeters)),
+    maxSteps: maxPositive(sets.map((set) => set.steps)),
+    maxFloors: maxPositive(sets.map((set) => set.floors)),
+  };
+}
+
+export function getActiveSetPersonalRecordDisplay({
+  context,
+  trackingType,
+  set,
+  previousWeight,
+}: {
+  context: ExercisePersonalRecordContext | undefined;
+  trackingType: ExerciseTrackingType;
+  set: WorkoutSetInput;
+  previousWeight?: number | null;
+}): ActiveSetPersonalRecordDisplay | null {
+  if (!context) return null;
+  const weighted = trackingType === "EXTERNAL_WEIGHT" || trackingType === "WEIGHTED_BODYWEIGHT";
+  if (weighted) {
+    const effectiveWeight =
+      typeof set.weight === "number" && set.weight > 0
+        ? set.weight
+        : typeof previousWeight === "number" && previousWeight > 0
+          ? previousWeight
+          : null;
+    if (effectiveWeight === null) return null;
+    const record = context.repsByWeight[getWeightBucket(effectiveWeight)] ?? null;
+    return {
+      value: record === null ? null : formatWeightedPerformance({ weight: effectiveWeight, reps: record }),
+      isNew: typeof set.reps === "number" && set.reps > 0 && (record === null || set.reps > record),
+      newValue: typeof set.reps === "number" && set.reps > 0 ? formatWeightedPerformance({ weight: effectiveWeight, reps: set.reps }) : null,
+      label: `All-time best performance at ${formatPerformanceReferenceValue("weight", effectiveWeight)} kg`,
+    };
+  }
+  if (trackingType === "BODYWEIGHT_REPS" || trackingType === "NOT_SELECTED") {
+    const record = context.maxReps;
+    return { value: record === null ? null : `${record}`, isNew: typeof set.reps === "number" && set.reps > 0 && (record === null || set.reps > record), label: "All-time best reps for this exercise" };
+  }
+  if (trackingType === "DURATION") {
+    const record = context.longestDuration;
+    return { value: record === null ? null : formatPerformanceReferenceValue("durationSeconds", record), isNew: typeof set.durationSeconds === "number" && set.durationSeconds > 0 && (record === null || set.durationSeconds > record), label: "All-time longest duration for this exercise" };
+  }
+  if (typeof set.distanceMeters === "number" && set.distanceMeters > 0) {
+    const record = context.longestDistance;
+    return { value: record === null ? null : formatPerformanceReferenceValue("distanceMeters", record), isNew: record === null || set.distanceMeters > record, label: "All-time longest distance for this exercise" };
+  }
+  if (trackingType === "STEPS_DISTANCE_DURATION") {
+    const record = context.maxSteps;
+    return { value: record === null ? null : `${record}`, isNew: typeof set.steps === "number" && set.steps > 0 && (record === null || set.steps > record), label: "All-time most steps for this exercise" };
+  }
+  if (trackingType === "FLOORS_DISTANCE_DURATION") {
+    const record = context.maxFloors;
+    return { value: record === null ? null : `${record}`, isNew: typeof set.floors === "number" && set.floors > 0 && (record === null || set.floors > record), label: "All-time most floors for this exercise" };
+  }
+  const record = context.longestDistance;
+  return { value: record === null ? null : formatPerformanceReferenceValue("distanceMeters", record), isNew: false, label: "All-time longest distance for this exercise" };
+}
 
 function isPerformanceValue(value: number | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
@@ -51,6 +160,16 @@ export function formatPerformanceReferenceValue(
   }
   if (metric === "weight") return `${Math.round(value * 10) / 10}`;
   return `${Math.round(value)}`;
+}
+
+export function formatWeightedPerformance({
+  weight,
+  reps,
+}: {
+  weight: number;
+  reps: number;
+}) {
+  return `${formatPerformanceReferenceValue("weight", weight)}kg × ${formatPerformanceReferenceValue("reps", reps)}`;
 }
 
 function formatAccessiblePerformanceReferenceValue(

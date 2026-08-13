@@ -2,15 +2,12 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { calculateSetVolumeKg } from "@/lib/workout-volume";
-import type { ExerciseTrackingType } from "@/types/workout";
+import {
+  getSetPersonalRecordValues,
+  type PersonalRecordType,
+} from "@/lib/personal-record-rules";
 
-export type PersonalRecordType =
-  | "MAX_EXTERNAL_WEIGHT"
-  | "MAX_ADDED_WEIGHT"
-  | "MAX_REPS"
-  | "MAX_SET_VOLUME"
-  | "MAX_EXERCISE_VOLUME"
-  | "LONGEST_DURATION";
+export type { PersonalRecordType } from "@/lib/personal-record-rules";
 
 type CandidateRecord = {
   userId: string;
@@ -89,16 +86,6 @@ function addCandidate(
   }
 }
 
-function isDurationTrackingType(trackingType: ExerciseTrackingType) {
-  return (
-    trackingType === "DURATION" ||
-    trackingType === "DISTANCE_DURATION" ||
-    trackingType === "STEPS_DISTANCE_DURATION" ||
-    trackingType === "FLOORS_DISTANCE_DURATION" ||
-    trackingType === "WEIGHT_DISTANCE_DURATION"
-  );
-}
-
 export async function recomputeUserPersonalRecords(userId: string) {
   const user = await prisma.user.findUnique({
     where: {
@@ -156,48 +143,13 @@ export async function recomputeUserPersonalRecords(userId: string) {
           achievedAt: workout.completedAt ?? workout.startedAt,
         };
 
-        if (set.reps !== null && set.reps > 0) {
-          addCandidate(records, {
-            ...baseRecord,
-            type: "MAX_REPS",
-            value: set.reps,
-          });
-        }
-
-        if (
-          workoutExercise.exercise.trackingType === "EXTERNAL_WEIGHT" &&
-          set.weight !== null &&
-          set.weight > 0
-        ) {
-          addCandidate(records, {
-            ...baseRecord,
-            type: "MAX_EXTERNAL_WEIGHT",
-            value: set.weight,
-          });
-        }
-
-        if (
-          workoutExercise.exercise.trackingType === "WEIGHTED_BODYWEIGHT" &&
-          set.weight !== null &&
-          set.weight > 0
-        ) {
-          addCandidate(records, {
-            ...baseRecord,
-            type: "MAX_ADDED_WEIGHT",
-            value: set.weight,
-          });
-        }
-
-        if (
-          isDurationTrackingType(workoutExercise.exercise.trackingType) &&
-          set.durationSeconds !== null &&
-          set.durationSeconds > 0
-        ) {
-          addCandidate(records, {
-            ...baseRecord,
-            type: "LONGEST_DURATION",
-            value: set.durationSeconds,
-          });
+        for (const [type, value] of Object.entries(
+          getSetPersonalRecordValues({
+            set,
+            trackingType: workoutExercise.exercise.trackingType,
+          })
+        ) as Array<[PersonalRecordType, number]>) {
+          addCandidate(records, { ...baseRecord, type, value });
         }
 
         const setVolume = calculateSetVolumeKg({

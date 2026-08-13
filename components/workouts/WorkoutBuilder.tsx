@@ -2,6 +2,7 @@
 
 import {
   type ReactNode,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -149,12 +150,18 @@ import { rankExercisesForPicker } from "@/lib/exercise-picker-ranking";
 import type { ExerciseUsage } from "@/lib/workout-exercise-usage";
 import { dismissActiveTextInput } from "@/lib/mobile-keyboard";
 import {
+  formatPerformanceReferenceValue,
+  formatWeightedPerformance,
+  getActiveSetPersonalRecordDisplay,
   getPerformanceReference,
   getPerformanceReferenceDescription,
+  type ExercisePerformanceReference,
   type ExercisePerformanceReferenceMap,
+  type WorkoutPerformanceMetric,
 } from "@/lib/workout-performance-references";
 import type {
   ExerciseListItem,
+  ExerciseTrackingType,
   WorkoutDetail,
   WorkoutExerciseInput,
   WorkoutMutationPayload,
@@ -196,9 +203,14 @@ type ActiveWorkoutDraft = {
 const DEFAULT_REST_SECONDS = 90;
 const RPE_VALUES = [6, 7, 7.5, 8, 8.5, 9, 9.5, 10];
 const COMPACT_WORKOUT_NUMBER_INPUT_CLASS =
-  "h-9 min-w-0 text-base rounded-md bg-background/80 px-1.5 text-center font-semibold tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
+  "h-8 min-w-0 rounded-md bg-background/80 px-1 text-center text-sm font-semibold tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
+const WORKOUT_TABLE_HEADER_CELL_CLASS =
+  "flex min-w-0 items-center justify-center px-1 text-center";
+const WORKOUT_TABLE_CELL_CLASS =
+  "flex min-w-0 items-center justify-center px-1 text-center";
+const WORKOUT_TABLE_VALUE_CLASS = "text-sm font-medium tabular-nums";
 const ACTIVE_EXERCISE_HEADER_ROW_CLASS =
-  "flex min-w-0 flex-nowrap items-start gap-2 px-2.5 py-2.5";
+  "flex min-w-0 flex-nowrap items-start gap-2 px-2.5 py-2";
 
 const EMPTY_SET_VALUES: WorkoutSetInput = {
   reps: null,
@@ -259,6 +271,14 @@ function normalizeCustomRestSeconds(value: string) {
 
 function getDurationMinutesValue(durationSeconds: number | null) {
   return durationSeconds === null ? "" : durationSeconds / 60;
+}
+
+function formatTrackingTypeLabel(value: string) {
+  return value
+    .toLowerCase()
+    .split("_")
+    .map((word) => word[0]?.toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 function isRepsFieldVisible(trackingType: ExerciseListItem["trackingType"]) {
@@ -364,6 +384,100 @@ function preserveCompatibleSetFields(
   };
 }
 
+type SetMetricColumn = {
+  metric: WorkoutPerformanceMetric;
+  label: string;
+  inputLabel: string;
+  inputMode: "decimal" | "numeric";
+  step: string;
+};
+
+function getSetMetricColumns(
+  trackingType: ExerciseListItem["trackingType"]
+): SetMetricColumn[] {
+  const columns: SetMetricColumn[] = [];
+
+  if (isWeightFieldVisible(trackingType)) {
+    columns.push({
+      metric: "weight",
+      label: trackingType === "WEIGHTED_BODYWEIGHT" ? "+KG" : "KG",
+      inputLabel: trackingType === "WEIGHTED_BODYWEIGHT" ? "added weight" : "weight",
+      inputMode: "decimal",
+      step: "0.5",
+    });
+  }
+  if (isRepsFieldVisible(trackingType)) {
+    columns.push({ metric: "reps", label: "REPS", inputLabel: "reps", inputMode: "numeric", step: "1" });
+  }
+  if (isDistanceFieldVisible(trackingType)) {
+    columns.push({ metric: "distanceMeters", label: "DIST", inputLabel: "distance meters", inputMode: "decimal", step: "1" });
+  }
+  if (isDurationFieldVisible(trackingType)) {
+    columns.push({ metric: "durationSeconds", label: "TIME", inputLabel: "duration minutes", inputMode: "decimal", step: "0.25" });
+  }
+  if (trackingType === "STEPS_DISTANCE_DURATION") {
+    columns.push({ metric: "steps", label: "STEPS", inputLabel: "steps", inputMode: "numeric", step: "1" });
+  }
+  if (trackingType === "FLOORS_DISTANCE_DURATION") {
+    columns.push({ metric: "floors", label: "FLRS", inputLabel: "floors", inputMode: "numeric", step: "1" });
+  }
+
+  return columns;
+}
+
+const SET_TABLE_GRID_BY_TRACKING_TYPE: Record<
+  ExerciseTrackingType,
+  { withRpe: string; withoutRpe: string }
+> = {
+  NOT_SELECTED: {
+    withRpe: "grid-cols-[minmax(1.75rem,.4fr)_minmax(3rem,1.2fr)_minmax(2.25rem,.8fr)_minmax(2.25rem,.85fr)_minmax(1.75rem,.55fr)_minmax(2.5rem,.85fr)_minmax(1.75rem,.45fr)] lg:grid-cols-[minmax(2.5rem,.4fr)_minmax(6rem,1.45fr)_minmax(4rem,1fr)_minmax(4rem,1fr)_minmax(3rem,.7fr)_minmax(4rem,.9fr)_minmax(2.5rem,.5fr)]",
+    withoutRpe: "grid-cols-[minmax(1.75rem,.4fr)_minmax(3rem,1.2fr)_minmax(2.25rem,.8fr)_minmax(2.25rem,.85fr)_minmax(1.75rem,.55fr)_minmax(1.75rem,.45fr)] lg:grid-cols-[minmax(2.5rem,.4fr)_minmax(6rem,1.45fr)_minmax(4rem,1fr)_minmax(4rem,1fr)_minmax(3rem,.7fr)_minmax(2.5rem,.5fr)]",
+  },
+  BODYWEIGHT_REPS: {
+    withRpe: "grid-cols-[minmax(2rem,.45fr)_minmax(4rem,1.55fr)_minmax(3rem,1.1fr)_minmax(2.25rem,.75fr)_minmax(3rem,1fr)_minmax(2rem,.55fr)] lg:grid-cols-[minmax(2.5rem,.45fr)_minmax(7rem,1.65fr)_minmax(4.5rem,1.2fr)_minmax(3rem,.85fr)_minmax(4rem,1fr)_minmax(2.5rem,.6fr)]",
+    withoutRpe: "grid-cols-[minmax(2rem,.45fr)_minmax(4rem,1.55fr)_minmax(3rem,1.1fr)_minmax(2.25rem,.75fr)_minmax(2rem,.55fr)] lg:grid-cols-[minmax(2.5rem,.45fr)_minmax(7rem,1.65fr)_minmax(4.5rem,1.2fr)_minmax(3rem,.85fr)_minmax(2.5rem,.6fr)]",
+  },
+  WEIGHTED_BODYWEIGHT: {
+    withRpe: "grid-cols-[minmax(1.75rem,.4fr)_minmax(3rem,1.2fr)_minmax(2.25rem,.8fr)_minmax(2.25rem,.85fr)_minmax(3rem,1.1fr)_minmax(2.5rem,.85fr)_minmax(1.75rem,.45fr)] lg:grid-cols-[minmax(2.5rem,.4fr)_minmax(6rem,1.45fr)_minmax(4rem,1fr)_minmax(4rem,1fr)_minmax(5rem,1.3fr)_minmax(4rem,.9fr)_minmax(2.5rem,.5fr)]",
+    withoutRpe: "grid-cols-[minmax(1.75rem,.4fr)_minmax(3rem,1.2fr)_minmax(2.25rem,.8fr)_minmax(2.25rem,.85fr)_minmax(3rem,1.1fr)_minmax(1.75rem,.45fr)] lg:grid-cols-[minmax(2.5rem,.4fr)_minmax(6rem,1.45fr)_minmax(4rem,1fr)_minmax(4rem,1fr)_minmax(5rem,1.3fr)_minmax(2.5rem,.5fr)]",
+  },
+  EXTERNAL_WEIGHT: {
+    withRpe: "grid-cols-[minmax(1.75rem,.4fr)_minmax(3rem,1.2fr)_minmax(2.25rem,.8fr)_minmax(2.25rem,.85fr)_minmax(3rem,1.1fr)_minmax(2.5rem,.85fr)_minmax(1.75rem,.45fr)] lg:grid-cols-[minmax(2.5rem,.4fr)_minmax(6rem,1.45fr)_minmax(4rem,1fr)_minmax(4rem,1fr)_minmax(5rem,1.3fr)_minmax(4rem,.9fr)_minmax(2.5rem,.5fr)]",
+    withoutRpe: "grid-cols-[minmax(1.75rem,.4fr)_minmax(3rem,1.2fr)_minmax(2.25rem,.8fr)_minmax(2.25rem,.85fr)_minmax(3rem,1.1fr)_minmax(1.75rem,.45fr)] lg:grid-cols-[minmax(2.5rem,.4fr)_minmax(6rem,1.45fr)_minmax(4rem,1fr)_minmax(4rem,1fr)_minmax(5rem,1.3fr)_minmax(2.5rem,.5fr)]",
+  },
+  DURATION: {
+    withRpe: "grid-cols-[minmax(2rem,.45fr)_minmax(4rem,1.55fr)_minmax(3rem,1.1fr)_minmax(2.25rem,.75fr)_minmax(3rem,1fr)_minmax(2rem,.55fr)] lg:grid-cols-[minmax(2.5rem,.45fr)_minmax(7rem,1.65fr)_minmax(4.5rem,1.2fr)_minmax(3rem,.85fr)_minmax(4rem,1fr)_minmax(2.5rem,.6fr)]",
+    withoutRpe: "grid-cols-[minmax(2rem,.45fr)_minmax(4rem,1.55fr)_minmax(3rem,1.1fr)_minmax(2.25rem,.75fr)_minmax(2rem,.55fr)] lg:grid-cols-[minmax(2.5rem,.45fr)_minmax(7rem,1.65fr)_minmax(4.5rem,1.2fr)_minmax(3rem,.85fr)_minmax(2.5rem,.6fr)]",
+  },
+  DISTANCE_DURATION: {
+    withRpe: "grid-cols-[minmax(1.75rem,.4fr)_minmax(3rem,1.2fr)_minmax(2.25rem,.8fr)_minmax(2.25rem,.85fr)_minmax(1.75rem,.55fr)_minmax(2.5rem,.85fr)_minmax(1.75rem,.45fr)] lg:grid-cols-[minmax(2.5rem,.4fr)_minmax(6rem,1.45fr)_minmax(4rem,1fr)_minmax(4rem,1fr)_minmax(3rem,.7fr)_minmax(4rem,.9fr)_minmax(2.5rem,.5fr)]",
+    withoutRpe: "grid-cols-[minmax(1.75rem,.4fr)_minmax(3rem,1.2fr)_minmax(2.25rem,.8fr)_minmax(2.25rem,.85fr)_minmax(1.75rem,.55fr)_minmax(1.75rem,.45fr)] lg:grid-cols-[minmax(2.5rem,.4fr)_minmax(6rem,1.45fr)_minmax(4rem,1fr)_minmax(4rem,1fr)_minmax(3rem,.7fr)_minmax(2.5rem,.5fr)]",
+  },
+  STEPS_DISTANCE_DURATION: {
+    withRpe: "grid-cols-[minmax(1.75rem,.35fr)_minmax(2.5rem,1fr)_repeat(3,minmax(2rem,.7fr))_minmax(1.5rem,.45fr)_minmax(2.25rem,.75fr)_minmax(1.75rem,.4fr)] lg:grid-cols-[minmax(2.5rem,.35fr)_minmax(5rem,1.15fr)_repeat(3,minmax(3.5rem,.9fr))_minmax(3rem,.65fr)_minmax(4rem,.85fr)_minmax(2.5rem,.45fr)]",
+    withoutRpe: "grid-cols-[minmax(1.75rem,.35fr)_minmax(2.5rem,1fr)_repeat(3,minmax(2rem,.7fr))_minmax(1.5rem,.45fr)_minmax(1.75rem,.4fr)] lg:grid-cols-[minmax(2.5rem,.35fr)_minmax(5rem,1.15fr)_repeat(3,minmax(3.5rem,.9fr))_minmax(3rem,.65fr)_minmax(2.5rem,.45fr)]",
+  },
+  FLOORS_DISTANCE_DURATION: {
+    withRpe: "grid-cols-[minmax(1.75rem,.35fr)_minmax(2.5rem,1fr)_repeat(3,minmax(2rem,.7fr))_minmax(1.5rem,.45fr)_minmax(2.25rem,.75fr)_minmax(1.75rem,.4fr)] lg:grid-cols-[minmax(2.5rem,.35fr)_minmax(5rem,1.15fr)_repeat(3,minmax(3.5rem,.9fr))_minmax(3rem,.65fr)_minmax(4rem,.85fr)_minmax(2.5rem,.45fr)]",
+    withoutRpe: "grid-cols-[minmax(1.75rem,.35fr)_minmax(2.5rem,1fr)_repeat(3,minmax(2rem,.7fr))_minmax(1.5rem,.45fr)_minmax(1.75rem,.4fr)] lg:grid-cols-[minmax(2.5rem,.35fr)_minmax(5rem,1.15fr)_repeat(3,minmax(3.5rem,.9fr))_minmax(3rem,.65fr)_minmax(2.5rem,.45fr)]",
+  },
+  WEIGHT_DISTANCE_DURATION: {
+    withRpe: "grid-cols-[minmax(1.75rem,.35fr)_minmax(2.5rem,1fr)_repeat(3,minmax(2rem,.7fr))_minmax(1.5rem,.45fr)_minmax(2.25rem,.75fr)_minmax(1.75rem,.4fr)] lg:grid-cols-[minmax(2.5rem,.35fr)_minmax(5rem,1.15fr)_repeat(3,minmax(3.5rem,.9fr))_minmax(3rem,.65fr)_minmax(4rem,.85fr)_minmax(2.5rem,.45fr)]",
+    withoutRpe: "grid-cols-[minmax(1.75rem,.35fr)_minmax(2.5rem,1fr)_repeat(3,minmax(2rem,.7fr))_minmax(1.5rem,.45fr)_minmax(1.75rem,.4fr)] lg:grid-cols-[minmax(2.5rem,.35fr)_minmax(5rem,1.15fr)_repeat(3,minmax(3.5rem,.9fr))_minmax(3rem,.65fr)_minmax(2.5rem,.45fr)]",
+  },
+};
+
+function getSetTableGridClass(
+  trackingType: ExerciseTrackingType,
+  showRpeAction: boolean
+) {
+  return SET_TABLE_GRID_BY_TRACKING_TYPE[trackingType][
+    showRpeAction ? "withRpe" : "withoutRpe"
+  ];
+}
+
+// Kept for the compact superset round-entry form, which intentionally remains
+// a quick-entry layout rather than the active-workout table.
 function getSetRowGridClass(showRpeAction: boolean) {
   return showRpeAction
     ? "grid-cols-[1.25rem_minmax(0,1fr)_auto_auto_auto]"
@@ -373,18 +487,54 @@ function getSetRowGridClass(showRpeAction: boolean) {
 function getSetFieldsGridClass(
   trackingType: ExerciseListItem["trackingType"]
 ) {
-  if (trackingType === "BODYWEIGHT_REPS" || trackingType === "DURATION") {
-    return "grid-cols-1";
-  }
+  const count = getSetMetricColumns(trackingType).length;
+  return count <= 1 ? "grid-cols-1" : count === 2 ? "grid-cols-2" : "grid-cols-[repeat(auto-fit,minmax(3rem,1fr))]";
+}
 
-  if (
-    trackingType === "WEIGHTED_BODYWEIGHT" ||
-    trackingType === "EXTERNAL_WEIGHT"
-  ) {
-    return "grid-cols-2";
-  }
+function formatPreviousSetPerformance(
+  reference: ExercisePerformanceReference | undefined,
+  trackingType: ExerciseListItem["trackingType"],
+  setIndex: number
+) {
+  const performance = getPreviousSetPerformance(reference, trackingType, setIndex);
+  return [performance.primary, performance.secondary].filter(Boolean).join(" ") || "—";
+}
 
-  return "grid-cols-[repeat(auto-fit,minmax(3rem,1fr))]";
+function getPreviousSetPerformance(
+  reference: ExercisePerformanceReference | undefined,
+  trackingType: ExerciseListItem["trackingType"],
+  setIndex: number
+) {
+  const previous = reference?.previousWorkout;
+  if (!previous) return { primary: "—", secondary: null, weight: null };
+  const set = previous.sets[setIndex];
+  if (!set) return { primary: "—", secondary: null, weight: null };
+  const values = getSetMetricColumns(trackingType).flatMap(({ metric }) => {
+    const value = set[metric];
+    if (typeof value !== "number" || value <= 0) return [];
+    const formatted = formatPerformanceReferenceValue(metric, value);
+    if (metric === "weight") {
+      return [`${formatted}kg`];
+    }
+    if (metric === "reps") return [`${formatted} reps`];
+    return [formatted];
+  });
+
+  const weightedPerformance =
+    (trackingType === "EXTERNAL_WEIGHT" || trackingType === "WEIGHTED_BODYWEIGHT") &&
+    typeof set.weight === "number" && set.weight > 0 &&
+    typeof set.reps === "number" && set.reps > 0
+      ? formatWeightedPerformance({
+          weight: set.weight,
+          reps: set.reps,
+        })
+      : null;
+
+  return {
+    primary: weightedPerformance ?? (values.length ? values.join(" × ") : "—"),
+    secondary: typeof set.rpe === "number" ? `@ ${set.rpe} RPE` : null,
+    weight: typeof set.weight === "number" && set.weight > 0 ? set.weight : null,
+  };
 }
 
 function formatVolumeKg(volumeKg: number) {
@@ -627,6 +777,7 @@ export function WorkoutBuilder({
   const restTimer = useRestTimer();
   const exercisePickerContentRef = useRef<HTMLDivElement>(null);
   const setRowRefs = useRef(new Map<string, HTMLDivElement>());
+  const loadedPerformanceReferenceIdsRef = useRef(new Set<string>());
   const completionViewportAnchorRef = useRef<{
     setLocalId: string;
     top: number;
@@ -642,10 +793,13 @@ export function WorkoutBuilder({
   const [muscleFilter, setMuscleFilter] = useState("all");
   const [trackingTypeFilter, setTrackingTypeFilter] = useState("all");
   const [pickerSelectedIds, setPickerSelectedIds] = useState<string[]>([]);
+  const [isPreloadingPickerHistory, setIsPreloadingPickerHistory] = useState(false);
   const [selectedExercises, setSelectedExercises] = useState<
     LocalWorkoutExercise[]
   >(initialSelectedExercises);
   const [performanceReferences, setPerformanceReferences] = useState<ExercisePerformanceReferenceMap>({});
+  const [loadingPerformanceReferenceIds, setLoadingPerformanceReferenceIds] =
+    useState<Set<string>>(() => new Set());
   const selectedExerciseIds = useMemo(
     () => [...new Set(selectedExercises.map((exercise) => exercise.exerciseId))],
     [selectedExercises]
@@ -654,27 +808,43 @@ export function WorkoutBuilder({
     initialSupersets
   );
 
-  useEffect(() => {
-    const exerciseIds = selectedExerciseIds;
-    if (!exerciseIds.length) {
-      return;
-    }
-    const controller = new AbortController();
-    void fetch("/api/user/workout-performance-references", {
+  const preloadPerformanceReferences = useCallback(async (ids: string[]) => {
+    const exerciseIds = [...new Set(ids)].filter(
+      (id) => !loadedPerformanceReferenceIdsRef.current.has(id)
+    );
+    if (!exerciseIds.length) return;
+    exerciseIds.forEach((id) => loadedPerformanceReferenceIdsRef.current.add(id));
+    setLoadingPerformanceReferenceIds((current) => new Set([...current, ...exerciseIds]));
+    try {
+      const response = await fetch("/api/user/workout-performance-references", {
       method: "POST",
-      signal: controller.signal,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         exerciseIds,
         excludeWorkoutId: initialWorkout && initialWorkout.id > 0 ? initialWorkout.id : undefined,
         before: isEditing ? initialWorkout?.startedAt : undefined,
       }),
-    })
-      .then(async (response) => response.ok ? (await response.json()) as { references: ExercisePerformanceReferenceMap } : null)
-      .then((payload) => { if (payload) setPerformanceReferences(payload.references); })
-      .catch((error: unknown) => { if (!(error instanceof DOMException && error.name === "AbortError")) console.error("[workout-performance-references]", error); });
-    return () => controller.abort();
-  }, [initialWorkout, isEditing, selectedExerciseIds]);
+      });
+      if (!response.ok) throw new Error("Unable to load exercise history.");
+      const payload = (await response.json()) as {
+        references: ExercisePerformanceReferenceMap;
+      };
+      setPerformanceReferences((current) => ({ ...current, ...payload.references }));
+    } catch (error) {
+      exerciseIds.forEach((id) => loadedPerformanceReferenceIdsRef.current.delete(id));
+      console.error("[workout-history-context]", error);
+    } finally {
+      setLoadingPerformanceReferenceIds((current) => {
+        const next = new Set(current);
+        exerciseIds.forEach((id) => next.delete(id));
+        return next;
+      });
+    }
+  }, [initialWorkout, isEditing]);
+
+  useEffect(() => {
+    void preloadPerformanceReferences(selectedExerciseIds);
+  }, [preloadPerformanceReferences, selectedExerciseIds]);
   const [openSupersetKeys, setOpenSupersetKeys] = useState<string[]>(
     initialSupersets.map((superset) => superset.key)
   );
@@ -2005,18 +2175,20 @@ export function WorkoutBuilder({
     setFinishPhotos((current) => [...current, ...next.slice(0, available)]);
   }
 
-  function addSelectedExercises() {
+  async function addSelectedExercises() {
     const byId = new Map(exercises.map((exercise) => [exercise.id, exercise]));
     if (exerciseToReplaceId) {
       const replacement = byId.get(pickerSelectedIds[0]);
       if (replacement) selectExercise(replacement);
       return;
     }
+    setIsPreloadingPickerHistory(true);
+    await preloadPerformanceReferences(pickerSelectedIds);
+    setIsPreloadingPickerHistory(false);
     pickerSelectedIds.forEach(addExercise);
     handleExercisePickerOpenChange(false);
   }
 
-  const formatTrackingType = (value: string) => value.toLowerCase().split("_").map((word) => word[0]?.toUpperCase() + word.slice(1)).join(" ");
   const clearExerciseFilters = () => {
     setMuscleFilter("all");
     setTrackingTypeFilter("all");
@@ -2039,7 +2211,7 @@ export function WorkoutBuilder({
           </Select>
           <Select value={trackingTypeFilter} onValueChange={setTrackingTypeFilter}>
             <SelectTrigger className="min-w-28" aria-label="Filter tracking type"><SelectValue placeholder="All Types" /></SelectTrigger>
-            <SelectContent container={exercisePickerContentRef.current}><SelectItem value="all">All Types</SelectItem>{trackingTypes.map((trackingType) => <SelectItem key={trackingType} value={trackingType}>{formatTrackingType(trackingType)}</SelectItem>)}</SelectContent>
+            <SelectContent container={exercisePickerContentRef.current}><SelectItem value="all">All Types</SelectItem>{trackingTypes.map((trackingType) => <SelectItem key={trackingType} value={trackingType}>{formatTrackingTypeLabel(trackingType)}</SelectItem>)}</SelectContent>
           </Select>
         </div>
         <div
@@ -2084,7 +2256,7 @@ export function WorkoutBuilder({
                     {exercise.name}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    {exercise.muscle} · {formatTrackingType(exercise.trackingType)}
+                    {exercise.muscle} · {formatTrackingTypeLabel(exercise.trackingType)}
                   </span>
                   {existingOccurrenceCount > 0 && !exerciseToReplaceId ? (
                     <span className="block text-xs text-muted-foreground">
@@ -2105,7 +2277,7 @@ export function WorkoutBuilder({
             <div className="py-8 text-center text-sm text-muted-foreground"><p>No exercises match these filters.</p><Button className="mt-3" variant="outline" onClick={clearExerciseFilters}>Clear filters</Button></div>
           ) : null}
         </div>
-        <div className={`shrink-0 border-t py-3 ${keyboardSafe ? "pb-[calc(0.75rem+env(safe-area-inset-bottom))]" : "mt-3"}`}><div className="flex items-center justify-between gap-3"><span className="text-sm text-muted-foreground" aria-live="polite">{pickerSelectedIds.length} selected</span><Button disabled={!pickerSelectedIds.length} onClick={addSelectedExercises}>{exerciseToReplaceId ? "Replace exercise" : `Add ${pickerSelectedIds.length} Exercise${pickerSelectedIds.length === 1 ? "" : "s"}`}</Button></div></div>
+        <div className={`shrink-0 border-t py-3 ${keyboardSafe ? "pb-[calc(0.75rem+env(safe-area-inset-bottom))]" : "mt-3"}`}><div className="flex items-center justify-between gap-3"><span className="text-sm text-muted-foreground" aria-live="polite">{pickerSelectedIds.length} selected</span><Button disabled={!pickerSelectedIds.length || isPreloadingPickerHistory} onClick={() => void addSelectedExercises()}>{isPreloadingPickerHistory ? "Preparing…" : exerciseToReplaceId ? "Replace exercise" : `Add ${pickerSelectedIds.length} Exercise${pickerSelectedIds.length === 1 ? "" : "s"}`}</Button></div></div>
       </div>
     );
   }
@@ -2132,6 +2304,117 @@ export function WorkoutBuilder({
           </Button>
         }
       />
+    );
+  }
+
+  function renderExerciseSetTable(
+    selectedExercise: LocalWorkoutExercise,
+    exercise: ExerciseListItem
+  ) {
+    const metricColumns = getSetMetricColumns(exercise.trackingType);
+    const reference = performanceReferences[exercise.id];
+
+    return (
+      <div className="space-y-1" role="group" aria-label={`${exercise.name} sets`}>
+        <div
+          className={`grid w-full min-w-0 items-center gap-1 px-1 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground sm:text-[10px] ${getSetTableGridClass(exercise.trackingType, rpeTrackingEnabled)}`}
+          aria-hidden="true"
+        >
+          <span className={WORKOUT_TABLE_HEADER_CELL_CLASS}>Set</span>
+          <span className={WORKOUT_TABLE_HEADER_CELL_CLASS}>
+            <span className="lg:hidden">Prev</span>
+            <span className="hidden lg:inline">Previous</span>
+          </span>
+          {metricColumns.map((column) => (
+            <span key={column.metric} className={WORKOUT_TABLE_HEADER_CELL_CLASS}>
+              <span className="lg:hidden">{column.label}</span>
+              <span className="hidden lg:inline">
+                {column.metric === "weight" ? "Weight" : column.label}
+              </span>
+            </span>
+          ))}
+          <span className={WORKOUT_TABLE_HEADER_CELL_CLASS}>PR</span>
+          {rpeTrackingEnabled ? <span className={WORKOUT_TABLE_HEADER_CELL_CLASS}>RPE</span> : null}
+          <span className={WORKOUT_TABLE_HEADER_CELL_CLASS}>
+            <span className="lg:hidden">Done</span>
+            <span className="hidden lg:inline">Completed</span>
+          </span>
+        </div>
+        {selectedExercise.sets.map((set, setIndex) => {
+          const isWarned = activeWarnedSetIds.includes(set.localId) && isIncompleteEnteredSet(set, exercise.trackingType);
+          const warningId = `set-warning-${set.localId}`;
+          const previous = getPreviousSetPerformance(
+            reference,
+            exercise.trackingType,
+            setIndex
+          );
+          const pr = getActiveSetPersonalRecordDisplay({
+            context: reference?.personalRecordContext,
+            trackingType: exercise.trackingType,
+            set,
+            previousWeight: previous.weight,
+          });
+
+          return (
+            <div
+              key={set.localId}
+              ref={(row) => { if (row) setRowRefs.current.set(set.localId, row); else setRowRefs.current.delete(set.localId); }}
+              tabIndex={isWarned ? -1 : undefined}
+              aria-describedby={isWarned ? warningId : undefined}
+              className={`group rounded-md border p-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isWarned ? "border-destructive bg-destructive/10" : set.completed ? "border-primary/40 bg-primary/10" : "border-border/70 bg-muted/20"}`}
+            >
+              <div className={`grid w-full min-w-0 items-center gap-1 ${getSetTableGridClass(exercise.trackingType, rpeTrackingEnabled)}`}>
+                <span className={`relative ${WORKOUT_TABLE_CELL_CLASS} ${WORKOUT_TABLE_VALUE_CLASS} gap-0.5 text-muted-foreground`} aria-label={`Set ${setIndex + 1}${set.completed ? ", completed" : ""}`}>
+                  {setIndex + 1}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button type="button" size="icon" variant="ghost" className="absolute size-4 shrink-0 p-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100" aria-label={`Set ${setIndex + 1} actions`}><EllipsisVertical className="size-3" /></Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      <DropdownMenuItem variant="destructive" onSelect={() => removeSet(selectedExercise.localId, setIndex)} disabled={selectedExercise.sets.length <= 1}><Trash2 />Remove set</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </span>
+                <span className={`${WORKOUT_TABLE_CELL_CLASS} flex-col leading-tight`} title={formatPreviousSetPerformance(reference, exercise.trackingType, setIndex)}>
+                  <span className={`truncate ${WORKOUT_TABLE_VALUE_CLASS} text-foreground`}>{previous.primary}</span>
+                  {previous.secondary ? <span className="truncate text-xs text-muted-foreground">{previous.secondary}</span> : null}
+                </span>
+                {metricColumns.map((column) => {
+                  const value = set[column.metric];
+                  const description = getSetReferenceDescription(exercise.id, setIndex, column.metric);
+                  return (
+                    <Input
+                      key={column.metric}
+                      className={`${COMPACT_WORKOUT_NUMBER_INPUT_CLASS} w-full max-w-28 justify-self-center`}
+                      type="number"
+                      inputMode={column.inputMode}
+                      min="0"
+                      step={column.step}
+                      placeholder=""
+                      aria-description={description}
+                      aria-label={`${exercise.name} set ${setIndex + 1} ${column.inputLabel}`}
+                      value={column.metric === "durationSeconds" ? getDurationMinutesValue(set.durationSeconds) : value ?? ""}
+                      onChange={(event) => column.metric === "durationSeconds" ? updateSetDurationMinutes(selectedExercise.localId, setIndex, event.target.value) : updateSet(selectedExercise.localId, setIndex, column.metric, event.target.value)}
+                    />
+                  );
+                })}
+                <span className={WORKOUT_TABLE_CELL_CLASS} aria-label={pr?.isNew ? "New personal record" : pr?.label ?? "No personal record for this value"} title={pr?.label}>
+                  {loadingPerformanceReferenceIds.has(exercise.id) ? <span className="h-4 w-8 animate-pulse rounded bg-muted" aria-label="Loading personal record" /> : pr?.isNew ? <span className="flex min-w-0 flex-col items-center leading-tight"><Badge className="h-4 px-1 text-[9px]">NEW PR</Badge>{pr.newValue ? <span className="truncate text-xs font-medium tabular-nums text-primary">{pr.newValue}</span> : null}</span> : pr?.value ? <span className={`${WORKOUT_TABLE_VALUE_CLASS} text-primary`}>{pr.value}</span> : <span className="text-sm tabular-nums text-muted-foreground">—</span>}
+                </span>
+                {rpeTrackingEnabled ? (
+                  <span className={WORKOUT_TABLE_CELL_CLASS}>
+                    <Button type="button" size="sm" variant={set.rpe ? "secondary" : "outline"} className={set.rpe ? "h-8 w-full border-primary/40 bg-primary/10 px-1 text-sm font-medium text-primary tabular-nums shadow-none" : "h-8 w-full px-1 text-sm font-medium"} aria-label={set.rpe ? `Edit set ${setIndex + 1} RPE, currently ${set.rpe}` : `Set RPE for set ${setIndex + 1}`} onClick={() => setActiveRpeTarget({ localId: selectedExercise.localId, setIndex, exerciseName: exercise.name, summary: formatSetSummary(set, exercise.trackingType), value: set.rpe })}>{set.rpe ?? "RPE"}</Button>
+                  </span>
+                ) : null}
+                <span className={WORKOUT_TABLE_CELL_CLASS}>
+                  <Button type="button" size="icon" variant={set.completed ? "secondary" : "outline"} className={`size-8 ${set.completed ? "border-primary/40 bg-primary text-primary-foreground shadow-none" : ""}`} aria-label={set.completed ? `Mark set ${setIndex + 1} incomplete` : `Mark set ${setIndex + 1} complete`} aria-pressed={set.completed} onClick={(event) => { if (event.detail > 0) event.currentTarget.blur(); updateSetCompleted(selectedExercise.localId, setIndex, !set.completed, exercise.name, selectedExercise.restSeconds); }}>{set.completed ? <CheckCircle2 className="size-4" /> : <Circle className="size-4" />}</Button>
+                </span>
+              </div>
+              {isWarned ? <p id={warningId} role="status" className="mt-1 flex items-center gap-1 px-1 text-xs font-medium text-destructive"><AlertTriangle className="size-3.5" aria-hidden="true" />Not marked done</p> : null}
+            </div>
+          );
+        })}
+      </div>
     );
   }
 
@@ -2169,12 +2452,12 @@ export function WorkoutBuilder({
                     {supersetLabel.replace("Superset ", "")}
                     {groupPosition + 1}
                   </Badge>
-                  <h3 className="min-w-0 flex-1 break-words text-sm leading-tight font-semibold line-clamp-3 min-[375px]:line-clamp-2">
+                  <h3 className="min-w-0 flex-1 break-words text-sm leading-tight font-semibold text-primary line-clamp-3 min-[375px]:line-clamp-2">
                     {getExerciseInstanceLabel(selectedExercise.localId, exercise.id, exercise.name)}
                   </h3>
                 </div>
                 <p className="truncate text-xs leading-tight text-muted-foreground">
-                  {exercise.muscle}
+                  {exercise.muscle} · {formatTrackingTypeLabel(exercise.trackingType)}
                 </p>
               </div>
               <span
@@ -2265,7 +2548,7 @@ export function WorkoutBuilder({
               </PopoverContent>
             </Popover>
           </div>
-          <div className="space-y-1.5">
+          <div className="hidden" aria-hidden="true">
             {selectedExercise.sets.map((set, setIndex) => {
               const isWarned =
                 activeWarnedSetIds.includes(set.localId) &&
@@ -2498,7 +2781,8 @@ export function WorkoutBuilder({
               );
             })}
           </div>
-          <div className="flex items-center justify-between gap-2">
+          {renderExerciseSetTable(selectedExercise, exercise)}
+          <div className="space-y-2">
             <p className="text-xs text-muted-foreground">
               Add a set here for this exercise only, or use Done for a full round.
             </p>
@@ -2506,6 +2790,7 @@ export function WorkoutBuilder({
               type="button"
               size="sm"
               variant="outline"
+              className="w-full"
               onClick={() => addSet(selectedExercise.localId)}
             >
               <Plus />
@@ -3158,13 +3443,13 @@ export function WorkoutBuilder({
                         <div className="flex min-w-0 flex-1 items-center gap-1.5">
                           <div className="min-w-0 flex-1 text-left">
                             <h2
-                              className="break-words text-sm leading-tight font-semibold line-clamp-3 min-[375px]:line-clamp-2 sm:text-base"
+                              className="break-words text-sm leading-tight font-semibold text-primary line-clamp-3 min-[375px]:line-clamp-2 sm:text-base"
                               title={`${exercise.name} · ${exercise.muscle}`}
                             >
                               {getExerciseInstanceLabel(selectedExercise.localId, exercise.id, exercise.name)}
                             </h2>
                             <p className="truncate text-xs leading-tight text-muted-foreground">
-                              {exercise.muscle}
+                              {exercise.muscle} · {formatTrackingTypeLabel(exercise.trackingType)}
                             </p>
                           </div>
                           <span
@@ -3351,7 +3636,7 @@ export function WorkoutBuilder({
                         </Popover>
                       </div>
 
-                      <div className="space-y-1.5">
+                      <div className="hidden" aria-hidden="true">
                         {selectedExercise.sets.map((set, setIndex) => {
                           const isWarned =
                             activeWarnedSetIds.includes(set.localId) &&
@@ -3625,10 +3910,12 @@ export function WorkoutBuilder({
                           );
                         })}
                       </div>
+                      {renderExerciseSetTable(selectedExercise, exercise)}
                       <Button
                         type="button"
                         size="sm"
                         variant="secondary"
+                        className="w-full"
                         onClick={(event) => {
                           if (event.detail > 0) {
                             event.currentTarget.blur();

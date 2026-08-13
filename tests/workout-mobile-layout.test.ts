@@ -61,7 +61,7 @@ test("active exercise headers give long regular and superset names a flexible mu
   for (const header of [supersetMemberHeader, regularExerciseHeader]) {
     assert.match(header, /<div className=\{ACTIVE_EXERCISE_HEADER_ROW_CLASS\}>/);
     assert.match(header, /min-w-0 flex-1 text-left/);
-    assert.match(header, /break-words text-sm leading-tight font-semibold line-clamp-3 min-\[375px\]:line-clamp-2/);
+    assert.match(header, /break-words text-sm leading-tight font-semibold text-primary line-clamp-3 min-\[375px\]:line-clamp-2/);
     assert.match(header, /<p className="truncate text-xs leading-tight text-muted-foreground">/);
     assert.doesNotMatch(header, /<h[23] className="truncate/);
     assert.match(header, /items-center gap-1 whitespace-nowrap/);
@@ -77,7 +77,7 @@ test("active exercise headers give long regular and superset names a flexible mu
   assert.match(thumbnailDetailsTrigger, /size-11 shrink-0 rounded-md p-0 focus-visible:ring-2/);
   assert.match(thumbnailDetailsTrigger, /className="size-11 rounded-md bg-muted object-cover"/);
   assert.doesNotMatch(thumbnailDetailsTrigger, /-m[trblxy]?-/);
-  assert.match(builder, /ACTIVE_EXERCISE_HEADER_ROW_CLASS =\s*"flex min-w-0 flex-nowrap items-start gap-2 px-2\.5 py-2\.5"/);
+  assert.match(builder, /ACTIVE_EXERCISE_HEADER_ROW_CLASS =\s*"flex min-w-0 flex-nowrap items-start gap-2 px-2\.5 py-2"/);
   assert.match(detailPreview, /trigger\?: ReactNode/);
   assert.match(detailPreview, /<SheetTrigger asChild>[\s\S]*\{trigger \?\?/);
   assert.match(supersetMemberHeader, /<Badge[\s\S]*\{supersetLabel\.replace\("Superset ", ""\)\}[\s\S]*groupPosition \+ 1/);
@@ -87,9 +87,21 @@ test("active exercise headers give long regular and superset names a flexible mu
   assert.match(regularExerciseHeader, /EllipsisVertical/);
 });
 
-test("active-workout number inputs retain a 16px mobile font size to avoid Safari focus zoom", () => {
-  assert.match(builder, /h-9 min-w-0 text-base/);
+test("active-workout number inputs use the compact shared table-value size", () => {
+  assert.match(builder, /h-8 min-w-0 rounded-md bg-background\/80 px-1 text-center text-sm font-semibold tabular-nums/);
   assert.match(read("components/workouts/SupersetRoundForm.tsx"), /className="text-base"/);
+});
+
+test("responsive table headers abbreviate without losing their matching grid column", () => {
+  const table = builder.slice(
+    builder.indexOf("function renderExerciseSetTable"),
+    builder.indexOf("function renderSupersetExerciseRow")
+  );
+  assert.match(table, /<span className="lg:hidden">Prev<\/span>/);
+  assert.match(table, /<span className="hidden lg:inline">Previous<\/span>/);
+  assert.match(table, /<span className="lg:hidden">Done<\/span>/);
+  assert.match(table, /<span className="hidden lg:inline">Completed<\/span>/);
+  assert.match(table, /WORKOUT_TABLE_HEADER_CELL_CLASS/);
 });
 
 test("set rows use shrinkable grids rather than fixed horizontal field widths", () => {
