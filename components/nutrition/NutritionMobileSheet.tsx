@@ -31,6 +31,7 @@ export function NutritionMobileSheet({
       </div>
       <div
         data-slot="nutrition-sheet-scroll"
+        data-keyboard-dismiss-on-scroll
         className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch] px-4 py-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]"
       >
         {children}

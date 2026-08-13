@@ -8,6 +8,7 @@ import { routineInclude } from "@/lib/routines";
 import type { ExerciseListItem, ExerciseTrackingType } from "@/types/workout";
 import type { WorkoutDetail } from "@/types/workout";
 import { exerciseVisibilityWhere } from "@/lib/exercise-access";
+import { getUserExerciseUsage } from "@/lib/workout-exercise-usage";
 import { sanitizeRoutineSetForTrackingType } from "@/lib/exercise-tracking-fields";
 
 export const metadata: Metadata = {
@@ -65,7 +66,7 @@ export default async function NewWorkoutPage({
   const routineId = params.routineId
     ? parsePositiveInteger(params.routineId)
     : null;
-  const [exercises, user, routine] = await Promise.all([
+  const [exercises, user, routine, exerciseUsage] = await Promise.all([
     prisma.exercise.findMany({
       where: exerciseVisibilityWhere(session.user.id),
       orderBy: [{ muscle: "asc" }, { name: "asc" }],
@@ -100,6 +101,7 @@ export default async function NewWorkoutPage({
           include: routineInclude,
         })
       : null,
+    getUserExerciseUsage(session.user.id),
   ]);
   const routineSupersetKeyMap = new Map(
     routine?.supersets.map((superset) => [
@@ -189,6 +191,7 @@ export default async function NewWorkoutPage({
     <main className="mx-auto w-full max-w-7xl px-4 pb-4 pt-0 sm:p-6 lg:p-8">
       <WorkoutBuilder
         exercises={exercises.map(mapExercise)}
+        exerciseUsage={exerciseUsage}
         initialWorkout={initialWorkoutFromRoutine}
         saveMode="create"
         userBodyweightKg={user?.bodyweightKg ?? null}

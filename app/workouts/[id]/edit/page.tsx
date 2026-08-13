@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { mapWorkoutDetail, userWorkoutInclude } from "@/lib/workouts";
 import type { ExerciseListItem, ExerciseTrackingType } from "@/types/workout";
 import { exerciseVisibilityWhere } from "@/lib/exercise-access";
+import { getUserExerciseUsage } from "@/lib/workout-exercise-usage";
 
 export const metadata: Metadata = {
   title: "Edit Workout",
@@ -61,7 +62,7 @@ export default async function EditWorkoutPage({
     notFound();
   }
 
-  const [workout, exercises, user] = await Promise.all([
+  const [workout, exercises, user, exerciseUsage] = await Promise.all([
     prisma.workout.findFirst({
       where: {
         id: workoutId,
@@ -94,6 +95,7 @@ export default async function EditWorkoutPage({
         rpeTrackingEnabled: true,
       },
     }),
+    getUserExerciseUsage(session.user.id),
   ]);
 
   if (!workout) {
@@ -105,6 +107,7 @@ export default async function EditWorkoutPage({
       <BackButton fallbackHref="/workouts" />
       <WorkoutBuilder
         exercises={exercises.map(mapExercise)}
+        exerciseUsage={exerciseUsage}
         initialWorkout={mapWorkoutDetail(workout)}
         userBodyweightKg={user?.bodyweightKg ?? null}
         rpeTrackingEnabled={user?.rpeTrackingEnabled ?? false}

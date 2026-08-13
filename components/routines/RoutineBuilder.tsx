@@ -1110,7 +1110,7 @@ export function RoutineBuilder({
                 ))}
               </SelectContent>
             </Select>
-            <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
+            <div data-keyboard-dismiss-on-scroll className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
               <Button asChild variant="outline" className="mb-2 w-full">
                 <Link href="/exercises/custom/new">Create Custom Exercise</Link>
               </Button>
@@ -1194,7 +1194,7 @@ export function RoutineBuilder({
           ids={supersetSelection.map((localId) => getSupersetMembershipSortableId(editingSupersetKey ?? "new", localId))}
           onMove={moveDialogSupersetExercise}
         >
-        <div className="max-h-[50dvh] space-y-2 overflow-y-auto pr-1">
+        <div data-keyboard-dismiss-on-scroll className="max-h-[50dvh] space-y-2 overflow-y-auto pr-1">
           {[...selectedExercises]
             .sort((a, b) => {
               const aIndex = supersetSelection.indexOf(a.localId);

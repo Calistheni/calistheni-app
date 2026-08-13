@@ -12,6 +12,7 @@ import {
   isNativePluginAvailable,
 } from "@/lib/native/platform";
 import { reconcileSupplementReminders, registerSupplementNotificationListeners } from "@/lib/native/supplement-reminders";
+import { dismissActiveTextInput } from "@/lib/mobile-keyboard";
 
 const isDevelopment = process.env.NODE_ENV === "development";
 
@@ -59,23 +60,25 @@ export function NativeShell() {
       console.warn("[native-splash] SplashScreen plugin is unavailable");
     }
 
-    const handleFocus = (event: FocusEvent) => {
-      const target = event.target;
-      if (!(target instanceof HTMLElement)) return;
-      if (!target.matches("input, textarea, select, [contenteditable='true']")) {
-        return;
-      }
-
-      requestAnimationFrame(() => {
-        target.scrollIntoView({ block: "center", inline: "nearest" });
-      });
-    };
-
-    document.addEventListener("focusin", handleFocus);
     return () => {
       delete document.documentElement.dataset.nativeApp;
-      document.removeEventListener("focusin", handleFocus);
       void appListener?.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    let touchStartY = 0;
+    const handleTouchStart = (event: TouchEvent) => { touchStartY = event.touches[0]?.clientY ?? 0; };
+    const handleTouchMove = (event: TouchEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target?.closest("[data-keyboard-dismiss-on-scroll]") || Math.abs((event.touches[0]?.clientY ?? touchStartY) - touchStartY) < 8) return;
+      dismissActiveTextInput();
+    };
+    document.addEventListener("touchstart", handleTouchStart, { passive: true });
+    document.addEventListener("touchmove", handleTouchMove, { passive: true });
+    return () => {
+      document.removeEventListener("touchstart", handleTouchStart);
+      document.removeEventListener("touchmove", handleTouchMove);
     };
   }, []);
 

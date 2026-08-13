@@ -145,6 +145,9 @@ import {
   getFinalWorkoutTitle,
 } from "@/lib/workout-title";
 import { getTrackingTypeFieldConfig } from "@/lib/exercise-tracking-fields";
+import { rankExercisesForPicker } from "@/lib/exercise-picker-ranking";
+import type { ExerciseUsage } from "@/lib/workout-exercise-usage";
+import { dismissActiveTextInput } from "@/lib/mobile-keyboard";
 import {
   getPerformanceReference,
   getPerformanceReferenceDescription,
@@ -164,6 +167,7 @@ type WorkoutBuilderProps = {
   initialWorkout?: WorkoutDetail;
   userBodyweightKg: number | null;
   rpeTrackingEnabled: boolean;
+  exerciseUsage: ExerciseUsage[];
   saveMode?: "create" | "edit";
 };
 
@@ -599,6 +603,7 @@ export function WorkoutBuilder({
   initialWorkout,
   userBodyweightKg,
   rpeTrackingEnabled,
+  exerciseUsage,
   saveMode,
 }: WorkoutBuilderProps) {
   const router = useRouter();
@@ -635,6 +640,8 @@ export function WorkoutBuilder({
   );
   const [search, setSearch] = useState("");
   const [muscleFilter, setMuscleFilter] = useState("all");
+  const [trackingTypeFilter, setTrackingTypeFilter] = useState("all");
+  const [pickerSelectedIds, setPickerSelectedIds] = useState<string[]>([]);
   const [selectedExercises, setSelectedExercises] = useState<
     LocalWorkoutExercise[]
   >(initialSelectedExercises);
@@ -726,10 +733,6 @@ export function WorkoutBuilder({
       currentExercise: ExerciseListItem;
       replacementExercise: ExerciseListItem;
     } | null>(null);
-  const [exercisePickerViewport, setExercisePickerViewport] = useState<{
-    height: number;
-    bottom: number;
-  } | null>(null);
   const [isTimerSheetOpen, setIsTimerSheetOpen] = useState(false);
   const [isFinishSheetOpen, setIsFinishSheetOpen] = useState(false);
   const finishPhotoInputRef = useRef<HTMLInputElement>(null);
@@ -768,26 +771,24 @@ export function WorkoutBuilder({
   const [isCompletingSuperset, setIsCompletingSuperset] = useState(false);
   const isCompletingSupersetRef = useRef(false);
   const muscles = useMemo(
-    () => [...new Set(exercises.map((exercise) => exercise.muscle))].sort(),
+    () => [...new Set(exercises.flatMap((exercise) => [exercise.muscle, ...exercise.secondaryMuscles]))].sort(),
+    [exercises]
+  );
+  const trackingTypes = useMemo(
+    () => [...new Set(exercises.map((exercise) => exercise.trackingType))].sort(),
     [exercises]
   );
 
   const filteredExercises = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
-
-    return exercises
+    return rankExercisesForPicker(
+      exercises
       .filter(
         (exercise) =>
-          muscleFilter === "all" || exercise.muscle === muscleFilter
-      )
-      .filter(
-        (exercise) =>
-          !normalizedSearch ||
-          exercise.name.toLowerCase().includes(normalizedSearch) ||
-            exercise.muscle.toLowerCase().includes(normalizedSearch)
-      )
-      .slice(0, 40);
-  }, [exercises, muscleFilter, search]);
+          (muscleFilter === "all" || exercise.muscle === muscleFilter || exercise.secondaryMuscles.includes(muscleFilter))
+          && (trackingTypeFilter === "all" || exercise.trackingType === trackingTypeFilter)
+      ), exerciseUsage, search
+    ).slice(0, 80);
+  }, [exerciseUsage, exercises, muscleFilter, search, trackingTypeFilter]);
   const getExerciseInstanceLabel = (
     localId: string,
     exerciseId: string,
@@ -951,44 +952,6 @@ export function WorkoutBuilder({
     return () => mediaQuery.removeEventListener("change", updateViewport);
   }, []);
 
-  useEffect(() => {
-    if (!isExercisePickerOpen) {
-      return;
-    }
-
-    const viewport = window.visualViewport;
-
-    function updateViewport() {
-      if (!viewport) {
-        setExercisePickerViewport({
-          height: Math.round(window.innerHeight * 0.9),
-          bottom: 0,
-        });
-        return;
-      }
-
-      setExercisePickerViewport({
-        height: Math.round(
-          Math.min(viewport.height, window.innerHeight * 0.9)
-        ),
-        bottom: Math.max(
-          0,
-          Math.round(window.innerHeight - viewport.height - viewport.offsetTop)
-        ),
-      });
-    }
-
-    updateViewport();
-    viewport?.addEventListener("resize", updateViewport);
-    viewport?.addEventListener("scroll", updateViewport);
-    window.addEventListener("orientationchange", updateViewport);
-
-    return () => {
-      viewport?.removeEventListener("resize", updateViewport);
-      viewport?.removeEventListener("scroll", updateViewport);
-      window.removeEventListener("orientationchange", updateViewport);
-    };
-  }, [isExercisePickerOpen]);
 
   useEffect(() => {
     if (!scrollTargetSetId) {
@@ -1564,13 +1527,15 @@ export function WorkoutBuilder({
   }
 
   function handleExercisePickerOpenChange(open: boolean) {
+    if (!open) dismissActiveTextInput();
     setIsExercisePickerOpen(open);
 
     if (!open) {
       setSearch("");
       setMuscleFilter("all");
+      setTrackingTypeFilter("all");
+      setPickerSelectedIds([]);
       setExerciseToReplaceId(null);
-      setExercisePickerViewport(null);
     }
   }
 
@@ -2040,6 +2005,23 @@ export function WorkoutBuilder({
     setFinishPhotos((current) => [...current, ...next.slice(0, available)]);
   }
 
+  function addSelectedExercises() {
+    const byId = new Map(exercises.map((exercise) => [exercise.id, exercise]));
+    if (exerciseToReplaceId) {
+      const replacement = byId.get(pickerSelectedIds[0]);
+      if (replacement) selectExercise(replacement);
+      return;
+    }
+    pickerSelectedIds.forEach(addExercise);
+    handleExercisePickerOpenChange(false);
+  }
+
+  const formatTrackingType = (value: string) => value.toLowerCase().split("_").map((word) => word[0]?.toUpperCase() + word.slice(1)).join(" ");
+  const clearExerciseFilters = () => {
+    setMuscleFilter("all");
+    setTrackingTypeFilter("all");
+  };
+
   function renderExercisePicker(keyboardSafe = false) {
     return (
       <div
@@ -2049,37 +2031,25 @@ export function WorkoutBuilder({
             : "space-y-4"
         }
       >
-        {!exerciseToReplaceId ? (
-          <Button asChild variant="outline" className="w-full">
-            <Link href="/exercises/custom/new">Create Custom Exercise</Link>
-          </Button>
-        ) : null}
-        <Input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search exercises"
-          aria-label="Search exercises"
-        />
-        <Select value={muscleFilter} onValueChange={setMuscleFilter}>
-          <SelectTrigger className="w-full" aria-label="Filter muscle">
-            <SelectValue placeholder="All muscles" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All muscles</SelectItem>
-            {muscles.map((muscle) => (
-              <SelectItem key={muscle} value={muscle}>
-                {muscle}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search exercises" aria-label="Search exercises" />
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={muscleFilter} onValueChange={setMuscleFilter}>
+            <SelectTrigger className="min-w-32" aria-label="Filter muscle"><SelectValue placeholder="All Muscles" /></SelectTrigger>
+            <SelectContent container={exercisePickerContentRef.current}><SelectItem value="all">All Muscles</SelectItem>{muscles.map((muscle) => <SelectItem key={muscle} value={muscle}>{muscle}</SelectItem>)}</SelectContent>
+          </Select>
+          <Select value={trackingTypeFilter} onValueChange={setTrackingTypeFilter}>
+            <SelectTrigger className="min-w-28" aria-label="Filter tracking type"><SelectValue placeholder="All Types" /></SelectTrigger>
+            <SelectContent container={exercisePickerContentRef.current}><SelectItem value="all">All Types</SelectItem>{trackingTypes.map((trackingType) => <SelectItem key={trackingType} value={trackingType}>{formatTrackingType(trackingType)}</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
         <div
           className={
             keyboardSafe
-              ? "min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pr-1 pb-[calc(env(safe-area-inset-bottom)+1rem)]"
+              ? "min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pr-1"
               : "max-h-[65dvh] space-y-2 overflow-y-auto pr-1"
           }
         >
+          {!search.trim() && !exerciseToReplaceId && exerciseUsage.length ? <p className="px-1 pt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Most used</p> : null}
           {filteredExercises.map((exercise) => {
             const existingOccurrenceCount = selectedExercises.filter(
               (item) => item.exerciseId === exercise.id
@@ -2090,14 +2060,15 @@ export function WorkoutBuilder({
                 item.exerciseId === exercise.id
             );
             const unavailable = isCurrentExercise;
+            const selected = pickerSelectedIds.includes(exercise.id);
 
             return (
               <button
                 key={exercise.id}
                 type="button"
-                onClick={() => selectExercise(exercise)}
+                onClick={() => exerciseToReplaceId ? setPickerSelectedIds([exercise.id]) : setPickerSelectedIds((current) => current.includes(exercise.id) ? current.filter((id) => id !== exercise.id) : [...current, exercise.id])}
                 disabled={unavailable}
-                className="flex w-full items-center gap-3 rounded-lg border p-2 text-left transition hover:border-primary disabled:cursor-not-allowed disabled:opacity-60"
+                className={`flex min-h-16 w-full items-center gap-3 rounded-lg border p-2 text-left transition hover:border-primary disabled:cursor-not-allowed disabled:opacity-60 ${selected ? "border-primary bg-primary/5" : ""}`}
               >
                 <Image
                   src={getExerciseThumbnailSrc(exercise.thumbnailUrl)}
@@ -2113,7 +2084,7 @@ export function WorkoutBuilder({
                     {exercise.name}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    {exercise.muscle}
+                    {exercise.muscle} · {formatTrackingType(exercise.trackingType)}
                   </span>
                   {existingOccurrenceCount > 0 && !exerciseToReplaceId ? (
                     <span className="block text-xs text-muted-foreground">
@@ -2126,22 +2097,15 @@ export function WorkoutBuilder({
                     </Badge>
                   ) : null}
                 </span>
-                <Badge variant={unavailable ? "secondary" : "outline"}>
-                  {isCurrentExercise
-                    ? "Current"
-                    : exerciseToReplaceId
-                        ? "Replace"
-                        : "Add"}
-                </Badge>
+                <span role="checkbox" aria-checked={selected} className={`flex size-7 shrink-0 items-center justify-center rounded-full border ${selected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40"}`}>{selected ? <CheckCircle2 className="size-4" /> : null}</span>
               </button>
             );
           })}
           {search.trim() && filteredExercises.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              No exercises match your search.
-            </p>
+            <div className="py-8 text-center text-sm text-muted-foreground"><p>No exercises match these filters.</p><Button className="mt-3" variant="outline" onClick={clearExerciseFilters}>Clear filters</Button></div>
           ) : null}
         </div>
+        <div className={`shrink-0 border-t py-3 ${keyboardSafe ? "pb-[calc(0.75rem+env(safe-area-inset-bottom))]" : "mt-3"}`}><div className="flex items-center justify-between gap-3"><span className="text-sm text-muted-foreground" aria-live="polite">{pickerSelectedIds.length} selected</span><Button disabled={!pickerSelectedIds.length} onClick={addSelectedExercises}>{exerciseToReplaceId ? "Replace exercise" : `Add ${pickerSelectedIds.length} Exercise${pickerSelectedIds.length === 1 ? "" : "s"}`}</Button></div></div>
       </div>
     );
   }
@@ -2855,32 +2819,16 @@ export function WorkoutBuilder({
             <SheetContent
               ref={exercisePickerContentRef}
               side="bottom"
-              className="h-[90dvh] max-h-[calc(100dvh-env(safe-area-inset-top))] gap-0 overflow-hidden rounded-t-2xl"
-              style={
-                exercisePickerViewport
-                  ? {
-                      height: exercisePickerViewport.height,
-                      maxHeight: exercisePickerViewport.height,
-                      bottom: exercisePickerViewport.bottom,
-                    }
-                  : undefined
-              }
-              onOpenAutoFocus={(event) => {
-                event.preventDefault();
-                exercisePickerContentRef.current?.focus({ preventScroll: true });
-              }}
+              className="h-[100dvh] max-h-[100dvh] gap-0 overflow-hidden rounded-none p-0 sm:h-[min(94dvh,52rem)] sm:max-h-[calc(100dvh-env(safe-area-inset-top)-0.5rem)] sm:rounded-t-2xl"
+              showCloseButton={false}
             >
-              <SheetHeader className="shrink-0 border-b">
-                <SheetTitle>
-                  {exerciseToReplaceId ? "Replace exercise" : "Add Exercise"}
-                </SheetTitle>
-                <SheetDescription>
-                  {exerciseToReplaceId
-                    ? "Choose a replacement for this workout exercise."
-                    : "Search and choose an exercise for this workout."}
-                </SheetDescription>
+              <SheetHeader className="relative shrink-0 border-b px-4 py-3">
+                <Button type="button" variant="ghost" className="absolute left-2 top-2 min-h-11 px-2" onClick={() => handleExercisePickerOpenChange(false)}>Cancel</Button>
+                <SheetTitle className="text-center">{exerciseToReplaceId ? "Replace exercise" : "Add Exercise"}</SheetTitle>
+                <SheetDescription className="sr-only">Search, filter, and select exercises for this workout.</SheetDescription>
+                {!exerciseToReplaceId ? <Button asChild type="button" variant="ghost" className="absolute right-2 top-2 min-h-11 px-2"><Link href="/exercises/custom/new">Create</Link></Button> : null}
               </SheetHeader>
-              <div className="flex min-h-0 flex-1 flex-col px-4 pt-3">
+              <div data-keyboard-dismiss-on-scroll className="flex min-h-0 flex-1 flex-col px-4 pt-3">
                 {renderExercisePicker(true)}
               </div>
             </SheetContent>

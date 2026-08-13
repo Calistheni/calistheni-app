@@ -104,3 +104,14 @@ test("toasts use viewport-safe dimensions and cannot widen the workout page", ()
   assert.match(styles, /--width: min\(22\.25rem, calc\(100vw - 2rem\)\)/);
   assert.match(styles, /\[data-sonner-toast\][\s\S]*max-width: calc\(100vw - 2rem\)/);
 });
+test("Add Exercise uses a full-height stable multi-select picker without input autofocus", () => {
+  const source = builder;
+  assert.match(source, /h-\[100dvh\] max-h-\[100dvh\]/);
+  assert.match(source, /data-keyboard-dismiss-on-scroll/);
+  assert.doesNotMatch(source, /All Equipment/);
+  assert.match(source, /All Muscles/);
+  assert.match(source, /All Types/);
+  assert.match(source, /Add \$\{pickerSelectedIds\.length\} Exercise/);
+  assert.match(source, /setPickerSelectedIds/);
+  assert.doesNotMatch(source, /exercisePickerViewport|autoFocus/);
+});
