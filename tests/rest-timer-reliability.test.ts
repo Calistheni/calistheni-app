@@ -31,7 +31,8 @@ test("foreground completion cancels notification while true pause/resume preserv
   const source = await readFile(new URL("../components/workouts/hooks/useRestTimer.ts", import.meta.url), "utf8");
   assert.match(source, /scheduleRestTimerNotification/);
   assert.match(source, /cancelRestTimerNotification/);
-  assert.match(source, /timer-adjusted/);
+  assert.match(source, /scheduleBackgroundNotification/);
+  assert.match(source, /cancelBackgroundNotification/);
   assert.match(source, /skipped/);
   assert.match(source, /App.addListener\("pause"/);
   assert.match(source, /App.addListener\("resume"/);
@@ -43,18 +44,34 @@ test("foreground completion cancels notification while true pause/resume preserv
 
 test("foreground and background have exactly one distinct feedback mechanism", async () => {
   const source = await readFile(new URL("../components/workouts/hooks/useRestTimer.ts", import.meta.url), "utf8");
-  assert.match(source, /notification cancelled for foreground completion/);
-  assert.match(source, /playing foreground sound/);
-  assert.match(source, /feedback already handled by notification/);
-  assert.match(source, /await playForegroundSound\(\); await haptic\(\)/);
+  assert.match(source, /completed foreground - playing sound only/);
+  assert.match(source, /completed while background - native notification handled completion/);
+  assert.match(source, /await playForegroundSound\(\);/);
+  assert.match(source, /await haptic\(\);/);
 });
 
 test("rest notifications are scheduled only on true native pause and cancelled on resume", async () => {
   const source = await readFile(new URL("../components/workouts/hooks/useRestTimer.ts", import.meta.url), "utf8");
   const start = source.indexOf("startRestTimer:");
   const startBlock = source.slice(start, source.indexOf("addSeconds:", start));
-  assert.doesNotMatch(startBlock, /scheduleForBackground\(timer\)/);
-  assert.match(source, /App\.addListener\("pause"[\s\S]*scheduleForBackground\(timer\)/);
-  assert.match(source, /App\.addListener\("resume"[\s\S]*cancel\(timer\.id, "app-foreground"\)/);
+  assert.doesNotMatch(startBlock, /scheduleBackgroundNotification\(timer\)/);
+  assert.match(source, /App\.addListener\("pause"[\s\S]*scheduleBackgroundNotification\(timer\)/);
+  assert.match(source, /App\.addListener\("resume"[\s\S]*cancelBackgroundNotification\(timer\.id, "app-resume"\)/);
   assert.match(source, /localNotificationReceived/);
+});
+
+test("one ref-backed lifecycle manager prevents foreground scheduling and duplicate listeners", async () => {
+  const source = await readFile(new URL("../components/workouts/hooks/useRestTimer.ts", import.meta.url), "utf8");
+  assert.match(source, /sole Capacitor lifecycle owner/);
+  assert.match(source, /scheduledTimerIdRef\.current === timer\.id/);
+  assert.match(source, /notification already scheduled - skipped/);
+  assert.match(source, /app foreground, no notification scheduled/);
+  assert.match(source, /foreground rest notification received - removing delivered copy/);
+});
+
+test("rest notification metadata and cleanup are isolated from other notification domains", async () => {
+  const source = await readFile(new URL("../lib/native/rest-timer-notifications.ts", import.meta.url), "utf8");
+  assert.match(source, /type: "rest-timer", workoutId: timer\.workoutId, timerId: timer\.id, timerSessionId: timer\.id/);
+  assert.match(source, /extra\?\.type === "rest-timer"/);
+  assert.match(source, /await LocalNotifications\.cancel\(\{ notifications: \[\{ id \}\] \}\)/);
 });

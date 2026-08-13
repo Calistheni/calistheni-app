@@ -1562,6 +1562,7 @@ export function WorkoutBuilder({
     if (superset.restSeconds && superset.restSeconds > 0) {
       void restTimer.initializeAudio();
       restTimer.startRestTimer({
+        workoutId: activeWorkoutSessionId,
         exerciseLocalId: key,
         exerciseName: getSupersetDisplayLabel(
           superset,
@@ -1935,6 +1936,7 @@ export function WorkoutBuilder({
       if (durationSeconds > 0) {
         void restTimer.initializeAudio();
         restTimer.startRestTimer({
+          workoutId: activeWorkoutSessionId,
           exerciseLocalId: localId,
           exerciseName,
           restSeconds: durationSeconds,

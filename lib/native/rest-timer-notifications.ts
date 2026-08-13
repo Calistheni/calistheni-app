@@ -22,13 +22,16 @@ async function ensureChannels() {
   ]);
 }
 
-export async function scheduleRestTimerNotification(timerId: string, endsAtMs: number, soundEnabled: boolean) {
+export async function scheduleRestTimerNotification(timer: { id: string; workoutId: string }, endsAtMs: number, soundEnabled: boolean) {
   if (!available() || endsAtMs <= Date.now()) return false;
   const permission = await LocalNotifications.checkPermissions();
   if (permission.display !== "granted") return false;
   await ensureChannels();
-  const id = restTimerNotificationId(timerId);
-  await LocalNotifications.schedule({ notifications: [{ id, title: "Rest complete", body: "Time for your next set.", schedule: { at: new Date(endsAtMs), allowWhileIdle: true }, extra: { type: "rest-timer", timerId }, ...(isAndroidApp() ? { channelId: soundEnabled ? REST_SOUND_CHANNEL_ID : REST_SILENT_CHANNEL_ID } : {}), ...(soundEnabled ? { sound: "default" } : {}) }] });
+  const id = restTimerNotificationId(timer.id);
+  // The ID is deterministic per rest session. Cancel first so duplicate lifecycle events
+  // can only replace the same notification, never add another Notification Center entry.
+  await LocalNotifications.cancel({ notifications: [{ id }] });
+  await LocalNotifications.schedule({ notifications: [{ id, title: "Rest complete", body: "Time for your next set.", schedule: { at: new Date(endsAtMs), allowWhileIdle: true }, extra: { type: "rest-timer", workoutId: timer.workoutId, timerId: timer.id, timerSessionId: timer.id }, ...(isAndroidApp() ? { channelId: soundEnabled ? REST_SOUND_CHANNEL_ID : REST_SILENT_CHANNEL_ID } : {}), ...(soundEnabled ? { sound: "default" } : {}) }] });
   return true;
 }
 
@@ -43,6 +46,9 @@ export async function removeDeliveredRestTimerNotification(timerId: string) {
   if (!available()) return;
   const id = restTimerNotificationId(timerId);
   const delivered = await LocalNotifications.getDeliveredNotifications();
-  const matching = delivered.notifications.filter((notification) => notification.id === id);
+  const matching = delivered.notifications.filter((notification) => {
+    const extra = notification.extra as { type?: string; timerId?: string } | undefined;
+    return notification.id === id && extra?.type === "rest-timer" && extra.timerId === timerId;
+  });
   if (matching.length) await LocalNotifications.removeDeliveredNotifications({ notifications: matching });
 }
