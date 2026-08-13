@@ -9,17 +9,9 @@ import {
   writeStoredWorkoutTimer,
   type StoredWorkoutTimerState,
 } from "@/lib/active-workout-session";
+import { formatDurationInput } from "@/lib/duration-input";
 
-export function formatElapsedTime(totalSeconds: number) {
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  const shortTime = `${String(minutes).padStart(2, "0")}:${String(
-    seconds
-  ).padStart(2, "0")}`;
-
-  return hours > 0 ? `${String(hours).padStart(2, "0")}:${shortTime}` : shortTime;
-}
+export const formatElapsedTime = formatDurationInput;
 
 export function useWorkoutTimer(storageKey: string, autoStart = false) {
   const [nowMs, setNowMs] = useState(0);

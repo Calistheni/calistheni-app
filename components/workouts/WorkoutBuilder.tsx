@@ -20,15 +20,19 @@ import {
   Circle,
   EllipsisVertical,
   Gauge,
+  Keyboard,
   Layers2,
   MessageSquare,
   ImagePlus,
   Plus,
   Repeat2,
+  Timer,
+  TimerReset,
   Trash2,
   Unlink2,
 } from "lucide-react";
 import { arrayMove } from "@dnd-kit/sortable";
+import { Haptics, NotificationType } from "@capacitor/haptics";
 import {
   Accordion,
   AccordionContent,
@@ -149,6 +153,15 @@ import { getTrackingTypeFieldConfig } from "@/lib/exercise-tracking-fields";
 import { rankExercisesForPicker } from "@/lib/exercise-picker-ranking";
 import type { ExerciseUsage } from "@/lib/workout-exercise-usage";
 import { dismissActiveTextInput } from "@/lib/mobile-keyboard";
+import { formatDurationInput, parseDurationInput } from "@/lib/duration-input";
+import {
+  getExerciseTimerDisplaySeconds,
+  getExerciseTimerResultSeconds,
+  pauseExerciseSetTimer,
+  resumeExerciseSetTimer,
+  type ExerciseSetTimer,
+} from "@/lib/exercise-set-timer";
+import { isNativePluginAvailable } from "@/lib/native/platform";
 import {
   displayDistanceInputValue,
   displayDistanceToMeters,
@@ -211,6 +224,39 @@ type ActiveWorkoutDraft = {
   supersets: WorkoutSupersetInput[];
   selectedExercises: LocalWorkoutExercise[];
 };
+
+type ActiveExerciseTimer = ExerciseSetTimer & {
+  exerciseLocalId: string;
+  setIndex: number;
+  setLocalId: string;
+};
+
+async function playExerciseTimerCompletion() {
+  if (typeof window !== "undefined") {
+    const AudioContextConstructor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (AudioContextConstructor) {
+      try {
+        const context = new AudioContextConstructor();
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        const at = context.currentTime;
+        oscillator.frequency.value = 880;
+        gain.gain.setValueAtTime(0.001, at);
+        gain.gain.exponentialRampToValueAtTime(0.35, at + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.001, at + 0.35);
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.start(at);
+        oscillator.stop(at + 0.37);
+      } catch {
+        // Completion feedback is intentionally best-effort.
+      }
+    }
+  }
+  if (isNativePluginAvailable("Haptics")) {
+    await Haptics.notification({ type: NotificationType.Success }).catch(() => undefined);
+  }
+}
 
 const DEFAULT_REST_SECONDS = 90;
 const RPE_VALUES = [6, 7, 7.5, 8, 8.5, 9, 9.5, 10];
@@ -835,6 +881,14 @@ export function WorkoutBuilder({
   const [performanceReferences, setPerformanceReferences] = useState<ExercisePerformanceReferenceMap>({});
   const [loadingPerformanceReferenceIds, setLoadingPerformanceReferenceIds] =
     useState<Set<string>>(() => new Set());
+  const [durationTimerTarget, setDurationTimerTarget] = useState<{ exerciseLocalId: string; setIndex: number; setLocalId: string; exerciseName: string } | null>(null);
+  const [exerciseTimer, setExerciseTimer] = useState<ActiveExerciseTimer | null>(null);
+  const [exerciseTimerNowMs, setExerciseTimerNowMs] = useState(Date.now);
+  const [durationDrafts, setDurationDrafts] = useState<Record<string, string>>({});
+  const [countdownTargetSeconds, setCountdownTargetSeconds] = useState(15 * 60);
+  const [pendingExerciseTimerStart, setPendingExerciseTimerStart] = useState<{ mode: ActiveExerciseTimer["mode"]; targetSeconds: number } | null>(null);
+  const [showActiveTimerFinishDialog, setShowActiveTimerFinishDialog] = useState(false);
+  const exerciseTimerCompletedRef = useRef<string | null>(null);
   const selectedExerciseIds = useMemo(
     () => [...new Set(selectedExercises.map((exercise) => exercise.exerciseId))],
     [selectedExercises]
@@ -1693,6 +1747,7 @@ export function WorkoutBuilder({
   }
 
   function removeExercise(localId: string) {
+    setExerciseTimer((current) => current?.exerciseLocalId === localId ? null : current);
     setSelectedExercises((current) => current.filter((item) => item.localId !== localId));
     setSupersets((current) =>
       current.flatMap((superset) => {
@@ -1745,6 +1800,8 @@ export function WorkoutBuilder({
   }
 
   function removeSet(localId: string, setIndex: number) {
+    const setLocalId = selectedExercises.find((exercise) => exercise.localId === localId)?.sets[setIndex]?.localId;
+    setExerciseTimer((current) => current?.setLocalId === setLocalId ? null : current);
     setSelectedExercises((current) =>
       current.map((item) =>
         item.localId === localId
@@ -1979,7 +2036,105 @@ export function WorkoutBuilder({
     );
   }
 
+  function updateSetDurationText(localId: string, setIndex: number, value: string) {
+    const seconds = parseDurationInput(value);
+    if (seconds !== null) updateSet(localId, setIndex, "durationSeconds", String(seconds));
+  }
+
+  function openExerciseTimingTools(
+    selectedExercise: LocalWorkoutExercise,
+    exercise: ExerciseListItem
+  ) {
+    const activeSetIndex = exerciseTimer?.exerciseLocalId === selectedExercise.localId
+      ? selectedExercise.sets.findIndex((set) => set.localId === exerciseTimer.setLocalId)
+      : -1;
+    const setIndex = activeSetIndex >= 0
+      ? activeSetIndex
+      : selectedExercise.sets.findIndex((set) => !set.completed) >= 0
+        ? selectedExercise.sets.findIndex((set) => !set.completed)
+        : 0;
+    const set = selectedExercise.sets[setIndex];
+    if (!set) return;
+    setDurationTimerTarget({
+      exerciseLocalId: selectedExercise.localId,
+      setIndex,
+      setLocalId: set.localId,
+      exerciseName: exercise.name,
+    });
+  }
+
+  const exerciseTimerValue = exerciseTimer
+    ? getExerciseTimerDisplaySeconds(exerciseTimer, exerciseTimerNowMs)
+    : 0;
+
+  useEffect(() => {
+    if (!exerciseTimer || exerciseTimer.status !== "running") return;
+    const tick = window.setInterval(() => setExerciseTimerNowMs(Date.now()), 250);
+    return () => window.clearInterval(tick);
+  }, [exerciseTimer]);
+
+  useEffect(() => {
+    if (!exerciseTimer || exerciseTimer.mode !== "countdown" || exerciseTimer.status !== "running" || exerciseTimerValue > 0) return;
+    if (exerciseTimerCompletedRef.current === exerciseTimer.setLocalId) return;
+    exerciseTimerCompletedRef.current = exerciseTimer.setLocalId;
+    updateSet(exerciseTimer.exerciseLocalId, exerciseTimer.setIndex, "durationSeconds", String(exerciseTimer.targetSeconds));
+    void playExerciseTimerCompletion();
+    setExerciseTimer((current) => current?.setLocalId === exerciseTimer.setLocalId ? { ...current, status: "paused", startedAtMs: null, accumulatedMs: current.targetSeconds * 1000 } : current);
+  }, [exerciseTimer, exerciseTimerValue]);
+
+  function beginExerciseTimer(mode: ActiveExerciseTimer["mode"], targetSeconds = 900) {
+    if (!durationTimerTarget) return;
+    const now = Date.now();
+    exerciseTimerCompletedRef.current = null;
+    setExerciseTimer({ mode, exerciseLocalId: durationTimerTarget.exerciseLocalId, setIndex: durationTimerTarget.setIndex, setLocalId: durationTimerTarget.setLocalId, startedAtMs: now, accumulatedMs: 0, targetSeconds, status: "running" });
+    setExerciseTimerNowMs(now);
+    setDurationTimerTarget(null);
+  }
+
+  function startExerciseTimer(mode: ActiveExerciseTimer["mode"], targetSeconds = 900) {
+    if (exerciseTimer?.status === "running" && exerciseTimer.setLocalId !== durationTimerTarget?.setLocalId) {
+      setPendingExerciseTimerStart({ mode, targetSeconds });
+      return;
+    }
+    beginExerciseTimer(mode, targetSeconds);
+  }
+
+  function pauseExerciseTimer() {
+    const now = Date.now();
+    setExerciseTimer((current) => current?.status === "running" ? { ...current, ...pauseExerciseSetTimer(current, now) } : current);
+    setExerciseTimerNowMs(now);
+  }
+
+  function resumeExerciseTimer() {
+    const now = Date.now();
+    setExerciseTimer((current) => current?.status === "paused" ? { ...current, ...resumeExerciseSetTimer(current, now) } : current);
+    setExerciseTimerNowMs(now);
+  }
+
+  function resetExerciseTimer() {
+    const now = Date.now();
+    exerciseTimerCompletedRef.current = null;
+    setExerciseTimer((current) => current ? { ...current, status: "paused", startedAtMs: null, accumulatedMs: 0 } : current);
+    setExerciseTimerNowMs(now);
+  }
+
+  function commitExerciseTimerResult() {
+    if (!exerciseTimer) return;
+    const seconds = getExerciseTimerResultSeconds(exerciseTimer, exerciseTimerNowMs);
+    updateSet(exerciseTimer.exerciseLocalId, exerciseTimer.setIndex, "durationSeconds", String(seconds));
+    setDurationDrafts((current) => {
+      const remaining = { ...current };
+      delete remaining[exerciseTimer.setLocalId];
+      return remaining;
+    });
+    setExerciseTimer(null);
+  }
+
   function requestFinishWorkout() {
+    if (exerciseTimer?.status === "running") {
+      setShowActiveTimerFinishDialog(true);
+      return;
+    }
     if (incompleteEnteredSets.length === 0) {
       setWarnedSetIds([]);
       setIsFinishSheetOpen(true);
@@ -2419,6 +2574,14 @@ export function WorkoutBuilder({
                 {metricColumns.map((column) => {
                   const value = set[column.metric];
                   const description = getSetReferenceDescription(exercise.id, setIndex, column.metric);
+                  const activeForThisSet = exerciseTimer?.setLocalId === set.localId;
+                  if (column.metric === "durationSeconds") {
+                    return (
+                      <div key={column.metric} className="min-w-0">
+                        <Input className={`${COMPACT_WORKOUT_NUMBER_INPUT_CLASS} w-full min-w-0`} type="text" inputMode="numeric" placeholder="00:00" aria-description={description} aria-label={`${exercise.name} set ${setIndex + 1} duration in minutes and seconds`} readOnly={activeForThisSet} value={activeForThisSet ? formatDurationInput(exerciseTimerValue) : durationDrafts[set.localId] ?? formatDurationInput(set.durationSeconds)} onChange={(event) => { const next = event.target.value; setDurationDrafts((current) => ({ ...current, [set.localId]: next })); updateSetDurationText(selectedExercise.localId, setIndex, next); }} onBlur={(event) => { const seconds = parseDurationInput(event.target.value); setDurationDrafts((current) => { const remaining = { ...current }; delete remaining[set.localId]; return remaining; }); if (seconds !== null) updateSet(selectedExercise.localId, setIndex, "durationSeconds", String(seconds)); }} />
+                      </div>
+                    );
+                  }
                   return (
                     <Input
                       key={column.metric}
@@ -2430,8 +2593,8 @@ export function WorkoutBuilder({
                       placeholder=""
                       aria-description={description}
                       aria-label={`${exercise.name} set ${setIndex + 1} ${column.inputLabel}`}
-                      value={column.metric === "durationSeconds" ? getDurationMinutesValue(set.durationSeconds) : column.metric === "weight" ? displayWeightInputValue(set.weight, measurementSystem) : column.metric === "distanceMeters" ? displayDistanceInputValue(set.distanceMeters, measurementSystem) : value ?? ""}
-                      onChange={(event) => column.metric === "durationSeconds" ? updateSetDurationMinutes(selectedExercise.localId, setIndex, event.target.value) : column.metric === "weight" || column.metric === "distanceMeters" ? updateSet(selectedExercise.localId, setIndex, column.metric, canonicalWorkoutInputValue(event.target.value, column.metric, measurementSystem)) : updateSet(selectedExercise.localId, setIndex, column.metric, event.target.value)}
+                      value={column.metric === "weight" ? displayWeightInputValue(set.weight, measurementSystem) : column.metric === "distanceMeters" ? displayDistanceInputValue(set.distanceMeters, measurementSystem) : value ?? ""}
+                      onChange={(event) => column.metric === "weight" || column.metric === "distanceMeters" ? updateSet(selectedExercise.localId, setIndex, column.metric, canonicalWorkoutInputValue(event.target.value, column.metric, measurementSystem)) : updateSet(selectedExercise.localId, setIndex, column.metric, event.target.value)}
                     />
                   );
                 })}
@@ -2550,7 +2713,7 @@ export function WorkoutBuilder({
           </div>
         </div>
         <AccordionContent className="space-y-2 border-t border-border/60 bg-muted/15 px-3 pt-2 pb-3 pl-4">
-          <div className="flex justify-end">
+          <div className="flex items-center justify-end gap-1.5">
             <Popover>
               <PopoverTrigger asChild>
                 <Button
@@ -2584,6 +2747,18 @@ export function WorkoutBuilder({
                 </div>
               </PopoverContent>
             </Popover>
+            {isDurationFieldVisible(exercise.trackingType) ? (
+              <Button
+                type="button"
+                size="icon"
+                variant={exerciseTimer?.exerciseLocalId === selectedExercise.localId ? "secondary" : "outline"}
+                className={exerciseTimer?.exerciseLocalId === selectedExercise.localId ? "border-primary/40 text-primary" : undefined}
+                aria-label={`Open timing tools for ${exercise.name}`}
+                onClick={() => openExerciseTimingTools(selectedExercise, exercise)}
+              >
+                {exerciseTimer?.exerciseLocalId === selectedExercise.localId && exerciseTimer.status === "running" ? <Timer className="animate-pulse" /> : <Timer />}
+              </Button>
+            ) : null}
           </div>
           <div className="hidden" aria-hidden="true">
             {selectedExercise.sets.map((set, setIndex) => {
@@ -3671,6 +3846,18 @@ export function WorkoutBuilder({
                             </div>
                           </PopoverContent>
                         </Popover>
+                        {isDurationFieldVisible(exercise.trackingType) ? (
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant={exerciseTimer?.exerciseLocalId === selectedExercise.localId ? "secondary" : "outline"}
+                            className={exerciseTimer?.exerciseLocalId === selectedExercise.localId ? "border-primary/40 text-primary" : undefined}
+                            aria-label={`Open timing tools for ${exercise.name}`}
+                            onClick={() => openExerciseTimingTools(selectedExercise, exercise)}
+                          >
+                            {exerciseTimer?.exerciseLocalId === selectedExercise.localId && exerciseTimer.status === "running" ? <Timer className="animate-pulse" /> : <Timer />}
+                          </Button>
+                        ) : null}
                       </div>
 
                       <div className="hidden" aria-hidden="true">
@@ -4632,6 +4819,82 @@ export function WorkoutBuilder({
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={durationTimerTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDurationTimerTarget(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Set duration</DialogTitle>
+            <DialogDescription>
+              {durationTimerTarget?.exerciseName ?? "Exercise"} · set {(durationTimerTarget?.setIndex ?? 0) + 1}. Manual entry stays editable after using a timer.
+            </DialogDescription>
+          </DialogHeader>
+          {exerciseTimer && durationTimerTarget?.setLocalId === exerciseTimer.setLocalId ? (
+            <div className="space-y-4">
+              <div className="rounded-lg border bg-muted/40 py-5 text-center">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{exerciseTimer.mode === "stopwatch" ? "Stopwatch" : "Timer"}</p>
+                <p className="mt-1 text-4xl font-semibold tabular-nums">{formatDurationInput(exerciseTimerValue)}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {exerciseTimer.status === "running" ? <Button type="button" variant="outline" onClick={pauseExerciseTimer}>Pause</Button> : <Button type="button" variant="outline" onClick={resumeExerciseTimer}>{exerciseTimerValue === 0 && exerciseTimer.mode === "stopwatch" ? "Start" : "Resume"}</Button>}
+                <Button type="button" onClick={commitExerciseTimerResult}>{exerciseTimer.mode === "stopwatch" ? "Use elapsed time" : "Use timer time"}</Button>
+              </div>
+              <Button type="button" variant="ghost" className="w-full" onClick={resetExerciseTimer}>Reset</Button>
+              <Button type="button" variant="ghost" className="w-full" onClick={() => setExerciseTimer(null)}>Discard timer</Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-2">
+                <Button type="button" variant="outline" className="h-auto flex-col gap-1 py-3" onClick={() => startExerciseTimer("stopwatch", 0)}><TimerReset className="size-5" />Stopwatch</Button>
+                <Button type="button" variant="outline" className="h-auto flex-col gap-1 py-3" onClick={() => startExerciseTimer("countdown", countdownTargetSeconds)}><Timer className="size-5" />Start timer</Button>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="exercise-timer-target">Timer length</Label>
+                <Input id="exercise-timer-target" type="text" inputMode="numeric" value={formatDurationInput(countdownTargetSeconds)} aria-label="Countdown timer length in minutes and seconds" onChange={(event) => { const seconds = parseDurationInput(event.target.value); if (seconds !== null) setCountdownTargetSeconds(seconds); }} />
+                <div className="flex flex-wrap gap-1.5">
+                  {[30, 60, 120, 300, 600, 900, 1800].map((seconds) => <Button key={seconds} type="button" size="sm" variant={countdownTargetSeconds === seconds ? "secondary" : "outline"} onClick={() => setCountdownTargetSeconds(seconds)}>{seconds < 60 ? "30 sec" : `${seconds / 60} min`}</Button>)}
+                </div>
+              </div>
+              <p className="flex items-center gap-1 text-xs text-muted-foreground"><Keyboard className="size-3.5" />Edit the TIME field directly for manual entry.</p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={pendingExerciseTimerStart !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingExerciseTimerStart(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Another exercise timer is running</AlertDialogTitle>
+            <AlertDialogDescription>Keep the current timer, or stop it and start this one. The current timer’s value will not be saved unless you use it first.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep current timer</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { const next = pendingExerciseTimerStart; setExerciseTimer(null); setPendingExerciseTimerStart(null); if (next) beginExerciseTimer(next.mode, next.targetSeconds); }}>Stop current and start this one</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showActiveTimerFinishDialog} onOpenChange={setShowActiveTimerFinishDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>An exercise timer is still running</AlertDialogTitle>
+            <AlertDialogDescription>Stop the timer and use its current result before finishing, or keep the workout open.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep workout open</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { commitExerciseTimerResult(); setShowActiveTimerFinishDialog(false); requestFinishWorkout(); }}>Use time and finish</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={showIncompleteSetsDialog}
