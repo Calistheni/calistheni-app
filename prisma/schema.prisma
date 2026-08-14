@@ -270,6 +270,7 @@ model User {
   nutritionEntrySnapshots       NutritionEntrySnapshot[]
   nutritionTargets              UserNutritionTargets?
   nutritionGoals                NutritionGoal[]
+  savedFoods                    NutritionSavedFood[]
   nutritionSavedMeals           NutritionSavedMeal[]
   nutritionAiUsage              NutritionAiUsage[]
   weeklyProgressReports         WeeklyProgressReport[]
@@ -816,6 +817,7 @@ model Food {
   createdByUser           User?                    @relation("FoodContributor", fields: [createdByUserId], references: [id], onDelete: SetNull)
   nutritionSnapshots      NutritionEntrySnapshot[]
   nutritionSavedMealItems NutritionSavedMealItem[]
+  savedByUsers            NutritionSavedFood[]
 
   @@unique([source, sourceExternalId])
   @@index([normalizedName])
@@ -1018,6 +1020,21 @@ model NutritionEntrySnapshot {
   @@index([userId, createdAt])
   @@index([foodId])
   @@index([foodRevisionId])
+}
+
+/// A user-specific bookmark of a canonical, visibility-checked Nutrition food.
+model NutritionSavedFood {
+  id        String   @id @default(cuid())
+  userId    String
+  foodId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  food Food @relation(fields: [foodId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, foodId])
+  @@index([userId, createdAt])
+  @@index([foodId])
 }
 
 model NutritionSavedMeal {

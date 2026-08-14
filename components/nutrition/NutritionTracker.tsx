@@ -1,7 +1,16 @@
 "use client";
 
 import { App } from "@capacitor/app";
-import { Loader2, MoreHorizontal, Plus } from "lucide-react";
+import {
+  Bookmark,
+  BookmarkX,
+  CopyPlus,
+  Loader2,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { NutritionDateNavigator } from "@/components/nutrition/NutritionDateNavigator";
@@ -73,6 +82,7 @@ type Food = {
   genericIcon?: { key?: string; url: string } | null;
   servings?: Array<{ name: string; grams: number; isDefault?: boolean }>;
   nutritionPer100g: Record<string, number | undefined>;
+  isSaved?: boolean;
 };
 
 type Entry = {
@@ -171,6 +181,11 @@ export function NutritionTracker({
   const [breakdown, setBreakdown] = useState(false);
   const [editing, setEditing] = useState<Entry | null>(null);
   const [inspectingEntry, setInspectingEntry] = useState<Entry | null>(null);
+  const [reusingEntry, setReusingEntry] = useState<Entry | null>(null);
+  const [reuseMeal, setReuseMeal] = useState<Meal>("BREAKFAST");
+  const [savedFoodIds, setSavedFoodIds] = useState<Set<string>>(
+    () => new Set()
+  );
   const [pickerKey, setPickerKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const activeRequest = useRef(0);
@@ -219,6 +234,19 @@ export function NutritionTracker({
     }, 0);
     return () => window.clearTimeout(timer);
   }, [date, refreshNutritionDay]);
+  useEffect(() => {
+    void fetch("/api/nutrition/saved-foods", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) =>
+        setSavedFoodIds(
+          new Set(
+            (data?.foods ?? [])
+              .map((food: { id?: string }) => food.id)
+              .filter(Boolean)
+          )
+        )
+      );
+  }, []);
 
   const reconcileForReturn = useCallback(() => {
     const now = Date.now();
@@ -316,6 +344,54 @@ export function NutritionTracker({
     },
     [entries, refreshNutritionDay]
   );
+  async function reuseEntryToday() {
+    if (!reusingEntry) return;
+    const response = await fetch("/api/user/nutrition", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        foodId: reusingEntry.foodId,
+        date: localNutritionDateKey(),
+        mealCategory: reuseMeal,
+        gramsConsumed: Number(reusingEntry.gramsConsumed),
+        quantity: Number(reusingEntry.quantity),
+        unit: reusingEntry.unit,
+      }),
+    });
+    if (!response.ok) return toast.error("Unable to reuse this food.");
+    setReusingEntry(null);
+    setCalendarRefreshToken((value) => value + 1);
+    toast.success(
+      `Added ${reusingEntry.foodNameSnapshot} to ${reuseMeal.toLowerCase()}.`
+    );
+  }
+  async function saveFood(entry: Entry) {
+    const saved = savedFoodIds.has(entry.foodId);
+    const response = await fetch(
+      saved
+        ? `/api/nutrition/saved-foods/${entry.foodId}`
+        : "/api/nutrition/saved-foods",
+      saved
+        ? { method: "DELETE" }
+        : {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ foodId: entry.foodId }),
+          }
+    );
+    if (!response.ok) return toast.error("Unable to save this food.");
+    setSavedFoodIds((current) => {
+      const next = new Set(current);
+      if (saved) next.delete(entry.foodId);
+      else next.add(entry.foodId);
+      return next;
+    });
+    toast.success(
+      saved
+        ? `${entry.foodNameSnapshot} removed from saved foods.`
+        : `${entry.foodNameSnapshot} saved.`
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -377,6 +453,13 @@ export function NutritionTracker({
                 onEdit={setEditing}
                 onDelete={deleteEntry}
                 onInspectFood={setInspectingEntry}
+                isHistorical={date < today}
+                onUse={(entry) => {
+                  setReuseMeal(entry.mealCategory);
+                  setReusingEntry(entry);
+                }}
+                onSave={saveFood}
+                savedFoodIds={savedFoodIds}
               />
             ))}
       </div>
@@ -421,6 +504,38 @@ export function NutritionTracker({
         }}
         mode="inspect"
       />
+      <Dialog
+        open={Boolean(reusingEntry)}
+        onOpenChange={(open) => !open && setReusingEntry(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Use food today</DialogTitle>
+            <DialogDescription>
+              {reusingEntry
+                ? `${reusingEntry.foodNameSnapshot} · ${format(
+                    Number(reusingEntry.gramsConsumed)
+                  )} g. Previously logged in ${reusingEntry.mealCategory.toLowerCase()}.`
+                : null}
+            </DialogDescription>
+          </DialogHeader>
+          <Label>
+            Add to
+            <select
+              className="mt-1 h-10 w-full rounded-md border bg-background px-2"
+              value={reuseMeal}
+              onChange={(event) => setReuseMeal(event.target.value as Meal)}
+            >
+              {meals.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </Label>
+          <Button onClick={() => void reuseEntryToday()}>Add food</Button>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -562,6 +677,10 @@ function MealSection({
   onEdit,
   onDelete,
   onInspectFood,
+  isHistorical,
+  onUse,
+  onSave,
+  savedFoodIds,
 }: {
   label: string;
   entries: Entry[];
@@ -570,6 +689,10 @@ function MealSection({
   onEdit: (entry: Entry) => void;
   onDelete: (id: string) => void;
   onInspectFood: (entry: Entry) => void;
+  isHistorical: boolean;
+  onUse: (entry: Entry) => void;
+  onSave: (entry: Entry) => void;
+  savedFoodIds: Set<string>;
 }) {
   const total = nutritionTotals(entries);
   return (
@@ -646,13 +769,28 @@ function MealSection({
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onSelect={() => onEdit(entry)}>
-                    Edit
+                    <Pencil /> Edit
+                  </DropdownMenuItem>
+                  {isHistorical ? (
+                    <DropdownMenuItem onSelect={() => onUse(entry)}>
+                      <CopyPlus /> Use
+                    </DropdownMenuItem>
+                  ) : null}
+                  <DropdownMenuItem onSelect={() => onSave(entry)}>
+                    {savedFoodIds.has(entry.foodId) ? (
+                      <BookmarkX />
+                    ) : (
+                      <Bookmark />
+                    )}{" "}
+                    {savedFoodIds.has(entry.foodId)
+                      ? "Remove from saved"
+                      : "Save"}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     variant="destructive"
                     onSelect={() => onDelete(entry.id)}
                   >
-                    Remove
+                    <Trash2 /> Remove
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -737,20 +875,22 @@ function FoodPicker({
   const [foods, setFoods] = useState<Food[]>([]);
   const [inspectedFood, setInspectedFood] = useState<Food | null>(null);
   const [quickAdding, setQuickAdding] = useState<string | null>(null);
+  const [savedLoading, setSavedLoading] = useState(false);
 
   useEffect(() => {
     if (!meal) return;
     const timer = window.setTimeout(async () => {
-      const path =
-        query.trim().length >= 2
-          ? `/api/nutrition/foods/search?q=${encodeURIComponent(query.trim())}`
-          : "/api/nutrition/foods/common";
+      const isSearching = query.trim().length >= 2;
+      const path = isSearching
+        ? `/api/nutrition/foods/search?q=${encodeURIComponent(query.trim())}`
+        : "/api/nutrition/saved-foods";
+      setSavedLoading(!isSearching);
       const response = await fetch(path, { cache: "no-store" });
       if (!response.ok) return;
       const data = await response.json();
       setFoods(
         deduplicateFoodResults(
-          query.trim().length >= 2
+          isSearching
             ? data.results ?? [
                 ...(data.genericResults ?? []),
                 ...(data.localResults ?? []),
@@ -759,6 +899,7 @@ function FoodPicker({
             : data.foods ?? []
         ).slice(0, NUTRITION_SEARCH_RESULT_LIMIT) as Food[]
       );
+      setSavedLoading(false);
     }, 250);
     return () => window.clearTimeout(timer);
   }, [meal, query]);
@@ -768,6 +909,34 @@ function FoodPicker({
     setFoods([]);
     setInspectedFood(null);
     close();
+  }
+  async function toggleSaved(food: Food) {
+    if (!food.id) return;
+    const response = await fetch(
+      food.isSaved
+        ? `/api/nutrition/saved-foods/${food.id}`
+        : "/api/nutrition/saved-foods",
+      food.isSaved
+        ? { method: "DELETE" }
+        : {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ foodId: food.id }),
+          }
+    );
+    if (!response.ok) return toast.error("Unable to update saved foods.");
+    setFoods((current) =>
+      food.isSaved
+        ? current.filter((item) => item.id !== food.id)
+        : current.map((item) =>
+            item.id === food.id ? { ...item, isSaved: true } : item
+          )
+    );
+    toast.success(
+      food.isSaved
+        ? `Removed ${food.name} from saved foods.`
+        : `${food.name} saved.`
+    );
   }
   async function logFood({ foodId, grams, unit }: FoodUseSelection) {
     if (!meal) throw new Error("Choose a meal before using this food.");
@@ -855,6 +1024,11 @@ function FoodPicker({
                     data-keyboard-dismiss-on-scroll
                     className="space-y-2 p-1.5"
                   >
+                    {query.trim().length < 2 ? (
+                      <p className="px-2 pt-1 text-sm font-medium">
+                        Saved foods
+                      </p>
+                    ) : null}
                     {foods.length ? (
                       foods.map((food) => {
                         const key = foodResultKey(food);
@@ -906,6 +1080,11 @@ function FoodPicker({
                                   per 100 g
                                 </span>
                               </span>
+                              {food.isSaved ? (
+                                <span className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                                  <Bookmark className="size-3" /> Saved
+                                </span>
+                              ) : null}
                             </button>
                             <Button
                               size="icon-sm"
@@ -924,6 +1103,20 @@ function FoodPicker({
                                 <Plus />
                               )}
                             </Button>
+                            {food.id ? (
+                              <Button
+                                size="icon-sm"
+                                variant="ghost"
+                                aria-label={
+                                  food.isSaved
+                                    ? `Remove ${food.name} from saved foods`
+                                    : `Save ${food.name}`
+                                }
+                                onClick={() => void toggleSaved(food)}
+                              >
+                                {food.isSaved ? <BookmarkX /> : <Bookmark />}
+                              </Button>
+                            ) : null}
                           </div>
                         );
                       })
@@ -931,7 +1124,20 @@ function FoodPicker({
                       <p className="p-4 text-center text-sm text-muted-foreground">
                         No foods found. Try a more specific search.
                       </p>
-                    ) : null}
+                    ) : savedLoading ? (
+                      <p className="p-4 text-center text-sm text-muted-foreground">
+                        Loading saved foods…
+                      </p>
+                    ) : (
+                      <div className="p-4 text-center text-sm text-muted-foreground">
+                        <p className="font-medium text-foreground">
+                          No saved foods yet.
+                        </p>
+                        <p className="mt-1">
+                          Save foods you use often to find them here quickly.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </ScrollArea>
               </TabsContent>
