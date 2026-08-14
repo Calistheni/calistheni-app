@@ -42,6 +42,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { localNutritionDateKey } from "@/lib/nutrition/date-navigation";
+import { parseNutritionAmount } from "@/lib/nutrition/amount-input";
 import { nutritionTotals } from "@/lib/nutrition/log";
 import {
   calculateNutritionGoalProgress,
@@ -1004,12 +1005,17 @@ function EntryEditor({
   const [meal, setMeal] = useState<Meal>(() => entry?.mealCategory ?? "SNACKS");
   async function save() {
     if (!entry) return;
+    const gramsConsumed = parseNutritionAmount(grams);
+    if (gramsConsumed === null) {
+      toast.error("Enter a valid amount greater than 0 g.");
+      return;
+    }
     const response = await fetch(`/api/user/nutrition/${entry.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         date,
-        gramsConsumed: Number(grams),
+        gramsConsumed,
         mealCategory: meal,
       }),
     });
@@ -1027,8 +1033,9 @@ function EntryEditor({
         <Label>
           Grams
           <Input
-            type="number"
-            min="1"
+            type="text"
+            inputMode="decimal"
+            className="text-base"
             value={grams}
             onChange={(event) => setGrams(event.target.value)}
           />

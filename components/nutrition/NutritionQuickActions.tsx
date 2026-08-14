@@ -42,6 +42,7 @@ import {
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FoodVisual } from "@/components/nutrition/FoodVisual";
+import { NutritionAmountInput } from "@/components/nutrition/NutritionAmountInput";
 import { NutritionMobileSheet } from "@/components/nutrition/NutritionMobileSheet";
 import {
   canUseNativeLiveBarcodeScanner,
@@ -54,10 +55,11 @@ import {
   usesNativeBarcodeCameraLayer,
 } from "@/lib/native/barcode-scanner";
 import { compressWorkoutPhoto } from "@/lib/workout-photo-client";
+import { rankNutritionFoodCandidates } from "@/lib/nutrition/search-ranking";
 import {
-  rankNutritionFoodCandidates,
-} from "@/lib/nutrition/search-ranking";
-import { missingFoodProposalSchema, type MissingFoodProposal } from "@/lib/nutrition/missing-food-validation";
+  missingFoodProposalSchema,
+  type MissingFoodProposal,
+} from "@/lib/nutrition/missing-food-validation";
 
 export type QuickMeal = "BREAKFAST" | "LUNCH" | "DINNER" | "SNACKS";
 type Food = {
@@ -135,8 +137,11 @@ const proposalNeedsNutritionReview = (proposal: Record<string, unknown>) => {
   const protein = Number(nutrition?.proteinGrams);
   const carbs = Number(nutrition?.carbohydrateGrams);
   const fat = Number(nutrition?.fatGrams);
-  return [calories, protein, carbs, fat].every(Number.isFinite)
-    && Math.abs(protein * 4 + carbs * 4 + fat * 9 - calories) > Math.max(80, calories * 0.6);
+  return (
+    [calories, protein, carbs, fat].every(Number.isFinite) &&
+    Math.abs(protein * 4 + carbs * 4 + fat * 9 - calories) >
+      Math.max(80, calories * 0.6)
+  );
 };
 
 async function responseMessage(response: Response, fallback: string) {
@@ -145,7 +150,8 @@ async function responseMessage(response: Response, fallback: string) {
 }
 async function importFood(food: Food): Promise<Food & { id: string }> {
   if (food.id) return food as Food & { id: string };
-  if (!food.provider || !food.externalId) throw new Error("This food cannot be logged yet.");
+  if (!food.provider || !food.externalId)
+    throw new Error("This food cannot be logged yet.");
   const response = await fetch("/api/nutrition/foods/import", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -483,8 +489,19 @@ function BarcodeWorkflow({
   const [phase, setPhase] = useState<"reading" | "looking" | null>(null);
   const [error, setError] = useState("");
   const [missingBarcode, setMissingBarcode] = useState(false);
-  const [contributionMode, setContributionMode] = useState<"manual" | "label" | null>(null);
-  const [draft, setDraft] = useState({ productName: "", brandName: "", caloriesKcal: "", proteinGrams: "", carbohydrateGrams: "", fatGrams: "", servingGrams: "", servingLabel: "" });
+  const [contributionMode, setContributionMode] = useState<
+    "manual" | "label" | null
+  >(null);
+  const [draft, setDraft] = useState({
+    productName: "",
+    brandName: "",
+    caloriesKcal: "",
+    proteinGrams: "",
+    carbohydrateGrams: "",
+    fatGrams: "",
+    servingGrams: "",
+    servingLabel: "",
+  });
   const [nativeScanner, setNativeScanner] = useState(false);
   const [manualMode, setManualMode] = useState(false);
   const [torchAvailable, setTorchAvailable] = useState(false);
@@ -496,11 +513,11 @@ function BarcodeWorkflow({
   const scannerActiveRef = useRef(false);
   const nativeAvailability = getNativeBarcodeScannerAvailability();
   const nativeRuntime = nativeAvailability.nativePlatform;
-  const nativeIosScanner = nativeRuntime && nativeAvailability.platform === "ios";
+  const nativeIosScanner =
+    nativeRuntime && nativeAvailability.platform === "ios";
   // Native Barcode is intentionally live-only. Image decoding is retained for
   // desktop browsers, where the Capacitor camera bridge is unavailable.
-  const allowPhotoFallback =
-    !nativeRuntime;
+  const allowPhotoFallback = !nativeRuntime;
   const liveScannerVisible =
     (!nativeIosScanner && nativeScanner) ||
     (open &&
@@ -531,7 +548,18 @@ function BarcodeWorkflow({
     setBusy(false);
     setPhase(null);
     setError("");
-    setMissingBarcode(false); setContributionMode(null); setDraft({ productName: "", brandName: "", caloriesKcal: "", proteinGrams: "", carbohydrateGrams: "", fatGrams: "", servingGrams: "", servingLabel: "" });
+    setMissingBarcode(false);
+    setContributionMode(null);
+    setDraft({
+      productName: "",
+      brandName: "",
+      caloriesKcal: "",
+      proteinGrams: "",
+      carbohydrateGrams: "",
+      fatGrams: "",
+      servingGrams: "",
+      servingLabel: "",
+    });
   }
   function restartNativeScanner() {
     void endNativeScannerSession("scan-again").finally(() => {
@@ -561,7 +589,13 @@ function BarcodeWorkflow({
       pluginName: nativeAvailability.pluginName,
       pluginAvailable: nativeAvailability.pluginAvailable,
     });
-  }, [open, nativeAvailability.nativePlatform, nativeAvailability.platform, nativeAvailability.pluginAvailable, nativeAvailability.pluginName]);
+  }, [
+    open,
+    nativeAvailability.nativePlatform,
+    nativeAvailability.platform,
+    nativeAvailability.pluginAvailable,
+    nativeAvailability.pluginName,
+  ]);
   useEffect(() => {
     if (!open || !nativeRuntime) return;
     const sessionId = scannerSessionRef.current + 1;
@@ -572,41 +606,45 @@ function BarcodeWorkflow({
     }
     let cancelled = false;
     const controller = new AbortController();
-    void startNativeLiveBarcodeScanner((value) => {
-      if (
-        cancelled ||
-        sessionId !== scannerSessionRef.current ||
-        scanLocked.current
-      ) {
-        return;
-      }
-      scanLocked.current = true;
-      void endNativeScannerSession("barcode-detected").then(() => {
-        if (cancelled) return;
-        if (!nativeIosScanner) void signalNativeBarcodeSuccess();
-        setCode(value);
-        lookupRef.current(value);
-      });
-    }, {
-      onManual: () => {
-        if (cancelled || sessionId !== scannerSessionRef.current) return;
-        void endNativeScannerSession("manual-entry").then(() => {
-          if (!cancelled) setManualMode(true);
+    void startNativeLiveBarcodeScanner(
+      (value) => {
+        if (
+          cancelled ||
+          sessionId !== scannerSessionRef.current ||
+          scanLocked.current
+        ) {
+          return;
+        }
+        scanLocked.current = true;
+        void endNativeScannerSession("barcode-detected").then(() => {
+          if (cancelled) return;
+          if (!nativeIosScanner) void signalNativeBarcodeSuccess();
+          setCode(value);
+          lookupRef.current(value);
         });
       },
-      onCancel: () => {
-        if (cancelled || sessionId !== scannerSessionRef.current) return;
-        void endNativeScannerSession("native-cancel").then(() => {
-          if (!cancelled) dismiss();
-        });
+      {
+        onManual: () => {
+          if (cancelled || sessionId !== scannerSessionRef.current) return;
+          void endNativeScannerSession("manual-entry").then(() => {
+            if (!cancelled) setManualMode(true);
+          });
+        },
+        onCancel: () => {
+          if (cancelled || sessionId !== scannerSessionRef.current) return;
+          void endNativeScannerSession("native-cancel").then(() => {
+            if (!cancelled) dismiss();
+          });
+        },
+        onError: (message) => {
+          if (cancelled || sessionId !== scannerSessionRef.current) return;
+          scannerActiveRef.current = false;
+          setNativeScanner(false);
+          setError(message);
+        },
       },
-      onError: (message) => {
-        if (cancelled || sessionId !== scannerSessionRef.current) return;
-        scannerActiveRef.current = false;
-        setNativeScanner(false);
-        setError(message);
-      },
-    }, controller.signal).then((result) => {
+      controller.signal
+    ).then((result) => {
       if (cancelled || sessionId !== scannerSessionRef.current) return;
       if (result.ok) {
         setTorchAvailable(result.torchAvailable);
@@ -622,9 +660,7 @@ function BarcodeWorkflow({
         setError("Camera access is required to scan barcodes.");
       } else {
         scannerActiveRef.current = false;
-        setError(
-          result.detail ?? "Live barcode scanner failed to start."
-        );
+        setError(result.detail ?? "Live barcode scanner failed to start.");
       }
     });
     return () => {
@@ -633,7 +669,13 @@ function BarcodeWorkflow({
       if (sessionId !== scannerSessionRef.current) return;
       void endNativeScannerSession("scanner-session-cleanup");
     };
-  }, [open, nativeRuntime, nativeIosScanner, scannerSessionVersion, endNativeScannerSession]);
+  }, [
+    open,
+    nativeRuntime,
+    nativeIosScanner,
+    scannerSessionVersion,
+    endNativeScannerSession,
+  ]);
   useEffect(() => {
     if (!open || !nativeRuntime) return;
     let handle: { remove: () => Promise<void> } | undefined;
@@ -642,7 +684,9 @@ function BarcodeWorkflow({
     void App.addListener("pause", () => {
       if (scannerActiveRef.current) {
         void endNativeScannerSession("app-background");
-        setError("Scanner paused while Calistheni was in the background. Tap Scan again to restart.");
+        setError(
+          "Scanner paused while Calistheni was in the background. Tap Scan again to restart."
+        );
       }
     }).then((registered) => {
       handle = registered;
@@ -658,14 +702,21 @@ function BarcodeWorkflow({
     setBusy(true);
     setPhase("looking");
     setError("");
-    setMissingBarcode(false); setContributionMode(null);
+    setMissingBarcode(false);
+    setContributionMode(null);
     try {
       const response = await fetch(`/api/nutrition/foods/barcode/${barcode}`);
       if (!response.ok) {
         // "We couldn't find a food for this barcode." is now a recoverable
         // branch: retain the decoded string and open contribution choices.
-        if (response.status === 404) { setMissingBarcode(true); setError(""); return; }
-        throw new Error(await responseMessage(response, "Barcode lookup failed."));
+        if (response.status === 404) {
+          setMissingBarcode(true);
+          setError("");
+          return;
+        }
+        throw new Error(
+          await responseMessage(response, "Barcode lookup failed.")
+        );
       }
       const data = await response.json();
       const match = await importFood(data.local ?? data.external);
@@ -723,20 +774,113 @@ function BarcodeWorkflow({
   }
   async function saveContribution(addAfterSave = false) {
     const number = (value: string) => Number(value);
-    if (!code || !draft.productName.trim()) return setError("Enter the product name and nutrition per 100 g.");
-    setBusy(true); setError("");
+    if (!code || !draft.productName.trim())
+      return setError("Enter the product name and nutrition per 100 g.");
+    setBusy(true);
+    setError("");
     try {
-      const response = await fetch("/api/nutrition/foods/barcode/contribute", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ barcode: code, productName: draft.productName, brandName: draft.brandName || null, nutrition: { caloriesKcal: number(draft.caloriesKcal), proteinGrams: number(draft.proteinGrams), carbohydrateGrams: number(draft.carbohydrateGrams), fatGrams: number(draft.fatGrams) }, servingGrams: draft.servingGrams ? number(draft.servingGrams) : null, servingLabel: draft.servingLabel || null, method: contributionMode === "label" ? "AI_LABEL" : "MANUAL" }) });
+      const response = await fetch("/api/nutrition/foods/barcode/contribute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          barcode: code,
+          productName: draft.productName,
+          brandName: draft.brandName || null,
+          nutrition: {
+            caloriesKcal: number(draft.caloriesKcal),
+            proteinGrams: number(draft.proteinGrams),
+            carbohydrateGrams: number(draft.carbohydrateGrams),
+            fatGrams: number(draft.fatGrams),
+          },
+          servingGrams: draft.servingGrams ? number(draft.servingGrams) : null,
+          servingLabel: draft.servingLabel || null,
+          method: contributionMode === "label" ? "AI_LABEL" : "MANUAL",
+        }),
+      });
       const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(payload?.message ?? payload?.error ?? "Unable to save contribution.");
-      const saved = payload.food as Food & { id: string }; const savedGrams = saved.servings?.[0]?.grams ?? 100; const savedUnit = saved.servings?.[0]?.name ?? "g";
-      if (addAfterSave) { const entries = await batchLog(meal, date, [{ key: saved.id, food: saved, grams: savedGrams, quantity: 1, unit: savedUnit }]); onEntries(entries); toast.success(`Added to ${mealLabel(meal)} · Pending review`); dismiss(); return; }
-      setFood(saved); setMissingBarcode(false); setContributionMode(null); setGrams(savedGrams); setUnit(savedUnit); toast.success("Product saved · Pending review, but ready for you to use.");
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to save contribution."); } finally { setBusy(false); }
+      if (!response.ok)
+        throw new Error(
+          payload?.message ?? payload?.error ?? "Unable to save contribution."
+        );
+      const saved = payload.food as Food & { id: string };
+      const savedGrams = saved.servings?.[0]?.grams ?? 100;
+      const savedUnit = saved.servings?.[0]?.name ?? "g";
+      if (addAfterSave) {
+        const entries = await batchLog(meal, date, [
+          {
+            key: saved.id,
+            food: saved,
+            grams: savedGrams,
+            quantity: 1,
+            unit: savedUnit,
+          },
+        ]);
+        onEntries(entries);
+        toast.success(`Added to ${mealLabel(meal)} · Pending review`);
+        dismiss();
+        return;
+      }
+      setFood(saved);
+      setMissingBarcode(false);
+      setContributionMode(null);
+      setGrams(savedGrams);
+      setUnit(savedUnit);
+      toast.success(
+        "Product saved · Pending review, but ready for you to use."
+      );
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "Unable to save contribution."
+      );
+    } finally {
+      setBusy(false);
+    }
   }
   async function extractLabel(file?: File) {
-    if (!file) return; setBusy(true); setError("");
-    try { const compressed = await compressWorkoutPhoto(file); const form = new FormData(); form.set("barcode", code); form.set("image", compressed); const response = await fetch("/api/nutrition/foods/barcode/extract-label", { method: "POST", body: form }); const payload = await response.json().catch(() => null); if (!response.ok) throw new Error(payload?.message ?? "We couldn't read the nutrition label."); const converted = payload.converted; if (!converted) throw new Error("Enter the serving grams or complete the product manually."); setDraft({ productName: payload.extraction.productName ?? "", brandName: payload.extraction.brandName ?? "", caloriesKcal: String(converted.nutrition.caloriesKcal ?? ""), proteinGrams: String(converted.nutrition.proteinGrams ?? ""), carbohydrateGrams: String(converted.nutrition.carbohydrateGrams ?? ""), fatGrams: String(converted.nutrition.fatGrams ?? ""), servingGrams: String(converted.servingGrams ?? ""), servingLabel: converted.servingLabel ?? "" }); setContributionMode("label"); } catch (reason) { setError(reason instanceof Error ? reason.message : "We couldn't read the nutrition label."); } finally { setBusy(false); }
+    if (!file) return;
+    setBusy(true);
+    setError("");
+    try {
+      const compressed = await compressWorkoutPhoto(file);
+      const form = new FormData();
+      form.set("barcode", code);
+      form.set("image", compressed);
+      const response = await fetch(
+        "/api/nutrition/foods/barcode/extract-label",
+        { method: "POST", body: form }
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok)
+        throw new Error(
+          payload?.message ?? "We couldn't read the nutrition label."
+        );
+      const converted = payload.converted;
+      if (!converted)
+        throw new Error(
+          "Enter the serving grams or complete the product manually."
+        );
+      setDraft({
+        productName: payload.extraction.productName ?? "",
+        brandName: payload.extraction.brandName ?? "",
+        caloriesKcal: String(converted.nutrition.caloriesKcal ?? ""),
+        proteinGrams: String(converted.nutrition.proteinGrams ?? ""),
+        carbohydrateGrams: String(converted.nutrition.carbohydrateGrams ?? ""),
+        fatGrams: String(converted.nutrition.fatGrams ?? ""),
+        servingGrams: String(converted.servingGrams ?? ""),
+        servingLabel: converted.servingLabel ?? "",
+      });
+      setContributionMode("label");
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "We couldn't read the nutrition label."
+      );
+    } finally {
+      setBusy(false);
+    }
   }
   // iOS owns the scanner surface completely. Rendering no web Sheet here keeps
   // the full-screen native camera controller free of WebView overlays.
@@ -821,23 +965,28 @@ function BarcodeWorkflow({
       </Sheet>
     );
   }
-  const showNativeStartupError =
-    nativeRuntime && Boolean(error) && !manualMode;
+  const showNativeStartupError = nativeRuntime && Boolean(error) && !manualMode;
   return (
     <Sheet open={open} onOpenChange={(value) => !value && dismiss()}>
       <NutritionMobileSheet
-        header={<SheetHeader>
-          <SheetTitle>Barcode</SheetTitle>
-          <SheetDescription>
-            {nativeRuntime
-              ? "Scan a barcode live with your camera. Manual entry is available if needed."
-              : "Scan a barcode from a photo or enter the number manually."}
-          </SheetDescription>
-        </SheetHeader>}
+        header={
+          <SheetHeader>
+            <SheetTitle>Barcode</SheetTitle>
+            <SheetDescription>
+              {nativeRuntime
+                ? "Scan a barcode live with your camera. Manual entry is available if needed."
+                : "Scan a barcode from a photo or enter the number manually."}
+            </SheetDescription>
+          </SheetHeader>
+        }
         footer={
           food ? (
             <div className="flex gap-2">
-              <Button className="flex-1" disabled={busy} onClick={() => void add()}>
+              <Button
+                className="flex-1"
+                disabled={busy || grams <= 0 || quantity <= 0}
+                onClick={() => void add()}
+              >
                 Add to {mealLabel(meal)}
               </Button>
               <Button variant="outline" onClick={dismiss}>
@@ -871,7 +1020,11 @@ function BarcodeWorkflow({
                     Open Settings
                   </Button>
                 ) : null}
-                <Button size="sm" variant="outline" onClick={restartNativeScanner}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={restartNativeScanner}
+                >
                   Try again
                 </Button>
                 <Button
@@ -892,118 +1045,240 @@ function BarcodeWorkflow({
             </>
           ) : phase === "looking" && scanLocked.current && !food ? (
             <div className="space-y-3 py-8 text-center">
-              <CheckCircle2 className="mx-auto size-10 text-primary" aria-hidden="true" />
+              <CheckCircle2
+                className="mx-auto size-10 text-primary"
+                aria-hidden="true"
+              />
               <p className="font-medium">Barcode found</p>
-              <p className="text-sm text-muted-foreground">Looking up product…</p>
+              <p className="text-sm text-muted-foreground">
+                Looking up product…
+              </p>
             </div>
           ) : (
-          <Tabs defaultValue="manual">
-            <TabsList className="w-full">
+            <Tabs defaultValue="manual">
+              <TabsList className="w-full">
+                {allowPhotoFallback ? (
+                  <TabsTrigger value="photo">Scan / Photo</TabsTrigger>
+                ) : null}
+                <TabsTrigger value="manual">Enter manually</TabsTrigger>
+              </TabsList>
               {allowPhotoFallback ? (
-                <TabsTrigger value="photo">Scan / Photo</TabsTrigger>
+                <TabsContent value="photo">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button asChild variant="outline">
+                      <Label className="cursor-pointer justify-center">
+                        <Camera />
+                        Take photo
+                        <Input
+                          disabled={busy}
+                          className="sr-only"
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            event.target.value = "";
+                            void photo(file);
+                          }}
+                        />
+                      </Label>
+                    </Button>
+                    <Button asChild variant="outline">
+                      <Label className="cursor-pointer justify-center">
+                        <ImagePlus />
+                        Choose photo
+                        <Input
+                          disabled={busy}
+                          className="sr-only"
+                          type="file"
+                          accept="image/*"
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            event.target.value = "";
+                            void photo(file);
+                          }}
+                        />
+                      </Label>
+                    </Button>
+                  </div>
+                  {phase === "reading" ? (
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      Reading barcode…
+                    </p>
+                  ) : phase === "looking" ? (
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      Looking up food…
+                    </p>
+                  ) : null}
+                  {detected.length > 1 ? (
+                    <div className="mt-3">
+                      <p className="text-sm font-medium">
+                        Choose a detected barcode
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {detected.map((value) => (
+                          <Button
+                            key={value}
+                            size="sm"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => {
+                              setCode(value);
+                              void lookup(value);
+                            }}
+                          >
+                            {value}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </TabsContent>
               ) : null}
-              <TabsTrigger value="manual">Enter manually</TabsTrigger>
-            </TabsList>
-            {allowPhotoFallback ? (
-              <TabsContent value="photo">
-                <div className="grid grid-cols-2 gap-2">
-                  <Button asChild variant="outline">
-                    <Label className="cursor-pointer justify-center">
-                      <Camera />
-                      Take photo
-                      <Input
-                        disabled={busy}
-                        className="sr-only"
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        onChange={(event) => {
-                          const file = event.target.files?.[0];
-                          event.target.value = "";
-                          void photo(file);
-                        }}
-                      />
-                    </Label>
-                  </Button>
-                  <Button asChild variant="outline">
-                    <Label className="cursor-pointer justify-center">
-                      <ImagePlus />
-                      Choose photo
-                      <Input
-                        disabled={busy}
-                        className="sr-only"
-                        type="file"
-                        accept="image/*"
-                        onChange={(event) => {
-                          const file = event.target.files?.[0];
-                          event.target.value = "";
-                          void photo(file);
-                        }}
-                      />
-                    </Label>
+              <TabsContent value="manual">
+                <Label htmlFor="manual-barcode">Barcode number</Label>
+                <div className="mt-1 flex gap-2">
+                  <Input
+                    id="manual-barcode"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={code}
+                    onChange={(event) =>
+                      setCode(event.target.value.replaceAll(/\D/g, ""))
+                    }
+                    placeholder="3017620422003"
+                  />
+                  <Button disabled={busy} onClick={() => void lookup(code)}>
+                    {busy ? <Loader2 className="animate-spin" /> : <Search />}
+                    Lookup
                   </Button>
                 </div>
-                {phase === "reading" ? (
-                  <p className="mt-3 text-sm text-muted-foreground">
-                    Reading barcode…
-                  </p>
-                ) : phase === "looking" ? (
-                  <p className="mt-3 text-sm text-muted-foreground">
+                {phase === "looking" ? (
+                  <p className="mt-2 text-sm text-muted-foreground">
                     Looking up food…
                   </p>
                 ) : null}
-                {detected.length > 1 ? (
-                  <div className="mt-3">
-                    <p className="text-sm font-medium">
-                      Choose a detected barcode
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {detected.map((value) => (
-                        <Button
-                          key={value}
-                          size="sm"
-                          variant="outline"
-                          disabled={busy}
-                          onClick={() => {
-                            setCode(value);
-                            void lookup(value);
-                          }}
-                        >
-                          {value}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
               </TabsContent>
-            ) : null}
-            <TabsContent value="manual">
-              <Label htmlFor="manual-barcode">Barcode number</Label>
-              <div className="mt-1 flex gap-2">
-                <Input
-                  id="manual-barcode"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  value={code}
-                  onChange={(event) =>
-                    setCode(event.target.value.replaceAll(/\D/g, ""))
-                  }
-                  placeholder="3017620422003"
-                />
-                <Button disabled={busy} onClick={() => void lookup(code)}>
-                  {busy ? <Loader2 className="animate-spin" /> : <Search />}
-                  Lookup
-                </Button>
-              </div>
-              {phase === "looking" ? (
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Looking up food…
-                </p>
-              ) : null}
-            </TabsContent>
-          </Tabs>
+            </Tabs>
           )}
-          {missingBarcode ? <div className="space-y-4"><Alert><AlertTitle>Product not found</AlertTitle><AlertDescription>We couldn&apos;t find this barcode in Calistheni or our food providers.</AlertDescription></Alert><div className="rounded-lg bg-muted p-3 text-sm"><span className="text-muted-foreground">Barcode</span><p className="font-mono font-semibold">{code}</p></div>{!contributionMode ? <div className="grid gap-2"><Button onClick={() => setContributionMode("label")}><Sparkles />Scan nutrition label with AI</Button><Button variant="outline" onClick={() => setContributionMode("manual")}>Enter product manually</Button><Button variant="ghost" onClick={restartNativeScanner}>Scan another barcode</Button><Button variant="ghost" onClick={dismiss}>Cancel</Button></div> : <div className="space-y-3"><p className="font-medium">Add missing product</p>{contributionMode === "label" ? <Button asChild variant="outline" className="w-full"><Label className="cursor-pointer"><Camera />Take or choose nutrition label photo<Input className="sr-only" type="file" accept="image/*" capture="environment" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; void extractLabel(file); }} /></Label></Button> : null}<div className="grid gap-2 sm:grid-cols-2">{([['productName','Product name'],['brandName','Brand'],['caloriesKcal','Calories / 100 g'],['proteinGrams','Protein / 100 g'],['carbohydrateGrams','Carbs / 100 g'],['fatGrams','Fat / 100 g'],['servingGrams','Serving grams'],['servingLabel','Serving label']] as const).map(([key,label]) => <div key={key}><Label>{label}{key === 'productName' || key.endsWith('Grams') && key !== 'servingGrams' ? ' *' : ''}</Label><Input type={key.includes('Grams') || key === 'caloriesKcal' ? 'number' : 'text'} value={draft[key]} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))} /></div>)}</div><div className="flex flex-wrap gap-2"><Button disabled={busy} onClick={() => void saveContribution(true)}>{busy ? <Loader2 className="animate-spin" /> : null}Save and add to {mealLabel(meal)}</Button><Button variant="outline" disabled={busy} onClick={() => void saveContribution(false)}>Save product</Button><Button variant="outline" onClick={() => setContributionMode(null)}>Back</Button></div></div>}</div> : null}
+          {missingBarcode ? (
+            <div className="space-y-4">
+              <Alert>
+                <AlertTitle>Product not found</AlertTitle>
+                <AlertDescription>
+                  We couldn&apos;t find this barcode in Calistheni or our food
+                  providers.
+                </AlertDescription>
+              </Alert>
+              <div className="rounded-lg bg-muted p-3 text-sm">
+                <span className="text-muted-foreground">Barcode</span>
+                <p className="font-mono font-semibold">{code}</p>
+              </div>
+              {!contributionMode ? (
+                <div className="grid gap-2">
+                  <Button onClick={() => setContributionMode("label")}>
+                    <Sparkles />
+                    Scan nutrition label with AI
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setContributionMode("manual")}
+                  >
+                    Enter product manually
+                  </Button>
+                  <Button variant="ghost" onClick={restartNativeScanner}>
+                    Scan another barcode
+                  </Button>
+                  <Button variant="ghost" onClick={dismiss}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="font-medium">Add missing product</p>
+                  {contributionMode === "label" ? (
+                    <Button asChild variant="outline" className="w-full">
+                      <Label className="cursor-pointer">
+                        <Camera />
+                        Take or choose nutrition label photo
+                        <Input
+                          className="sr-only"
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            event.target.value = "";
+                            void extractLabel(file);
+                          }}
+                        />
+                      </Label>
+                    </Button>
+                  ) : null}
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {(
+                      [
+                        ["productName", "Product name"],
+                        ["brandName", "Brand"],
+                        ["caloriesKcal", "Calories / 100 g"],
+                        ["proteinGrams", "Protein / 100 g"],
+                        ["carbohydrateGrams", "Carbs / 100 g"],
+                        ["fatGrams", "Fat / 100 g"],
+                        ["servingGrams", "Serving grams"],
+                        ["servingLabel", "Serving label"],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <div key={key}>
+                        <Label>
+                          {label}
+                          {key === "productName" ||
+                          (key.endsWith("Grams") && key !== "servingGrams")
+                            ? " *"
+                            : ""}
+                        </Label>
+                        <Input
+                          type={
+                            key.includes("Grams") || key === "caloriesKcal"
+                              ? "number"
+                              : "text"
+                          }
+                          value={draft[key]}
+                          onChange={(event) =>
+                            setDraft((current) => ({
+                              ...current,
+                              [key]: event.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      disabled={busy}
+                      onClick={() => void saveContribution(true)}
+                    >
+                      {busy ? <Loader2 className="animate-spin" /> : null}Save
+                      and add to {mealLabel(meal)}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => void saveContribution(false)}
+                    >
+                      Save product
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setContributionMode(null)}
+                    >
+                      Back
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
           {error && !showNativeStartupError ? (
             <>
               <Alert>
@@ -1029,8 +1304,14 @@ function BarcodeWorkflow({
                     Open Settings
                   </Button>
                 ) : null}
-                <Button size="sm" variant="outline" onClick={restartNativeScanner}>
-                  {canUseNativeLiveBarcodeScanner() ? "Scan again" : "Try again"}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={restartNativeScanner}
+                >
+                  {canUseNativeLiveBarcodeScanner()
+                    ? "Scan again"
+                    : "Try again"}
                 </Button>
                 <Button
                   size="sm"
@@ -1050,7 +1331,11 @@ function BarcodeWorkflow({
           ) : null}
           {food ? (
             <>
-              {food.contributionStatus === "PENDING" ? <Badge variant="secondary">Your contribution · Pending review</Badge> : null}
+              {food.contributionStatus === "PENDING" ? (
+                <Badge variant="secondary">
+                  Your contribution · Pending review
+                </Badge>
+              ) : null}
               <FoodAmountCard
                 food={food}
                 grams={grams}
@@ -1097,6 +1382,7 @@ function FoodAmountCard({
   confidence?: number;
   needsReview?: boolean;
 }) {
+  const [amountInputVersion, setAmountInputVersion] = useState(0);
   const macro = macrosFor(food, grams * quantity);
   const showEditor = !edit || editing;
   return (
@@ -1117,7 +1403,9 @@ function FoodAmountCard({
               </p>
             ) : null}
             {needsReview || (confidence !== undefined && confidence < 0.85) ? (
-              <Badge variant="secondary" className="mt-1">Review</Badge>
+              <Badge variant="secondary" className="mt-1">
+                Review
+              </Badge>
             ) : null}
           </div>
           {edit ? (
@@ -1153,7 +1441,10 @@ function FoodAmountCard({
                 const serving = food.servings?.find(
                   (candidate) => candidate.name.slice(0, 40) === nextUnit
                 );
-                if (serving) setGrams(serving.grams);
+                if (serving) {
+                  setGrams(serving.grams);
+                  setAmountInputVersion((value) => value + 1);
+                }
               }}
             >
               <option value="g">Custom grams</option>
@@ -1172,13 +1463,12 @@ function FoodAmountCard({
           <div className="mt-3 grid grid-cols-2 gap-3">
             <Label>
               Amount (g)
-              <Input
-                type="number"
-                min="1"
-                max="10000"
-                value={grams}
-                onChange={(event) => {
-                  setGrams(Number(event.target.value));
+              <NutritionAmountInput
+                key={`${food.id ?? food.name}:${amountInputVersion}:grams`}
+                ariaLabel={`Amount in grams for ${food.name}`}
+                initialValue={grams}
+                onValidChange={(nextGrams) => {
+                  setGrams(nextGrams);
                   setUnit?.("g");
                 }}
               />
@@ -1186,13 +1476,11 @@ function FoodAmountCard({
             {setQuantity ? (
               <Label>
                 Quantity
-                <Input
-                  type="number"
-                  min="0.1"
-                  max="100"
-                  step="0.1"
-                  value={quantity}
-                  onChange={(event) => setQuantity(Number(event.target.value))}
+                <NutritionAmountInput
+                  key={`${food.id ?? food.name}:${amountInputVersion}:quantity`}
+                  ariaLabel={`Number of servings for ${food.name}`}
+                  initialValue={quantity}
+                  onValidChange={setQuantity}
                 />
               </Label>
             ) : null}
@@ -1229,7 +1517,8 @@ function AiWorkflow({
   const [description, setDescription] = useState("");
   const [items, setItems] = useState<DraftItem[]>([]);
   const [suggestions, setSuggestions] = useState<AiCandidateSuggestion[]>([]);
-  const [missingProposal, setMissingProposal] = useState<AiMissingProposal | null>(null);
+  const [missingProposal, setMissingProposal] =
+    useState<AiMissingProposal | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [limitReached, setLimitReached] = useState(false);
@@ -1339,7 +1628,9 @@ function AiWorkflow({
       setItems(resolved);
       setSuggestions(unresolved);
       if (unresolved.some((item) => !item.candidates.length))
-        setError("One or more items need a manual match. Other detected foods are ready to review.");
+        setError(
+          "One or more items need a manual match. Other detected foods are ready to review."
+        );
       if (!resolved.length && !unresolved.length)
         setError(
           "No foods were detected. Try another photo or add foods manually."
@@ -1352,22 +1643,35 @@ function AiWorkflow({
       setBusy(false);
     }
   }
-  async function selectSuggestion(suggestion: AiCandidateSuggestion, candidate: Food) {
+  async function selectSuggestion(
+    suggestion: AiCandidateSuggestion,
+    candidate: Food
+  ) {
     setBusy(true);
     try {
       const food = await importFood(candidate);
-      setItems((current) => [...current, {
-        key: suggestion.key,
-        food,
-        grams: defaultScanGrams({ label: suggestion.label, estimatedGrams: null }, food),
-        quantity: 1,
-        unit: "g",
-        confidence: suggestion.visualConfidence,
-        needsReview: true,
-      }]);
-      setSuggestions((current) => current.filter((item) => item.key !== suggestion.key));
+      setItems((current) => [
+        ...current,
+        {
+          key: suggestion.key,
+          food,
+          grams: defaultScanGrams(
+            { label: suggestion.label, estimatedGrams: null },
+            food
+          ),
+          quantity: 1,
+          unit: "g",
+          confidence: suggestion.visualConfidence,
+          needsReview: true,
+        },
+      ]);
+      setSuggestions((current) =>
+        current.filter((item) => item.key !== suggestion.key)
+      );
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Unable to select this food.");
+      setError(
+        reason instanceof Error ? reason.message : "Unable to select this food."
+      );
     } finally {
       setBusy(false);
     }
@@ -1375,25 +1679,59 @@ function AiWorkflow({
   async function proposeMissingSuggestion(suggestion: AiCandidateSuggestion) {
     const name = suggestion.missingIntent ?? suggestion.label;
     if (busy) return;
-    if (process.env.NODE_ENV === "development") console.info("[Nutrition food proposal] request started", { name, suggestionKey: suggestion.key });
+    if (process.env.NODE_ENV === "development")
+      console.info("[Nutrition food proposal] request started", {
+        name,
+        suggestionKey: suggestion.key,
+      });
     setBusy(true);
     setError("");
     try {
       const response = await fetch("/api/nutrition/foods/propose", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "generate", name, context: description || suggestion.preparation }),
+        body: JSON.stringify({
+          action: "generate",
+          name,
+          context: description || suggestion.preparation,
+        }),
       });
       const data = await response.json();
-      if (process.env.NODE_ENV === "development") console.info("[Nutrition food proposal] response", { status: response.status, kind: data?.kind ?? null, hasProposal: Boolean(data?.proposal) });
-      if (!response.ok) throw new Error(data?.error?.message ?? data?.error ?? "Unable to prepare a food proposal.");
-      if (data.kind === "existing") return void selectSuggestion(suggestion, data.food as Food);
-      const parsedProposal = missingFoodProposalSchema.safeParse(data?.proposal);
-      if (!parsedProposal.success) throw new Error("Food suggestion was created, but its details could not be loaded. Try again.");
-      setMissingProposal({ ...parsedProposal.data, suggestionKey: suggestion.key });
-      if (process.env.NODE_ENV === "development") console.info("[Nutrition food proposal] proposal state updated", { name: parsedProposal.data.canonicalName });
+      if (process.env.NODE_ENV === "development")
+        console.info("[Nutrition food proposal] response", {
+          status: response.status,
+          kind: data?.kind ?? null,
+          hasProposal: Boolean(data?.proposal),
+        });
+      if (!response.ok)
+        throw new Error(
+          data?.error?.message ??
+            data?.error ??
+            "Unable to prepare a food proposal."
+        );
+      if (data.kind === "existing")
+        return void selectSuggestion(suggestion, data.food as Food);
+      const parsedProposal = missingFoodProposalSchema.safeParse(
+        data?.proposal
+      );
+      if (!parsedProposal.success)
+        throw new Error(
+          "Food suggestion was created, but its details could not be loaded. Try again."
+        );
+      setMissingProposal({
+        ...parsedProposal.data,
+        suggestionKey: suggestion.key,
+      });
+      if (process.env.NODE_ENV === "development")
+        console.info("[Nutrition food proposal] proposal state updated", {
+          name: parsedProposal.data.canonicalName,
+        });
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Unable to prepare a food proposal.");
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "Unable to prepare a food proposal."
+      );
     } finally {
       setBusy(false);
     }
@@ -1409,14 +1747,27 @@ function AiWorkflow({
         body: JSON.stringify({ action: "save", proposal }),
       });
       const data = await response.json();
-      if (process.env.NODE_ENV === "development") console.info("[Nutrition food proposal] save response", { status: response.status, hasFood: Boolean(data?.food) });
-      if (!response.ok) throw new Error(data?.error?.message ?? data?.error ?? "Unable to save this food.");
+      if (process.env.NODE_ENV === "development")
+        console.info("[Nutrition food proposal] save response", {
+          status: response.status,
+          hasFood: Boolean(data?.food),
+        });
+      if (!response.ok)
+        throw new Error(
+          data?.error?.message ?? data?.error ?? "Unable to save this food."
+        );
       const suggestion = suggestions.find((item) => item.key === suggestionKey);
       if (suggestion) await selectSuggestion(suggestion, data.food as Food);
       setMissingProposal(null);
-      toast.success(data.duplicate ? "We found the existing food." : "Thanks for contributing! This food is ready to review.");
+      toast.success(
+        data.duplicate
+          ? "We found the existing food."
+          : "Thanks for contributing! This food is ready to review."
+      );
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Unable to save this food.");
+      setError(
+        reason instanceof Error ? reason.message : "Unable to save this food."
+      );
     } finally {
       setBusy(false);
     }
@@ -1424,6 +1775,9 @@ function AiWorkflow({
   async function confirm() {
     if (!items.length || busy)
       return setError("Add at least one reviewed food.");
+    if (items.some((item) => !(item.grams > 0) || !(item.quantity > 0))) {
+      return setError("Enter a valid amount and quantity for every food.");
+    }
     setBusy(true);
     try {
       onEntries(await batchLog(meal, date, items));
@@ -1439,37 +1793,157 @@ function AiWorkflow({
   }
   if (missingProposal) {
     const nutrition = missingProposal.nutrition;
-    return <>
-      <Sheet open={open} onOpenChange={(value) => !value && dismiss()}>
-        <NutritionMobileSheet
-          header={<SheetHeader><SheetTitle>Add {missingProposal.canonicalName}</SheetTitle><SheetDescription>This food isn&apos;t currently available in Calistheni. AI values are estimated and will be pending review.</SheetDescription></SheetHeader>}
-          footer={<div className="flex gap-2"><Button variant="outline" className="flex-1" disabled={busy} onClick={() => setMissingProposal(null)}>Cancel</Button><Button className="flex-1" disabled={busy} onClick={() => void saveMissingSuggestion()}>{busy ? <Loader2 className="animate-spin" /> : null}Save contribution</Button></div>}
-        >
-          <div className="space-y-4">
-            <Alert><AlertTitle>AI suggested · Unverified</AlertTitle><AlertDescription>Review the per-100-g values before saving. Your contribution is immediately usable by you and sent for admin review.</AlertDescription></Alert>
-            <Label className="block">Name<Input className="mt-1" value={missingProposal.canonicalName} onChange={(event) => setMissingProposal((current) => current ? { ...current, canonicalName: event.target.value } : current)} /></Label>
-            {(["caloriesKcal", "proteinGrams", "carbohydrateGrams", "fatGrams"] as const).map((field) => <Label key={field} className="block">{field.replace(/([A-Z])/g, " $1").replace("Kcal", "kcal")}<Input className="mt-1" type="number" min="0" value={String(nutrition[field])} onChange={(event) => setMissingProposal((current) => current ? { ...current, nutrition: { ...current.nutrition, [field]: Number(event.target.value) } } : current)} /></Label>)}
-            <Label className="block">Serving (g)<Input className="mt-1" type="number" min="1" value={String(missingProposal.defaultServingGrams ?? "")} onChange={(event) => setMissingProposal((current) => current ? { ...current, defaultServingGrams: Number(event.target.value) || null } : current)} /></Label>
-            {proposalNeedsNutritionReview(missingProposal) ? <p className="text-sm text-amber-700 dark:text-amber-400">These values look inconsistent. Please review them before saving.</p> : null}
-          </div>
-        </NutritionMobileSheet>
-      </Sheet>
-      <DailyQuotaDialog open={limitReached} onOpenChange={setLimitReached} feature="aiScan" isPro />
-    </>;
+    return (
+      <>
+        <Sheet open={open} onOpenChange={(value) => !value && dismiss()}>
+          <NutritionMobileSheet
+            header={
+              <SheetHeader>
+                <SheetTitle>Add {missingProposal.canonicalName}</SheetTitle>
+                <SheetDescription>
+                  This food isn&apos;t currently available in Calistheni. AI
+                  values are estimated and will be pending review.
+                </SheetDescription>
+              </SheetHeader>
+            }
+            footer={
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  disabled={busy}
+                  onClick={() => setMissingProposal(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="flex-1"
+                  disabled={busy}
+                  onClick={() => void saveMissingSuggestion()}
+                >
+                  {busy ? <Loader2 className="animate-spin" /> : null}Save
+                  contribution
+                </Button>
+              </div>
+            }
+          >
+            <div className="space-y-4">
+              <Alert>
+                <AlertTitle>AI suggested · Unverified</AlertTitle>
+                <AlertDescription>
+                  Review the per-100-g values before saving. Your contribution
+                  is immediately usable by you and sent for admin review.
+                </AlertDescription>
+              </Alert>
+              <Label className="block">
+                Name
+                <Input
+                  className="mt-1"
+                  value={missingProposal.canonicalName}
+                  onChange={(event) =>
+                    setMissingProposal((current) =>
+                      current
+                        ? { ...current, canonicalName: event.target.value }
+                        : current
+                    )
+                  }
+                />
+              </Label>
+              {(
+                [
+                  "caloriesKcal",
+                  "proteinGrams",
+                  "carbohydrateGrams",
+                  "fatGrams",
+                ] as const
+              ).map((field) => (
+                <Label key={field} className="block">
+                  {field.replace(/([A-Z])/g, " $1").replace("Kcal", "kcal")}
+                  <Input
+                    className="mt-1"
+                    type="number"
+                    min="0"
+                    value={String(nutrition[field])}
+                    onChange={(event) =>
+                      setMissingProposal((current) =>
+                        current
+                          ? {
+                              ...current,
+                              nutrition: {
+                                ...current.nutrition,
+                                [field]: Number(event.target.value),
+                              },
+                            }
+                          : current
+                      )
+                    }
+                  />
+                </Label>
+              ))}
+              <Label className="block">
+                Serving (g)
+                <Input
+                  className="mt-1"
+                  type="number"
+                  min="1"
+                  value={String(missingProposal.defaultServingGrams ?? "")}
+                  onChange={(event) =>
+                    setMissingProposal((current) =>
+                      current
+                        ? {
+                            ...current,
+                            defaultServingGrams:
+                              Number(event.target.value) || null,
+                          }
+                        : current
+                    )
+                  }
+                />
+              </Label>
+              {proposalNeedsNutritionReview(missingProposal) ? (
+                <p className="text-sm text-amber-700 dark:text-amber-400">
+                  These values look inconsistent. Please review them before
+                  saving.
+                </p>
+              ) : null}
+            </div>
+          </NutritionMobileSheet>
+        </Sheet>
+        <DailyQuotaDialog
+          open={limitReached}
+          onOpenChange={setLimitReached}
+          feature="aiScan"
+          isPro
+        />
+      </>
+    );
   }
   return (
     <>
       <Sheet open={open} onOpenChange={(value) => !value && dismiss()}>
         <NutritionMobileSheet
-          header={<SheetHeader>
-            <SheetTitle>AI food scan</SheetTitle>
-            <SheetDescription>
-              Take or choose a photo of your food. You can add an optional
-              description to improve the estimate.
-            </SheetDescription>
-            <AiQuotaStatus open={open} feature="aiScan" />
-          </SheetHeader>}
-          footer={items.length ? <Button className="w-full" disabled={busy} onClick={() => void confirm()}>Add {items.length} {items.length === 1 ? "food" : "foods"} to {mealLabel(meal)}</Button> : undefined}
+          header={
+            <SheetHeader>
+              <SheetTitle>AI food scan</SheetTitle>
+              <SheetDescription>
+                Take or choose a photo of your food. You can add an optional
+                description to improve the estimate.
+              </SheetDescription>
+              <AiQuotaStatus open={open} feature="aiScan" />
+            </SheetHeader>
+          }
+          footer={
+            items.length ? (
+              <Button
+                className="w-full"
+                disabled={busy}
+                onClick={() => void confirm()}
+              >
+                Add {items.length} {items.length === 1 ? "food" : "foods"} to{" "}
+                {mealLabel(meal)}
+              </Button>
+            ) : undefined
+          }
         >
           <div className="space-y-4">
             <Alert>
@@ -1562,7 +2036,9 @@ function AiWorkflow({
             {items.length || suggestions.length ? (
               <p className="text-sm font-medium">We found</p>
             ) : null}
-            {items.length ? <ReviewList items={items} setItems={setItems} /> : null}
+            {items.length ? (
+              <ReviewList items={items} setItems={setItems} />
+            ) : null}
             {suggestions.map((suggestion) => (
               <Card key={suggestion.key}>
                 <CardContent className="space-y-3 p-3">
@@ -1573,22 +2049,50 @@ function AiWorkflow({
                         Needs review — choose a suggested match
                       </p>
                     </div>
-                    <Button size="sm" variant="ghost" onClick={() => setSuggestions((current) => current.filter((item) => item.key !== suggestion.key))}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        setSuggestions((current) =>
+                          current.filter((item) => item.key !== suggestion.key)
+                        )
+                      }
+                    >
                       Remove
                     </Button>
                   </div>
                   {suggestion.candidates.length ? (
                     <div className="flex flex-wrap gap-2">
                       {suggestion.candidates.slice(0, 5).map((candidate) => (
-                        <Button key={`${candidate.id ?? candidate.provider}:${candidate.id ?? candidate.externalId}`} size="sm" variant="outline" disabled={busy} onClick={() => void selectSuggestion(suggestion, candidate)}>
+                        <Button
+                          key={`${candidate.id ?? candidate.provider}:${
+                            candidate.id ?? candidate.externalId
+                          }`}
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() =>
+                            void selectSuggestion(suggestion, candidate)
+                          }
+                        >
                           {candidate.name}
                         </Button>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground">No close matches were available.</p>
+                    <p className="text-sm text-muted-foreground">
+                      No close matches were available.
+                    </p>
                   )}
-                  {suggestion.missingIntent ? <Button size="sm" disabled={busy} onClick={() => void proposeMissingSuggestion(suggestion)}>Add {suggestion.missingIntent}</Button> : null}
+                  {suggestion.missingIntent ? (
+                    <Button
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => void proposeMissingSuggestion(suggestion)}
+                    >
+                      Add {suggestion.missingIntent}
+                    </Button>
+                  ) : null}
                 </CardContent>
               </Card>
             ))}
@@ -1644,7 +2148,10 @@ function DescribeWorkflow({
     description: "",
   });
   const [choosingKey, setChoosingKey] = useState<string | null>(null);
-  const [missingProposal, setMissingProposal] = useState<Record<string, unknown> | null>(null);
+  const [missingProposal, setMissingProposal] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
   const [reviewNotice, setReviewNotice] = useState("");
   const [limitReached, setLimitReached] = useState(false);
   const description = state.description;
@@ -1760,22 +2267,27 @@ function DescribeWorkflow({
           food?: Food | null;
         }>;
       };
-      const items: DescribeReviewItem[] = (result.foods ?? []).map((detected) => {
-        if (detected.food?.id) {
+      const items: DescribeReviewItem[] = (result.foods ?? []).map(
+        (detected) => {
+          if (detected.food?.id) {
+            return {
+              key: crypto.randomUUID(),
+              type: "resolved",
+              item: draftForDetected(
+                detected.food as Food & { id: string },
+                detected
+              ),
+            };
+          }
           return {
             key: crypto.randomUUID(),
-            type: "resolved",
-            item: draftForDetected(detected.food as Food & { id: string }, detected),
+            type: "unresolved",
+            label: detected.label,
+            preparation: detected.preparation ?? null,
+            quantityText: detected.quantityText ?? null,
           };
         }
-        return {
-          key: crypto.randomUUID(),
-          type: "unresolved",
-          label: detected.label,
-          preparation: detected.preparation ?? null,
-          quantityText: detected.quantityText ?? null,
-        };
-      });
+      );
       if (!items.length) {
         setState({
           type: "error",
@@ -1807,6 +2319,12 @@ function DescribeWorkflow({
     }
     if (!resolvedItems.length) {
       setReviewNotice("Add at least one reviewed food.");
+      return;
+    }
+    if (
+      resolvedItems.some((item) => !(item.grams > 0) || !(item.quantity > 0))
+    ) {
+      setReviewNotice("Enter a valid amount and quantity for every food.");
       return;
     }
     setState({ type: "loading", description, action: "logging" });
@@ -1856,20 +2374,36 @@ function DescribeWorkflow({
     );
     setChoosingKey(null);
   }
-  async function proposeMissingFood(item: Extract<DescribeReviewItem, { type: "unresolved" }>) {
+  async function proposeMissingFood(
+    item: Extract<DescribeReviewItem, { type: "unresolved" }>
+  ) {
     setReviewNotice("");
     try {
       const response = await fetch("/api/nutrition/foods/propose", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "generate", name: item.label, context: description }),
+        body: JSON.stringify({
+          action: "generate",
+          name: item.label,
+          context: description,
+        }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data?.error?.message ?? data?.error ?? "Unable to prepare a food proposal.");
-      if (data.kind === "existing") return void chooseMatch(item.key, await importFood(data.food as Food));
+      if (!response.ok)
+        throw new Error(
+          data?.error?.message ??
+            data?.error ??
+            "Unable to prepare a food proposal."
+        );
+      if (data.kind === "existing")
+        return void chooseMatch(item.key, await importFood(data.food as Food));
       setMissingProposal({ ...data.proposal, itemKey: item.key });
     } catch (reason) {
-      setReviewNotice(reason instanceof Error ? reason.message : "Unable to prepare a food proposal.");
+      setReviewNotice(
+        reason instanceof Error
+          ? reason.message
+          : "Unable to prepare a food proposal."
+      );
     }
   }
   async function saveMissingFood() {
@@ -1882,12 +2416,21 @@ function DescribeWorkflow({
         body: JSON.stringify({ action: "save", proposal }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data?.error?.message ?? data?.error ?? "Unable to save this food.");
+      if (!response.ok)
+        throw new Error(
+          data?.error?.message ?? data?.error ?? "Unable to save this food."
+        );
       chooseMatch(String(itemKey), await importFood(data.food as Food));
       setMissingProposal(null);
-      toast.success(data.duplicate ? "We found the existing food." : "Thanks for contributing! This food is ready to review.");
+      toast.success(
+        data.duplicate
+          ? "We found the existing food."
+          : "Thanks for contributing! This food is ready to review."
+      );
     } catch (reason) {
-      setReviewNotice(reason instanceof Error ? reason.message : "Unable to save this food.");
+      setReviewNotice(
+        reason instanceof Error ? reason.message : "Unable to save this food."
+      );
     }
   }
   const review = state.type === "review";
@@ -1895,18 +2438,35 @@ function DescribeWorkflow({
     <>
       <Sheet open={open} onOpenChange={(value) => !value && dismiss()}>
         <NutritionMobileSheet
-          header={<SheetHeader>
-            <SheetTitle>
-              {review ? "Review meal" : "Describe your meal"}
-            </SheetTitle>
-            <SheetDescription>
-              {review
-                ? "Check the foods and portions before adding them."
-                : "Tell us what you ate and we'll find the foods for you."}
-            </SheetDescription>
-            {!review ? <AiQuotaStatus open={open} feature="describe" /> : null}
-          </SheetHeader>}
-          footer={review && resolvedItems.length ? <Button className="w-full" disabled={isBusy} onClick={() => void confirm()}>{isBusy ? <Loader2 className="animate-spin" /> : null}Add {resolvedItems.length} {resolvedItems.length === 1 ? "food" : "foods"} to {mealLabel(meal)}</Button> : undefined}
+          header={
+            <SheetHeader>
+              <SheetTitle>
+                {review ? "Review meal" : "Describe your meal"}
+              </SheetTitle>
+              <SheetDescription>
+                {review
+                  ? "Check the foods and portions before adding them."
+                  : "Tell us what you ate and we'll find the foods for you."}
+              </SheetDescription>
+              {!review ? (
+                <AiQuotaStatus open={open} feature="describe" />
+              ) : null}
+            </SheetHeader>
+          }
+          footer={
+            review && resolvedItems.length ? (
+              <Button
+                className="w-full"
+                disabled={isBusy}
+                onClick={() => void confirm()}
+              >
+                {isBusy ? <Loader2 className="animate-spin" /> : null}Add{" "}
+                {resolvedItems.length}{" "}
+                {resolvedItems.length === 1 ? "food" : "foods"} to{" "}
+                {mealLabel(meal)}
+              </Button>
+            ) : undefined
+          }
         >
           <div className="space-y-4">
             {!review ? (
@@ -2014,7 +2574,11 @@ function DescribeWorkflow({
                           >
                             Choose matching food
                           </Button>
-                          <Button size="sm" variant="outline" onClick={() => void proposeMissingFood(item)}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void proposeMissingFood(item)}
+                          >
                             Add {item.label}
                           </Button>
                           <Button
@@ -2065,23 +2629,102 @@ function DescribeWorkflow({
         feature="describe"
         isPro={isPro}
       />
-      <Dialog open={Boolean(missingProposal)} onOpenChange={(value) => !value && setMissingProposal(null)}>
+      <Dialog
+        open={Boolean(missingProposal)}
+        onOpenChange={(value) => !value && setMissingProposal(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add missing food</DialogTitle>
-            <DialogDescription>This food is missing from Calistheni. Suggested nutrition is estimated—review it before saving.</DialogDescription>
+            <DialogDescription>
+              This food is missing from Calistheni. Suggested nutrition is
+              estimated—review it before saving.
+            </DialogDescription>
           </DialogHeader>
-          {missingProposal ? <div className="space-y-3">
-            {(["canonicalName", "caloriesKcal", "proteinGrams", "carbohydrateGrams", "fatGrams", "defaultServingGrams"] as const).map((field) => {
-              const nutrition = missingProposal.nutrition as Record<string, unknown> | undefined;
-              const isNutrition = !["canonicalName", "defaultServingGrams"].includes(field);
-              const value = isNutrition ? nutrition?.[field] : missingProposal[field];
-              return <Label key={field} className="block text-sm">{field === "canonicalName" ? "Name" : field.replace(/([A-Z])/g, " $1").replace("Kcal", "kcal")}<Input className="mt-1" type={field === "canonicalName" ? "text" : "number"} min="0" value={String(value ?? "")} onChange={(event) => setMissingProposal((current) => { if (!current) return current; if (isNutrition) return { ...current, nutrition: { ...(current.nutrition as Record<string, unknown>), [field]: Number(event.target.value) } }; return { ...current, [field]: field === "canonicalName" ? event.target.value : Number(event.target.value) }; })} /></Label>;
-            })}
-            <p className="text-xs text-muted-foreground">These values are estimated and may be inaccurate. Check a reliable source when possible.</p>
-            {proposalNeedsNutritionReview(missingProposal) ? <p className="text-xs text-amber-700 dark:text-amber-400">These values look inconsistent. Please review them before saving.</p> : null}
-            <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setMissingProposal(null)}>Cancel</Button><Button onClick={() => void saveMissingFood()}>Save food</Button></div>
-          </div> : null}
+          {missingProposal ? (
+            <div className="space-y-3">
+              {(
+                [
+                  "canonicalName",
+                  "caloriesKcal",
+                  "proteinGrams",
+                  "carbohydrateGrams",
+                  "fatGrams",
+                  "defaultServingGrams",
+                ] as const
+              ).map((field) => {
+                const nutrition = missingProposal.nutrition as
+                  | Record<string, unknown>
+                  | undefined;
+                const isNutrition = ![
+                  "canonicalName",
+                  "defaultServingGrams",
+                ].includes(field);
+                const value = isNutrition
+                  ? nutrition?.[field]
+                  : missingProposal[field];
+                return (
+                  <Label key={field} className="block text-sm">
+                    {field === "canonicalName"
+                      ? "Name"
+                      : field
+                          .replace(/([A-Z])/g, " $1")
+                          .replace("Kcal", "kcal")}
+                    <Input
+                      className="mt-1"
+                      type={field === "canonicalName" ? "text" : "number"}
+                      min="0"
+                      value={String(value ?? "")}
+                      onChange={(event) =>
+                        setMissingProposal((current) => {
+                          if (!current) return current;
+                          if (isNutrition)
+                            return {
+                              ...current,
+                              nutrition: {
+                                ...(current.nutrition as Record<
+                                  string,
+                                  unknown
+                                >),
+                                [field]: Number(event.target.value),
+                              },
+                            };
+                          return {
+                            ...current,
+                            [field]:
+                              field === "canonicalName"
+                                ? event.target.value
+                                : Number(event.target.value),
+                          };
+                        })
+                      }
+                    />
+                  </Label>
+                );
+              })}
+              <p className="text-xs text-muted-foreground">
+                These values are estimated and may be inaccurate. Check a
+                reliable source when possible.
+              </p>
+              {proposalNeedsNutritionReview(missingProposal) ? (
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  These values look inconsistent. Please review them before
+                  saving.
+                </p>
+              ) : null}
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setMissingProposal(null)}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={() => void saveMissingFood()}>
+                  Save food
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
     </>
