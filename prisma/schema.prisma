@@ -421,10 +421,15 @@ model BodyMeasurementEntry {
   rightWristCm           Decimal?              @db.Decimal(7, 3)
   leftAnkleCm            Decimal?              @db.Decimal(7, 3)
   rightAnkleCm           Decimal?              @db.Decimal(7, 3)
+  bicepsCm               Decimal?              @db.Decimal(7, 3)
+  forearmCm              Decimal?              @db.Decimal(7, 3)
+  thighCm                Decimal?              @db.Decimal(7, 3)
+  calfCm                 Decimal?              @db.Decimal(7, 3)
   createdAt              DateTime              @default(now())
   updatedAt              DateTime              @updatedAt
   source                 BodyMeasurementSource @default(MANUAL)
   healthExportKinds      String[]              @default([])
+  changedFields          String[]              @default([])
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
