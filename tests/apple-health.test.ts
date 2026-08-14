@@ -4,6 +4,7 @@ import test from "node:test";
 import { getAppleHealthWorkoutPayload } from "@/lib/apple-health-workout";
 import { bodyFatFractionToPercent, bodyFatPercentToFraction, getAppleHealthAuthorizationTypes } from "@/lib/apple-health-capabilities";
 import { formatLength } from "@/lib/measurement-units";
+import { getAppleHealthMeasurementPayloads } from "@/lib/apple-health-measurements";
 
 test("Apple Health workout payload preserves canonical timestamps and actual completed distance", () => {
   const payload = getAppleHealthWorkoutPayload(42, {
@@ -25,11 +26,14 @@ test("Apple Health bridge remains optional and native-only", async () => {
   assert.match(source, /HealthKit is optional/);
 });
 
-test("HealthKit plugin requests only workouts for writing and body mass for reading", async () => {
+test("HealthKit plugin requests direct Calistheni quantities for writing without fabricated health metrics", async () => {
   const source = await readFile(new URL("../ios/App/App/CalistheniHealthPlugin.swift", import.meta.url), "utf8");
   assert.match(source, /HKObjectType\.workoutType\(\)/);
   assert.match(source, /\.bodyMass/);
   assert.match(source, /HKMetadataKeyExternalUUID/);
+  assert.match(source, /saveBodyMeasurements/);
+  assert.match(source, /bodyFatPercentage/);
+  assert.match(source, /waistCircumference/);
   assert.match(source, /totalEnergyBurned: nil/);
   assert.doesNotMatch(source, /heartRate|stepCount|dietaryEnergyConsumed|activeEnergyBurned|leanBodyMass/);
 });
@@ -37,13 +41,21 @@ test("HealthKit plugin requests only workouts for writing and body mass for read
 test("Free and Pro HealthKit authorization scopes follow actual Calistheni capabilities", () => {
   const free = getAppleHealthAuthorizationTypes(false);
   const pro = getAppleHealthAuthorizationTypes(true);
-  assert.deepEqual(free.write, ["workout"]);
+  assert.deepEqual(free.write, ["workout", "bodyMass", "waistCircumference"]);
   assert.deepEqual(free.read, ["bodyMass", "waistCircumference", "dateOfBirth"]);
   assert.ok(!free.read.includes("bodyFatPercentage"));
   assert.ok(pro.read.includes("height"));
   assert.ok(pro.read.includes("bodyFatPercentage"));
   assert.ok(pro.read.includes("biologicalSex"));
+  assert.ok(pro.write.includes("bodyFatPercentage"));
+  assert.ok(pro.write.includes("height"));
   assert.ok(!pro.read.includes("workout"));
+});
+
+test("manual measurements create deterministic canonical HealthKit samples while imports cannot loop", () => {
+  const payloads = getAppleHealthMeasurementPayloads({ id: "measurement-1", measuredAt: "2026-08-14T08:00:00.000Z", bodyweightKg: "89.5", bodyFatPercentage: "14.8", waistCm: "86", heightCm: "188", source: "MANUAL", healthExportKinds: ["BODY_WEIGHT", "BODY_FAT", "WAIST", "HEIGHT"] }, true);
+  assert.deepEqual(payloads.map((payload) => [payload.kind, payload.canonicalValue]), [["BODY_WEIGHT", 89.5], ["BODY_FAT", 14.8], ["WAIST", 86], ["HEIGHT", 188]]);
+  assert.equal(getAppleHealthMeasurementPayloads({ id: "imported", measuredAt: "2026-08-14T08:00:00.000Z", bodyweightKg: 88.5, source: "APPLE_HEALTH" }).length, 0);
 });
 
 test("body fat HealthKit fraction conversion is explicit", () => {

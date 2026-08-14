@@ -28,6 +28,8 @@ type ProfileUpdatePayload = {
   bodyFatSex?: unknown;
   appleHealthWorkoutExportEnabled?: unknown;
   appleHealthBodyweightImportEnabled?: unknown;
+  appleHealthBodyMeasurementExportEnabled?: unknown;
+  bodyweightSource?: unknown;
 };
 
 const TRAINING_STYLES = ["CALISTHENICS", "GYM", "BOTH"] as const;
@@ -118,8 +120,11 @@ export async function PATCH(request: Request) {
     weeklyWorkoutGoal?: number;
     bodyFatSex?: (typeof BODY_FAT_SEXES)[number] | null;
     appleHealthWorkoutExportEnabled?: boolean;
-    appleHealthBodyweightImportEnabled?: boolean;
+  appleHealthBodyweightImportEnabled?: boolean;
+  appleHealthBodyMeasurementExportEnabled?: boolean;
   } = {};
+
+  const bodyweightSource = body.bodyweightSource === "APPLE_HEALTH" ? "APPLE_HEALTH" : "MANUAL";
 
   if (hasField(body, "bodyweightKg")) {
     const bodyweightKg = parseBodyweightKg(body.bodyweightKg);
@@ -212,6 +217,7 @@ export async function PATCH(request: Request) {
   for (const field of [
     "appleHealthWorkoutExportEnabled",
     "appleHealthBodyweightImportEnabled",
+    "appleHealthBodyMeasurementExportEnabled",
   ] as const) {
     if (hasField(body, field)) {
       if (typeof body[field] !== "boolean") {
@@ -222,7 +228,11 @@ export async function PATCH(request: Request) {
   }
 
   try {
-    const user = await prisma.user.update({
+    const user = await prisma.$transaction(async (tx) => {
+      const current = hasField(body, "bodyweightKg")
+        ? await tx.user.findUnique({ where: { id: userId }, select: { bodyweightKg: true } })
+        : null;
+      const updated = await tx.user.update({
       where: {
         id: userId,
       },
@@ -239,7 +249,14 @@ export async function PATCH(request: Request) {
         bodyFatSex: true,
         appleHealthWorkoutExportEnabled: true,
         appleHealthBodyweightImportEnabled: true,
+        appleHealthBodyMeasurementExportEnabled: true,
       },
+      });
+      const bodyweightChanged = hasField(body, "bodyweightKg") && updated.bodyweightKg !== current?.bodyweightKg;
+      const bodyweightMeasurement = bodyweightChanged && updated.bodyweightKg != null
+        ? await tx.bodyMeasurementEntry.create({ data: { userId, bodyweightKg: updated.bodyweightKg, measuredAt: new Date(), source: bodyweightSource, healthExportKinds: bodyweightSource === "MANUAL" ? ["BODY_WEIGHT"] : [] }, select: { id: true, measuredAt: true, bodyweightKg: true, source: true, healthExportKinds: true } })
+        : null;
+      return { ...updated, bodyweightMeasurement };
     });
 
     const { dateOfBirth, ...profile } = user;

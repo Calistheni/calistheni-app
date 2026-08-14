@@ -19,12 +19,15 @@ type AppleHealthSettingsProps = {
   measurementSystem: MeasurementSystem;
   workoutExportEnabled: boolean;
   bodyweightImportEnabled: boolean;
+  bodyMeasurementExportEnabled: boolean;
   onPreferencesChange: (preferences: {
     appleHealthWorkoutExportEnabled: boolean;
     appleHealthBodyweightImportEnabled: boolean;
+    appleHealthBodyMeasurementExportEnabled: boolean;
   }) => Promise<void>;
   onUseBodyweightKg: (weightKg: number) => Promise<void>;
   onImportMeasurements: (values: { waistAtNavelCm?: number; heightCm?: number; manualBodyFatPercent?: number; dateOfBirth?: string; bodyFatSex?: "MALE" | "FEMALE" }) => Promise<void>;
+  onExportMeasurementHistory: () => Promise<{ exported: number; failed: number }>;
   isPro: boolean;
 };
 
@@ -38,9 +41,11 @@ export function AppleHealthSettings({
   measurementSystem,
   workoutExportEnabled,
   bodyweightImportEnabled,
+  bodyMeasurementExportEnabled,
   onPreferencesChange,
   onUseBodyweightKg,
   onImportMeasurements,
+  onExportMeasurementHistory,
   isPro,
 }: AppleHealthSettingsProps) {
   const [available, setAvailable] = useState(false);
@@ -112,6 +117,7 @@ export function AppleHealthSettings({
   async function savePreferences(preferences: {
     appleHealthWorkoutExportEnabled: boolean;
     appleHealthBodyweightImportEnabled: boolean;
+    appleHealthBodyMeasurementExportEnabled: boolean;
   }) {
     setIsWorking(true);
     try {
@@ -129,6 +135,18 @@ export function AppleHealthSettings({
       await onUseBodyweightKg(weightKg);
     } catch {
       toast.error("Unable to import Apple Health bodyweight.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function exportMeasurementHistory() {
+    setIsWorking(true);
+    try {
+      const result = await onExportMeasurementHistory();
+      toast.success(result.failed ? `Exported ${result.exported} samples; ${result.failed} need retrying.` : "Calistheni measurement history exported to Apple Health.");
+    } catch {
+      toast.error("Unable to export Calistheni measurement history.");
     } finally {
       setIsWorking(false);
     }
@@ -153,11 +171,16 @@ export function AppleHealthSettings({
       {!connected ? <Button type="button" variant="outline" onClick={() => void connect()} disabled={isWorking}>Connect Apple Health</Button> : <>
         <div className="flex items-start justify-between gap-4">
           <div><p className="text-sm font-medium">Save completed workouts</p><p className="text-xs text-muted-foreground">Exports one completed workout to Apple Health.</p></div>
-          <Switch checked={workoutExportEnabled} disabled={isWorking} onCheckedChange={(checked) => void savePreferences({ appleHealthWorkoutExportEnabled: checked, appleHealthBodyweightImportEnabled: bodyweightImportEnabled })} aria-label="Save completed workouts to Apple Health" />
+          <Switch checked={workoutExportEnabled} disabled={isWorking} onCheckedChange={(checked) => void savePreferences({ appleHealthWorkoutExportEnabled: checked, appleHealthBodyweightImportEnabled: bodyweightImportEnabled, appleHealthBodyMeasurementExportEnabled: bodyMeasurementExportEnabled })} aria-label="Save completed workouts to Apple Health" />
         </div>
+        {bodyMeasurementExportEnabled ? <Button type="button" size="sm" variant="outline" onClick={() => void exportMeasurementHistory()} disabled={isWorking}>Export existing Calistheni measurements</Button> : null}
         <div className="flex items-start justify-between gap-4">
           <div><p className="text-sm font-medium">Use body weight from Health</p><p className="text-xs text-muted-foreground">Lets you manually import the latest Apple Health weight.</p></div>
-          <Switch checked={bodyweightImportEnabled} disabled={isWorking} onCheckedChange={(checked) => void savePreferences({ appleHealthWorkoutExportEnabled: workoutExportEnabled, appleHealthBodyweightImportEnabled: checked })} aria-label="Enable Apple Health bodyweight import" />
+          <Switch checked={bodyweightImportEnabled} disabled={isWorking} onCheckedChange={(checked) => void savePreferences({ appleHealthWorkoutExportEnabled: workoutExportEnabled, appleHealthBodyweightImportEnabled: checked, appleHealthBodyMeasurementExportEnabled: bodyMeasurementExportEnabled })} aria-label="Enable Apple Health bodyweight import" />
+        </div>
+        <div className="flex items-start justify-between gap-4">
+          <div><p className="text-sm font-medium">Save Calistheni measurements to Health</p><p className="text-xs text-muted-foreground">Writes committed weight, waist, and eligible Pro measurements as Apple Health samples.</p></div>
+          <Switch checked={bodyMeasurementExportEnabled} disabled={isWorking} onCheckedChange={(checked) => void savePreferences({ appleHealthWorkoutExportEnabled: workoutExportEnabled, appleHealthBodyweightImportEnabled: bodyweightImportEnabled, appleHealthBodyMeasurementExportEnabled: checked })} aria-label="Save Calistheni body measurements to Apple Health" />
         </div>
         {bodyweightImportEnabled ? <div className="space-y-2"><Button type="button" size="sm" variant="outline" onClick={() => void loadLatestWeight()} disabled={isWorking}><RefreshCw className="size-4" /> Read latest body weight</Button>{latestWeight ? <div className="rounded-md bg-muted/50 p-2 text-sm"><p>Apple Health found {formatWeight(latestWeight.weightKg, measurementSystem)}{latestWeight.sampledAtMs ? ` · ${new Date(latestWeight.sampledAtMs).toLocaleDateString()}` : ""}</p><Button className="mt-2" type="button" size="sm" onClick={() => void applyLatestWeight(latestWeight.weightKg)} disabled={isWorking}>Use this weight</Button></div> : null}</div> : null}
         {bodyweightImportEnabled ? <div className="space-y-2"><Button type="button" size="sm" variant="outline" onClick={() => void loadProfileMeasurements()} disabled={isWorking}><RefreshCw className="size-4" /> Review Apple Health profile data</Button>{profileMeasurements ? <div className="space-y-2 rounded-md bg-muted/50 p-2 text-sm">{profileMeasurements.waistAtNavelCm != null ? <p>Waist: {formatLength(profileMeasurements.waistAtNavelCm, measurementSystem)}{sampledOn("waistAtNavelCm")} <Button size="xs" type="button" onClick={() => void onImportMeasurements({ waistAtNavelCm: profileMeasurements.waistAtNavelCm! })}>Use</Button></p> : null}{isPro && profileMeasurements.heightCm != null ? <p>Height: {formatLength(profileMeasurements.heightCm, measurementSystem)}{sampledOn("heightCm")} <Button size="xs" type="button" onClick={() => void onImportMeasurements({ heightCm: profileMeasurements.heightCm! })}>Use</Button></p> : null}{isPro && profileMeasurements.manualBodyFatPercent != null ? <p>Body fat: {profileMeasurements.manualBodyFatPercent.toFixed(1)}%{sampledOn("manualBodyFatPercent")} <Button size="xs" type="button" onClick={() => void onImportMeasurements({ manualBodyFatPercent: profileMeasurements.manualBodyFatPercent! })}>Use</Button></p> : null}{profileMeasurements.dateOfBirth ? <p>Date of birth: {new Date(profileMeasurements.dateOfBirth).toLocaleDateString()} <Button size="xs" type="button" onClick={() => void onImportMeasurements({ dateOfBirth: profileMeasurements.dateOfBirth! })}>Use</Button></p> : null}{isPro && profileMeasurements.bodyFatSex ? <p>Biological sex: {profileMeasurements.bodyFatSex === "MALE" ? "Male" : "Female"} <Button size="xs" type="button" onClick={() => void onImportMeasurements({ bodyFatSex: profileMeasurements.bodyFatSex! })}>Use</Button></p> : null}</div> : null}</div> : null}

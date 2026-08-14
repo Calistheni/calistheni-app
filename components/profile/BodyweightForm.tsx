@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { calculateAge, validateDateOfBirth } from "@/lib/date-of-birth";
 import { displayWeightInputValue, displayWeightToKg, type MeasurementSystem, weightUnit } from "@/lib/measurement-units";
+import { getAppleHealthMeasurementPayloads } from "@/lib/apple-health-measurements";
+import { saveAppleHealthBodyMeasurements } from "@/lib/native/apple-health";
 
 type BodyweightFormProps = {
   initialBodyweightKg: number | null;
@@ -18,6 +20,7 @@ type BodyweightFormProps = {
   initialMeasurementSystem: MeasurementSystem;
   initialAppleHealthWorkoutExportEnabled: boolean;
   initialAppleHealthBodyweightImportEnabled: boolean;
+  initialAppleHealthBodyMeasurementExportEnabled: boolean;
   isPro: boolean;
 };
 
@@ -44,6 +47,7 @@ export function BodyweightForm({
   initialMeasurementSystem,
   initialAppleHealthWorkoutExportEnabled,
   initialAppleHealthBodyweightImportEnabled,
+  initialAppleHealthBodyMeasurementExportEnabled,
   isPro,
 }: BodyweightFormProps) {
   const router = useRouter();
@@ -58,6 +62,7 @@ export function BodyweightForm({
   );
   const [appleHealthWorkoutExportEnabled, setAppleHealthWorkoutExportEnabled] = useState(initialAppleHealthWorkoutExportEnabled);
   const [appleHealthBodyweightImportEnabled, setAppleHealthBodyweightImportEnabled] = useState(initialAppleHealthBodyweightImportEnabled);
+  const [appleHealthBodyMeasurementExportEnabled, setAppleHealthBodyMeasurementExportEnabled] = useState(initialAppleHealthBodyMeasurementExportEnabled);
   const currentAge = calculateAge(dateOfBirth);
 
   async function savePersonalDetails() {
@@ -116,6 +121,8 @@ export function BodyweightForm({
         rpeTrackingEnabled: boolean;
         appleHealthWorkoutExportEnabled: boolean;
         appleHealthBodyweightImportEnabled: boolean;
+        appleHealthBodyMeasurementExportEnabled: boolean;
+        bodyweightMeasurement: { id: string; measuredAt: string; bodyweightKg: number; source: "MANUAL" | "APPLE_HEALTH" } | null;
       };
       setMeasurementSystem(payload.measurementSystem);
       setBodyweightInput(displayWeightInputValue(payload.bodyweightKg, payload.measurementSystem));
@@ -123,6 +130,11 @@ export function BodyweightForm({
       setRpeTrackingEnabled(payload.rpeTrackingEnabled);
       setAppleHealthWorkoutExportEnabled(payload.appleHealthWorkoutExportEnabled);
       setAppleHealthBodyweightImportEnabled(payload.appleHealthBodyweightImportEnabled);
+      setAppleHealthBodyMeasurementExportEnabled(payload.appleHealthBodyMeasurementExportEnabled);
+      if (appleHealthBodyMeasurementExportEnabled && payload.bodyweightMeasurement?.source === "MANUAL") {
+        const result = await saveAppleHealthBodyMeasurements(getAppleHealthMeasurementPayloads(payload.bodyweightMeasurement));
+        if (result.failedIds.length) toast.message("Weight saved in Calistheni; Apple Health sync will need retrying.");
+      }
       toast.success("Personal details saved.");
       router.refresh();
     } catch (error) {
@@ -256,15 +268,17 @@ export function BodyweightForm({
         measurementSystem={measurementSystem}
         workoutExportEnabled={appleHealthWorkoutExportEnabled}
         bodyweightImportEnabled={appleHealthBodyweightImportEnabled}
+        bodyMeasurementExportEnabled={appleHealthBodyMeasurementExportEnabled}
         onPreferencesChange={async (preferences) => {
           const response = await fetch("/api/user/profile", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(preferences) });
           if (!response.ok) throw new Error("Unable to save Apple Health preferences.");
           setAppleHealthWorkoutExportEnabled(preferences.appleHealthWorkoutExportEnabled);
           setAppleHealthBodyweightImportEnabled(preferences.appleHealthBodyweightImportEnabled);
+          setAppleHealthBodyMeasurementExportEnabled(preferences.appleHealthBodyMeasurementExportEnabled);
           toast.success("Apple Health preferences saved.");
         }}
         onUseBodyweightKg={async (weightKg) => {
-          const response = await fetch("/api/user/profile", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bodyweightKg: weightKg }) });
+          const response = await fetch("/api/user/profile", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bodyweightKg: weightKg, bodyweightSource: "APPLE_HEALTH" }) });
           if (!response.ok) throw new Error("Unable to import bodyweight.");
           setBodyweightInput(displayWeightInputValue(weightKg, measurementSystem));
           toast.success("Bodyweight imported from Apple Health.");
@@ -278,7 +292,7 @@ export function BodyweightForm({
             if (profileValues.dateOfBirth) setDateOfBirth(profileValues.dateOfBirth);
           }
           const measurementPayload = {
-            measuredAt: new Date().toISOString(),
+            measuredAt: new Date().toISOString(), source: "APPLE_HEALTH",
             waistCm: values.waistAtNavelCm,
             heightCm: values.heightCm,
             bodyFatPercentage: values.manualBodyFatPercent,
@@ -289,6 +303,14 @@ export function BodyweightForm({
           }
           toast.success("Apple Health data imported.");
           router.refresh();
+        }}
+        onExportMeasurementHistory={async () => {
+          const response = await fetch("/api/user/measurements");
+          if (!response.ok) throw new Error("Unable to load measurement history.");
+          const entries = await response.json() as Array<Record<string, unknown> & { id: string; measuredAt: string; source?: "MANUAL" | "APPLE_HEALTH" }>;
+          const payloads = entries.flatMap((entry) => getAppleHealthMeasurementPayloads(entry, isPro));
+          const result = await saveAppleHealthBodyMeasurements(payloads);
+          return { exported: result.savedIds.length + result.duplicateIds.length, failed: result.failedIds.length };
         }}
         isPro={isPro}
       />

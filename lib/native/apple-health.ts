@@ -17,12 +17,21 @@ export type AppleHealthWorkoutPayload = {
   distanceMeters: number | null;
 };
 
+export type AppleHealthBodyMeasurementKind = "BODY_WEIGHT" | "BODY_FAT" | "WAIST" | "HEIGHT";
+export type AppleHealthBodyMeasurementPayload = {
+  measurementId: string;
+  kind: AppleHealthBodyMeasurementKind;
+  canonicalValue: number;
+  measuredAtMs: number;
+};
+
 type AppleHealthPlugin = {
   isAvailable(): Promise<{ available: boolean }>;
   requestAuthorization(options: { includePro: boolean }): Promise<{ requestStatus: AppleHealthAuthorizationStatus }>;
   getAuthorizationStatus(options: { includePro: boolean }): Promise<{ requestStatus: AppleHealthAuthorizationStatus }>;
   getLatestBodyWeight(): Promise<{ weightKg: number | null; sampledAtMs: number | null }>;
   getLatestProfileMeasurements(options: { includePro: boolean }): Promise<AppleHealthProfileMeasurements>;
+  saveBodyMeasurements(options: { measurements: AppleHealthBodyMeasurementPayload[] }): Promise<{ savedIds: string[]; duplicateIds: string[]; failedIds: string[] }>;
   saveWorkout(options: AppleHealthWorkoutPayload): Promise<{ saved: boolean; duplicate: boolean }>;
 };
 
@@ -95,5 +104,14 @@ export async function saveAppleHealthWorkout(payload: AppleHealthWorkoutPayload)
   } catch {
     // HealthKit is optional. Callers must never make a saved workout depend on it.
     return { saved: false, duplicate: false };
+  }
+}
+
+export async function saveAppleHealthBodyMeasurements(measurements: AppleHealthBodyMeasurementPayload[]) {
+  if (!supported() || measurements.length === 0) return { savedIds: [], duplicateIds: [], failedIds: measurements.map(({ measurementId, kind }) => `${measurementId}:${kind}`) };
+  try {
+    return await AppleHealth.saveBodyMeasurements({ measurements });
+  } catch {
+    return { savedIds: [], duplicateIds: [], failedIds: measurements.map(({ measurementId, kind }) => `${measurementId}:${kind}`) };
   }
 }

@@ -16,6 +16,8 @@ import {
 } from "@/lib/anthropometry";
 import { LEGACY_MEASUREMENT_KEY_MAP, type MeasurementField } from "@/lib/progress";
 import { normalizeOptionalNote } from "@/lib/notes";
+import { getAppleHealthMeasurementPayloads } from "@/lib/apple-health-measurements";
+import { saveAppleHealthBodyMeasurements } from "@/lib/native/apple-health";
 
 type DecimalValue = number | string | { toString(): string } | null;
 type Entry = { id: string; measuredAt: string; note: string | null } & Record<MeasurementField, DecimalValue>;
@@ -65,7 +67,7 @@ function MeasurementInput({ field, value, error, onChange, onClear }: { field: M
   return <div className="min-w-0 space-y-1.5"><div className="flex items-center justify-between gap-2"><Label htmlFor={id}>{label(field)} <span className="text-muted-foreground">({unit(field)})</span></Label>{value ? <Button type="button" variant="link" size="xs" className="h-auto px-0 text-muted-foreground" onClick={onClear}>Clear</Button> : null}</div><Input id={id} inputMode="decimal" pattern="[0-9]*[.]?[0-9]*" aria-invalid={Boolean(error)} value={value} placeholder={`${metadata.min}–${metadata.max}`} onChange={(event) => { const next = event.target.value; if (/^\d*(?:\.\d*)?$/.test(next)) onChange(next); }} />{error ? <p className="text-xs text-destructive">{error}</p> : null}</div>;
 }
 
-export function MeasurementTracker({ isPro, initialBodyFatSex, initialHeightCm }: { isPro: boolean; initialBodyFatSex: BodyFatSex | null; initialHeightCm: string | null }) {
+export function MeasurementTracker({ isPro, appleHealthBodyMeasurementExportEnabled, initialBodyFatSex, initialHeightCm }: { isPro: boolean; appleHealthBodyMeasurementExportEnabled: boolean; initialBodyFatSex: BodyFatSex | null; initialHeightCm: string | null }) {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<FormValues>({});
@@ -124,6 +126,12 @@ export function MeasurementTracker({ isPro, initialBodyFatSex, initialHeightCm }
       if (!Number.isFinite(parsed) || parsed < metadata.min || parsed > metadata.max) nextErrors[field] = `Enter ${metadata.min}–${metadata.max} ${metadata.unit}.`;
       else payload[field] = parsed;
     }
+    payload.healthExportKinds = [
+      payload.bodyweightKg != null ? "BODY_WEIGHT" : null,
+      payload.bodyFatPercentage != null ? "BODY_FAT" : null,
+      payload.waistCm != null ? "WAIST" : null,
+      payload.heightCm != null ? "HEIGHT" : null,
+    ].filter((kind): kind is string => kind !== null);
     if (!Object.keys(payload).some((key) => key !== "measuredAt" && key !== "clearFields") && !clearFields.length) nextErrors.form = "Add at least one measurement.";
     if (Object.keys(nextErrors).length) { setErrors(nextErrors); return; }
     setSaving(true);
@@ -137,6 +145,10 @@ export function MeasurementTracker({ isPro, initialBodyFatSex, initialHeightCm }
         const result = await response.json().catch(() => null);
         setErrors(Object.fromEntries(Object.entries(result?.fieldErrors ?? {}).map(([key, messages]) => [key, Array.isArray(messages) ? messages[0] : "Invalid value."])));
         throw new Error(result?.error ?? "Could not save this check-in.");
+      }
+      const entry = await response.json();
+      if (appleHealthBodyMeasurementExportEnabled && entry.source === "MANUAL") {
+        await saveAppleHealthBodyMeasurements(getAppleHealthMeasurementPayloads(entry, isPro));
       }
       setOpen(false); await load();
     } catch (error) { setRequestError(error instanceof Error ? error.message : "Could not save this check-in."); }

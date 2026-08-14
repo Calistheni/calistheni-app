@@ -52,10 +52,12 @@ export async function POST(request: Request) {
     return createJsonValidationErrorResponse("Invalid measurement entry.", parsed.error.flatten().fieldErrors);
   }
 
-  const { clearFields, measuredAt, note, ...submitted } = parsed.data as {
+  const { clearFields, measuredAt, note, source, healthExportKinds, ...submitted } = parsed.data as {
     clearFields: MeasurementField[];
     measuredAt: Date;
     note?: string | null;
+    source: "MANUAL" | "APPLE_HEALTH";
+    healthExportKinds: string[];
   } & MeasurementSnapshotValues;
   const hasSubmittedNote = typeof body === "object" && body !== null && Object.hasOwn(body, "note");
   const isPro = hasProAccess(await getUserSubscription(userId));
@@ -83,7 +85,7 @@ export async function POST(request: Request) {
       });
       const merged = mergeMeasurementSnapshot(latest as unknown as MeasurementSnapshotValues, submitted, clearFields);
       const created = await tx.bodyMeasurementEntry.create({
-        data: { userId, measuredAt, note: hasSubmittedNote ? note ?? null : latest?.note ?? null, ...merged },
+        data: { userId, measuredAt, source, healthExportKinds: source === "MANUAL" ? healthExportKinds : [], note: hasSubmittedNote ? note ?? null : latest?.note ?? null, ...merged },
       });
       if (created.bodyweightKg != null) {
         await tx.user.update({

@@ -10,7 +10,7 @@ export type AppleHealthDataType =
 
 export function getAppleHealthAuthorizationTypes(isPro: boolean) {
   return {
-    write: ["workout"] as AppleHealthDataType[],
+    write: ["workout", "bodyMass", "waistCircumference", ...(isPro ? ["bodyFatPercentage", "height"] : [])] as AppleHealthDataType[],
     read: [
       "bodyMass",
       "waistCircumference",

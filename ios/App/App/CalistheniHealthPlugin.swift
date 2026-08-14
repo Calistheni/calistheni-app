@@ -11,6 +11,7 @@ public class CalistheniHealthPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "getAuthorizationStatus", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getLatestBodyWeight", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getLatestProfileMeasurements", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "saveBodyMeasurements", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "saveWorkout", returnType: CAPPluginReturnPromise)
     ]
 
@@ -33,6 +34,21 @@ public class CalistheniHealthPlugin: CAPPlugin, CAPBridgedPlugin {
         return types
     }
 
+    private func shareTypes(includePro: Bool) -> Set<HKSampleType> {
+        var types = Set([
+            HKObjectType.workoutType(),
+            HKQuantityType.quantityType(forIdentifier: .bodyMass),
+            HKQuantityType.quantityType(forIdentifier: .waistCircumference)
+        ].compactMap { $0 })
+        if includePro {
+            types.formUnion([
+                HKQuantityType.quantityType(forIdentifier: .bodyFatPercentage),
+                HKQuantityType.quantityType(forIdentifier: .height)
+            ].compactMap { $0 })
+        }
+        return types
+    }
+
     @objc func isAvailable(_ call: CAPPluginCall) {
         call.resolve(["available": HKHealthStore.isHealthDataAvailable()])
     }
@@ -47,7 +63,7 @@ public class CalistheniHealthPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         let includePro = call.getBool("includePro") ?? false
-        healthStore.requestAuthorization(toShare: [HKObjectType.workoutType()], read: readTypes(includePro: includePro)) { [weak self] _, _ in
+        healthStore.requestAuthorization(toShare: shareTypes(includePro: includePro), read: readTypes(includePro: includePro)) { [weak self] _, _ in
             self?.authorizationStatus(includePro: includePro) { status in call.resolve(["requestStatus": status]) }
         }
     }
@@ -125,6 +141,44 @@ public class CalistheniHealthPlugin: CAPPlugin, CAPBridgedPlugin {
         healthStore.execute(query)
     }
 
+    @objc func saveBodyMeasurements(_ call: CAPPluginCall) {
+        guard HKHealthStore.isHealthDataAvailable(), let values = call.getArray("measurements", [Any].self) else {
+            call.resolve(["savedIds": [], "duplicateIds": [], "failedIds": []])
+            return
+        }
+        let group = DispatchGroup()
+        let lock = NSLock()
+        var savedIds: [String] = []
+        var duplicateIds: [String] = []
+        var failedIds: [String] = []
+
+        for case let measurement as [String: Any] in values {
+            guard let measurementId = measurement["measurementId"] as? String,
+                  let kind = measurement["kind"] as? String,
+                  let canonicalValue = measurement["canonicalValue"] as? Double,
+                  let measuredAtMs = measurement["measuredAtMs"] as? Double,
+                  let mapping = bodyMeasurementMapping(kind: kind) else {
+                continue
+            }
+            let externalId = "calistheni-body-measurement-\(measurementId)-\(kind)"
+            group.enter()
+            let predicate = HKQuery.predicateForObjects(withMetadataKey: HKMetadataKeyExternalUUID, allowedValues: [externalId])
+            healthStore.execute(HKSampleQuery(sampleType: mapping.type, predicate: predicate, limit: 1, sortDescriptors: nil) { [weak self] _, samples, _ in
+                if !(samples?.isEmpty ?? true) {
+                    lock.lock(); duplicateIds.append("\(measurementId):\(kind)"); lock.unlock(); group.leave(); return
+                }
+                let sample = HKQuantitySample(type: mapping.type, quantity: HKQuantity(unit: mapping.unit, doubleValue: canonicalValue * mapping.multiplier), start: Date(timeIntervalSince1970: measuredAtMs / 1000), end: Date(timeIntervalSince1970: measuredAtMs / 1000), metadata: [HKMetadataKeyExternalUUID: externalId])
+                self?.healthStore.save(sample) { success, _ in
+                    lock.lock()
+                    if success { savedIds.append("\(measurementId):\(kind)") } else { failedIds.append("\(measurementId):\(kind)") }
+                    lock.unlock()
+                    group.leave()
+                }
+            })
+        }
+        group.notify(queue: .main) { call.resolve(["savedIds": savedIds, "duplicateIds": duplicateIds, "failedIds": failedIds]) }
+    }
+
     @objc func saveWorkout(_ call: CAPPluginCall) {
         guard HKHealthStore.isHealthDataAvailable(),
               let workoutId = call.getString("workoutId"),
@@ -166,13 +220,23 @@ public class CalistheniHealthPlugin: CAPPlugin, CAPBridgedPlugin {
             completion("unavailable")
             return
         }
-        healthStore.getRequestStatusForAuthorization(toShare: [HKObjectType.workoutType()], read: self.readTypes(includePro: includePro)) { status, _ in
+        healthStore.getRequestStatusForAuthorization(toShare: self.shareTypes(includePro: includePro), read: self.readTypes(includePro: includePro)) { status, _ in
             switch status {
             case .shouldRequest: completion("shouldRequest")
             case .unnecessary: completion("unnecessary")
             case .unknown: fallthrough
             @unknown default: completion("unknown")
             }
+        }
+    }
+
+    private func bodyMeasurementMapping(kind: String) -> (type: HKQuantityType, unit: HKUnit, multiplier: Double)? {
+        switch kind {
+        case "BODY_WEIGHT": return HKQuantityType.quantityType(forIdentifier: .bodyMass).map { ($0, HKUnit.gramUnit(with: .kilo), 1) }
+        case "BODY_FAT": return HKQuantityType.quantityType(forIdentifier: .bodyFatPercentage).map { ($0, .percent(), 0.01) }
+        case "WAIST": return HKQuantityType.quantityType(forIdentifier: .waistCircumference).map { ($0, .meter(), 0.01) }
+        case "HEIGHT": return HKQuantityType.quantityType(forIdentifier: .height).map { ($0, .meter(), 0.01) }
+        default: return nil
         }
     }
 

@@ -17,9 +17,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   try { body = await request.json(); } catch { return createJsonErrorResponse("Invalid JSON payload.", 400); }
   const parsed = measurementSchema.partial().safeParse(body);
   if (!parsed.success) return createJsonValidationErrorResponse("Invalid measurement entry.", parsed.error.flatten().fieldErrors);
-  const { clearFields = [], measuredAt, note, ...submitted } = parsed.data as {
-    clearFields?: MeasurementField[]; measuredAt?: Date; note?: string | null;
+  const { clearFields = [], measuredAt, note, source, healthExportKinds, ...submitted } = parsed.data as {
+    clearFields?: MeasurementField[]; measuredAt?: Date; note?: string | null; source?: "MANUAL" | "APPLE_HEALTH"; healthExportKinds?: string[];
   } & MeasurementSnapshotValues;
+  void source;
+  void healthExportKinds;
   const hasSubmittedNote = typeof body === "object" && body !== null && Object.hasOwn(body, "note");
   const isPro = hasProAccess(await getUserSubscription(userId));
   const capabilityValidation = validateStoredMeasurementCapabilities(submitted, isPro);

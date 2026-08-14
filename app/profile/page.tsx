@@ -108,6 +108,7 @@ export default async function ProfilePage() {
         rpeTrackingEnabled: true,
         appleHealthWorkoutExportEnabled: true,
         appleHealthBodyweightImportEnabled: true,
+        appleHealthBodyMeasurementExportEnabled: true,
         rewardPoints: true,
         _count: {
           select: {
@@ -357,6 +358,7 @@ export default async function ProfilePage() {
             initialMeasurementSystem={profile?.measurementSystem ?? "METRIC"}
             initialAppleHealthWorkoutExportEnabled={profile?.appleHealthWorkoutExportEnabled ?? false}
             initialAppleHealthBodyweightImportEnabled={profile?.appleHealthBodyweightImportEnabled ?? false}
+            initialAppleHealthBodyMeasurementExportEnabled={profile?.appleHealthBodyMeasurementExportEnabled ?? false}
             isPro={entitlements.isPro}
           />
         </CardContent>

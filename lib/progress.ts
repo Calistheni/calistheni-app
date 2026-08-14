@@ -45,6 +45,8 @@ export const measurementSchema = z.object({
   measuredAt: z.coerce.date(),
   note: optionalNoteSchema,
   clearFields: z.array(z.enum(MEASUREMENT_FIELDS)).max(MEASUREMENT_FIELDS.length).optional().default([]),
+  source: z.enum(["MANUAL", "APPLE_HEALTH"]).optional().default("MANUAL"),
+  healthExportKinds: z.array(z.enum(["BODY_WEIGHT", "BODY_FAT", "WAIST", "HEIGHT"])).max(4).optional().default([]),
   ...Object.fromEntries(MEASUREMENT_FIELDS.map((field) => [field, decimalValue(field).optional()])),
 }).strict().refine((value) => MEASUREMENT_FIELDS.some((field) => Object.hasOwn(value, field)) || value.clearFields.length > 0, { message: "Add at least one measurement or choose a field to clear." });
 
