@@ -41,6 +41,10 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Calistheni uses your camera to scan food barcodes and identify food from photos.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Calistheni uses your Apple Health data to let you import information such as your body weight.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Calistheni can save your completed workouts to Apple Health.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

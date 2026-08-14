@@ -19,6 +19,7 @@
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		9614346C6E5D4EA12C0BD6EE /* CalistheniWorkoutWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 99342EE113E6CB72682BBC4C /* CalistheniWorkoutWidget.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		9A31CB7814E397F6BD948295 /* WorkoutLiveActivityPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB38ABD0699A3E0BB6115EE6 /* WorkoutLiveActivityPlugin.swift */; };
+		AF1452008C4D2A14E7240001 /* CalistheniHealthPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF1452008C4D2A14E7240002 /* CalistheniHealthPlugin.swift */; };
 		A10000000000000000000001 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* MainViewController.swift */; };
 		A10000000000000000000003 /* NutritionBarcodeScannerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000004 /* NutritionBarcodeScannerPlugin.swift */; };
 		A10000000000000000000006 /* BarcodeScannerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000007 /* BarcodeScannerViewController.swift */; };
@@ -67,6 +68,7 @@
 		CD7CDA30B800AC22AC9DB1AD /* WorkoutLiveActivity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = App/CalistheniWorkoutWidget/WorkoutLiveActivity.swift; sourceTree = SOURCE_ROOT; };
 		D9BE3352E63969D9297A7617 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		EB38ABD0699A3E0BB6115EE6 /* WorkoutLiveActivityPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WorkoutLiveActivityPlugin.swift; sourceTree = "<group>"; };
+		AF1452008C4D2A14E7240002 /* CalistheniHealthPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CalistheniHealthPlugin.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -141,6 +143,7 @@
 				50B271D01FEDC1A000F3C39B /* public */,
 				1BDFEA3E6F522CB80347C044 /* CalistheniWorkoutWidget */,
 				EB38ABD0699A3E0BB6115EE6 /* WorkoutLiveActivityPlugin.swift */,
+				AF1452008C4D2A14E7240002 /* CalistheniHealthPlugin.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -270,7 +273,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "CONFIG=\"$SRCROOT/App/capacitor.config.json\"\nif ! /usr/bin/grep -q '\"NutritionBarcodeScannerPlugin\"' \"$CONFIG\"; then\n  /usr/bin/plutil -insert packageClassList.8 -string NutritionBarcodeScannerPlugin \"$CONFIG\"\nfi\nif ! /usr/bin/grep -q '\"WorkoutLiveActivityPlugin\"' \"$CONFIG\"; then\n  /usr/bin/plutil -insert packageClassList.9 -string WorkoutLiveActivityPlugin \"$CONFIG\"\nfi\n";
+			shellScript = "CONFIG=\"$SRCROOT/App/capacitor.config.json\"\nif ! /usr/bin/grep -q '\"NutritionBarcodeScannerPlugin\"' \"$CONFIG\"; then\n  /usr/bin/plutil -insert packageClassList.8 -string NutritionBarcodeScannerPlugin \"$CONFIG\"\nfi\nif ! /usr/bin/grep -q '\"WorkoutLiveActivityPlugin\"' \"$CONFIG\"; then\n  /usr/bin/plutil -insert packageClassList.9 -string WorkoutLiveActivityPlugin \"$CONFIG\"\nfi\nif ! /usr/bin/grep -q '\"CalistheniHealthPlugin\"' \"$CONFIG\"; then\n  /usr/bin/plutil -insert packageClassList.10 -string CalistheniHealthPlugin \"$CONFIG\"\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -292,6 +295,7 @@
 				A10000000000000000000003 /* NutritionBarcodeScannerPlugin.swift in Sources */,
 				A10000000000000000000006 /* BarcodeScannerViewController.swift in Sources */,
 				9A31CB7814E397F6BD948295 /* WorkoutLiveActivityPlugin.swift in Sources */,
+				AF1452008C4D2A14E7240001 /* CalistheniHealthPlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { DateOfBirthPicker } from "@/components/profile/DateOfBirthPicker";
+import { AppleHealthSettings } from "@/components/profile/AppleHealthSettings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -15,6 +16,8 @@ type BodyweightFormProps = {
   initialDateOfBirth: string | null;
   initialRpeTrackingEnabled: boolean;
   initialMeasurementSystem: MeasurementSystem;
+  initialAppleHealthWorkoutExportEnabled: boolean;
+  initialAppleHealthBodyweightImportEnabled: boolean;
 };
 
 async function getApiError(response: Response) {
@@ -38,6 +41,8 @@ export function BodyweightForm({
   initialDateOfBirth,
   initialRpeTrackingEnabled,
   initialMeasurementSystem,
+  initialAppleHealthWorkoutExportEnabled,
+  initialAppleHealthBodyweightImportEnabled,
 }: BodyweightFormProps) {
   const router = useRouter();
   const [measurementSystem, setMeasurementSystem] = useState<MeasurementSystem>(initialMeasurementSystem);
@@ -49,6 +54,8 @@ export function BodyweightForm({
   const [rpeTrackingEnabled, setRpeTrackingEnabled] = useState(
     initialRpeTrackingEnabled
   );
+  const [appleHealthWorkoutExportEnabled, setAppleHealthWorkoutExportEnabled] = useState(initialAppleHealthWorkoutExportEnabled);
+  const [appleHealthBodyweightImportEnabled, setAppleHealthBodyweightImportEnabled] = useState(initialAppleHealthBodyweightImportEnabled);
   const currentAge = calculateAge(dateOfBirth);
 
   async function savePersonalDetails() {
@@ -105,11 +112,15 @@ export function BodyweightForm({
         measurementSystem: MeasurementSystem;
         dateOfBirth: string | null;
         rpeTrackingEnabled: boolean;
+        appleHealthWorkoutExportEnabled: boolean;
+        appleHealthBodyweightImportEnabled: boolean;
       };
       setMeasurementSystem(payload.measurementSystem);
       setBodyweightInput(displayWeightInputValue(payload.bodyweightKg, payload.measurementSystem));
       setDateOfBirth(payload.dateOfBirth ?? "");
       setRpeTrackingEnabled(payload.rpeTrackingEnabled);
+      setAppleHealthWorkoutExportEnabled(payload.appleHealthWorkoutExportEnabled);
+      setAppleHealthBodyweightImportEnabled(payload.appleHealthBodyweightImportEnabled);
       toast.success("Personal details saved.");
       router.refresh();
     } catch (error) {
@@ -239,6 +250,25 @@ export function BodyweightForm({
           aria-label="Enable RPE tracking"
         />
       </div>
+      <AppleHealthSettings
+        measurementSystem={measurementSystem}
+        workoutExportEnabled={appleHealthWorkoutExportEnabled}
+        bodyweightImportEnabled={appleHealthBodyweightImportEnabled}
+        onPreferencesChange={async (preferences) => {
+          const response = await fetch("/api/user/profile", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(preferences) });
+          if (!response.ok) throw new Error("Unable to save Apple Health preferences.");
+          setAppleHealthWorkoutExportEnabled(preferences.appleHealthWorkoutExportEnabled);
+          setAppleHealthBodyweightImportEnabled(preferences.appleHealthBodyweightImportEnabled);
+          toast.success("Apple Health preferences saved.");
+        }}
+        onUseBodyweightKg={async (weightKg) => {
+          const response = await fetch("/api/user/profile", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bodyweightKg: weightKg }) });
+          if (!response.ok) throw new Error("Unable to import bodyweight.");
+          setBodyweightInput(displayWeightInputValue(weightKg, measurementSystem));
+          toast.success("Bodyweight imported from Apple Health.");
+          router.refresh();
+        }}
+      />
       <Button
         type="button"
         onClick={() => void savePersonalDetails()}

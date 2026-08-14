@@ -166,6 +166,8 @@ import {
 } from "@/lib/exercise-set-timer";
 import { isNativePluginAvailable } from "@/lib/native/platform";
 import { endWorkoutLiveActivity, syncWorkoutLiveActivity } from "@/lib/native/workout-live-activity";
+import { getAppleHealthWorkoutPayload } from "@/lib/apple-health-workout";
+import { saveAppleHealthWorkout } from "@/lib/native/apple-health";
 import {
   displayDistanceInputValue,
   displayDistanceToMeters,
@@ -203,6 +205,7 @@ type WorkoutBuilderProps = {
   userBodyweightKg: number | null;
   measurementSystem: MeasurementSystem;
   rpeTrackingEnabled: boolean;
+  appleHealthWorkoutExportEnabled?: boolean;
   exerciseUsage: ExerciseUsage[];
   saveMode?: "create" | "edit";
 };
@@ -835,6 +838,7 @@ export function WorkoutBuilder({
   userBodyweightKg,
   measurementSystem,
   rpeTrackingEnabled,
+  appleHealthWorkoutExportEnabled = false,
   exerciseUsage,
   saveMode,
 }: WorkoutBuilderProps) {
@@ -2365,6 +2369,16 @@ export function WorkoutBuilder({
       }
 
       const workout = (await response.json()) as { id: number };
+      if (!isEditing && appleHealthWorkoutExportEnabled) {
+        const healthResult = await saveAppleHealthWorkout(
+          getAppleHealthWorkoutPayload(workout.id, payload)
+        );
+        if (healthResult.saved) {
+          await fetch(`/api/user/workouts/${workout.id}/apple-health-export`, { method: "PATCH" }).catch(() => undefined);
+        } else {
+          toast.message("Workout saved. Apple Health export was not completed.");
+        }
+      }
       if (!isEditing) {
         void endWorkoutLiveActivity(activeWorkoutSessionId, completedSetCount, selectedExercises.reduce((count, exercise) => count + exercise.sets.length, 0));
         workoutTimer.clear();

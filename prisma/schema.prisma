@@ -215,28 +215,30 @@ enum MeasurementSystem {
 }
 
 model User {
-  id                      String            @id @default(cuid())
-  name                    String?
-  email                   String?           @unique
-  emailVerified           DateTime?
-  image                   String?
-  username                String?           @unique
-  bodyweightKg            Float?
-  measurementSystem       MeasurementSystem @default(METRIC)
-  bodyFatSex              BodyFatSex?
-  dateOfBirth             DateTime?
-  rewardPoints            Int               @default(0)
-  onboardingCompleted     Boolean           @default(false)
-  trainingStyle           TrainingStyle?
-  primaryGoal             PrimaryGoal?
-  rpeTrackingEnabled      Boolean           @default(false)
-  weeklyWorkoutGoal       Int               @default(3)
-  weeklyCardioGoalMinutes Int?
+  id                                 String            @id @default(cuid())
+  name                               String?
+  email                              String?           @unique
+  emailVerified                      DateTime?
+  image                              String?
+  username                           String?           @unique
+  bodyweightKg                       Float?
+  measurementSystem                  MeasurementSystem @default(METRIC)
+  appleHealthWorkoutExportEnabled    Boolean           @default(false)
+  appleHealthBodyweightImportEnabled Boolean           @default(false)
+  bodyFatSex                         BodyFatSex?
+  dateOfBirth                        DateTime?
+  rewardPoints                       Int               @default(0)
+  onboardingCompleted                Boolean           @default(false)
+  trainingStyle                      TrainingStyle?
+  primaryGoal                        PrimaryGoal?
+  rpeTrackingEnabled                 Boolean           @default(false)
+  weeklyWorkoutGoal                  Int               @default(3)
+  weeklyCardioGoalMinutes            Int?
   /// Updated at most once per ten minutes by an authenticated client heartbeat.
   /// This is intentionally an account-presence signal, not click tracking.
-  lastActiveAt            DateTime?
-  createdAt               DateTime          @default(now())
-  updatedAt               DateTime          @updatedAt
+  lastActiveAt                       DateTime?
+  createdAt                          DateTime          @default(now())
+  updatedAt                          DateTime          @updatedAt
 
   accounts           Account[]
   sessions           Session[]
@@ -643,13 +645,14 @@ model Exercise {
 }
 
 model Workout {
-  id          Int               @id @default(autoincrement())
-  userId      String
-  title       String?
-  notes       String?
-  startedAt   DateTime          @default(now())
-  completedAt DateTime?
-  visibility  WorkoutVisibility @default(PUBLIC)
+  id                    Int               @id @default(autoincrement())
+  userId                String
+  title                 String?
+  notes                 String?
+  startedAt             DateTime          @default(now())
+  completedAt           DateTime?
+  appleHealthExportedAt DateTime?
+  visibility            WorkoutVisibility @default(PUBLIC)
 
   user            User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   exercises       WorkoutExercise[]

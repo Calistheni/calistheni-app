@@ -26,6 +26,8 @@ type ProfileUpdatePayload = {
   rpeTrackingEnabled?: unknown;
   weeklyWorkoutGoal?: unknown;
   bodyFatSex?: unknown;
+  appleHealthWorkoutExportEnabled?: unknown;
+  appleHealthBodyweightImportEnabled?: unknown;
 };
 
 const TRAINING_STYLES = ["CALISTHENICS", "GYM", "BOTH"] as const;
@@ -115,6 +117,8 @@ export async function PATCH(request: Request) {
     rpeTrackingEnabled?: boolean;
     weeklyWorkoutGoal?: number;
     bodyFatSex?: (typeof BODY_FAT_SEXES)[number] | null;
+    appleHealthWorkoutExportEnabled?: boolean;
+    appleHealthBodyweightImportEnabled?: boolean;
   } = {};
 
   if (hasField(body, "bodyweightKg")) {
@@ -205,6 +209,18 @@ export async function PATCH(request: Request) {
     data.bodyFatSex = bodyFatSex;
   }
 
+  for (const field of [
+    "appleHealthWorkoutExportEnabled",
+    "appleHealthBodyweightImportEnabled",
+  ] as const) {
+    if (hasField(body, field)) {
+      if (typeof body[field] !== "boolean") {
+        return createJsonErrorResponse("Invalid Apple Health preference.", 400);
+      }
+      data[field] = body[field];
+    }
+  }
+
   try {
     const user = await prisma.user.update({
       where: {
@@ -221,6 +237,8 @@ export async function PATCH(request: Request) {
         rpeTrackingEnabled: true,
         weeklyWorkoutGoal: true,
         bodyFatSex: true,
+        appleHealthWorkoutExportEnabled: true,
+        appleHealthBodyweightImportEnabled: true,
       },
     });
 

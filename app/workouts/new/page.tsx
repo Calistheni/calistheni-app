@@ -91,6 +91,7 @@ export default async function NewWorkoutPage({
         bodyweightKg: true,
         measurementSystem: true,
         rpeTrackingEnabled: true,
+        appleHealthWorkoutExportEnabled: true,
       },
     }),
     routineId
@@ -198,6 +199,9 @@ export default async function NewWorkoutPage({
         userBodyweightKg={user?.bodyweightKg ?? null}
         measurementSystem={user?.measurementSystem ?? "METRIC"}
         rpeTrackingEnabled={user?.rpeTrackingEnabled ?? false}
+        appleHealthWorkoutExportEnabled={
+          user?.appleHealthWorkoutExportEnabled ?? false
+        }
       />
     </main>
   );
