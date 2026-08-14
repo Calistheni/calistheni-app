@@ -18,6 +18,7 @@ type BodyweightFormProps = {
   initialMeasurementSystem: MeasurementSystem;
   initialAppleHealthWorkoutExportEnabled: boolean;
   initialAppleHealthBodyweightImportEnabled: boolean;
+  isPro: boolean;
 };
 
 async function getApiError(response: Response) {
@@ -43,6 +44,7 @@ export function BodyweightForm({
   initialMeasurementSystem,
   initialAppleHealthWorkoutExportEnabled,
   initialAppleHealthBodyweightImportEnabled,
+  isPro,
 }: BodyweightFormProps) {
   const router = useRouter();
   const [measurementSystem, setMeasurementSystem] = useState<MeasurementSystem>(initialMeasurementSystem);
@@ -268,6 +270,27 @@ export function BodyweightForm({
           toast.success("Bodyweight imported from Apple Health.");
           router.refresh();
         }}
+        onImportMeasurements={async (values) => {
+          const profileValues = { dateOfBirth: values.dateOfBirth, bodyFatSex: values.bodyFatSex };
+          if (profileValues.dateOfBirth || profileValues.bodyFatSex) {
+            const response = await fetch("/api/user/profile", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(profileValues) });
+            if (!response.ok) throw new Error("Unable to import Apple Health profile data.");
+            if (profileValues.dateOfBirth) setDateOfBirth(profileValues.dateOfBirth);
+          }
+          const measurementPayload = {
+            measuredAt: new Date().toISOString(),
+            waistCm: values.waistAtNavelCm,
+            heightCm: values.heightCm,
+            bodyFatPercentage: values.manualBodyFatPercent,
+          };
+          if (Object.values(measurementPayload).some((value) => typeof value === "number")) {
+            const response = await fetch("/api/user/measurements", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(measurementPayload) });
+            if (!response.ok) throw new Error("Unable to import Apple Health measurement.");
+          }
+          toast.success("Apple Health data imported.");
+          router.refresh();
+        }}
+        isPro={isPro}
       />
       <Button
         type="button"

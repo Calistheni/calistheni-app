@@ -357,6 +357,7 @@ export default async function ProfilePage() {
             initialMeasurementSystem={profile?.measurementSystem ?? "METRIC"}
             initialAppleHealthWorkoutExportEnabled={profile?.appleHealthWorkoutExportEnabled ?? false}
             initialAppleHealthBodyweightImportEnabled={profile?.appleHealthBodyweightImportEnabled ?? false}
+            isPro={entitlements.isPro}
           />
         </CardContent>
       </Card>

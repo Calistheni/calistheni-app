@@ -2,6 +2,7 @@
 
 import { registerPlugin } from "@capacitor/core";
 import { isIOSApp, isNativePluginAvailable } from "@/lib/native/platform";
+import type { BodyFatSex } from "@/lib/anthropometry";
 
 export type AppleHealthAuthorizationStatus =
   | "unavailable"
@@ -18,10 +19,21 @@ export type AppleHealthWorkoutPayload = {
 
 type AppleHealthPlugin = {
   isAvailable(): Promise<{ available: boolean }>;
-  requestAuthorization(): Promise<{ requestStatus: AppleHealthAuthorizationStatus }>;
-  getAuthorizationStatus(): Promise<{ requestStatus: AppleHealthAuthorizationStatus }>;
+  requestAuthorization(options: { includePro: boolean }): Promise<{ requestStatus: AppleHealthAuthorizationStatus }>;
+  getAuthorizationStatus(options: { includePro: boolean }): Promise<{ requestStatus: AppleHealthAuthorizationStatus }>;
   getLatestBodyWeight(): Promise<{ weightKg: number | null; sampledAtMs: number | null }>;
+  getLatestProfileMeasurements(options: { includePro: boolean }): Promise<AppleHealthProfileMeasurements>;
   saveWorkout(options: AppleHealthWorkoutPayload): Promise<{ saved: boolean; duplicate: boolean }>;
+};
+
+export type AppleHealthProfileMeasurements = {
+  bodyweightKg: number | null;
+  waistAtNavelCm: number | null;
+  heightCm: number | null;
+  manualBodyFatPercent: number | null;
+  dateOfBirth: string | null;
+  bodyFatSex: BodyFatSex | null;
+  sampledAtMs: Partial<Record<"bodyweightKg" | "waistAtNavelCm" | "heightCm" | "manualBodyFatPercent", number>>;
 };
 
 const AppleHealth = registerPlugin<AppleHealthPlugin>("CalistheniHealth");
@@ -39,21 +51,31 @@ export async function isAppleHealthAvailable() {
   }
 }
 
-export async function requestAppleHealthAuthorization() {
+export async function requestAppleHealthAuthorization(includePro = false) {
   if (!supported()) return "unavailable" as const;
   try {
-    return (await AppleHealth.requestAuthorization()).requestStatus;
+    return (await AppleHealth.requestAuthorization({ includePro })).requestStatus;
   } catch {
     return "unknown" as const;
   }
 }
 
-export async function getAppleHealthAuthorizationStatus() {
+export async function getAppleHealthAuthorizationStatus(includePro = false) {
   if (!supported()) return "unavailable" as const;
   try {
-    return (await AppleHealth.getAuthorizationStatus()).requestStatus;
+    return (await AppleHealth.getAuthorizationStatus({ includePro })).requestStatus;
   } catch {
     return "unknown" as const;
+  }
+}
+
+export async function getLatestAppleHealthProfileMeasurements(includePro: boolean): Promise<AppleHealthProfileMeasurements> {
+  const empty: AppleHealthProfileMeasurements = { bodyweightKg: null, waistAtNavelCm: null, heightCm: null, manualBodyFatPercent: null, dateOfBirth: null, bodyFatSex: null, sampledAtMs: {} };
+  if (!supported()) return empty;
+  try {
+    return await AppleHealth.getLatestProfileMeasurements({ includePro });
+  } catch {
+    return empty;
   }
 }
 

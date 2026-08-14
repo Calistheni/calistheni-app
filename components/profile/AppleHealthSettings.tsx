@@ -8,11 +8,12 @@ import { Switch } from "@/components/ui/switch";
 import {
   getAppleHealthAuthorizationStatus,
   getLatestAppleHealthBodyWeight,
+  getLatestAppleHealthProfileMeasurements,
   isAppleHealthAvailable,
   requestAppleHealthAuthorization,
   type AppleHealthAuthorizationStatus,
 } from "@/lib/native/apple-health";
-import { formatWeight, type MeasurementSystem } from "@/lib/measurement-units";
+import { formatLength, formatWeight, type MeasurementSystem } from "@/lib/measurement-units";
 
 type AppleHealthSettingsProps = {
   measurementSystem: MeasurementSystem;
@@ -23,11 +24,13 @@ type AppleHealthSettingsProps = {
     appleHealthBodyweightImportEnabled: boolean;
   }) => Promise<void>;
   onUseBodyweightKg: (weightKg: number) => Promise<void>;
+  onImportMeasurements: (values: { waistAtNavelCm?: number; heightCm?: number; manualBodyFatPercent?: number; dateOfBirth?: string; bodyFatSex?: "MALE" | "FEMALE" }) => Promise<void>;
+  isPro: boolean;
 };
 
 function authorizationCopy(status: AppleHealthAuthorizationStatus) {
   if (status === "unnecessary") return "Apple Health authorization has been requested on this device.";
-  if (status === "shouldRequest") return "Connect to request workout-write and bodyweight-read access.";
+  if (status === "shouldRequest") return "Connect to request workout export plus the body measurements available on your plan.";
   return "Apple Health permission status is managed by iOS.";
 }
 
@@ -37,29 +40,47 @@ export function AppleHealthSettings({
   bodyweightImportEnabled,
   onPreferencesChange,
   onUseBodyweightKg,
+  onImportMeasurements,
+  isPro,
 }: AppleHealthSettingsProps) {
   const [available, setAvailable] = useState(false);
   const [status, setStatus] = useState<AppleHealthAuthorizationStatus>("unknown");
+  const [proStatus, setProStatus] = useState<AppleHealthAuthorizationStatus>("unknown");
   const [isWorking, setIsWorking] = useState(false);
   const [latestWeight, setLatestWeight] = useState<{ weightKg: number; sampledAtMs: number | null } | null>(null);
+  const [profileMeasurements, setProfileMeasurements] = useState<Awaited<ReturnType<typeof getLatestAppleHealthProfileMeasurements>> | null>(null);
 
   useEffect(() => {
     void (async () => {
       const nextAvailable = await isAppleHealthAvailable();
       setAvailable(nextAvailable);
-      if (nextAvailable) setStatus(await getAppleHealthAuthorizationStatus());
+      if (nextAvailable) {
+        setStatus(await getAppleHealthAuthorizationStatus(false));
+        if (isPro) setProStatus(await getAppleHealthAuthorizationStatus(true));
+      }
     })();
-  }, []);
+  }, [isPro]);
 
   if (!available) return null;
 
   async function connect() {
     setIsWorking(true);
     try {
-      const nextStatus = await requestAppleHealthAuthorization();
+      const nextStatus = await requestAppleHealthAuthorization(false);
       setStatus(nextStatus);
       if (nextStatus === "unavailable") toast.error("Apple Health is unavailable on this device.");
       else toast.success("Apple Health authorization request finished.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function enableProHealthData() {
+    setIsWorking(true);
+    try {
+      const nextStatus = await requestAppleHealthAuthorization(true);
+      setProStatus(nextStatus);
+      toast.success("Advanced Apple Health authorization request finished.");
     } finally {
       setIsWorking(false);
     }
@@ -74,6 +95,15 @@ export function AppleHealthSettings({
         return;
       }
       setLatestWeight({ weightKg: result.weightKg, sampledAtMs: result.sampledAtMs });
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function loadProfileMeasurements() {
+    setIsWorking(true);
+    try {
+      setProfileMeasurements(await getLatestAppleHealthProfileMeasurements(isPro));
     } finally {
       setIsWorking(false);
     }
@@ -104,6 +134,11 @@ export function AppleHealthSettings({
     }
   }
 
+  function sampledOn(key: keyof NonNullable<typeof profileMeasurements>["sampledAtMs"]) {
+    const sampledAtMs = profileMeasurements?.sampledAtMs[key];
+    return sampledAtMs ? ` · ${new Date(sampledAtMs).toLocaleDateString()}` : "";
+  }
+
   const connected = status === "unnecessary";
   return (
     <div className="space-y-3 rounded-lg border p-3">
@@ -125,6 +160,9 @@ export function AppleHealthSettings({
           <Switch checked={bodyweightImportEnabled} disabled={isWorking} onCheckedChange={(checked) => void savePreferences({ appleHealthWorkoutExportEnabled: workoutExportEnabled, appleHealthBodyweightImportEnabled: checked })} aria-label="Enable Apple Health bodyweight import" />
         </div>
         {bodyweightImportEnabled ? <div className="space-y-2"><Button type="button" size="sm" variant="outline" onClick={() => void loadLatestWeight()} disabled={isWorking}><RefreshCw className="size-4" /> Read latest body weight</Button>{latestWeight ? <div className="rounded-md bg-muted/50 p-2 text-sm"><p>Apple Health found {formatWeight(latestWeight.weightKg, measurementSystem)}{latestWeight.sampledAtMs ? ` · ${new Date(latestWeight.sampledAtMs).toLocaleDateString()}` : ""}</p><Button className="mt-2" type="button" size="sm" onClick={() => void applyLatestWeight(latestWeight.weightKg)} disabled={isWorking}>Use this weight</Button></div> : null}</div> : null}
+        {bodyweightImportEnabled ? <div className="space-y-2"><Button type="button" size="sm" variant="outline" onClick={() => void loadProfileMeasurements()} disabled={isWorking}><RefreshCw className="size-4" /> Review Apple Health profile data</Button>{profileMeasurements ? <div className="space-y-2 rounded-md bg-muted/50 p-2 text-sm">{profileMeasurements.waistAtNavelCm != null ? <p>Waist: {formatLength(profileMeasurements.waistAtNavelCm, measurementSystem)}{sampledOn("waistAtNavelCm")} <Button size="xs" type="button" onClick={() => void onImportMeasurements({ waistAtNavelCm: profileMeasurements.waistAtNavelCm! })}>Use</Button></p> : null}{isPro && profileMeasurements.heightCm != null ? <p>Height: {formatLength(profileMeasurements.heightCm, measurementSystem)}{sampledOn("heightCm")} <Button size="xs" type="button" onClick={() => void onImportMeasurements({ heightCm: profileMeasurements.heightCm! })}>Use</Button></p> : null}{isPro && profileMeasurements.manualBodyFatPercent != null ? <p>Body fat: {profileMeasurements.manualBodyFatPercent.toFixed(1)}%{sampledOn("manualBodyFatPercent")} <Button size="xs" type="button" onClick={() => void onImportMeasurements({ manualBodyFatPercent: profileMeasurements.manualBodyFatPercent! })}>Use</Button></p> : null}{profileMeasurements.dateOfBirth ? <p>Date of birth: {new Date(profileMeasurements.dateOfBirth).toLocaleDateString()} <Button size="xs" type="button" onClick={() => void onImportMeasurements({ dateOfBirth: profileMeasurements.dateOfBirth! })}>Use</Button></p> : null}{isPro && profileMeasurements.bodyFatSex ? <p>Biological sex: {profileMeasurements.bodyFatSex === "MALE" ? "Male" : "Female"} <Button size="xs" type="button" onClick={() => void onImportMeasurements({ bodyFatSex: profileMeasurements.bodyFatSex! })}>Use</Button></p> : null}</div> : null}</div> : null}
+        <div className="rounded-md bg-muted/30 p-2 text-xs text-muted-foreground">Free Health data: Weight, waist circumference, and date of birth. {isPro ? "Pro also enables height, body fat, and biological sex." : "Upgrade to Pro for height, body fat, and biological sex."}</div>
+        {isPro ? <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/25 p-3"><div><p className="text-sm font-medium">Advanced body measurements <span className="text-primary">PRO</span></p><p className="text-xs text-muted-foreground">Enable Height, Body Fat Percentage, and Biological Sex from Apple Health.</p></div>{proStatus === "shouldRequest" ? <Button type="button" size="sm" onClick={() => void enableProHealthData()} disabled={isWorking}>Enable advanced Health sync</Button> : <span className="text-xs text-muted-foreground">Authorization requested</span>}</div> : null}
       </>}
     </div>
   );

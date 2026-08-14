@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { getAppleHealthWorkoutPayload } from "@/lib/apple-health-workout";
+import { bodyFatFractionToPercent, bodyFatPercentToFraction, getAppleHealthAuthorizationTypes } from "@/lib/apple-health-capabilities";
+import { formatLength } from "@/lib/measurement-units";
 
 test("Apple Health workout payload preserves canonical timestamps and actual completed distance", () => {
   const payload = getAppleHealthWorkoutPayload(42, {
@@ -25,11 +27,33 @@ test("Apple Health bridge remains optional and native-only", async () => {
 
 test("HealthKit plugin requests only workouts for writing and body mass for reading", async () => {
   const source = await readFile(new URL("../ios/App/App/CalistheniHealthPlugin.swift", import.meta.url), "utf8");
-  assert.match(source, /requestAuthorization\(toShare: \[HKObjectType\.workoutType\(\)\], read: \[bodyMassType\]\)/);
+  assert.match(source, /HKObjectType\.workoutType\(\)/);
   assert.match(source, /\.bodyMass/);
   assert.match(source, /HKMetadataKeyExternalUUID/);
   assert.match(source, /totalEnergyBurned: nil/);
-  assert.doesNotMatch(source, /heartRate|stepCount|dietaryEnergyConsumed/);
+  assert.doesNotMatch(source, /heartRate|stepCount|dietaryEnergyConsumed|activeEnergyBurned|leanBodyMass/);
+});
+
+test("Free and Pro HealthKit authorization scopes follow actual Calistheni capabilities", () => {
+  const free = getAppleHealthAuthorizationTypes(false);
+  const pro = getAppleHealthAuthorizationTypes(true);
+  assert.deepEqual(free.write, ["workout"]);
+  assert.deepEqual(free.read, ["bodyMass", "waistCircumference", "dateOfBirth"]);
+  assert.ok(!free.read.includes("bodyFatPercentage"));
+  assert.ok(pro.read.includes("height"));
+  assert.ok(pro.read.includes("bodyFatPercentage"));
+  assert.ok(pro.read.includes("biologicalSex"));
+  assert.ok(!pro.read.includes("workout"));
+});
+
+test("body fat HealthKit fraction conversion is explicit", () => {
+  assert.ok(Math.abs(bodyFatFractionToPercent(0.148) - 14.8) < Number.EPSILON * 16);
+  assert.ok(Math.abs(bodyFatPercentToFraction(14.8) - 0.148) < Number.EPSILON * 16);
+});
+
+test("Health circumference candidates preserve canonical centimetres while respecting imperial display", () => {
+  assert.equal(formatLength(86, "METRIC"), "86cm");
+  assert.equal(formatLength(86, "IMPERIAL"), "33.9in");
 });
 
 test("HealthKit capability and privacy descriptions are configured on the app target", async () => {

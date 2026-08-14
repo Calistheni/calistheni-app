@@ -4,6 +4,7 @@ export const KG_PER_LB = 0.45359237;
 export const LB_PER_KG = 2.2046226218;
 export const METERS_PER_MILE = 1609.344;
 export const FEET_PER_METER = 3.280839895;
+export const CM_PER_INCH = 2.54;
 
 function roundDisplay(value: number, digits = 1) {
   const factor = 10 ** digits;
@@ -28,6 +29,14 @@ export function weightUnit(measurementSystem: MeasurementSystem) {
 
 export function formatWeight(weightKg: number, measurementSystem: MeasurementSystem) {
   return `${displayNumber(weightKgToDisplay(weightKg, measurementSystem))}${weightUnit(measurementSystem)}`;
+}
+
+export function lengthCmToDisplay(lengthCm: number, measurementSystem: MeasurementSystem) {
+  return measurementSystem === "IMPERIAL" ? lengthCm / CM_PER_INCH : lengthCm;
+}
+
+export function formatLength(lengthCm: number, measurementSystem: MeasurementSystem) {
+  return `${displayNumber(lengthCmToDisplay(lengthCm, measurementSystem))}${measurementSystem === "IMPERIAL" ? "in" : "cm"}`;
 }
 
 export function distanceMetersToDisplay(distanceMeters: number, measurementSystem: MeasurementSystem) {

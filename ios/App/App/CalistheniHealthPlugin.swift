@@ -10,28 +10,96 @@ public class CalistheniHealthPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "requestAuthorization", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getAuthorizationStatus", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getLatestBodyWeight", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getLatestProfileMeasurements", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "saveWorkout", returnType: CAPPluginReturnPromise)
     ]
 
     private let healthStore = HKHealthStore()
     private var bodyMassType: HKQuantityType? { HKQuantityType.quantityType(forIdentifier: .bodyMass) }
 
+    private func readTypes(includePro: Bool) -> Set<HKObjectType> {
+        var types = Set([
+            HKQuantityType.quantityType(forIdentifier: .bodyMass),
+            HKQuantityType.quantityType(forIdentifier: .waistCircumference),
+            HKObjectType.characteristicType(forIdentifier: .dateOfBirth)
+        ].compactMap { $0 })
+        if includePro {
+            types.formUnion([
+                HKQuantityType.quantityType(forIdentifier: .height),
+                HKQuantityType.quantityType(forIdentifier: .bodyFatPercentage),
+                HKObjectType.characteristicType(forIdentifier: .biologicalSex)
+            ].compactMap { $0 })
+        }
+        return types
+    }
+
     @objc func isAvailable(_ call: CAPPluginCall) {
         call.resolve(["available": HKHealthStore.isHealthDataAvailable()])
     }
 
     @objc func getAuthorizationStatus(_ call: CAPPluginCall) {
-        authorizationStatus { status in call.resolve(["requestStatus": status]) }
+        authorizationStatus(includePro: call.getBool("includePro") ?? false) { status in call.resolve(["requestStatus": status]) }
     }
 
     @objc func requestAuthorization(_ call: CAPPluginCall) {
-        guard HKHealthStore.isHealthDataAvailable(), let bodyMassType else {
+        guard HKHealthStore.isHealthDataAvailable() else {
             call.resolve(["requestStatus": "unavailable"])
             return
         }
-        healthStore.requestAuthorization(toShare: [HKObjectType.workoutType()], read: [bodyMassType]) { [weak self] _, _ in
-            self?.authorizationStatus { status in call.resolve(["requestStatus": status]) }
+        let includePro = call.getBool("includePro") ?? false
+        healthStore.requestAuthorization(toShare: [HKObjectType.workoutType()], read: readTypes(includePro: includePro)) { [weak self] _, _ in
+            self?.authorizationStatus(includePro: includePro) { status in call.resolve(["requestStatus": status]) }
         }
+    }
+
+    @objc func getLatestProfileMeasurements(_ call: CAPPluginCall) {
+        guard HKHealthStore.isHealthDataAvailable() else { call.resolve(emptyMeasurements()); return }
+        let includePro = call.getBool("includePro") ?? false
+        let group = DispatchGroup()
+        var result = emptyMeasurements()
+        let queue = DispatchQueue(label: "app.calistheni.health.measurements")
+
+        func latest(_ identifier: HKQuantityTypeIdentifier, unit: HKUnit, map: @escaping (Double) -> Double, key: String) {
+            guard let type = HKQuantityType.quantityType(forIdentifier: identifier) else { return }
+            group.enter()
+            healthStore.execute(HKSampleQuery(sampleType: type, predicate: nil, limit: 1, sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)]) { _, samples, _ in
+                if let sample = samples?.first as? HKQuantitySample {
+                    queue.sync {
+                        result[key] = map(sample.quantity.doubleValue(for: unit))
+                        var dates = result["sampledAtMs"] as? [String: Double] ?? [:]
+                        dates[key] = sample.endDate.timeIntervalSince1970 * 1000
+                        result["sampledAtMs"] = dates
+                    }
+                }
+                group.leave()
+            })
+        }
+
+        latest(.bodyMass, unit: HKUnit.gramUnit(with: .kilo), map: { $0 }, key: "bodyweightKg")
+        latest(.waistCircumference, unit: .meter(), map: { $0 * 100 }, key: "waistAtNavelCm")
+        if includePro {
+            latest(.height, unit: .meter(), map: { $0 * 100 }, key: "heightCm")
+            latest(.bodyFatPercentage, unit: .percent(), map: { $0 * 100 }, key: "manualBodyFatPercent")
+        }
+        group.enter()
+        DispatchQueue.global().async { [weak self] in
+            if let components = try? self?.healthStore.dateOfBirthComponents(),
+               let date = Calendar(identifier: .gregorian).date(from: components) {
+                queue.sync { result["dateOfBirth"] = ISO8601DateFormatter().string(from: date).prefix(10).description }
+            }
+            group.leave()
+        }
+        if includePro {
+            group.enter()
+            DispatchQueue.global().async { [weak self] in
+                if let sex = try? self?.healthStore.biologicalSex().biologicalSex {
+                    let value = sex == .male ? "MALE" : sex == .female ? "FEMALE" : nil
+                    if let value { queue.sync { result["bodyFatSex"] = value } }
+                }
+                group.leave()
+            }
+        }
+        group.notify(queue: .main) { call.resolve(result) }
     }
 
     @objc func getLatestBodyWeight(_ call: CAPPluginCall) {
@@ -93,12 +161,12 @@ public class CalistheniHealthPlugin: CAPPlugin, CAPBridgedPlugin {
         healthStore.execute(duplicateQuery)
     }
 
-    private func authorizationStatus(_ completion: @escaping (String) -> Void) {
-        guard HKHealthStore.isHealthDataAvailable(), let bodyMassType else {
+    private func authorizationStatus(includePro: Bool, _ completion: @escaping (String) -> Void) {
+        guard HKHealthStore.isHealthDataAvailable() else {
             completion("unavailable")
             return
         }
-        healthStore.getRequestStatusForAuthorization(toShare: [HKObjectType.workoutType()], read: [bodyMassType]) { status, _ in
+        healthStore.getRequestStatusForAuthorization(toShare: [HKObjectType.workoutType()], read: self.readTypes(includePro: includePro)) { status, _ in
             switch status {
             case .shouldRequest: completion("shouldRequest")
             case .unnecessary: completion("unnecessary")
@@ -106,5 +174,9 @@ public class CalistheniHealthPlugin: CAPPlugin, CAPBridgedPlugin {
             @unknown default: completion("unknown")
             }
         }
+    }
+
+    private func emptyMeasurements() -> [String: Any] {
+        ["bodyweightKg": NSNull(), "waistAtNavelCm": NSNull(), "heightCm": NSNull(), "manualBodyFatPercent": NSNull(), "dateOfBirth": NSNull(), "bodyFatSex": NSNull(), "sampledAtMs": [:]]
     }
 }
