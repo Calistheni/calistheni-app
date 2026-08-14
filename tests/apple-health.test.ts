@@ -89,3 +89,10 @@ test("workout export happens only after Calistheni save and records success idem
   assert.match(route, /appleHealthExportedAt: null/);
   assert.match(route, /completedAt: \{ not: null \}/);
 });
+
+test("Auth.js permits standard Auth.js Google environment names without injecting empty credentials", async () => {
+  const source = await readFile(new URL("../auth.ts", import.meta.url), "utf8");
+  assert.match(source, /process\.env\.GOOGLE_CLIENT_ID \|\| process\.env\.AUTH_GOOGLE_ID/);
+  assert.match(source, /process\.env\.GOOGLE_CLIENT_SECRET \|\| process\.env\.AUTH_GOOGLE_SECRET/);
+  assert.doesNotMatch(source, /clientId:\s*process\.env\.GOOGLE_CLIENT_ID \?\? ""/);
+});
