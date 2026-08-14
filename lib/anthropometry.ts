@@ -57,7 +57,7 @@ export const MEASUREMENT_CATALOGUE = {
     "cm",
     100,
     250,
-    "PRO"
+    "FREE"
   ),
   neckCm: measurement(
     "Neck",
@@ -66,7 +66,7 @@ export const MEASUREMENT_CATALOGUE = {
     "cm",
     15,
     80,
-    "FREE"
+    "PRO"
   ),
   shouldersCm: measurement(
     "Shoulders",
@@ -84,7 +84,7 @@ export const MEASUREMENT_CATALOGUE = {
     "cm",
     40,
     220,
-    "FREE"
+    "PRO"
   ),
   waistAtNavelCm: measurement(
     "Waist",
@@ -111,7 +111,7 @@ export const MEASUREMENT_CATALOGUE = {
     "cm",
     10,
     100,
-    "FREE"
+    "PRO"
   ),
   forearmCm: measurement(
     "Forearm",
@@ -266,7 +266,7 @@ export function getMeasurementCapabilities(isPro: boolean) {
     historyLimit: isPro ? null : FREE_MEASUREMENT_HISTORY_LIMIT,
     canEstimateBodyFat: isPro,
     canViewCalculatedMetrics: isPro,
-    canViewMeasurementCharts: isPro,
+    canViewMeasurementCharts: true,
     canViewAdvancedComparisons: isPro,
   };
 }

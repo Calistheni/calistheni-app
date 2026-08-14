@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { LockKeyhole, Plus, Trash2 } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -193,6 +193,61 @@ function MeasurementInput({
         {metadata.helper}
       </p>
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
+    </div>
+  );
+}
+
+function MeasurementHistoryCell({
+  field,
+  value,
+  previousValue,
+  changed,
+  locked,
+}: {
+  field: Exclude<MeasurementField, "bodyFatPercentage">;
+  value: number | null | undefined;
+  previousValue: number | null | undefined;
+  changed: boolean;
+  locked: boolean;
+}) {
+  const stateClass = locked
+    ? "border-muted bg-muted/40"
+    : changed
+    ? "border-primary/30 bg-primary/10"
+    : "border-border bg-background/40";
+  const status = locked
+    ? "Upgrade to track"
+    : changed
+    ? previousValue == null
+      ? "Initial value"
+      : `${format(Number(previousValue))} → ${format(Number(value))}`
+    : "\u00a0";
+
+  return (
+    <div
+      className={`flex min-h-24 min-w-0 flex-col justify-between rounded-md border p-3 ${stateClass}`}
+    >
+      <p className="text-xs text-muted-foreground">{label(field)}</p>
+      {locked ? (
+        <p className="flex items-center gap-1 font-medium text-muted-foreground">
+          <LockKeyhole className="size-3.5" /> Pro
+        </p>
+      ) : (
+        <p className="font-medium tabular-nums">
+          {value == null ? "Not tracked" : `${format(value)} ${unit(field)}`}
+        </p>
+      )}
+      <p
+        className={`min-h-4 text-xs ${
+          locked
+            ? "text-muted-foreground"
+            : changed
+            ? "text-primary"
+            : "text-transparent"
+        }`}
+      >
+        {status}
+      </p>
     </div>
   );
 }
@@ -568,37 +623,16 @@ export function MeasurementTracker({
                           </Button>
                         </CardHeader>
                         <CardContent>
-                          <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
-                            {STORAGE_FIELDS.filter(
-                              ([field]) => snapshot[field] != null
-                            ).map(([field]) => (
-                              <div
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                            {STORAGE_FIELDS.map(([field]) => (
+                              <MeasurementHistoryCell
                                 key={field}
-                                className={`min-w-0 ${
-                                  changed.has(field)
-                                    ? "rounded-md bg-primary/10 p-2"
-                                    : ""
-                                }`}
-                              >
-                                <p className="text-xs text-muted-foreground">
-                                  {label(field)}
-                                </p>
-                                <p className="font-medium tabular-nums">
-                                  {format(snapshot[field] ?? null)}{" "}
-                                  {unit(field)}
-                                </p>
-                                {changed.has(field) ? (
-                                  <p className="text-xs text-primary">
-                                    {previous[field] == null
-                                      ? "Initial value"
-                                      : `${format(
-                                          Number(previous[field])
-                                        )} → ${format(
-                                          Number(snapshot[field])
-                                        )}`}
-                                  </p>
-                                ) : null}
-                              </div>
+                                field={field}
+                                value={snapshot[field]}
+                                previousValue={previous[field]}
+                                changed={changed.has(field)}
+                                locked={!allowedFields.has(field)}
+                              />
                             ))}
                           </div>
                           {entry.note ? (

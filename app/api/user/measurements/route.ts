@@ -25,7 +25,6 @@ import {
 
 const PRO_ONLY_RESPONSE_FIELDS = [
   "bodyFatPercentage",
-  "heightCm",
   "shouldersCm",
   "hipsCm",
   "forearmCm",
