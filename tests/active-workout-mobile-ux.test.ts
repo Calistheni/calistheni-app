@@ -34,4 +34,5 @@ test("focused active workout owns one dark, safe-area-aware scroll region", asyn
   assert.match(source, /\.app-shell-content-focused-workout \{[\s\S]*overflow-y: auto;[\s\S]*background: var\(--background\)/);
   assert.match(source, /overscroll-behavior-y: none/);
   assert.match(source, /flex: 1;[\s\S]*overflow-y: auto;/);
+  assert.match(source, /\.app-shell \{[\s\S]*min-height: 100dvh;[\s\S]*background: var\(--background\)/);
 });

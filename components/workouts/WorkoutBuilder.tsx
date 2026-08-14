@@ -107,6 +107,7 @@ import {
 } from "@/components/workouts/hooks/useWorkoutTimer";
 import { useRestTimer } from "@/components/workouts/hooks/useRestTimer";
 import { MobileActiveWorkoutHeader } from "@/components/workouts/MobileActiveWorkoutHeader";
+import { DurationInput } from "@/components/workouts/DurationInput";
 import { SupersetGroupCard } from "@/components/workouts/SupersetGroupCard";
 import {
   SupersetRoundForm,
@@ -155,7 +156,7 @@ import { getTrackingTypeFieldConfig } from "@/lib/exercise-tracking-fields";
 import { rankExercisesForPicker } from "@/lib/exercise-picker-ranking";
 import type { ExerciseUsage } from "@/lib/workout-exercise-usage";
 import { dismissActiveTextInput } from "@/lib/mobile-keyboard";
-import { formatDurationInput, parseDurationInput } from "@/lib/duration-input";
+import { formatDurationInput } from "@/lib/duration-input";
 import {
   getExerciseTimerDisplaySeconds,
   getExerciseTimerResultSeconds,
@@ -164,6 +165,7 @@ import {
   type ExerciseSetTimer,
 } from "@/lib/exercise-set-timer";
 import { isNativePluginAvailable } from "@/lib/native/platform";
+import { endWorkoutLiveActivity, syncWorkoutLiveActivity } from "@/lib/native/workout-live-activity";
 import {
   displayDistanceInputValue,
   displayDistanceToMeters,
@@ -715,16 +717,13 @@ function getRpeDescription(rpe: number) {
 
 function formatSetSummary(
   set: WorkoutSetInput,
-  trackingType: ExerciseListItem["trackingType"]
+  trackingType: ExerciseListItem["trackingType"],
+  measurementSystem: MeasurementSystem = "METRIC"
 ) {
   const parts: string[] = [];
 
   if (isWeightFieldVisible(trackingType) && set.weight !== null) {
-    parts.push(
-      trackingType === "WEIGHTED_BODYWEIGHT"
-        ? `+${set.weight} kg`
-        : `${set.weight} kg`
-    );
+    parts.push(formatWeight(set.weight, measurementSystem));
   }
 
   if (isRepsFieldVisible(trackingType) && set.reps !== null) {
@@ -736,7 +735,7 @@ function formatSetSummary(
   }
 
   if (set.distanceMeters !== null) {
-    parts.push(`${set.distanceMeters} m`);
+    parts.push(formatDistance(set.distanceMeters, measurementSystem));
   }
 
   return parts.length ? parts.join(" x ") : "Set details";
@@ -886,15 +885,35 @@ export function WorkoutBuilder({
   const [durationTimerTarget, setDurationTimerTarget] = useState<{ exerciseLocalId: string; setIndex: number; setLocalId: string; exerciseName: string } | null>(null);
   const [exerciseTimer, setExerciseTimer] = useState<ActiveExerciseTimer | null>(null);
   const [exerciseTimerNowMs, setExerciseTimerNowMs] = useState(Date.now);
-  const [durationDrafts, setDurationDrafts] = useState<Record<string, string>>({});
   const [countdownTargetSeconds, setCountdownTargetSeconds] = useState(15 * 60);
   const [pendingExerciseTimerStart, setPendingExerciseTimerStart] = useState<{ mode: ActiveExerciseTimer["mode"]; targetSeconds: number } | null>(null);
   const [showActiveTimerFinishDialog, setShowActiveTimerFinishDialog] = useState(false);
   const exerciseTimerCompletedRef = useRef<string | null>(null);
+  const liveActivityStartedAtRef = useRef<number | null>(null);
   const selectedExerciseIds = useMemo(
     () => [...new Set(selectedExercises.map((exercise) => exercise.exerciseId))],
     [selectedExercises]
   );
+  const liveActivityExercise = useMemo(() => {
+    const selected = selectedExercises.find((item) => item.sets.some((set) => !set.completed))
+      ?? selectedExercises[0];
+    if (!selected) {
+      return {
+        name: "Workout",
+        setLabel: "Ready to train",
+        performance: "Add an exercise",
+      };
+    }
+    const metadata = exercises.find((item) => item.id === selected.exerciseId);
+    const setIndex = selected.sets.findIndex((set) => !set.completed);
+    const set = selected.sets[setIndex >= 0 ? setIndex : 0];
+    if (!metadata || !set) return null;
+    return {
+      name: metadata.name,
+      setLabel: `Set ${Math.max(0, setIndex) + 1} of ${selected.sets.length}`,
+      performance: formatSetSummary(set, metadata.trackingType, measurementSystem) || "Next set",
+    };
+  }, [exercises, measurementSystem, selectedExercises]);
   const [supersets, setSupersets] = useState<WorkoutSupersetInput[]>(
     initialSupersets
   );
@@ -1362,6 +1381,24 @@ export function WorkoutBuilder({
     title,
     visibility,
   ]);
+
+  useEffect(() => {
+    if (isEditing || !isActiveWorkoutSessionReady || !liveActivityExercise) return;
+    liveActivityStartedAtRef.current ??= Date.now() - workoutTimer.elapsedSeconds * 1000;
+    void syncWorkoutLiveActivity({
+      workoutId: activeWorkoutSessionId,
+      workoutStartedAtMs: liveActivityStartedAtRef.current,
+      exerciseName: liveActivityExercise.name,
+      setLabel: liveActivityExercise.setLabel,
+      displayPerformance: liveActivityExercise.performance,
+      completedSets: completedSetCount,
+      totalSets: selectedExercises.reduce((count, exercise) => count + exercise.sets.length, 0),
+      isResting: restTimer.activeTimer !== null,
+      restEndsAtMs: restTimer.activeTimer?.endsAtMs ?? null,
+    });
+  // `workoutStartedAtMs` is captured once; timer seconds are rendered natively from that date.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkoutSessionId, completedSetCount, isActiveWorkoutSessionReady, isEditing, liveActivityExercise, restTimer.activeTimer, selectedExercises]);
 
   function addExercise(exerciseId: string) {
     const localId = crypto.randomUUID();
@@ -1943,11 +1980,6 @@ export function WorkoutBuilder({
       // A countdown target is only the full result after it reaches zero; DONE records elapsed work.
       exerciseTimerCompletedRef.current = activeTimerSetLocalId;
       setExerciseTimer(null);
-      setDurationDrafts((current) => {
-        const remaining = { ...current };
-        delete remaining[activeTimerSetLocalId];
-        return remaining;
-      });
       setSelectedExercises((current) => current.map((exercise) =>
         exercise.localId === localId
           ? {
@@ -2013,6 +2045,7 @@ export function WorkoutBuilder({
   }
 
   function discardWorkout() {
+    void endWorkoutLiveActivity(activeWorkoutSessionId, completedSetCount, selectedExercises.reduce((count, exercise) => count + exercise.sets.length, 0));
     workoutTimer.clear();
     restTimer.clearRestTimer();
     clearActiveWorkoutSessionStorage(activeWorkoutSessionId);
@@ -2070,10 +2103,6 @@ export function WorkoutBuilder({
     );
   }
 
-  function updateSetDurationText(localId: string, setIndex: number, value: string) {
-    const seconds = parseDurationInput(value);
-    if (seconds !== null) updateSet(localId, setIndex, "durationSeconds", String(seconds));
-  }
 
   function openExerciseTimingTools(
     selectedExercise: LocalWorkoutExercise,
@@ -2156,11 +2185,6 @@ export function WorkoutBuilder({
     if (!exerciseTimer) return;
     const seconds = getExerciseTimerResultSeconds(exerciseTimer, exerciseTimerNowMs);
     updateSet(exerciseTimer.exerciseLocalId, exerciseTimer.setIndex, "durationSeconds", String(seconds));
-    setDurationDrafts((current) => {
-      const remaining = { ...current };
-      delete remaining[exerciseTimer.setLocalId];
-      return remaining;
-    });
     setExerciseTimer(null);
   }
 
@@ -2342,6 +2366,7 @@ export function WorkoutBuilder({
 
       const workout = (await response.json()) as { id: number };
       if (!isEditing) {
+        void endWorkoutLiveActivity(activeWorkoutSessionId, completedSetCount, selectedExercises.reduce((count, exercise) => count + exercise.sets.length, 0));
         workoutTimer.clear();
         restTimer.clearRestTimer();
         clearActiveWorkoutSessionStorage(activeWorkoutSessionId);
@@ -2612,7 +2637,7 @@ export function WorkoutBuilder({
                   if (column.metric === "durationSeconds") {
                     return (
                       <div key={column.metric} className="min-w-0">
-                        <Input className={`${COMPACT_WORKOUT_NUMBER_INPUT_CLASS} w-full min-w-0`} type="text" inputMode="numeric" placeholder="00:00" aria-description={description} aria-label={`${exercise.name} set ${setIndex + 1} duration in minutes and seconds`} readOnly={activeForThisSet} value={activeForThisSet ? formatDurationInput(exerciseTimerValue) : durationDrafts[set.localId] ?? formatDurationInput(set.durationSeconds)} onChange={(event) => { const next = event.target.value; setDurationDrafts((current) => ({ ...current, [set.localId]: next })); updateSetDurationText(selectedExercise.localId, setIndex, next); }} onBlur={(event) => { const seconds = parseDurationInput(event.target.value); setDurationDrafts((current) => { const remaining = { ...current }; delete remaining[set.localId]; return remaining; }); if (seconds !== null) updateSet(selectedExercise.localId, setIndex, "durationSeconds", String(seconds)); }} />
+                        {activeForThisSet ? <Input className={`${COMPACT_WORKOUT_NUMBER_INPUT_CLASS} w-full min-w-0`} type="text" readOnly value={formatDurationInput(exerciseTimerValue)} aria-label={`${exercise.name} set ${setIndex + 1} active duration`} /> : <DurationInput className={`${COMPACT_WORKOUT_NUMBER_INPUT_CLASS} w-full min-w-0`} placeholder="00:00" aria-description={description} aria-label={`${exercise.name} set ${setIndex + 1} duration in minutes and seconds`} durationSeconds={set.durationSeconds} onDurationChange={(seconds) => updateSet(selectedExercise.localId, setIndex, "durationSeconds", String(seconds))} />}
                       </div>
                     );
                   }
@@ -4889,7 +4914,7 @@ export function WorkoutBuilder({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="exercise-timer-target">Timer length</Label>
-                <Input id="exercise-timer-target" type="text" inputMode="numeric" value={formatDurationInput(countdownTargetSeconds)} aria-label="Countdown timer length in minutes and seconds" onChange={(event) => { const seconds = parseDurationInput(event.target.value); if (seconds !== null) setCountdownTargetSeconds(seconds); }} />
+                <DurationInput id="exercise-timer-target" className="text-base md:text-sm" durationSeconds={countdownTargetSeconds} aria-label="Countdown timer length in minutes and seconds" onDurationChange={(seconds) => setCountdownTargetSeconds(seconds)} />
                 <div className="flex flex-wrap gap-1.5">
                   {[30, 60, 120, 300, 600, 900, 1800].map((seconds) => <Button key={seconds} type="button" size="sm" variant={countdownTargetSeconds === seconds ? "secondary" : "outline"} onClick={() => setCountdownTargetSeconds(seconds)}>{seconds < 60 ? "30 sec" : `${seconds / 60} min`}</Button>)}
                 </div>

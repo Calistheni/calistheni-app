@@ -37,6 +37,8 @@
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Calistheni uses your location to show nearby workout parks and provide directions.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Calistheni uses your camera to scan food barcodes and identify food from photos.</string>
 	<key>UILaunchStoryboardName</key>
