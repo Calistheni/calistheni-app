@@ -30,6 +30,8 @@ import {
   TimerReset,
   Trash2,
   Unlink2,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 import { arrayMove } from "@dnd-kit/sortable";
 import { Haptics, NotificationType } from "@capacitor/haptics";
@@ -261,7 +263,7 @@ async function playExerciseTimerCompletion() {
 const DEFAULT_REST_SECONDS = 90;
 const RPE_VALUES = [6, 7, 7.5, 8, 8.5, 9, 9.5, 10];
 const COMPACT_WORKOUT_NUMBER_INPUT_CLASS =
-  "h-8 min-w-0 rounded-md bg-background/80 px-1 text-center text-sm font-semibold tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
+  "h-8 min-w-0 rounded-md bg-background/80 px-1 text-center text-base font-semibold tabular-nums md:text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
 const WORKOUT_TABLE_HEADER_CELL_CLASS =
   "flex min-w-0 items-center justify-center px-1 text-center";
 const WORKOUT_TABLE_CELL_CLASS =
@@ -1928,7 +1930,37 @@ export function WorkoutBuilder({
       };
     }
 
-    updateSet(localId, setIndex, "completed", completed);
+    const activeTimerForSet = completed && setLocalId && exerciseTimer?.setLocalId === setLocalId
+      ? exerciseTimer
+      : null;
+
+    if (activeTimerForSet) {
+      const activeTimerSetLocalId = activeTimerForSet.setLocalId;
+      const performedDurationSeconds = getExerciseTimerResultSeconds(
+        activeTimerForSet,
+        Date.now()
+      );
+      // A countdown target is only the full result after it reaches zero; DONE records elapsed work.
+      exerciseTimerCompletedRef.current = activeTimerSetLocalId;
+      setExerciseTimer(null);
+      setDurationDrafts((current) => {
+        const remaining = { ...current };
+        delete remaining[activeTimerSetLocalId];
+        return remaining;
+      });
+      setSelectedExercises((current) => current.map((exercise) =>
+        exercise.localId === localId
+          ? {
+              ...exercise,
+              sets: exercise.sets.map((set, index) => index === setIndex
+                ? { ...set, durationSeconds: performedDurationSeconds, completed: true }
+                : set),
+            }
+          : exercise
+      ));
+    } else {
+      updateSet(localId, setIndex, "completed", completed);
+    }
 
     if (completed) {
       const durationSeconds = restSeconds ?? DEFAULT_REST_SECONDS;
@@ -3129,13 +3161,13 @@ export function WorkoutBuilder({
                 </div>
                 <Button
                   type="button"
-                  size="sm"
+                  size="icon"
                   variant="outline"
-                  className="h-9 px-2"
-                  aria-label={`Rest sounds ${restTimer.isMuted ? "muted" : "on"}`}
+                  className="size-9"
+                  aria-label={restTimer.isMuted ? "Enable rest timer sound" : "Mute rest timer sound"}
                   onClick={toggleRestSound}
                 >
-                  Rest: {restTimer.isMuted ? "Muted" : "On"}
+                  {restTimer.isMuted ? <VolumeX /> : <Volume2 />}
                 </Button>
                 <Button
                   type="button"
@@ -3275,12 +3307,13 @@ export function WorkoutBuilder({
             <div className="grid grid-cols-[auto_auto_minmax(0,1fr)] gap-1.5 lg:grid-cols-[auto_auto]">
               <Button
                 type="button"
-                size="sm"
+                size="icon"
                 variant="outline"
-                className="px-2"
+                className="size-8"
+                aria-label={restTimer.isMuted ? "Enable rest timer sound" : "Mute rest timer sound"}
                 onClick={toggleRestSound}
               >
-                Rest: {restTimer.isMuted ? "Muted" : "On"}
+                {restTimer.isMuted ? <VolumeX /> : <Volume2 />}
               </Button>
               <Select
                 value={visibility}

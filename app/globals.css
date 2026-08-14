@@ -148,6 +148,7 @@
   html {
     min-height: 100%;
     background: var(--background);
+    overscroll-behavior-y: none;
   }
 
   * {
@@ -217,7 +218,14 @@
   }
 
   .app-shell-content-focused-workout {
+    flex: 1;
+    min-height: 0;
+    height: 100%;
     padding-bottom: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    background: var(--background);
+    -webkit-overflow-scrolling: touch;
   }
 
   .app-shell-content-full-bleed {

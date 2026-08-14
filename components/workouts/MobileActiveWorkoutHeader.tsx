@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { House } from "lucide-react";
+import { House, Volume2, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 type MobileActiveWorkoutHeaderProps = {
@@ -37,10 +37,10 @@ export function MobileActiveWorkoutHeader({
   onSkipRestTimer,
 }: MobileActiveWorkoutHeaderProps) {
   return (
-    <div className="sticky top-0 z-30 -mx-4 w-auto max-w-[calc(100%+2rem)] md:hidden [overflow-anchor:none]">
+    <div className="sticky top-0 z-30 -mx-4 w-auto max-w-[calc(100%+2rem)] shrink-0 md:hidden [overflow-anchor:none]">
       <div className="bg-background/95 px-4 pt-[calc(env(safe-area-inset-top)+0.375rem)] pb-1.5 backdrop-blur">
         <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
-          <div className="grid grid-cols-[2.25rem_3.35rem_minmax(0,1fr)_3.25rem] gap-1 p-1.5">
+          <div className="grid grid-cols-[2.25rem_2.25rem_minmax(0,1fr)_4rem] gap-1 p-1.5">
             <Button
               asChild
               size="icon"
@@ -53,13 +53,13 @@ export function MobileActiveWorkoutHeader({
             </Button>
             <Button
               type="button"
-              size="sm"
+              size="icon"
               variant="outline"
-              className="h-9 min-w-0 px-1 text-[11px]"
-              aria-label={`Rest sounds ${restMuted ? "muted" : "on"}`}
+              className="size-9"
+              aria-label={restMuted ? "Enable rest timer sound" : "Mute rest timer sound"}
               onClick={onToggleRestSound}
             >
-              Rest: {restMuted ? "Off" : "On"}
+              {restMuted ? <VolumeX className="size-4" aria-hidden="true" /> : <Volume2 className="size-4" aria-hidden="true" />}
             </Button>
             <Button
               type="button"
@@ -72,8 +72,7 @@ export function MobileActiveWorkoutHeader({
             <Button
               type="button"
               size="sm"
-              variant="outline"
-              className="h-9 min-w-0 px-1 text-[11px]"
+              className="h-9 min-w-0 px-1.5 text-xs min-[360px]:px-2 min-[360px]:text-sm"
               onClick={onFinish}
               disabled={isSaving}
             >
