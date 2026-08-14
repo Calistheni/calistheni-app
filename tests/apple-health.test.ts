@@ -58,6 +58,17 @@ test("manual measurements create deterministic canonical HealthKit samples while
   assert.equal(getAppleHealthMeasurementPayloads({ id: "imported", measuredAt: "2026-08-14T08:00:00.000Z", bodyweightKg: 88.5, source: "APPLE_HEALTH" }).length, 0);
 });
 
+test("the explicit history backfill migration marks only legacy manual snapshots as exportable", async () => {
+  const migration = await readFile(
+    new URL("../prisma/migrations/20260814140000_mark_existing_manual_measurements_health_exportable/migration.sql", import.meta.url),
+    "utf8"
+  );
+  assert.match(migration, /WHERE "source" = 'MANUAL'::"BodyMeasurementSource"/);
+  assert.match(migration, /"BODY_WEIGHT"|BODY_WEIGHT/);
+  assert.match(migration, /"healthExportKinds"/);
+  assert.match(migration, /cardinality\("healthExportKinds"\) = 0/);
+});
+
 test("body fat HealthKit fraction conversion is explicit", () => {
   assert.ok(Math.abs(bodyFatFractionToPercent(0.148) - 14.8) < Number.EPSILON * 16);
   assert.ok(Math.abs(bodyFatPercentToFraction(14.8) - 0.148) < Number.EPSILON * 16);
