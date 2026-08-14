@@ -15,6 +15,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { getExerciseThumbnailSrc } from "@/lib/exercise-display";
+import { getExerciseRecordHref } from "@/lib/exercise-routes";
 import type { ExerciseListItem } from "@/types/workout";
 
 function formatTrackingType(value: string) {
@@ -127,13 +128,13 @@ export function ExerciseDetailPreview({
             <h3 className="text-sm font-semibold">Instructions</h3>
             <p className="mt-2 text-sm text-muted-foreground">
               Detailed written instructions are not available for this exercise
-              yet. Use the movement media and full exercise page when available.
+              yet. Use the movement media and records page when available.
             </p>
           </section>
 
           <Button asChild className="w-full">
-            <Link href={`/exercises/${encodeURIComponent(exercise.id)}`}>
-              Open full exercise page
+            <Link href={getExerciseRecordHref(exercise.slug)}>
+              Open records and progress
             </Link>
           </Button>
         </div>

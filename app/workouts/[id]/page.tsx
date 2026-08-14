@@ -13,13 +13,18 @@ import { SaveWorkoutAsRoutineButton } from "@/components/routines/RoutineActions
 import { DeleteWorkoutButton } from "@/components/workouts/DeleteWorkoutButton";
 import { WorkoutSocialActions } from "@/components/community/WorkoutSocialActions";
 import { parsePositiveInteger } from "@/lib/api-response";
+import { getExerciseRecordHref } from "@/lib/exercise-routes";
 import {
   formatPersonalRecordValue,
   PERSONAL_RECORD_LABELS,
   type PersonalRecordType,
 } from "@/lib/personal-records";
 import { prisma } from "@/lib/prisma";
-import { formatDistance, formatWeight, type MeasurementSystem } from "@/lib/measurement-units";
+import {
+  formatDistance,
+  formatWeight,
+  type MeasurementSystem,
+} from "@/lib/measurement-units";
 import { mapWorkoutDetail, userWorkoutInclude } from "@/lib/workouts";
 import {
   getSupersetDisplayLabel,
@@ -109,9 +114,20 @@ export default async function WorkoutDetailPage({
     include: {
       ...userWorkoutInclude,
       photos: { orderBy: { createdAt: "asc" } },
-      user: { select: { id: true, name: true, username: true, image: true, bodyweightKg: true } },
+      user: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          image: true,
+          bodyweightKg: true,
+        },
+      },
       _count: { select: { likes: true, comments: true } },
-      likes: { where: { userId: session?.user?.id ?? "" }, select: { userId: true } },
+      likes: {
+        where: { userId: session?.user?.id ?? "" },
+        select: { userId: true },
+      },
     },
   });
 
@@ -124,7 +140,12 @@ export default async function WorkoutDetailPage({
   }
 
   const viewerMeasurementSystem: MeasurementSystem = session?.user?.id
-    ? (await prisma.user.findUnique({ where: { id: session.user.id }, select: { measurementSystem: true } }))?.measurementSystem ?? "METRIC"
+    ? (
+        await prisma.user.findUnique({
+          where: { id: session.user.id },
+          select: { measurementSystem: true },
+        })
+      )?.measurementSystem ?? "METRIC"
     : "METRIC";
 
   const detail = mapWorkoutDetail(workout);
@@ -177,7 +198,17 @@ export default async function WorkoutDetailPage({
           <p className="text-sm text-muted-foreground">
             {new Date(detail.startedAt).toLocaleString()}
           </p>
-          {!isOwner ? <p className="text-sm text-muted-foreground">Shared by <Link className="font-medium text-foreground underline-offset-4 hover:underline" href={`/users/${workout.user.id}`}>{workout.user.name ?? "Calistheni athlete"}</Link></p> : null}
+          {!isOwner ? (
+            <p className="text-sm text-muted-foreground">
+              Shared by{" "}
+              <Link
+                className="font-medium text-foreground underline-offset-4 hover:underline"
+                href={`/users/${workout.user.id}`}
+              >
+                {workout.user.name ?? "Calistheni athlete"}
+              </Link>
+            </p>
+          ) : null}
         </div>
         {isOwner ? (
           <div className="flex flex-wrap gap-2">
@@ -190,7 +221,16 @@ export default async function WorkoutDetailPage({
         ) : null}
       </div>
 
-      {session?.user?.id ? <div className="mb-6"><WorkoutSocialActions workoutId={workout.id} initialLikeCount={workout._count.likes} initialLiked={workout.likes.length > 0} canCopy={!isOwner} /></div> : null}
+      {session?.user?.id ? (
+        <div className="mb-6">
+          <WorkoutSocialActions
+            workoutId={workout.id}
+            initialLikeCount={workout._count.likes}
+            initialLiked={workout.likes.length > 0}
+            canCopy={!isOwner}
+          />
+        </div>
+      ) : null}
 
       <div className="mb-6 grid gap-3 sm:grid-cols-3">
         <Card>
@@ -227,9 +267,19 @@ export default async function WorkoutDetailPage({
         </Card>
       ) : null}
 
-      {workout.photos.length ? <div className="mb-6 w-full overflow-hidden rounded-xl bg-muted"><Image src={`/api/workouts/${workout.id}/photos/${workout.photos[0].id}`} alt={`Workout photo from ${detail.title ?? "workout"}`} width={Math.max(1, workout.photos[0].width)} height={Math.max(1, workout.photos[0].height)} unoptimized className="block h-auto w-full" sizes="(max-width: 1024px) calc(100vw - 2rem), 1024px" /></div> : null}
-
-
+      {workout.photos.length ? (
+        <div className="mb-6 w-full overflow-hidden rounded-xl bg-muted">
+          <Image
+            src={`/api/workouts/${workout.id}/photos/${workout.photos[0].id}`}
+            alt={`Workout photo from ${detail.title ?? "workout"}`}
+            width={Math.max(1, workout.photos[0].width)}
+            height={Math.max(1, workout.photos[0].height)}
+            unoptimized
+            className="block h-auto w-full"
+            sizes="(max-width: 1024px) calc(100vw - 2rem), 1024px"
+          />
+        </div>
+      ) : null}
 
       <div className="space-y-4">
         {detail.exercises.map((workoutExercise) => {
@@ -241,182 +291,198 @@ export default async function WorkoutDetailPage({
           const superset = exerciseSupersets[0] ?? null;
 
           return (
-          <Card key={workoutExercise.id} className="relative overflow-hidden">
-            {superset ? (
-              <span
-                className={`absolute inset-y-0 left-0 w-1 ${
-                  SUPERSET_COLOR_STYLES[superset.colorKey].accent
-                }`}
-                aria-hidden="true"
-              />
-            ) : null}
-            <CardHeader>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <Image
-                  src={
-                    workoutExercise.exercise.thumbnailUrl ?? "/icons/icon.png"
-                  }
-                  alt=""
-                  width={224}
-                  height={160}
-                  unoptimized
-                  className="h-20 w-28 rounded-lg bg-muted object-cover"
+            <Card key={workoutExercise.id} className="relative overflow-hidden">
+              {superset ? (
+                <span
+                  className={`absolute inset-y-0 left-0 w-1 ${
+                    SUPERSET_COLOR_STYLES[superset.colorKey].accent
+                  }`}
+                  aria-hidden="true"
                 />
-                <div className="min-w-0 flex-1">
-                  <h2 className="text-xl font-semibold">
-                    <Link
-                      href={`/exercises/${encodeURIComponent(
-                        workoutExercise.exercise.id
-                      )}`}
-                      className="underline-offset-4 hover:underline"
-                    >
-                      {workoutExercise.exercise.name}
-                    </Link>
-                  </h2>
-                  <div className="mt-1 flex flex-wrap gap-2">
-                    <Badge variant="secondary">
-                      {workoutExercise.exercise.muscle}
-                    </Badge>
-                    {exerciseSupersets.map((exerciseSuperset) => (
-                      <Badge
-                        key={exerciseSuperset.key}
-                        variant="outline"
-                        className={
-                          SUPERSET_COLOR_STYLES[exerciseSuperset.colorKey].badge
-                        }
-                      >
-                        <Layers2 />
-                        {getSupersetDisplayLabel(
-                          exerciseSuperset,
-                          detail.supersets.findIndex((item) => item.key === exerciseSuperset.key)
+              ) : null}
+              <CardHeader>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <Image
+                    src={
+                      workoutExercise.exercise.thumbnailUrl ?? "/icons/icon.png"
+                    }
+                    alt=""
+                    width={224}
+                    height={160}
+                    unoptimized
+                    className="h-20 w-28 rounded-lg bg-muted object-cover"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-xl font-semibold">
+                      <Link
+                        href={getExerciseRecordHref(
+                          workoutExercise.exercise.slug
                         )}
-                      </Badge>
-                    ))}
-                    {workoutExercise.exercise.secondaryMuscles.length ? (
-                      <Badge variant="outline">
-                        +{workoutExercise.exercise.secondaryMuscles.length} secondary
-                      </Badge>
-                    ) : null}
-                  </div>
-                </div>
-                <ExerciseDetailPreview
-                  exercise={workoutExercise.exercise}
-                  compact
-                />
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {(allTimeRecordsByExerciseId.get(workoutExercise.exercise.id) ??
-                []).length > 0 ? (
-                <div className="rounded-lg border bg-muted/30 p-3">
-                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    All-time PRs
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {(
-                      allTimeRecordsByExerciseId.get(
-                        workoutExercise.exercise.id
-                      ) ?? []
-                    ).map((record) => (
-                      <Badge
-                        key={record.id}
-                        variant={
-                          record.workoutId === workout.id
-                            ? "secondary"
-                            : "outline"
-                        }
-                        className="h-auto max-w-full whitespace-normal py-1 leading-snug"
+                        className="underline-offset-4 hover:underline"
                       >
-                        {PERSONAL_RECORD_LABELS[
-                          record.type as PersonalRecordType
-                        ]}{" "}
-                        {formatPersonalRecordValue(
-                          record.type as PersonalRecordType,
-                          record.value,
+                        {workoutExercise.exercise.name}
+                      </Link>
+                    </h2>
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      <Badge variant="secondary">
+                        {workoutExercise.exercise.muscle}
+                      </Badge>
+                      {exerciseSupersets.map((exerciseSuperset) => (
+                        <Badge
+                          key={exerciseSuperset.key}
+                          variant="outline"
+                          className={
+                            SUPERSET_COLOR_STYLES[exerciseSuperset.colorKey]
+                              .badge
+                          }
+                        >
+                          <Layers2 />
+                          {getSupersetDisplayLabel(
+                            exerciseSuperset,
+                            detail.supersets.findIndex(
+                              (item) => item.key === exerciseSuperset.key
+                            )
+                          )}
+                        </Badge>
+                      ))}
+                      {workoutExercise.exercise.secondaryMuscles.length ? (
+                        <Badge variant="outline">
+                          +{workoutExercise.exercise.secondaryMuscles.length}{" "}
+                          secondary
+                        </Badge>
+                      ) : null}
+                    </div>
+                  </div>
+                  <ExerciseDetailPreview
+                    exercise={workoutExercise.exercise}
+                    compact
+                  />
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {(
+                  allTimeRecordsByExerciseId.get(workoutExercise.exercise.id) ??
+                  []
+                ).length > 0 ? (
+                  <div className="rounded-lg border bg-muted/30 p-3">
+                    <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      All-time PRs
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {(
+                        allTimeRecordsByExerciseId.get(
+                          workoutExercise.exercise.id
+                        ) ?? []
+                      ).map((record) => (
+                        <Badge
+                          key={record.id}
+                          variant={
+                            record.workoutId === workout.id
+                              ? "secondary"
+                              : "outline"
+                          }
+                          className="h-auto max-w-full whitespace-normal py-1 leading-snug"
+                        >
+                          {
+                            PERSONAL_RECORD_LABELS[
+                              record.type as PersonalRecordType
+                            ]
+                          }{" "}
+                          {formatPersonalRecordValue(
+                            record.type as PersonalRecordType,
+                            record.value,
+                            viewerMeasurementSystem
+                          )}
+                          {record.workoutId === workout.id
+                            ? " · achieved here"
+                            : ""}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {workoutExercise.sets.map((set, index) => (
+                  <div
+                    key={set.id}
+                    className="grid gap-3 rounded-lg border p-3 text-sm sm:grid-cols-5 sm:items-start"
+                  >
+                    <div className="space-y-2 font-medium">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span>Set {index + 1}</span>
+                        {set.completed ? <Badge>Done</Badge> : null}
+                      </div>
+                      {(recordsBySetId.get(set.id) ?? []).length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {(recordsBySetId.get(set.id) ?? []).map((record) => (
+                            <Badge
+                              key={record.id}
+                              variant="secondary"
+                              className="h-auto whitespace-normal py-1 leading-snug"
+                            >
+                              New PR:{" "}
+                              {
+                                PERSONAL_RECORD_LABELS[
+                                  record.type as PersonalRecordType
+                                ]
+                              }
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                    {workoutExercise.exercise.trackingType === "NOT_SELECTED" ||
+                    workoutExercise.exercise.trackingType ===
+                      "BODYWEIGHT_REPS" ||
+                    workoutExercise.exercise.trackingType ===
+                      "WEIGHTED_BODYWEIGHT" ||
+                    workoutExercise.exercise.trackingType ===
+                      "EXTERNAL_WEIGHT" ||
+                    set.reps !== null ? (
+                      <div>Reps: {set.reps ?? "-"}</div>
+                    ) : null}
+                    {shouldShowWeight(
+                      workoutExercise.exercise.trackingType,
+                      set.weight
+                    ) ? (
+                      <div>
+                        {workoutExercise.exercise.trackingType ===
+                        "WEIGHTED_BODYWEIGHT"
+                          ? "Added weight"
+                          : "Weight"}
+                        :{" "}
+                        {set.weight === null
+                          ? "-"
+                          : formatWeight(set.weight, viewerMeasurementSystem)}
+                      </div>
+                    ) : null}
+                    {shouldShowDuration(
+                      workoutExercise.exercise.trackingType,
+                      set.durationSeconds
+                    ) ? (
+                      <div>Duration: {formatDuration(set.durationSeconds)}</div>
+                    ) : null}
+                    {set.distanceMeters !== null ? (
+                      <div>
+                        Distance:{" "}
+                        {formatDistance(
+                          set.distanceMeters,
                           viewerMeasurementSystem
                         )}
-                        {record.workoutId === workout.id
-                          ? " · achieved here"
-                          : ""}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-              {workoutExercise.sets.map((set, index) => (
-                <div
-                  key={set.id}
-                  className="grid gap-3 rounded-lg border p-3 text-sm sm:grid-cols-5 sm:items-start"
-                >
-                  <div className="space-y-2 font-medium">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span>Set {index + 1}</span>
-                      {set.completed ? <Badge>Done</Badge> : null}
-                    </div>
-                    {(recordsBySetId.get(set.id) ?? []).length > 0 ? (
-                      <div className="flex flex-wrap gap-1">
-                        {(recordsBySetId.get(set.id) ?? []).map((record) => (
-                          <Badge
-                            key={record.id}
-                            variant="secondary"
-                            className="h-auto whitespace-normal py-1 leading-snug"
-                          >
-                            New PR:{" "}
-                            {
-                              PERSONAL_RECORD_LABELS[
-                                record.type as PersonalRecordType
-                              ]
-                            }
-                          </Badge>
-                        ))}
+                      </div>
+                    ) : null}
+                    {set.steps !== null ? <div>Steps: {set.steps}</div> : null}
+                    {set.floors !== null ? (
+                      <div>Floors: {set.floors}</div>
+                    ) : null}
+                    {set.notes ? (
+                      <div className="text-muted-foreground sm:col-span-5">
+                        {set.notes}
                       </div>
                     ) : null}
                   </div>
-                  {workoutExercise.exercise.trackingType ===
-                    "NOT_SELECTED" ||
-                  workoutExercise.exercise.trackingType ===
-                    "BODYWEIGHT_REPS" ||
-                  workoutExercise.exercise.trackingType ===
-                    "WEIGHTED_BODYWEIGHT" ||
-                  workoutExercise.exercise.trackingType ===
-                    "EXTERNAL_WEIGHT" ||
-                  set.reps !== null ? (
-                    <div>Reps: {set.reps ?? "-"}</div>
-                  ) : null}
-                  {shouldShowWeight(
-                    workoutExercise.exercise.trackingType,
-                    set.weight
-                  ) ? (
-                    <div>
-                      {workoutExercise.exercise.trackingType ===
-                      "WEIGHTED_BODYWEIGHT"
-                        ? "Added weight"
-                        : "Weight"}
-                      : {set.weight === null ? "-" : formatWeight(set.weight, viewerMeasurementSystem)}
-                    </div>
-                  ) : null}
-                  {shouldShowDuration(
-                    workoutExercise.exercise.trackingType,
-                    set.durationSeconds
-                  ) ? (
-                    <div>Duration: {formatDuration(set.durationSeconds)}</div>
-                  ) : null}
-                  {set.distanceMeters !== null ? (
-                    <div>Distance: {formatDistance(set.distanceMeters, viewerMeasurementSystem)}</div>
-                  ) : null}
-                  {set.steps !== null ? <div>Steps: {set.steps}</div> : null}
-                  {set.floors !== null ? (
-                    <div>Floors: {set.floors}</div>
-                  ) : null}
-                  {set.notes ? (
-                    <div className="text-muted-foreground sm:col-span-5">
-                      {set.notes}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+                ))}
+              </CardContent>
+            </Card>
           );
         })}
       </div>

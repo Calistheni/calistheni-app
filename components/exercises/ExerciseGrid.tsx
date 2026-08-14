@@ -26,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { ExerciseListItem } from "@/types/workout";
+import { getExerciseRecordHref } from "@/lib/exercise-routes";
 
 type ExerciseGridProps = {
   exercises: ExerciseListItem[];
@@ -47,15 +48,19 @@ export function ExerciseGrid({
     if (!deleteCandidate) return;
     setIsDeleting(true);
     try {
-      const response = await fetch(`/api/user/exercises/${deleteCandidate.id}`, {
-        method: "DELETE",
-      });
+      const response = await fetch(
+        `/api/user/exercises/${deleteCandidate.id}`,
+        {
+          method: "DELETE",
+        }
+      );
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as {
           error?: string;
         } | null;
         throw new Error(
-          payload?.error || "We couldn't delete this exercise. Please try again."
+          payload?.error ||
+            "We couldn't delete this exercise. Please try again."
         );
       }
       toast.success("Custom exercise deleted.");
@@ -88,9 +93,7 @@ export function ExerciseGrid({
           </p>
           {customOnly ? (
             <Button asChild className="mt-2">
-              <Link href="/exercises/custom/new">
-                Create Custom Exercise
-              </Link>
+              <Link href="/exercises/custom/new">Create Custom Exercise</Link>
             </Button>
           ) : null}
         </CardContent>
@@ -107,7 +110,7 @@ export function ExerciseGrid({
             exercise.createdByUserId === currentUserId;
           return (
             <Card key={exercise.id} className="h-full overflow-hidden">
-              <Link href={`/exercises/${exercise.id}`}>
+              <Link href={getExerciseRecordHref(exercise.slug)}>
                 {exercise.thumbnailUrl ? (
                   <Image
                     src={exercise.thumbnailUrl}
@@ -171,7 +174,7 @@ export function ExerciseGrid({
                   </p>
                 ) : null}
                 <Link
-                  href={`/exercises/${exercise.id}`}
+                  href={getExerciseRecordHref(exercise.slug)}
                   className="block font-semibold hover:underline"
                 >
                   {exercise.name}

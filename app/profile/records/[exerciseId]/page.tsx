@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { ExerciseProgressChart } from "@/components/exercises/ExerciseProgressChart";
 import { BackButton } from "@/components/navigation/BackButton";
@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { exerciseVisibilityWhere } from "@/lib/exercise-access";
+import { getExerciseRecordHref } from "@/lib/exercise-routes";
 import {
   formatExerciseRecordMetricValue,
   getExerciseMetricDefinitions,
@@ -63,14 +64,19 @@ export default async function ExerciseRecordsPage({
   const { exerciseId } = await params;
   const exercise = await prisma.exercise.findFirst({
     where: {
-      id: exerciseId,
-      ...exerciseVisibilityWhere(session.user.id),
+      AND: [
+        exerciseVisibilityWhere(session.user.id),
+        { OR: [{ id: exerciseId }, { slug: exerciseId }] },
+      ],
     },
     select: {
       id: true,
+      slug: true,
       name: true,
       muscle: true,
+      secondaryMuscles: true,
       thumbnailUrl: true,
+      videoUrl: true,
       trackingType: true,
       bodyweightLoadFactor: true,
       createdByUserId: true,
@@ -79,6 +85,9 @@ export default async function ExerciseRecordsPage({
 
   if (!exercise) {
     notFound();
+  }
+  if (exerciseId !== exercise.slug) {
+    permanentRedirect(getExerciseRecordHref(exercise.slug));
   }
 
   const [user, workoutExercises] = await Promise.all([
@@ -165,7 +174,9 @@ export default async function ExerciseRecordsPage({
   const firstPerformance = performances[0];
   const lastPerformance = performances.at(-1);
   const recentPerformances = performances.slice(-10).reverse();
-  const recentMetricKeys = new Set(metrics.slice(0, 4).map((metric) => metric.key));
+  const recentMetricKeys = new Set(
+    metrics.slice(0, 4).map((metric) => metric.key)
+  );
 
   return (
     <main className="mx-auto w-full max-w-6xl p-4 pb-24 sm:p-6 sm:pb-8 lg:p-8">
@@ -196,10 +207,43 @@ export default async function ExerciseRecordsPage({
               One permanent page for every record and completed performance of
               this exercise.
             </p>
+            {exercise.secondaryMuscles.length ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {exercise.secondaryMuscles.map((muscle) => (
+                  <Badge key={muscle} variant="outline">
+                    {muscle}
+                  </Badge>
+                ))}
+              </div>
+            ) : null}
           </div>
           <Button asChild>
             <Link href="/workouts/new">Log workout</Link>
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <h2 className="text-xl font-semibold">Movement Video</h2>
+        </CardHeader>
+        <CardContent>
+          {exercise.videoUrl ? (
+            <div className="flex justify-center">
+              <video
+                src={exercise.videoUrl}
+                controls
+                playsInline
+                preload="auto"
+                aria-label={`${exercise.name} movement video`}
+                className="block h-auto w-auto max-h-[28rem] max-w-full rounded-xl lg:max-h-[32rem] lg:max-w-lg"
+              />
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No video is available for this exercise yet.
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -232,9 +276,7 @@ export default async function ExerciseRecordsPage({
             </Card>
             <Card>
               <CardContent className="p-4">
-                <p className="text-sm text-muted-foreground">
-                  First performed
-                </p>
+                <p className="text-sm text-muted-foreground">First performed</p>
                 <p className="mt-1 text-lg font-bold">
                   {formatDate(firstPerformance.startedAt)}
                 </p>
@@ -244,7 +286,9 @@ export default async function ExerciseRecordsPage({
               <CardContent className="p-4">
                 <p className="text-sm text-muted-foreground">Last performed</p>
                 <p className="mt-1 text-lg font-bold">
-                  {formatDate(lastPerformance?.startedAt ?? firstPerformance.startedAt)}
+                  {formatDate(
+                    lastPerformance?.startedAt ?? firstPerformance.startedAt
+                  )}
                 </p>
               </CardContent>
             </Card>
@@ -308,7 +352,8 @@ export default async function ExerciseRecordsPage({
                     <div>
                       <p className="font-medium">{record.metric.label}</p>
                       <p className="text-sm text-muted-foreground">
-                        {record.workoutTitle ?? "Workout"} · {formatDateTime(record.achievedAt)}
+                        {record.workoutTitle ?? "Workout"} ·{" "}
+                        {formatDateTime(record.achievedAt)}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -357,8 +402,11 @@ export default async function ExerciseRecordsPage({
                             ? []
                             : [
                                 <Badge key={metric.key} variant="outline">
-                                  {metric.shortLabel}: {" "}
-                                  {formatExerciseRecordMetricValue(metric, value)}
+                                  {metric.shortLabel}:{" "}
+                                  {formatExerciseRecordMetricValue(
+                                    metric,
+                                    value
+                                  )}
                                 </Badge>,
                               ];
                         })}
