@@ -7,11 +7,11 @@ import { SplashScreen } from "@capacitor/splash-screen";
 import { StatusBar, Style } from "@capacitor/status-bar";
 import { NativeAuthHandoff } from "@/components/auth/NativeAuthHandoff";
 import { useTheme } from "@/components/ThemeProvider";
+import { isNativeApp, isNativePluginAvailable } from "@/lib/native/platform";
 import {
-  isNativeApp,
-  isNativePluginAvailable,
-} from "@/lib/native/platform";
-import { reconcileSupplementReminders, registerSupplementNotificationListeners } from "@/lib/native/supplement-reminders";
+  reconcileSupplementReminders,
+  registerSupplementNotificationListeners,
+} from "@/lib/native/supplement-reminders";
 import { dismissActiveTextInput } from "@/lib/mobile-keyboard";
 
 const isDevelopment = process.env.NODE_ENV === "development";
@@ -41,10 +41,15 @@ export function NativeShell() {
       if (!isActive || Date.now() - lastReconciliation < 10_000) return;
       lastReconciliation = Date.now();
       void reconcileSupplementReminders();
-    }).then((listener) => { appListener = listener; });
-    // This runs outside rendering and repairs schedules after a native launch.
+    }).then((listener) => {
+      appListener = listener;
+    });
+    // First meaningful paint and the splash dismissal win the launch critical
+    // path. Notification reconciliation can safely happen just afterwards.
     lastReconciliation = Date.now();
-    void reconcileSupplementReminders();
+    const reconciliationTimer = window.setTimeout(() => {
+      void reconcileSupplementReminders();
+    }, 750);
     void StatusBar.setOverlaysWebView({ overlay: false });
 
     if (isNativePluginAvailable("SplashScreen")) {
@@ -62,19 +67,28 @@ export function NativeShell() {
 
     return () => {
       delete document.documentElement.dataset.nativeApp;
+      window.clearTimeout(reconciliationTimer);
       void appListener?.remove();
     };
   }, []);
 
   useEffect(() => {
     let touchStartY = 0;
-    const handleTouchStart = (event: TouchEvent) => { touchStartY = event.touches[0]?.clientY ?? 0; };
+    const handleTouchStart = (event: TouchEvent) => {
+      touchStartY = event.touches[0]?.clientY ?? 0;
+    };
     const handleTouchMove = (event: TouchEvent) => {
       const target = event.target instanceof Element ? event.target : null;
-      if (!target?.closest("[data-keyboard-dismiss-on-scroll]") || Math.abs((event.touches[0]?.clientY ?? touchStartY) - touchStartY) < 8) return;
+      if (
+        !target?.closest("[data-keyboard-dismiss-on-scroll]") ||
+        Math.abs((event.touches[0]?.clientY ?? touchStartY) - touchStartY) < 8
+      )
+        return;
       dismissActiveTextInput();
     };
-    document.addEventListener("touchstart", handleTouchStart, { passive: true });
+    document.addEventListener("touchstart", handleTouchStart, {
+      passive: true,
+    });
     document.addEventListener("touchmove", handleTouchMove, { passive: true });
     return () => {
       document.removeEventListener("touchstart", handleTouchStart);

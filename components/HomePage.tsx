@@ -1,18 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
-import {
-  Info,
-  LogIn,
-  MapPinPlus,
-  MapPinned,
-  UserPlus,
-} from "lucide-react";
-import ParksMap, {
-  getInitialLightPreset,
-  type MapTheme,
-} from "@/components/ParksMap";
+import { Info, LogIn, MapPinPlus, MapPinned, UserPlus } from "lucide-react";
+import type { MapTheme } from "@/components/ParksMap";
+import { getInitialLightPreset } from "@/lib/map-light-preset";
 import { GuestParksOnboarding } from "@/components/parks/GuestParksOnboarding";
 import { UserMenu } from "@/components/UserMenu";
 import { Button } from "@/components/ui/button";
@@ -26,10 +19,16 @@ import {
 } from "@/components/ui/dialog";
 import type { ParkSummary } from "@/types/park";
 
+// Mapbox is the heaviest client feature on Home; defer it until this map view
+// is actually mounted instead of placing it on the shell's initial JS path.
+const ParksMap = dynamic(() => import("@/components/ParksMap"), {
+  ssr: false,
+  loading: () => <div className="h-full bg-muted/30" aria-busy="true" />,
+});
+
 const GUEST_ONBOARDING_KEY = "calistheni-parks-guest-onboarding-seen";
 const PARKS_SIGN_IN_HREF = "/login?callbackUrl=%2Fparks";
-const PARKS_CREATE_ACCOUNT_HREF =
-  "/login?callbackUrl=%2Fparks&intent=signup";
+const PARKS_CREATE_ACCOUNT_HREF = "/login?callbackUrl=%2Fparks&intent=signup";
 
 type GuestOnboardingState = "checking" | "open" | "closed";
 
@@ -75,8 +74,7 @@ export default function HomePage({ user, inAppShell = false }: HomePageProps) {
   const isGuestOnboardingOpen = !user && guestOnboardingState === "open";
   const areGuestControlsReady =
     Boolean(user) || guestOnboardingState !== "checking";
-  const isGuestMapUnavailable =
-    !user && guestOnboardingState !== "closed";
+  const isGuestMapUnavailable = !user && guestOnboardingState !== "closed";
 
   return (
     <main
@@ -185,8 +183,8 @@ export default function HomePage({ user, inAppShell = false }: HomePageProps) {
           <DialogHeader>
             <DialogTitle>Sign in to add a park</DialogTitle>
             <DialogDescription>
-              Park submissions are connected to your account and reviewed
-              before they appear on the map.
+              Park submissions are connected to your account and reviewed before
+              they appear on the map.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="sm:grid sm:grid-cols-2">

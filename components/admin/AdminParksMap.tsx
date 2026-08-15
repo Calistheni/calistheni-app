@@ -1,10 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import ParksMap, {
-  getInitialLightPreset,
-  type MapParkSummary,
-} from "@/components/ParksMap";
+import ParksMap, { type MapParkSummary } from "@/components/ParksMap";
+import { getInitialLightPreset } from "@/lib/map-light-preset";
 import { Badge } from "@/components/ui/badge";
 import type {
   AdminParkDetail,
@@ -42,8 +40,8 @@ export function AdminParksMap({
             Park management map
           </h2>
           <p className="text-sm text-muted-foreground">
-            Move the map, then search the visible area. Only real viewport
-            parks are loaded.
+            Move the map, then search the visible area. Only real viewport parks
+            are loaded.
           </p>
         </div>
         <Badge variant="secondary" aria-live="polite">

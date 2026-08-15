@@ -10,14 +10,9 @@ import {
   useState,
 } from "react";
 import mapboxgl from "mapbox-gl";
+import { getInitialLightPreset } from "@/lib/map-light-preset";
 import { createRoot, type Root } from "react-dom/client";
-import {
-  LoaderCircle,
-  MapPin,
-  Plus,
-  Search,
-  X,
-} from "lucide-react";
+import { LoaderCircle, MapPin, Plus, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AdminMapParkPopup } from "@/components/admin/AdminMapParkPopup";
 import { useMapUserFocus } from "@/components/parks/useMapUserFocus";
@@ -56,8 +51,7 @@ const SEARCHED_AREA_SOURCE_ID = "searched-area-boundary-source";
 const SEARCHED_AREA_FILL_LAYER_ID = "searched-area-boundary-fill";
 const SEARCHED_AREA_OUTLINE_LAYER_ID = "searched-area-boundary-outline";
 const SEARCHED_AREA_VECTOR_SOURCE_ID = "searched-area-boundary-vector-source";
-const SEARCHED_AREA_VECTOR_FILL_LAYER_ID =
-  "searched-area-boundary-vector-fill";
+const SEARCHED_AREA_VECTOR_FILL_LAYER_ID = "searched-area-boundary-vector-fill";
 const SEARCHED_AREA_VECTOR_OUTLINE_LAYER_ID =
   "searched-area-boundary-vector-outline";
 const MAPBOX_BOUNDARIES_VERSION = "v4_6";
@@ -281,8 +275,7 @@ function viewportContainsCoordinate(
     Math.abs(latitude - viewport.center[1]) <=
     viewport.latitudeSpan / 2 + placeholderCellPadding;
   const isWithinLongitude =
-    longitudeDelta <=
-    viewport.longitudeSpan / 2 + placeholderCellPadding;
+    longitudeDelta <= viewport.longitudeSpan / 2 + placeholderCellPadding;
 
   return isWithinLatitude && isWithinLongitude;
 }
@@ -361,9 +354,7 @@ function isBoundaryGeometry(
   return geometry.type === "Polygon" || geometry.type === "MultiPolygon";
 }
 
-function getBoundaryBounds(
-  geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon
-) {
+function getBoundaryBounds(geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon) {
   const bounds = new mapboxgl.LngLatBounds();
 
   function extend(coordinates: unknown) {
@@ -384,15 +375,7 @@ function getBoundaryBounds(
   return bounds.isEmpty() ? null : bounds;
 }
 
-export function getInitialLightPreset(): MapLightPreset {
-  const hour = new Date().getHours();
-
-  if (hour >= 6 && hour < 9) return "dawn";
-  if (hour >= 9 && hour < 18) return "day";
-  if (hour >= 18 && hour < 21) return "dusk";
-
-  return "night";
-}
+export { getInitialLightPreset } from "@/lib/map-light-preset";
 
 function escapeHtml(value: string | null | undefined) {
   if (!value) {
@@ -541,8 +524,8 @@ function renderPopupMarkup({
                   park.qrStatus === "INSTALLED"
                     ? "QR installed"
                     : park.qrStatus === "NEEDS_REPLACEMENT"
-                      ? "Replace QR"
-                      : "No QR"
+                    ? "Replace QR"
+                    : "No QR"
                 }
               </span>
               ${
@@ -833,9 +816,9 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   }
 
   function clearSearchBoundary() {
-    const source = mapRef.current?.getSource(
-      SEARCHED_AREA_SOURCE_ID
-    ) as mapboxgl.GeoJSONSource | undefined;
+    const source = mapRef.current?.getSource(SEARCHED_AREA_SOURCE_ID) as
+      | mapboxgl.GeoJSONSource
+      | undefined;
     source?.setData(EMPTY_SEARCHED_AREA);
     clearMapboxBoundaryLayers();
   }
@@ -908,9 +891,9 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon;
     }
   ) {
-    const source = map.getSource(
-      SEARCHED_AREA_SOURCE_ID
-    ) as mapboxgl.GeoJSONSource | undefined;
+    const source = map.getSource(SEARCHED_AREA_SOURCE_ID) as
+      | mapboxgl.GeoJSONSource
+      | undefined;
     const bounds = feature.properties.bbox
       ? new mapboxgl.LngLatBounds(
           [feature.properties.bbox[0], feature.properties.bbox[1]],
@@ -956,7 +939,9 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       (level) => `mapbox.boundaries-adm${level}-${MAPBOX_BOUNDARIES_VERSION}`
     );
     const url = new URL(
-      `https://api.mapbox.com/v4/${tilesetIds.join(",")}/tilequery/${location[0]},${location[1]}.json`
+      `https://api.mapbox.com/v4/${tilesetIds.join(",")}/tilequery/${
+        location[0]
+      },${location[1]}.json`
     );
     url.searchParams.set("geometry", "polygon");
     url.searchParams.set("limit", "50");
@@ -1283,10 +1268,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     );
   }
 
-  async function fetchParkDetail(
-    parkId: number,
-    parkPreview?: MapParkSummary
-  ) {
+  async function fetchParkDetail(parkId: number, parkPreview?: MapParkSummary) {
     const memoryCache = detailCacheRef.current.get(parkId);
 
     if (
@@ -1317,9 +1299,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     }
 
     const request = fetch(
-      mode === "admin"
-        ? `/api/admin/parks/${parkId}`
-        : `/api/parks/${parkId}`
+      mode === "admin" ? `/api/admin/parks/${parkId}` : `/api/parks/${parkId}`
     )
       .then(async (response) => {
         if (!response.ok) {
@@ -1619,9 +1599,9 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   const openParkPopupRef = useRef(openParkPopup);
 
   function updatePlaceholderSource() {
-    const source = mapRef.current?.getSource(
-      "park-placeholders"
-    ) as mapboxgl.GeoJSONSource | undefined;
+    const source = mapRef.current?.getSource("park-placeholders") as
+      | mapboxgl.GeoJSONSource
+      | undefined;
     if (!source) return;
 
     const visibleClusters = placeholderClustersRef.current.filter(
@@ -1650,7 +1630,8 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     viewport: ViewportArea
   ) {
     const nextIds = new Set(areaParks.map((park) => park.id));
-    const previousIds = areaParkIdsRef.current.get(areaKey) ?? new Set<number>();
+    const previousIds =
+      areaParkIdsRef.current.get(areaKey) ?? new Set<number>();
 
     previousIds.forEach((parkId) => {
       if (nextIds.has(parkId)) return;
@@ -1824,7 +1805,6 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
             }
           });
         }, 500);
-
       })
       .catch((error: Error) => {
         if (error.name === "AbortError") {
@@ -1832,7 +1812,6 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         }
 
         setViewportError("Unable to load parks for this area.");
-
       })
       .finally(() => {
         if (viewportRequestRef.current?.key === key) {
@@ -2005,8 +1984,8 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       zoom: storedUserLocationRef.current
         ? userLocationZoom
         : mode === "admin"
-          ? 10
-          : 2,
+        ? 10
+        : 2,
       pitch: 0,
       bearing: storedUserLocationRef.current ? 0 : -20,
       attributionControl: false,
@@ -2060,8 +2039,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         const currentViewport = getViewportArea(map);
         const lastSearchedViewport = lastSearchedViewportRef.current;
         setShowSearchThisArea(
-          (mode === "admin" ||
-            currentViewport.zoom >= PLACEHOLDER_MAX_ZOOM) &&
+          (mode === "admin" || currentViewport.zoom >= PLACEHOLDER_MAX_ZOOM) &&
             (!lastSearchedViewport ||
               hasMeaningfulViewportChange(
                 currentViewport,
@@ -2295,8 +2273,10 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         const feature = event.features?.[0];
         if (!feature) return;
 
-        const coordinates = (feature.geometry as GeoJSON.Point)
-          .coordinates as [number, number];
+        const coordinates = (feature.geometry as GeoJSON.Point).coordinates as [
+          number,
+          number
+        ];
         const clusterId = feature.properties?.cluster_id;
         beginAwayFromUser();
 
@@ -2487,7 +2467,10 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       }
       if (mode === "public") {
         void clearLegacyGlobalParkCache().catch((error) => {
-          console.error("Unable to remove the legacy global park cache.", error);
+          console.error(
+            "Unable to remove the legacy global park cache.",
+            error
+          );
         });
       }
       await requestViewportParksRef.current({
@@ -2867,9 +2850,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         </div>
 
         {viewportError ? (
-          <div
-            className="absolute right-4 bottom-4 left-4 z-30 rounded-md border border-border bg-popover p-3 shadow-lg sm:right-auto sm:max-w-sm"
-          >
+          <div className="absolute right-4 bottom-4 left-4 z-30 rounded-md border border-border bg-popover p-3 shadow-lg sm:right-auto sm:max-w-sm">
             <p className="text-sm text-muted-foreground">{viewportError}</p>
             <Button
               className="mt-2"
@@ -2894,13 +2875,18 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
                 ? "visible translate-y-0 opacity-100"
                 : "invisible -translate-y-1 opacity-0 pointer-events-none"
             }`}
-            aria-hidden={!(showSearchThisArea || isViewportLoading) || undefined}
+            aria-hidden={
+              !(showSearchThisArea || isViewportLoading) || undefined
+            }
             tabIndex={showSearchThisArea || isViewportLoading ? 0 : -1}
             disabled={isViewportLoading}
             onClick={() => void requestViewportParksRef.current()}
           >
             {isViewportLoading ? (
-              <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />
+              <LoaderCircle
+                className="size-4 animate-spin"
+                aria-hidden="true"
+              />
             ) : (
               <Search className="size-4" aria-hidden="true" />
             )}
@@ -2919,7 +2905,9 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
           activeRoute
             ? "bottom-[calc(env(safe-area-inset-bottom)+7rem)]"
             : "bottom-[calc(env(safe-area-inset-bottom)+1rem)]"
-        } sm:bottom-4 sm:left-4 ${isMapInitializing ? "opacity-0" : "opacity-100"}`}
+        } sm:bottom-4 sm:left-4 ${
+          isMapInitializing ? "opacity-0" : "opacity-100"
+        }`}
         aria-hidden={isMapInitializing || undefined}
         inert={isMapInitializing || undefined}
       >
