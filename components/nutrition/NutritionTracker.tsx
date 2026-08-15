@@ -1,11 +1,11 @@
 "use client";
 
 import { App } from "@capacitor/app";
+import dynamic from "next/dynamic";
 import {
   Bookmark,
   BookmarkX,
   CopyPlus,
-  Loader2,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -15,13 +15,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { NutritionDateNavigator } from "@/components/nutrition/NutritionDateNavigator";
 import { NutritionGoalCard } from "@/components/nutrition/NutritionGoalCard";
-import { NutritionQuickActions } from "@/components/nutrition/NutritionQuickActions";
-import {
-  FoodDetailsDialog,
-  type FoodDetailsPreview,
-  type FoodUseSelection,
-} from "@/components/nutrition/FoodDetailsDialog";
-import { NutritionSavedMeals } from "@/components/nutrition/NutritionSavedMeals";
 import { FoodVisual } from "@/components/nutrition/FoodVisual";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -48,8 +41,6 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { localNutritionDateKey } from "@/lib/nutrition/date-navigation";
 import { parseNutritionAmount } from "@/lib/nutrition/amount-input";
 import { nutritionTotals } from "@/lib/nutrition/log";
@@ -58,32 +49,23 @@ import {
   type NutritionGoalProgress,
   type NutritionGoalValues,
 } from "@/lib/nutrition/goals";
-import {
-  deduplicateFoodResults,
-  foodResultKey,
-} from "@/lib/nutrition/result-identity";
-import { NUTRITION_SEARCH_RESULT_LIMIT } from "@/lib/nutrition/search-ranking";
 import { isNativeApp } from "@/lib/native/platform";
-import {
-  defaultFoodUseAmount,
-  resolveFoodForUse,
-} from "@/lib/nutrition/food-use-client";
+
+const FoodPicker = dynamic(
+  () =>
+    import("@/components/nutrition/FoodPicker").then((mod) => mod.FoodPicker),
+  { ssr: false, loading: () => <FoodPickerLoading /> }
+);
+
+const FoodDetailsDialog = dynamic(
+  () =>
+    import("@/components/nutrition/FoodDetailsDialog").then(
+      (mod) => mod.FoodDetailsDialog
+    ),
+  { ssr: false }
+);
 
 type Meal = "BREAKFAST" | "LUNCH" | "DINNER" | "SNACKS";
-
-type Food = {
-  id?: string;
-  provider?: "USDA" | "OPEN_FOOD_FACTS";
-  source?: string;
-  externalId: string;
-  name: string;
-  brandName?: string | null;
-  imageUrl?: string | null;
-  genericIcon?: { key?: string; url: string } | null;
-  servings?: Array<{ name: string; grams: number; isDefault?: boolean }>;
-  nutritionPer100g: Record<string, number | undefined>;
-  isSaved?: boolean;
-};
 
 type Entry = {
   id: string;
@@ -162,14 +144,28 @@ function NutritionSectionSkeleton() {
   );
 }
 
-export function NutritionTracker({
-  quickActionCapabilities,
-}: {
-  quickActionCapabilities: {
-    canUseAiScan: boolean;
-    canUseBarcodeScan: boolean;
-  };
-}) {
+function FoodPickerLoading() {
+  return (
+    <Sheet open>
+      <SheetContent
+        side="bottom"
+        className="h-[92dvh] max-h-[calc(100dvh-env(safe-area-inset-top)-0.5rem)] overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)]"
+      >
+        <SheetHeader>
+          <SheetTitle>Add food</SheetTitle>
+          <SheetDescription>Preparing your food picker.</SheetDescription>
+        </SheetHeader>
+        <div className="space-y-4 p-4" aria-busy="true">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-36 w-full" />
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+export function NutritionTracker() {
   const initialToday = localNutritionDateKey();
   const [date, setDate] = useState(initialToday);
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -189,6 +185,7 @@ export function NutritionTracker({
   const [pickerKey, setPickerKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const activeRequest = useRef(0);
+  const savedFoodsLoaded = useRef(false);
   const selectedDateRef = useRef(date);
   const lastKnownTodayRef = useRef(initialToday);
   const lastLifecycleRefreshRef = useRef(0);
@@ -234,18 +231,21 @@ export function NutritionTracker({
     }, 0);
     return () => window.clearTimeout(timer);
   }, [date, refreshNutritionDay]);
-  useEffect(() => {
-    void fetch("/api/nutrition/saved-foods", { cache: "no-store" })
-      .then((response) => (response.ok ? response.json() : null))
-      .then((data) =>
-        setSavedFoodIds(
-          new Set(
-            (data?.foods ?? [])
-              .map((food: { id?: string }) => food.id)
-              .filter(Boolean)
-          )
-        )
-      );
+  const ensureSavedFoodIds = useCallback(async () => {
+    if (savedFoodsLoaded.current) return;
+    const response = await fetch("/api/nutrition/saved-foods", {
+      cache: "no-store",
+    });
+    if (!response.ok) return;
+    const data = await response.json();
+    savedFoodsLoaded.current = true;
+    setSavedFoodIds(
+      new Set(
+        (data.foods ?? [])
+          .map((food: { id?: string }) => food.id)
+          .filter(Boolean)
+      )
+    );
   }, []);
 
   const reconcileForReturn = useCallback(() => {
@@ -460,6 +460,7 @@ export function NutritionTracker({
                 }}
                 onSave={saveFood}
                 savedFoodIds={savedFoodIds}
+                onActionMenuOpen={ensureSavedFoodIds}
               />
             ))}
       </div>
@@ -471,39 +472,40 @@ export function NutritionTracker({
         goal={goal}
         loading={loading}
       />
-      <FoodPicker
-        key={pickerKey}
-        meal={meal}
-        date={date}
-        close={() => setMeal(null)}
-        onAddEntries={applyServerEntries}
-        quickActionCapabilities={quickActionCapabilities}
-      />
-      <EntryEditor
-        key={editing?.id ?? "empty"}
-        entry={editing}
-        date={date}
-        close={() => setEditing(null)}
-        onUpdate={updateEntry}
-      />
-      <FoodDetailsDialog
-        food={
-          inspectingEntry
-            ? {
-                id: inspectingEntry.foodId,
-                externalId: inspectingEntry.foodId,
-                isLocal: true,
-                name: inspectingEntry.foodNameSnapshot,
-                genericIcon: inspectingEntry.foodVisual?.genericIcon,
-              }
-            : null
-        }
-        open={Boolean(inspectingEntry)}
-        onOpenChange={(open) => {
-          if (!open) setInspectingEntry(null);
-        }}
-        mode="inspect"
-      />
+      {meal ? (
+        <FoodPicker
+          key={pickerKey}
+          meal={meal}
+          date={date}
+          close={() => setMeal(null)}
+          onAddEntries={applyServerEntries}
+        />
+      ) : null}
+      {editing ? (
+        <EntryEditor
+          key={editing.id}
+          entry={editing}
+          date={date}
+          close={() => setEditing(null)}
+          onUpdate={updateEntry}
+        />
+      ) : null}
+      {inspectingEntry ? (
+        <FoodDetailsDialog
+          food={{
+            id: inspectingEntry.foodId,
+            externalId: inspectingEntry.foodId,
+            isLocal: true,
+            name: inspectingEntry.foodNameSnapshot,
+            genericIcon: inspectingEntry.foodVisual?.genericIcon,
+          }}
+          open
+          onOpenChange={(open) => {
+            if (!open) setInspectingEntry(null);
+          }}
+          mode="inspect"
+        />
+      ) : null}
       <Dialog
         open={Boolean(reusingEntry)}
         onOpenChange={(open) => !open && setReusingEntry(null)}
@@ -681,6 +683,7 @@ function MealSection({
   onUse,
   onSave,
   savedFoodIds,
+  onActionMenuOpen,
 }: {
   label: string;
   entries: Entry[];
@@ -693,6 +696,7 @@ function MealSection({
   onUse: (entry: Entry) => void;
   onSave: (entry: Entry) => void;
   savedFoodIds: Set<string>;
+  onActionMenuOpen: () => Promise<void>;
 }) {
   const total = nutritionTotals(entries);
   return (
@@ -757,7 +761,11 @@ function MealSection({
                   {format(Number(entry.fatGramsSnapshot ?? 0))}
                 </p>
               </button>
-              <DropdownMenu>
+              <DropdownMenu
+                onOpenChange={(open) => {
+                  if (open) void onActionMenuOpen();
+                }}
+              >
                 <DropdownMenuTrigger asChild>
                   <Button
                     size="icon-sm"
@@ -855,6 +863,8 @@ function Breakdown({
   );
 }
 
+/* The picker was extracted to FoodPicker.tsx so the Nutrition route does not
+ * ship food search, scanner, or AI review code until the user opens Add food.
 function FoodPicker({
   meal,
   date,
@@ -1195,6 +1205,7 @@ function Empty({
     </div>
   );
 }
+*/
 
 function EntryEditor({
   entry,

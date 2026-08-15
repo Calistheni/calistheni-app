@@ -1,30 +1,48 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { deduplicateFoodResults, foodResultKey } from "../lib/nutrition/result-identity";
+import {
+  deduplicateFoodResults,
+  foodResultKey,
+} from "../lib/nutrition/result-identity";
 
 test("food-picker identities keep provider collisions distinct but remove exact duplicates", () => {
   const usda = { provider: "USDA", externalId: "2709294" };
   const off = { provider: "OPEN_FOOD_FACTS", externalId: "2709294" };
   assert.notEqual(foodResultKey(usda), foodResultKey(off));
   assert.deepEqual(deduplicateFoodResults([usda, usda, off]), [usda, off]);
-  assert.equal(foodResultKey({ id: "food_1", externalId: "2709294", source: "USDA" }), "local:food_1");
+  assert.equal(
+    foodResultKey({ id: "food_1", externalId: "2709294", source: "USDA" }),
+    "local:food_1"
+  );
 });
 
 test("picker reuses FoodVisual and a compact source-aware food row", async () => {
-  const source = await readFile(new URL("../components/nutrition/NutritionTracker.tsx", import.meta.url), "utf8");
-  assert.match(source, /<FoodVisual imageUrl=\{food\.imageUrl\} iconPath=\{food\.genericIcon\?\.url\}/);
-  assert.match(source, /key=\{foodResultKey\(food\)\}/);
+  const source = await readFile(
+    new URL("../components/nutrition/FoodPicker.tsx", import.meta.url),
+    "utf8"
+  );
+  assert.match(
+    source,
+    /<FoodVisual[\s\S]*imageUrl=\{food\.imageUrl\}[\s\S]*iconPath=\{food\.genericIcon\?\.url\}/
+  );
+  assert.match(source, /const key = foodResultKey\(food\)/);
   assert.match(source, /deduplicateFoodResults/);
-  assert.match(source, /min-w-0 items-center gap-3/);
+  assert.match(source, /min-w-0 flex-1 items-center gap-3/);
   assert.match(source, /line-clamp-2/);
 });
 
 test("picker uses accessible Radix tabs with one value-bound content panel per section", async () => {
-  const source = await readFile(new URL("../components/nutrition/NutritionTracker.tsx", import.meta.url), "utf8");
-  const tabs = await readFile(new URL("../components/ui/tabs.tsx", import.meta.url), "utf8");
+  const source = await readFile(
+    new URL("../components/nutrition/FoodPicker.tsx", import.meta.url),
+    "utf8"
+  );
+  const tabs = await readFile(
+    new URL("../components/ui/tabs.tsx", import.meta.url),
+    "utf8"
+  );
   assert.match(source, /<Tabs defaultValue="food">/);
-  assert.match(source, /<TabsTrigger className="flex-1" value="food">Food/);
+  assert.match(source, /<TabsTrigger className="flex-1" value="food">\s*Food/);
   assert.match(source, /<TabsContent value="food"/);
   assert.match(source, /<TabsContent value="meals">/);
   assert.match(source, /<TabsContent value="recipes">/);
@@ -34,18 +52,27 @@ test("picker uses accessible Radix tabs with one value-bound content panel per s
 });
 
 test("food picker opens with a stable viewport and never autofocuses a search input", async () => {
-  const [tracker, sheet, dialog, drawer, popover] = await Promise.all([
-    readFile(new URL("../components/nutrition/NutritionTracker.tsx", import.meta.url), "utf8"),
+  const [picker, sheet, dialog, drawer, popover] = await Promise.all([
+    readFile(
+      new URL("../components/nutrition/FoodPicker.tsx", import.meta.url),
+      "utf8"
+    ),
     readFile(new URL("../components/ui/sheet.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/ui/dialog.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/ui/drawer.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/ui/popover.tsx", import.meta.url), "utf8"),
   ]);
 
-  assert.match(tracker, /h-\[92dvh\] max-h-\[calc\(100dvh-env\(safe-area-inset-top\)-0\.5rem\)\]/);
-  assert.match(tracker, /ScrollArea className="h-\[min\(48dvh,26rem\)\]/);
-  assert.match(tracker, /placeholder="Search foods" aria-label="Search foods" value=\{query\}/);
-  assert.doesNotMatch(tracker, /autoFocus/);
+  assert.match(
+    picker,
+    /h-\[92dvh\] max-h-\[calc\(100dvh-env\(safe-area-inset-top\)-0\.5rem\)\]/
+  );
+  assert.match(picker, /ScrollArea[\s\S]*className="h-\[min\(48dvh,26rem\)\]/);
+  assert.match(
+    picker,
+    /placeholder="Search foods"[\s\S]*aria-label="Search foods"[\s\S]*value=\{query\}/
+  );
+  assert.doesNotMatch(picker, /autoFocus/);
 
   for (const source of [sheet, dialog, drawer, popover]) {
     assert.match(source, /onOpenAutoFocus=\{\(event\) =>/);
@@ -55,12 +82,31 @@ test("food picker opens with a stable viewport and never autofocuses a search in
 });
 
 test("nutrition overlay inputs require an explicit user interaction before focus", async () => {
-  const [quickActions, savedMeals, workoutBuilder, dateOfBirth] = await Promise.all([
-    readFile(new URL("../components/nutrition/NutritionQuickActions.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../components/nutrition/NutritionSavedMeals.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../components/workouts/WorkoutBuilder.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../components/profile/DateOfBirthPicker.tsx", import.meta.url), "utf8"),
-  ]);
+  const [quickActions, savedMeals, workoutBuilder, dateOfBirth] =
+    await Promise.all([
+      readFile(
+        new URL(
+          "../components/nutrition/NutritionQuickActions.tsx",
+          import.meta.url
+        ),
+        "utf8"
+      ),
+      readFile(
+        new URL(
+          "../components/nutrition/NutritionSavedMeals.tsx",
+          import.meta.url
+        ),
+        "utf8"
+      ),
+      readFile(
+        new URL("../components/workouts/WorkoutBuilder.tsx", import.meta.url),
+        "utf8"
+      ),
+      readFile(
+        new URL("../components/profile/DateOfBirthPicker.tsx", import.meta.url),
+        "utf8"
+      ),
+    ]);
 
   assert.match(quickActions, /id="manual-barcode"/);
   assert.match(quickActions, /id="nutrition-description"/);
@@ -71,25 +117,64 @@ test("nutrition overlay inputs require an explicit user interaction before focus
   assert.doesNotMatch(dateOfBirth, /autoFocus/);
 });
 
-test("nutrition rows reuse FoodVisual, and explicit menu actions separate edit from removal", async () => {
-  const source = await readFile(new URL("../components/nutrition/NutritionTracker.tsx", import.meta.url), "utf8");
+test("nutrition keeps the picker and its scanner/search stack out of the base route", async () => {
+  const [source, picker] = await Promise.all([
+    readFile(
+      new URL("../components/nutrition/NutritionTracker.tsx", import.meta.url),
+      "utf8"
+    ),
+    readFile(
+      new URL("../components/nutrition/FoodPicker.tsx", import.meta.url),
+      "utf8"
+    ),
+  ]);
   assert.match(source, /foodVisual\?\.imageUrl/);
   assert.match(source, /DropdownMenuTrigger asChild/);
   assert.match(source, /Actions for \$\{entry\.foodNameSnapshot\}/);
-  assert.match(source, /DropdownMenuItem onSelect=\{\(\) => onEdit\(entry\)\}>Edit/);
-  assert.match(source, /variant="destructive" onSelect=\{\(\) => onDelete\(entry\.id\)\}>Remove/);
-  assert.match(source, /key=\{pickerKey\}[\s\S]*meal=\{meal\}/);
-  assert.match(source, /function dismiss\(\) \{\s*setQuery\(""\);\s*setFoods\(\[\]\);\s*setSelected\(null\);\s*setGrams\("100"\);\s*close\(\);/);
+  assert.match(source, /onSelect=\{\(\) => onEdit\(entry\)\}/);
+  assert.match(
+    source,
+    /variant="destructive"[\s\S]*onSelect=\{\(\) => onDelete\(entry\.id\)\}/
+  );
+  assert.match(
+    source,
+    /dynamic\([\s\S]*import\("@\/components\/nutrition\/FoodPicker"/
+  );
+  assert.match(source, /\{meal \? \(/);
+  assert.doesNotMatch(
+    source,
+    /from "@\/components\/nutrition\/NutritionQuickActions"/
+  );
+  assert.match(
+    picker,
+    /from "@\/components\/nutrition\/NutritionQuickActions"/
+  );
+  assert.match(picker, /AbortController/);
 });
 
 test("daily GET, create, and edit all use the canonical entry serializer", async () => {
   const [daily, mutation, serializer] = await Promise.all([
-    readFile(new URL("../app/api/user/nutrition/route.ts", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/user/nutrition/[id]/route.ts", import.meta.url), "utf8"),
-    readFile(new URL("../lib/nutrition/entry-serializer.ts", import.meta.url), "utf8"),
+    readFile(
+      new URL("../app/api/user/nutrition/route.ts", import.meta.url),
+      "utf8"
+    ),
+    readFile(
+      new URL("../app/api/user/nutrition/[id]/route.ts", import.meta.url),
+      "utf8"
+    ),
+    readFile(
+      new URL("../lib/nutrition/entry-serializer.ts", import.meta.url),
+      "utf8"
+    ),
   ]);
   assert.match(daily, /entries\.map\(serializeNutritionEntry\)/);
-  assert.match(daily, /NextResponse\.json\(serializeNutritionEntry\(entry\), \{ status: 201 \}\)/);
-  assert.match(mutation, /NextResponse\.json\(serializeNutritionEntry\(updated\)\)/);
+  assert.match(
+    daily,
+    /NextResponse\.json\(serializeNutritionEntry\(entry\), \{ status: 201 \}\)/
+  );
+  assert.match(
+    mutation,
+    /NextResponse\.json\(serializeNutritionEntry\(updated\)\)/
+  );
   assert.match(serializer, /foodVisual: toFoodSummary\(food\)/);
 });

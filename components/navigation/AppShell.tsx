@@ -28,7 +28,11 @@ import { AccountMenu } from "./AccountMenu";
 
 type AppShellProps = {
   children: React.ReactNode;
-  user: { name?: string | null; email?: string | null; unreadCommunityActivity?: number } | null;
+  user: {
+    name?: string | null;
+    email?: string | null;
+    unreadCommunityActivity?: number;
+  } | null;
 };
 
 const navigationIcons: Record<PrimaryNavigationKey, LucideIcon> = {
@@ -53,22 +57,21 @@ export function AppShell({ children, user }: AppShellProps) {
 
   return (
     <ActiveWorkoutProvider>
-    <div
-      className={cn(
-        "app-shell flex min-h-dvh flex-col bg-background",
-        isFullBleed && "h-dvh overflow-hidden"
-      )}
-    >
-      <header
+      <div
         className={cn(
-          "sticky top-0 z-40 h-14 shrink-0 border-b bg-background",
-          !keepsMobileHeader && "hidden md:block"
+          "app-shell flex min-h-dvh flex-col bg-background",
+          isFullBleed && "h-dvh overflow-hidden"
         )}
       >
-        <div className="mx-auto flex h-full max-w-7xl items-center gap-4 px-3 sm:px-6">
+        <header
+          className={cn(
+            "sticky top-0 z-40 h-14 shrink-0 border-b bg-background",
+            !keepsMobileHeader && "hidden md:block"
+          )}
+        >
+          <div className="mx-auto flex h-full max-w-7xl items-center gap-4 px-3 sm:px-6">
             <Link
               href="/home"
-              prefetch={false}
               aria-label="Calistheni home"
               className="flex shrink-0 items-center gap-2 font-semibold tracking-tight"
             >
@@ -94,7 +97,6 @@ export function AppShell({ children, user }: AppShellProps) {
                   <Link
                     key={item.key}
                     href={item.href}
-                    prefetch={item.key === "home" ? false : undefined}
                     aria-current={active ? "page" : undefined}
                     className={cn(
                       "flex h-9 items-center gap-2 rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground xl:px-3",
@@ -107,9 +109,15 @@ export function AppShell({ children, user }: AppShellProps) {
                       aria-hidden="true"
                     />
                     {item.label}
-                    {item.key === "community" && user.unreadCommunityActivity ? (
-                      <span className="flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] leading-4 text-white" aria-label={`${user.unreadCommunityActivity} unread community activities`}>
-                        {user.unreadCommunityActivity > 9 ? "9+" : user.unreadCommunityActivity}
+                    {item.key === "community" &&
+                    user.unreadCommunityActivity ? (
+                      <span
+                        className="flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] leading-4 text-white"
+                        aria-label={`${user.unreadCommunityActivity} unread community activities`}
+                      >
+                        {user.unreadCommunityActivity > 9
+                          ? "9+"
+                          : user.unreadCommunityActivity}
                       </span>
                     ) : null}
                   </Link>
@@ -120,57 +128,62 @@ export function AppShell({ children, user }: AppShellProps) {
             <div className="ml-auto hidden shrink-0 items-center md:flex md:ml-0">
               <AccountMenu user={user} />
             </div>
-        </div>
-      </header>
+          </div>
+        </header>
 
-      <div
-        className={cn(
-          "app-shell-content min-h-0",
-          isFullBleed && "app-shell-content-full-bleed",
-          usesFocusedWorkoutMode && "app-shell-content-focused-workout"
-        )}
-      >
-        {children}
-      </div>
-      <ActiveWorkoutDock />
-
-      {usesFocusedWorkoutMode ? null : (
-        <nav
-          aria-label="Primary navigation"
-          className="app-mobile-nav border-t bg-background"
+        <div
+          className={cn(
+            "app-shell-content min-h-0",
+            isFullBleed && "app-shell-content-full-bleed",
+            usesFocusedWorkoutMode && "app-shell-content-focused-workout"
+          )}
         >
-          <div className="app-mobile-nav-grid flex w-full flex-nowrap items-stretch overflow-hidden">
-            {mobilePrimaryNavigation.map((item) => {
-              const Icon = navigationIcons[item.key];
-              const active = activeKey === item.key;
-              return (
-                <Link
-                  key={item.key}
-                  href={item.href}
-                  prefetch={item.key === "home" ? false : undefined}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "relative flex min-h-11 min-w-0 flex-1 basis-0 touch-manipulation flex-col items-center justify-center gap-0.5 overflow-hidden px-0.5 text-[10px] font-medium whitespace-nowrap text-muted-foreground transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    active && "text-primary"
-                  )}
-                >
-                  <span
+          {children}
+        </div>
+        <ActiveWorkoutDock />
+
+        {usesFocusedWorkoutMode ? null : (
+          <nav
+            aria-label="Primary navigation"
+            className="app-mobile-nav border-t bg-background"
+          >
+            <div className="app-mobile-nav-grid flex w-full flex-nowrap items-stretch overflow-hidden">
+              {mobilePrimaryNavigation.map((item) => {
+                const Icon = navigationIcons[item.key];
+                const active = activeKey === item.key;
+                return (
+                  <Link
+                    key={item.key}
+                    href={item.href}
+                    aria-current={active ? "page" : undefined}
                     className={cn(
-                      "flex size-8 items-center justify-center rounded-md border border-transparent",
-                      active && "border-primary/25 bg-primary/10"
+                      "relative flex min-h-11 min-w-0 flex-1 basis-0 touch-manipulation flex-col items-center justify-center gap-0.5 overflow-hidden px-0.5 text-[10px] font-medium whitespace-nowrap text-muted-foreground transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      active && "text-primary"
                     )}
                   >
-                    <Icon className="size-[18px]" aria-hidden="true" />
-                  </span>
-                  {item.key === "community" && user.unreadCommunityActivity ? <span className="absolute top-1 right-[calc(50%-14px)] size-2 rounded-full bg-red-500" aria-label={`${user.unreadCommunityActivity} unread community activities`} /> : null}
-                  <span className="max-w-full truncate">{item.label}</span>
-                </Link>
-              );
-            })}
-          </div>
-        </nav>
-      )}
-    </div>
+                    <span
+                      className={cn(
+                        "flex size-8 items-center justify-center rounded-md border border-transparent",
+                        active && "border-primary/25 bg-primary/10"
+                      )}
+                    >
+                      <Icon className="size-[18px]" aria-hidden="true" />
+                    </span>
+                    {item.key === "community" &&
+                    user.unreadCommunityActivity ? (
+                      <span
+                        className="absolute top-1 right-[calc(50%-14px)] size-2 rounded-full bg-red-500"
+                        aria-label={`${user.unreadCommunityActivity} unread community activities`}
+                      />
+                    ) : null}
+                    <span className="max-w-full truncate">{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </nav>
+        )}
+      </div>
     </ActiveWorkoutProvider>
   );
 }

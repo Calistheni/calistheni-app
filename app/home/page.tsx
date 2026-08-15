@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import {
   ArrowRight,
   Dumbbell,
@@ -18,6 +19,7 @@ import {
   HomeContinueJourney,
   HomeWorkoutActions,
 } from "@/components/home/HomeWorkoutOverview";
+import { HomeWeeklyReportAnnouncement } from "@/components/home/HomeWeeklyReportAnnouncement";
 import { TrainingActivityCalendar } from "@/components/home/TrainingActivityCalendar";
 import { WeeklyGoalEditor } from "@/components/home/WeeklyGoalEditor";
 import { Badge } from "@/components/ui/badge";
@@ -38,7 +40,6 @@ import {
   type PersonalRecordType,
 } from "@/lib/personal-records";
 import { prisma } from "@/lib/prisma";
-import { generatePreviousWeeklyReport } from "@/lib/weekly-progress-reports";
 import { getDailySupplementCalendarAdherence } from "@/lib/supplement-service";
 import { getPersistedVolumeSetCompletion } from "@/lib/workout-volume";
 import { mapWorkoutSummary } from "@/lib/workouts";
@@ -62,10 +63,7 @@ const workoutInclude = {
   },
 } as const;
 
-function isCompletedSet(
-  set: { completed: boolean },
-  workoutUpdatedAt: Date
-) {
+function isCompletedSet(set: { completed: boolean }, workoutUpdatedAt: Date) {
   return (
     getPersistedVolumeSetCompletion({
       completed: set.completed,
@@ -148,7 +146,9 @@ function SectionHeading({
         ) : null}
         <h2
           id={id}
-          className={`${eyebrow ? "mt-2" : ""} text-2xl font-bold tracking-tight sm:text-3xl`}
+          className={`${
+            eyebrow ? "mt-2" : ""
+          } text-2xl font-bold tracking-tight sm:text-3xl`}
         >
           {title}
         </h2>
@@ -168,8 +168,6 @@ export default async function HomePage() {
   if (!session?.user) redirect("/");
 
   await redirectIfOnboardingRequired(session.user.id);
-  const generatedWeeklyReport = await generatePreviousWeeklyReport(session.user.id);
-
   const now = new Date();
   const weekStart = getUtcWeekStart(now);
   const previousWeekStart = new Date(weekStart);
@@ -213,7 +211,11 @@ export default async function HomePage() {
       orderBy: { completedAt: "asc" },
       include: workoutInclude,
     }),
-    getDailySupplementCalendarAdherence(session.user.id, calendarRange.start, calendarRange.end),
+    getDailySupplementCalendarAdherence(
+      session.user.id,
+      calendarRange.start,
+      calendarRange.end
+    ),
     prisma.workout.findMany({
       where: { userId: session.user.id, completedAt: { not: null } },
       select: { completedAt: true },
@@ -338,14 +340,9 @@ export default async function HomePage() {
       </header>
 
       <div className="space-y-16 sm:space-y-20 lg:space-y-24">
-        {generatedWeeklyReport.created && !generatedWeeklyReport.report.announcementDismissedAt ? (
-          <Card className="border-primary/30 bg-primary/5">
-            <CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
-              <div><p className="font-semibold">Your weekly report is ready</p><p className="text-sm text-muted-foreground">A private snapshot of your completed week is saved in Progress.</p></div>
-              <Button asChild><Link href={`/profile/reports/${generatedWeeklyReport.report.id}`}>View report</Link></Button>
-            </CardContent>
-          </Card>
-        ) : null}
+        <Suspense fallback={null}>
+          <HomeWeeklyReportAnnouncement userId={session.user.id} />
+        </Suspense>
         <section aria-labelledby="week-heading">
           <SectionHeading
             id="week-heading"
@@ -495,7 +492,9 @@ export default async function HomePage() {
                       {routine.name}
                     </Link>
                     <p className="mt-2 text-sm text-muted-foreground">
-                      {routine._count.exercises} exercise{routine._count.exercises === 1 ? "" : "s"} · Updated {formatShortDate(routine.updatedAt)}
+                      {routine._count.exercises} exercise
+                      {routine._count.exercises === 1 ? "" : "s"} · Updated{" "}
+                      {formatShortDate(routine.updatedAt)}
                     </p>
                     <Button asChild className="mt-7 w-full sm:w-fit">
                       <Link href={`/workouts/new?routineId=${routine.id}`}>
@@ -512,7 +511,8 @@ export default async function HomePage() {
                 <div>
                   <p className="font-semibold">Build your first routine</p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Save a repeatable session and start training faster next time.
+                    Save a repeatable session and start training faster next
+                    time.
                   </p>
                 </div>
                 <Button asChild variant="outline" className="w-full sm:w-auto">
@@ -541,37 +541,52 @@ export default async function HomePage() {
                       {recentSummary.title ?? "Workout"}
                     </p>
                     <p className="mt-2 text-sm text-muted-foreground">
-                      {formatShortDate(recentWorkout.completedAt ?? recentWorkout.startedAt)}
+                      {formatShortDate(
+                        recentWorkout.completedAt ?? recentWorkout.startedAt
+                      )}
                     </p>
                   </div>
                   <div className="grid grid-cols-3 gap-4 border-y py-4 md:min-w-md md:border-y-0 md:border-l md:py-0 md:pl-6">
                     <div>
                       <p className="text-xs text-muted-foreground">Duration</p>
                       <p className="mt-1 font-semibold tabular-nums">
-                        {formatDuration(recentWorkout.startedAt, recentWorkout.completedAt) ?? "—"}
+                        {formatDuration(
+                          recentWorkout.startedAt,
+                          recentWorkout.completedAt
+                        ) ?? "—"}
                       </p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Sets</p>
-                      <p className="mt-1 font-semibold tabular-nums">{recentCompletedSets}</p>
+                      <p className="mt-1 font-semibold tabular-nums">
+                        {recentCompletedSets}
+                      </p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Volume</p>
                       <p className="mt-1 break-words font-semibold tabular-nums">
                         {recentSummary.totalVolume === null
                           ? "Unavailable"
-                          : `${Math.round(recentSummary.totalVolume).toLocaleString()} kg`}
+                          : `${Math.round(
+                              recentSummary.totalVolume
+                            ).toLocaleString()} kg`}
                       </p>
                     </div>
                   </div>
-                  <Button asChild variant="outline" className="w-full md:w-auto">
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="w-full md:w-auto"
+                  >
                     <Link href={`/workouts/${recentSummary.id}`}>View</Link>
                   </Button>
                 </div>
               ) : (
                 <div className="flex flex-col items-start justify-between gap-5 sm:flex-row sm:items-center">
                   <div>
-                    <p className="font-semibold">Your completed workouts will appear here.</p>
+                    <p className="font-semibold">
+                      Your completed workouts will appear here.
+                    </p>
                     <p className="mt-1 text-sm text-muted-foreground">
                       Finish a session to build your training history.
                     </p>
@@ -596,8 +611,14 @@ export default async function HomePage() {
             <ProgressMetric
               icon={Scale}
               label="Bodyweight"
-              value={profile.bodyweightKg ? `${profile.bodyweightKg} kg` : "Not set"}
-              detail={profile.bodyweightKg ? "Current profile value" : "Add it in Profile"}
+              value={
+                profile.bodyweightKg ? `${profile.bodyweightKg} kg` : "Not set"
+              }
+              detail={
+                profile.bodyweightKg
+                  ? "Current profile value"
+                  : "Add it in Profile"
+              }
               href="/profile"
             />
             <ProgressMetric
@@ -640,7 +661,9 @@ export default async function HomePage() {
             <ProgressMetric
               icon={Target}
               label="4-week consistency"
-              value={consistency ? `${consistency.percentage}%` : "Building history"}
+              value={
+                consistency ? `${consistency.percentage}%` : "Building history"
+              }
               detail={
                 consistency
                   ? `${consistency.metWeeks} of ${consistency.totalWeeks} weeks met goal`
@@ -793,8 +816,7 @@ function DashboardDestinationCard({
         <div className="mt-auto pt-7">
           <Button asChild className="w-full sm:w-fit">
             <Link href={href}>
-              {actionLabel}{" "}
-              <ArrowRight className="size-4" aria-hidden="true" />
+              {actionLabel} <ArrowRight className="size-4" aria-hidden="true" />
             </Link>
           </Button>
         </div>
