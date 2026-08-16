@@ -12,17 +12,21 @@ export function NutritionMobileSheet({
   children,
   footer,
   className,
+  bodyClassName,
+  scrollable = true,
 }: {
   header: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
   className?: string;
+  bodyClassName?: string;
+  scrollable?: boolean;
 }) {
   return (
     <SheetContent
       side="bottom"
       className={cn(
-        "min-h-0 h-[100dvh] max-h-[100dvh] gap-0 overflow-hidden overscroll-none p-0 sm:h-[min(94dvh,52rem)] sm:max-h-[calc(100dvh-env(safe-area-inset-top)-0.5rem)]",
+        "min-h-0 h-full max-h-full gap-0 overflow-hidden overscroll-none p-0 sm:h-[min(94dvh,52rem)] sm:max-h-[calc(100dvh-env(safe-area-inset-top)-0.5rem)]",
         className
       )}
     >
@@ -32,7 +36,13 @@ export function NutritionMobileSheet({
       <div
         data-slot="nutrition-sheet-scroll"
         data-keyboard-dismiss-on-scroll
-        className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch] px-4 py-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]"
+        className={cn(
+          "min-h-0 flex-1 px-4 py-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]",
+          scrollable
+            ? "touch-pan-y overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch]"
+            : "flex flex-col overflow-hidden",
+          bodyClassName
+        )}
       >
         {children}
       </div>

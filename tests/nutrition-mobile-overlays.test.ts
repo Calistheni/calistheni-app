@@ -4,15 +4,17 @@ import test from "node:test";
 
 test("Nutrition mobile sheet owns one scroll body and a safe-area sticky footer", async () => {
   const source = await readFile(new URL("../components/nutrition/NutritionMobileSheet.tsx", import.meta.url), "utf8");
-  assert.match(source, /h-\[100dvh\] max-h-\[100dvh\]/);
+  assert.match(source, /h-full max-h-full/);
   assert.match(source, /sm:h-\[min\(94dvh,52rem\)\]/);
   assert.match(source, /data-slot="nutrition-sheet-scroll"/);
-  assert.match(source, /min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain/);
+  assert.match(source, /min-h-0 flex-1 px-4 py-4/);
+  assert.match(source, /touch-pan-y overflow-y-auto overscroll-contain/);
   assert.match(source, /-webkit-overflow-scrolling:touch/);
   assert.match(source, /data-slot="nutrition-sheet-footer"/);
   assert.match(source, /env\(safe-area-inset-bottom\)/);
   assert.match(source, /overflow-hidden overscroll-none p-0/);
-  assert.match(source, /min-h-0 h-\[100dvh\]/);
+  assert.match(source, /scrollable = true/);
+  assert.match(source, /scrollable[\s\S]*"flex flex-col overflow-hidden"/);
   assert.match(source, /overscroll-none/);
 });
 
@@ -25,6 +27,8 @@ test("Add Food uses the shared stable sheet shell instead of competing viewport-
   assert.match(picker, /<NutritionMobileSheet/);
   assert.match(picker, /placeholder="Search foods"/);
   assert.match(picker, /aria-label="Food search results"/);
+  assert.match(picker, /scrollable=\{false\}/);
+  assert.match(picker, /min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain/);
   assert.doesNotMatch(picker, /h-\[92dvh\]/);
   assert.doesNotMatch(picker, /h-\[min\(48dvh,26rem\)\]/);
   assert.doesNotMatch(picker, /<ScrollArea/);

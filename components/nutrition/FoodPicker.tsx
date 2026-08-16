@@ -14,6 +14,7 @@ import { NutritionMobileSheet } from "@/components/nutrition/NutritionMobileShee
 import { NutritionSavedMeals } from "@/components/nutrition/NutritionSavedMeals";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Sheet,
   SheetDescription,
@@ -70,6 +71,32 @@ type Food = {
   isSaved?: boolean;
 };
 
+let savedFoodsCache: Food[] | null = null;
+let savedFoodsRequest: Promise<Food[]> | null = null;
+
+async function loadSavedFoods() {
+  if (savedFoodsCache) return savedFoodsCache;
+  if (!savedFoodsRequest) {
+    savedFoodsRequest = fetch("/api/nutrition/saved-foods", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Unable to load saved foods.");
+        const data = await response.json();
+        return deduplicateFoodResults(data.foods ?? []).slice(
+          0,
+          NUTRITION_SEARCH_RESULT_LIMIT
+        ) as Food[];
+      })
+      .then((foods) => {
+        savedFoodsCache = foods;
+        return foods;
+      })
+      .finally(() => {
+        savedFoodsRequest = null;
+      });
+  }
+  return savedFoodsRequest;
+}
+
 function format(value: number, digits = 1) {
   return Number.isInteger(value) ? String(value) : value.toFixed(digits);
 }
@@ -86,14 +113,16 @@ export function FoodPicker({
   onAddEntries: (entries: NutritionPickerEntry[]) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [foods, setFoods] = useState<Food[]>([]);
+  const [foods, setFoods] = useState<Food[]>(() => savedFoodsCache ?? []);
   const [inspectedFood, setInspectedFood] = useState<Food | null>(null);
   const [quickAdding, setQuickAdding] = useState<string | null>(null);
-  const [savedLoading, setSavedLoading] = useState(false);
+  const [savedFoodsFailed, setSavedFoodsFailed] = useState(false);
   const [quickActionCapabilities, setQuickActionCapabilities] = useState<{
     canUseAiScan: boolean;
     canUseBarcodeScan: boolean;
   } | null>(null);
+  const savedLoading =
+    query.trim().length < 2 && savedFoodsCache === null && !savedFoodsFailed;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -113,34 +142,43 @@ export function FoodPicker({
   useEffect(() => {
     if (!meal) return;
     const controller = new AbortController();
+    const isSearching = query.trim().length >= 2;
+    if (!isSearching) {
+      if (savedFoodsCache) {
+        return () => controller.abort();
+      } else {
+        void loadSavedFoods()
+          .then((saved) => {
+            if (!controller.signal.aborted) setFoods(saved);
+          })
+          .catch(() => {
+            if (!controller.signal.aborted) {
+              setFoods([]);
+              setSavedFoodsFailed(true);
+            }
+          });
+      }
+      return () => controller.abort();
+    }
     const timer = window.setTimeout(async () => {
-      const isSearching = query.trim().length >= 2;
-      const path = isSearching
-        ? `/api/nutrition/foods/search?q=${encodeURIComponent(query.trim())}`
-        : "/api/nutrition/saved-foods";
-      setSavedLoading(!isSearching);
       try {
-        const response = await fetch(path, {
-          cache: "no-store",
-          signal: controller.signal,
-        });
+        const response = await fetch(
+          `/api/nutrition/foods/search?q=${encodeURIComponent(query.trim())}`,
+          { cache: "no-store", signal: controller.signal }
+        );
         if (!response.ok) return;
         const data = await response.json();
         setFoods(
           deduplicateFoodResults(
-            isSearching
-              ? data.results ?? [
-                  ...(data.genericResults ?? []),
-                  ...(data.localResults ?? []),
-                  ...(data.packagedResults ?? []),
-                ]
-              : data.foods ?? []
+            data.results ?? [
+              ...(data.genericResults ?? []),
+              ...(data.localResults ?? []),
+              ...(data.packagedResults ?? []),
+            ]
           ).slice(0, NUTRITION_SEARCH_RESULT_LIMIT) as Food[]
         );
       } catch (error) {
         if ((error as DOMException).name !== "AbortError") setFoods([]);
-      } finally {
-        if (!controller.signal.aborted) setSavedLoading(false);
       }
     }, 250);
     return () => {
@@ -178,6 +216,15 @@ export function FoodPicker({
             item.id === food.id ? { ...item, isSaved: true } : item
           )
     );
+    if (savedFoodsCache) {
+      savedFoodsCache = food.isSaved
+        ? savedFoodsCache.filter((item) => item.id !== food.id)
+        : savedFoodsCache.some((item) => item.id === food.id)
+          ? savedFoodsCache.map((item) =>
+              item.id === food.id ? { ...item, isSaved: true } : item
+            )
+          : [{ ...food, isSaved: true }, ...savedFoodsCache];
+    }
     toast.success(
       food.isSaved
         ? `Removed ${food.name} from saved foods.`
@@ -238,13 +285,20 @@ export function FoodPicker({
               </SheetDescription>
             </SheetHeader>
           }
+          scrollable={false}
         >
-          <div className="space-y-4">
+          <div className="flex min-h-0 flex-1 flex-col gap-4">
             <Input
               placeholder="Search foods"
               aria-label="Search foods"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => {
+                const value = event.target.value;
+                setQuery(value);
+                if (value.trim().length < 2 && savedFoodsCache) {
+                  setFoods(savedFoodsCache);
+                }
+              }}
             />
             {quickActionCapabilities ? (
               <NutritionQuickActions
@@ -261,8 +315,8 @@ export function FoodPicker({
                 aria-busy="true"
               />
             )}
-            <Tabs defaultValue="food">
-              <TabsList className="w-full">
+            <Tabs defaultValue="food" className="flex min-h-0 flex-1 flex-col">
+              <TabsList className="shrink-0 w-full">
                 <TabsTrigger className="flex-1" value="food">
                   Food
                 </TabsTrigger>
@@ -273,17 +327,25 @@ export function FoodPicker({
                   Recipes
                 </TabsTrigger>
               </TabsList>
-              <TabsContent value="food" className="mt-2">
+              <TabsContent value="food" className="mt-2 flex min-h-0 flex-1 flex-col">
                 <div
-                  className="space-y-2 rounded-lg border p-1.5"
+                  data-keyboard-dismiss-on-scroll
+                  className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain rounded-lg border p-1.5 [-webkit-overflow-scrolling:touch]"
                   aria-label="Food search results"
                 >
-                    {query.trim().length < 2 ? (
+                    {query.trim().length < 2 && savedLoading ? (
+                      <div className="space-y-2 p-2" aria-busy="true">
+                        <p className="text-sm font-medium">Saved foods</p>
+                        <Skeleton className="h-16 w-full" />
+                        <Skeleton className="h-16 w-full" />
+                        <Skeleton className="h-16 w-full" />
+                      </div>
+                    ) : query.trim().length < 2 ? (
                       <p className="px-2 pt-1 text-sm font-medium">
                         Saved foods
                       </p>
                     ) : null}
-                    {foods.length ? (
+                    {!savedLoading && foods.length ? (
                       foods.map((food) => {
                         const key = foodResultKey(food);
                         const adding = quickAdding === key;
@@ -378,11 +440,7 @@ export function FoodPicker({
                       <p className="p-4 text-center text-sm text-muted-foreground">
                         No foods found. Try a more specific search.
                       </p>
-                    ) : savedLoading ? (
-                      <p className="p-4 text-center text-sm text-muted-foreground">
-                        Loading saved foods…
-                      </p>
-                    ) : (
+                    ) : !savedLoading ? (
                       <div className="p-4 text-center text-sm text-muted-foreground">
                         <p className="font-medium text-foreground">
                           No saved foods yet.
@@ -391,10 +449,10 @@ export function FoodPicker({
                           Save foods you use often to find them here quickly.
                         </p>
                       </div>
-                    )}
+                    ) : null}
                 </div>
               </TabsContent>
-              <TabsContent value="meals">
+              <TabsContent value="meals" className="mt-2 min-h-0 flex-1 overflow-y-auto overscroll-contain">
                 <NutritionSavedMeals
                   mealCategory={meal!}
                   date={date}
@@ -403,7 +461,7 @@ export function FoodPicker({
                   }
                 />
               </TabsContent>
-              <TabsContent value="recipes">
+              <TabsContent value="recipes" className="mt-2 min-h-0 flex-1 overflow-y-auto overscroll-contain">
                 <Empty
                   title="No recipes yet"
                   text="Create a recipe and define its ingredients and servings."
