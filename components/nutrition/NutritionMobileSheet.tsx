@@ -1,6 +1,3 @@
-"use client";
-
-import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { SheetContent } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
@@ -17,7 +14,6 @@ export function NutritionMobileSheet({
   className,
   bodyClassName,
   scrollable = true,
-  debugId,
 }: {
   header: ReactNode;
   children: ReactNode;
@@ -25,20 +21,10 @@ export function NutritionMobileSheet({
   className?: string;
   bodyClassName?: string;
   scrollable?: boolean;
-  /** Development-only device instrumentation for a named overlay. */
-  debugId?: string;
 }) {
-  useEffect(() => {
-    if (process.env.NODE_ENV !== "development" || !debugId) return;
-    console.debug(`[mobile-overlay] ${debugId} NutritionMobileSheet mounted`);
-    return () =>
-      console.debug(`[mobile-overlay] ${debugId} NutritionMobileSheet unmounted`);
-  }, [debugId]);
-
   return (
     <SheetContent
       side="bottom"
-      data-overlay-debug-id={debugId}
       className={cn(
         "min-h-0 h-full max-h-full gap-0 overflow-hidden overscroll-none p-0 sm:h-[min(94dvh,52rem)] sm:max-h-[calc(100dvh-env(safe-area-inset-top)-0.5rem)]",
         className

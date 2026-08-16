@@ -39,7 +39,10 @@ const config: CapacitorConfig = {
     },
 
     Keyboard: {
-      resize: KeyboardResize.Native,
+      // Keep the WKWebView frame stable on iOS. `native` resizes that frame
+      // after each keyboard notification, which creates a second layout pass
+      // for fixed React overlays. The plugin resizes only document.body here.
+      resize: KeyboardResize.Body,
       resizeOnFullScreen: true,
       autoBackdropColor: "dom",
     },

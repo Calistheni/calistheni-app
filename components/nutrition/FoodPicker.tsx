@@ -80,27 +80,6 @@ let savedFoodsRequest: Promise<Food[]> | null = null;
 let quickActionCapabilitiesCache: NutritionQuickActionCapabilities | null =
   null;
 
-function logAddFoodOverlay(event: string) {
-  if (process.env.NODE_ENV !== "development") return;
-  const sheet = document.querySelector<HTMLElement>(
-    '[data-overlay-debug-id="add-food"]'
-  );
-  const scroll = sheet?.querySelector<HTMLElement>(
-    '[data-slot="nutrition-sheet-scroll"]'
-  );
-  console.debug(`[mobile-overlay] add-food ${event}`, {
-    windowScrollY: window.scrollY,
-    documentScrollTop: document.documentElement.scrollTop,
-    sheetScrollTop: scroll?.scrollTop ?? null,
-    viewportHeight: window.visualViewport?.height ?? window.innerHeight,
-    body: {
-      position: document.body.style.position,
-      top: document.body.style.top,
-      overflow: document.body.style.overflow,
-    },
-  });
-}
-
 async function loadSavedFoods() {
   if (savedFoodsCache) return savedFoodsCache;
   if (!savedFoodsRequest) {
@@ -150,18 +129,6 @@ export function FoodPicker({
     );
   const savedLoading =
     query.trim().length < 2 && savedFoodsCache === null && !savedFoodsFailed;
-
-  useEffect(() => {
-    if (process.env.NODE_ENV !== "development") return;
-    logAddFoodOverlay("FoodPicker mounted");
-    const viewport = window.visualViewport;
-    const onViewportResize = () => logAddFoodOverlay("visual viewport resize");
-    viewport?.addEventListener("resize", onViewportResize);
-    return () => {
-      viewport?.removeEventListener("resize", onViewportResize);
-      logAddFoodOverlay("FoodPicker unmounted");
-    };
-  }, []);
 
   useEffect(() => {
     if (quickActionCapabilitiesCache) return;
@@ -319,7 +286,6 @@ export function FoodPicker({
         }}
       >
         <NutritionMobileSheet
-          debugId="add-food"
           header={
             <SheetHeader>
               <SheetTitle>Add to {meal?.toLowerCase()}</SheetTitle>
@@ -335,9 +301,6 @@ export function FoodPicker({
               placeholder="Search foods"
               aria-label="Search foods"
               value={query}
-              onPointerDown={() => logAddFoodOverlay("search pointerdown")}
-              onFocus={() => logAddFoodOverlay("search focus")}
-              onBlur={() => logAddFoodOverlay("search blur")}
               onChange={(event) => {
                 const value = event.target.value;
                 setQuery(value);

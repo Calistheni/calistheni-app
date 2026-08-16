@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { Keyboard, KeyboardStyle } from "@capacitor/keyboard";
+import { Capacitor } from "@capacitor/core";
+import { Keyboard, KeyboardResize, KeyboardStyle } from "@capacitor/keyboard";
 import { App } from "@capacitor/app";
 import { SplashScreen } from "@capacitor/splash-screen";
 import { StatusBar, Style } from "@capacitor/status-bar";
@@ -15,6 +16,30 @@ import {
 import { dismissActiveTextInput } from "@/lib/mobile-keyboard";
 
 const isDevelopment = process.env.NODE_ENV === "development";
+let iOSKeyboardResizeSetup: Promise<void> | null = null;
+
+function logKeyboardResize(event: string, detail?: unknown) {
+  if (!isDevelopment) return;
+  console.debug(`[native-keyboard] ${event}`, {
+    detail,
+    innerHeight: window.innerHeight,
+    visualViewportHeight: window.visualViewport?.height ?? null,
+  });
+}
+
+function configureIOSKeyboardResize() {
+  if (!iOSKeyboardResizeSetup) {
+    iOSKeyboardResizeSetup = Keyboard.setResizeMode({
+      mode: KeyboardResize.Body,
+    })
+      .then(() => Keyboard.getResizeMode())
+      .then(({ mode }) => logKeyboardResize("resize mode selected", mode))
+      .catch((error: unknown) => {
+        logKeyboardResize("resize mode setup failed", String(error));
+      });
+  }
+  return iOSKeyboardResizeSetup;
+}
 
 function logNativeSplash(event: string, detail?: unknown) {
   if (isDevelopment) {
@@ -69,6 +94,54 @@ export function NativeShell() {
       delete document.documentElement.dataset.nativeApp;
       window.clearTimeout(reconciliationTimer);
       void appListener?.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isNativeApp() || Capacitor.getPlatform() !== "ios") return;
+
+    let disposed = false;
+    const listeners: Array<{ remove: () => Promise<void> }> = [];
+    const addListener = (
+      promise: Promise<{ remove: () => Promise<void> }>
+    ) => {
+      void promise.then((listener) => {
+        if (disposed) void listener.remove();
+        else listeners.push(listener);
+      });
+    };
+
+    // Config applies before the bridge starts; also set the documented iOS
+    // mode once per app session so a stale native bundle cannot leave the
+    // active WebView on the old frame-resizing mode.
+    void configureIOSKeyboardResize();
+
+    if (isDevelopment) {
+      addListener(
+        Keyboard.addListener("keyboardWillShow", (detail) =>
+          logKeyboardResize("keyboardWillShow", detail)
+        )
+      );
+      addListener(
+        Keyboard.addListener("keyboardDidShow", (detail) =>
+          logKeyboardResize("keyboardDidShow", detail)
+        )
+      );
+      addListener(
+        Keyboard.addListener("keyboardWillHide", () =>
+          logKeyboardResize("keyboardWillHide")
+        )
+      );
+      addListener(
+        Keyboard.addListener("keyboardDidHide", () =>
+          logKeyboardResize("keyboardDidHide")
+        )
+      );
+    }
+
+    return () => {
+      disposed = true;
+      for (const listener of listeners) void listener.remove();
     };
   }, []);
 

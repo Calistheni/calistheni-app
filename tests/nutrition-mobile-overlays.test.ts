@@ -81,6 +81,27 @@ test("keyboard dismissal waits for a real marked-surface scroll instead of a foc
   );
 });
 
+test("iOS uses Capacitor body resize once instead of resizing the WKWebView frame", async () => {
+  const [config, nativeShell] = await Promise.all([
+    readFile(new URL("../capacitor.config.ts", import.meta.url), "utf8"),
+    readFile(
+      new URL("../components/native/NativeShell.tsx", import.meta.url),
+      "utf8"
+    ),
+  ]);
+
+  assert.match(config, /resize: KeyboardResize\.Body/);
+  assert.match(nativeShell, /Capacitor\.getPlatform\(\) !== "ios"/);
+  assert.match(
+    nativeShell,
+    /Keyboard\.setResizeMode\(\{[\s\S]*mode: KeyboardResize\.Body/
+  );
+  assert.match(nativeShell, /let iOSKeyboardResizeSetup: Promise<void> \| null = null/);
+  assert.match(nativeShell, /Keyboard\.getResizeMode\(\)/);
+  assert.match(nativeShell, /keyboardWillShow/);
+  assert.match(nativeShell, /keyboardDidHide/);
+});
+
 test("Nutrition sheets stack above the fixed app navigation", async () => {
   const [sheet, globals] = await Promise.all([
     readFile(new URL("../components/ui/sheet.tsx", import.meta.url), "utf8"),
