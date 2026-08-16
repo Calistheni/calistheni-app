@@ -256,3 +256,27 @@ test("an OFF lookup error keeps the scanned barcode and reuses the contribution 
   assert.doesNotMatch(genericErrorUi, /onClick=\{\(\) => void lookup\(code\)\}/);
   assert.match(workflow, /barcode: code/);
 });
+
+test("AI label contribution stops barcode capture without losing the scanned barcode", async () => {
+  const workflow = await readFile(quickActionsUrl, "utf8");
+  const labelHandler = workflow.slice(
+    workflow.indexOf("function openLabelContribution"),
+    workflow.indexOf("useEffect(() => {\n    lookupRef.current")
+  );
+  const scannerEffect = workflow.slice(
+    workflow.indexOf("const shouldStartNativeScanner"),
+    workflow.indexOf("async function lookup")
+  );
+
+  assert.match(labelHandler, /endNativeScannerSession\("ai-label-contribution"\)/);
+  assert.match(labelHandler, /setContributionMode\("label"\)/);
+  assert.match(labelHandler, /setLookupState\("creating_ai"\)/);
+  assert.match(labelHandler, /setError\(""\)/);
+  assert.doesNotMatch(labelHandler, /setCode\(/);
+  assert.match(scannerEffect, /!contributionMode/);
+  assert.match(scannerEffect, /lookupState === "idle" \|\| lookupState === "scanning"/);
+  assert.match(workflow, /<Button onClick=\{openLabelContribution\}>/);
+  assert.match(workflow, /onClick=\{restartNativeScanner\}/);
+  assert.match(workflow, /form\.set\("barcode", code\)/);
+  assert.match(workflow, /barcode: code/);
+});

@@ -538,6 +538,12 @@ function BarcodeWorkflow({
       !manualMode &&
       !scanLocked.current &&
       nativeRuntime);
+  const shouldStartNativeScanner =
+    open &&
+    nativeRuntime &&
+    !manualMode &&
+    !contributionMode &&
+    (lookupState === "idle" || lookupState === "scanning");
   const endNativeScannerSession = useCallback((reason: string) => {
     scannerActiveRef.current = false;
     scannerSessionRef.current += 1;
@@ -598,6 +604,17 @@ function BarcodeWorkflow({
     reset();
     close();
   }
+  function openLabelContribution() {
+    // Label capture is a separate, user-selected camera/photo flow. Stop the
+    // barcode session first, but retain `code` for the eventual contribution.
+    void endNativeScannerSession("ai-label-contribution").finally(() => {
+      setError("");
+      setPhase(null);
+      setManualMode(false);
+      setContributionMode("label");
+      setLookupState("creating_ai");
+    });
+  }
   useEffect(() => {
     lookupRef.current = (value) => {
       void lookup(value);
@@ -619,7 +636,7 @@ function BarcodeWorkflow({
     nativeAvailability.pluginName,
   ]);
   useEffect(() => {
-    if (!open || !nativeRuntime) return;
+    if (!shouldStartNativeScanner) return;
     const sessionId = scannerSessionRef.current + 1;
     scannerSessionRef.current = sessionId;
     scannerActiveRef.current = true;
@@ -697,6 +714,7 @@ function BarcodeWorkflow({
     open,
     nativeRuntime,
     nativeIosScanner,
+    shouldStartNativeScanner,
     scannerSessionVersion,
     endNativeScannerSession,
   ]);
@@ -1245,7 +1263,7 @@ function BarcodeWorkflow({
               </div>
               {!contributionMode ? (
                 <div className="grid gap-2">
-                  <Button onClick={() => { setContributionMode("label"); setLookupState("creating_ai"); }}>
+                  <Button onClick={openLabelContribution}>
                     <Sparkles />
                     Scan nutrition label with AI
                   </Button>
