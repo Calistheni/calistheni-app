@@ -1280,6 +1280,9 @@ export function ParkSubmissionForm({
             isVerifyingPhotos
           }
         >
+          {isSubmitting || isPreparingSubmission || isCheckingNearbyParks || isVerifyingPhotos ? (
+            <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />
+          ) : null}
           {isSubmitting
             ? mode === "create"
               ? "Submitting..."

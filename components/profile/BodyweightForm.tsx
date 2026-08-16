@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { DateOfBirthPicker } from "@/components/profile/DateOfBirthPicker";
 import { AppleHealthSettings } from "@/components/profile/AppleHealthSettings";
@@ -319,7 +320,8 @@ export function BodyweightForm({
         onClick={() => void savePersonalDetails()}
         disabled={isSaving}
       >
-        {isSaving ? "Saving..." : "Save personal details"}
+        {isSaving ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
+        {isSaving ? "Saving…" : "Save personal details"}
       </Button>
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { Apple, RefreshCw } from "lucide-react";
+import { Apple, Loader2, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -168,6 +168,17 @@ export function AppleHealthSettings({
         </div>
       </div>
       <p className="text-xs text-muted-foreground">{authorizationCopy(status)}</p>
+      {isWorking ? (
+        <div
+          aria-busy="true"
+          aria-live="polite"
+          className="flex min-h-9 items-center gap-2 rounded-md bg-muted/50 px-2 text-xs text-muted-foreground"
+          role="status"
+        >
+          <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+          Working with Apple Health…
+        </div>
+      ) : null}
       {!connected ? <Button type="button" variant="outline" onClick={() => void connect()} disabled={isWorking}>Connect Apple Health</Button> : <>
         <div className="flex items-start justify-between gap-4">
           <div><p className="text-sm font-medium">Save completed workouts</p><p className="text-xs text-muted-foreground">Exports one completed workout to Apple Health.</p></div>

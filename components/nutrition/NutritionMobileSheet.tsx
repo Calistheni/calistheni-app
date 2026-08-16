@@ -22,7 +22,7 @@ export function NutritionMobileSheet({
     <SheetContent
       side="bottom"
       className={cn(
-        "h-[100dvh] max-h-[100dvh] gap-0 overflow-hidden p-0 sm:h-[min(94dvh,52rem)] sm:max-h-[calc(100dvh-env(safe-area-inset-top)-0.5rem)]",
+        "min-h-0 h-[100dvh] max-h-[100dvh] gap-0 overflow-hidden overscroll-none p-0 sm:h-[min(94dvh,52rem)] sm:max-h-[calc(100dvh-env(safe-area-inset-top)-0.5rem)]",
         className
       )}
     >

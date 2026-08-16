@@ -94,6 +94,8 @@ test("Mapbox and the submit-park picker stay out of unrelated route entry paths"
   assert.match(form, /ssr: false/);
   assert.match(picker, /setMapUnavailable\(true\)/);
   assert.match(picker, /Enter coordinates manually below/);
+  assert.match(form, /LoaderCircle className="size-4 animate-spin"/);
+  assert.match(form, /isSubmitting \|\| isPreparingSubmission/);
 });
 
 test("routine cards fetch only the summaries they render", async () => {

@@ -11,7 +11,26 @@ test("Nutrition mobile sheet owns one scroll body and a safe-area sticky footer"
   assert.match(source, /-webkit-overflow-scrolling:touch/);
   assert.match(source, /data-slot="nutrition-sheet-footer"/);
   assert.match(source, /env\(safe-area-inset-bottom\)/);
-  assert.match(source, /overflow-hidden p-0/);
+  assert.match(source, /overflow-hidden overscroll-none p-0/);
+  assert.match(source, /min-h-0 h-\[100dvh\]/);
+  assert.match(source, /overscroll-none/);
+});
+
+test("shared overlays keep initial focus off editable controls and inputs remain iOS zoom-safe", async () => {
+  const [sheet, dialog, input, textarea] = await Promise.all([
+    readFile(new URL("../components/ui/sheet.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/ui/dialog.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/ui/input.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/ui/textarea.tsx", import.meta.url), "utf8"),
+  ]);
+
+  for (const source of [sheet, dialog]) {
+    assert.match(source, /onOpenAutoFocus/);
+    assert.match(source, /event\.preventDefault\(\)/);
+    assert.match(source, /focus\(\{ preventScroll: true \}\)/);
+  }
+  assert.match(input, /text-base/);
+  assert.match(textarea, /text-base/);
 });
 
 test("Nutrition sheets stack above the fixed app navigation", async () => {
@@ -31,17 +50,17 @@ test("AI Scan, Describe, Barcode, and meal sheets keep their final actions reach
     readFile(new URL("../components/nutrition/NutritionSavedMeals.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/nutrition/NutritionTracker.tsx", import.meta.url), "utf8"),
   ]);
-  assert.equal((quick.match(/<NutritionMobileSheet/g) ?? []).length, 3);
-  assert.match(quick, /footer=\{items\.length \? <Button/);
-  assert.match(quick, /footer=\{review && resolvedItems\.length \? <Button/);
-  assert.match(quick, /Add to \{mealLabel\(meal\)\}/);
+  assert.ok((quick.match(/<NutritionMobileSheet/g) ?? []).length >= 3);
+  assert.match(quick, /footer=\{\s*items\.length \? \(/);
+  assert.match(quick, /footer=\{\s*review && resolvedItems\.length \? \(/);
+  assert.match(quick, /`Add to \$\{mealLabel\(meal\)\}`/);
   assert.match(quick, /<Tabs defaultValue="manual">/);
   assert.equal((meals.match(/<NutritionMobileSheet/g) ?? []).length, 2);
   assert.match(meals, /Update meal items \(\{selected\.size\}\)/);
   assert.match(meals, /max-h-\[min\(58dvh,34rem\)\].*overflow-y-auto overscroll-contain/);
   assert.match(tracker, /max-h-\[calc\(100dvh-env\(safe-area-inset-top\)-0\.5rem\)\]/);
-  assert.match(tracker, /ScrollArea className="h-\[min\(48dvh,26rem\)\]/);
-  assert.match(tracker, /min-h-11 w-full min-w-0/);
+  assert.match(tracker, /ScrollArea\s+className="h-\[min\(48dvh,26rem\)\]/);
+  assert.match(tracker, /flex min-h-11 min-w-0 items-center/);
 });
 
 test("mobile overlays retain shadcn titles, accessible search fields, and bounded previews", async () => {

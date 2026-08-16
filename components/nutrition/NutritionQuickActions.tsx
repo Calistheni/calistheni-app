@@ -8,7 +8,6 @@ import {
   Barcode,
   ArrowLeft,
   Camera,
-  CheckCircle2,
   Flashlight,
   ImagePlus,
   ListPlus,
@@ -1043,7 +1042,8 @@ function BarcodeWorkflow({
                 disabled={busy || grams <= 0 || quantity <= 0}
                 onClick={() => void add()}
               >
-                Add to {mealLabel(meal)}
+                {busy ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
+                {busy ? "Adding food…" : `Add to ${mealLabel(meal)}`}
               </Button>
               <Button variant="outline" onClick={dismiss}>
                 Cancel
@@ -1099,16 +1099,20 @@ function BarcodeWorkflow({
                 </Button>
               </div>
             </>
-          ) : phase === "looking" && scanLocked.current && !food ? (
-            <div className="space-y-3 py-8 text-center">
-              <CheckCircle2
-                className="mx-auto size-10 text-primary"
-                aria-hidden="true"
-              />
-              <p className="font-medium">Barcode found</p>
-              <p className="text-sm text-muted-foreground">
-                Looking up product…
-              </p>
+          ) : lookupState === "looking_up" && !food ? (
+            <div
+              aria-busy="true"
+              aria-live="polite"
+              className="flex min-h-40 flex-col items-center justify-center gap-3 py-8 text-center"
+              role="status"
+            >
+              <Loader2 className="size-8 animate-spin text-primary" aria-hidden="true" />
+              <p className="font-medium">Looking up product…</p>
+              {code ? (
+                <p className="font-mono text-sm text-muted-foreground">
+                  {code}
+                </p>
+              ) : null}
             </div>
           ) : (
             <Tabs defaultValue="manual">
@@ -1253,11 +1257,12 @@ function BarcodeWorkflow({
                 <div className="space-y-3">
                   <p className="font-medium">Add missing product</p>
                   {contributionMode === "label" ? (
-                    <Button asChild variant="outline" className="w-full">
+                    <Button asChild variant="outline" className="w-full" disabled={busy}>
                       <Label className="cursor-pointer">
                         <Camera />
                         Take or choose nutrition label photo
                         <Input
+                          disabled={busy}
                           className="sr-only"
                           type="file"
                           accept="image/*"
@@ -1270,6 +1275,17 @@ function BarcodeWorkflow({
                         />
                       </Label>
                     </Button>
+                  ) : null}
+                  {busy && contributionMode === "label" ? (
+                    <div
+                      aria-busy="true"
+                      aria-live="polite"
+                      className="flex min-h-16 items-center justify-center gap-2 rounded-lg bg-muted px-3 text-sm text-muted-foreground"
+                      role="status"
+                    >
+                      <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                      Reading product information…
+                    </div>
                   ) : null}
                   <div className="grid gap-2 sm:grid-cols-2">
                     {(
@@ -1314,15 +1330,16 @@ function BarcodeWorkflow({
                       disabled={busy}
                       onClick={() => void saveContribution(true)}
                     >
-                      {busy ? <Loader2 className="animate-spin" /> : null}Save
-                      and add to {mealLabel(meal)}
+                      {busy ? <Loader2 className="animate-spin" /> : null}
+                      {busy ? "Creating food…" : `Save and add to ${mealLabel(meal)}`}
                     </Button>
                     <Button
                       variant="outline"
                       disabled={busy}
                       onClick={() => void saveContribution(false)}
                     >
-                      Save product
+                      {busy ? <Loader2 className="animate-spin" /> : null}
+                      {busy ? "Creating food…" : "Save product"}
                     </Button>
                     <Button
                       variant="outline"
@@ -1605,6 +1622,7 @@ function AiWorkflow({
   const [missingProposal, setMissingProposal] =
     useState<AiMissingProposal | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pendingMessage, setPendingMessage] = useState("");
   const [error, setError] = useState("");
   const [limitReached, setLimitReached] = useState(false);
   useEffect(
@@ -1639,6 +1657,7 @@ function AiWorkflow({
     setSuggestions([]);
     setMissingProposal(null);
     setBusy(false);
+    setPendingMessage("");
     setError("");
   }
   function dismiss() {
@@ -1662,6 +1681,7 @@ function AiWorkflow({
   async function analyze() {
     if (!image || busy) return setError("Take or choose a food photo first.");
     setBusy(true);
+    setPendingMessage("Preparing photo…");
     setError("");
     try {
       const compressed = await compressWorkoutPhoto(image);
@@ -1670,6 +1690,7 @@ function AiWorkflow({
       const form = new FormData();
       form.set("image", compressed);
       form.set("description", description);
+      setPendingMessage("Analyzing your food…");
       const response = await fetch("/api/nutrition/ai-scan", {
         method: "POST",
         body: form,
@@ -1726,6 +1747,7 @@ function AiWorkflow({
       );
     } finally {
       setBusy(false);
+      setPendingMessage("");
     }
   }
   async function selectSuggestion(
@@ -1733,6 +1755,7 @@ function AiWorkflow({
     candidate: Food
   ) {
     setBusy(true);
+    setPendingMessage("Adding food…");
     try {
       const food = await importFood(candidate);
       setItems((current) => [
@@ -1759,6 +1782,7 @@ function AiWorkflow({
       );
     } finally {
       setBusy(false);
+      setPendingMessage("");
     }
   }
   async function proposeMissingSuggestion(suggestion: AiCandidateSuggestion) {
@@ -1770,6 +1794,7 @@ function AiWorkflow({
         suggestionKey: suggestion.key,
       });
     setBusy(true);
+    setPendingMessage("Preparing food proposal…");
     setError("");
     try {
       const response = await fetch("/api/nutrition/foods/propose", {
@@ -1819,11 +1844,13 @@ function AiWorkflow({
       );
     } finally {
       setBusy(false);
+      setPendingMessage("");
     }
   }
   async function saveMissingSuggestion() {
     if (!missingProposal) return;
     setBusy(true);
+    setPendingMessage("Creating food…");
     try {
       const { suggestionKey, ...proposal } = missingProposal;
       const response = await fetch("/api/nutrition/foods/propose", {
@@ -1855,6 +1882,7 @@ function AiWorkflow({
       );
     } finally {
       setBusy(false);
+      setPendingMessage("");
     }
   }
   async function confirm() {
@@ -1864,6 +1892,7 @@ function AiWorkflow({
       return setError("Enter a valid amount and quantity for every food.");
     }
     setBusy(true);
+    setPendingMessage("Adding foods…");
     try {
       onEntries(await batchLog(meal, date, items));
       dismiss();
@@ -1874,6 +1903,7 @@ function AiWorkflow({
           : "Unable to add scanned foods."
       );
       setBusy(false);
+      setPendingMessage("");
     }
   }
   if (missingProposal) {
@@ -1905,9 +1935,9 @@ function AiWorkflow({
                   className="flex-1"
                   disabled={busy}
                   onClick={() => void saveMissingSuggestion()}
-                >
-                  {busy ? <Loader2 className="animate-spin" /> : null}Save
-                  contribution
+              >
+                {busy ? <Loader2 className="animate-spin" /> : null}
+                {busy ? "Creating food…" : "Save contribution"}
                 </Button>
               </div>
             }
@@ -2024,13 +2054,26 @@ function AiWorkflow({
                 disabled={busy}
                 onClick={() => void confirm()}
               >
-                Add {items.length} {items.length === 1 ? "food" : "foods"} to{" "}
-                {mealLabel(meal)}
+                {busy ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
+                {busy
+                  ? "Adding foods…"
+                  : `Add ${items.length} ${items.length === 1 ? "food" : "foods"} to ${mealLabel(meal)}`}
               </Button>
             ) : undefined
           }
         >
           <div className="space-y-4">
+            {busy && pendingMessage ? (
+              <div
+                aria-busy="true"
+                aria-live="polite"
+                className="flex min-h-14 items-center justify-center gap-2 rounded-lg bg-muted px-3 text-sm text-muted-foreground"
+                role="status"
+              >
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                {pendingMessage}
+              </div>
+            ) : null}
             <Alert>
               <Camera />
               <AlertTitle>Photo privacy</AlertTitle>
@@ -2110,7 +2153,7 @@ function AiWorkflow({
               onClick={() => void analyze()}
             >
               {busy ? <Loader2 className="animate-spin" /> : <Camera />}
-              {busy ? "Analyzing meal…" : "Analyze meal"}
+              {busy ? pendingMessage || "Analyzing your food…" : "Analyze meal"}
             </Button>
             {error ? (
               <Alert>

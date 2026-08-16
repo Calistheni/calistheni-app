@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { LockKeyhole, Plus, Trash2 } from "lucide-react";
+import { Loader2, LockKeyhole, Plus, Trash2 } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -744,7 +744,8 @@ export function MeasurementTracker({
                 type="submit"
                 disabled={saving || !hasPendingMeasurementChange}
               >
-                {saving ? "Saving…" : "Save check-in"}
+                {saving ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
+                {saving ? "Saving check-in…" : "Save check-in"}
               </Button>
             </DialogFooter>
           </form>

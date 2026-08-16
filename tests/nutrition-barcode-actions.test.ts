@@ -51,7 +51,7 @@ test("manual and photo barcodes share the local-first canonical lookup flow", as
     route.indexOf("prisma.food.findUnique") <
       route.indexOf("getOpenFoodFactsProduct(barcode)")
   );
-  assert.match(source, /Add to \{mealLabel\(meal\)\}/);
+  assert.match(source, /`Add to \$\{mealLabel\(meal\)\}`/);
   assert.match(source, /No supported barcode was detected/);
   assert.match(source, /Choose a detected barcode/);
   assert.match(source, /Product not found/);
@@ -83,9 +83,11 @@ test("native Barcode opens a continuous rear-camera scanner and locks the first 
   assert.match(workflow, /scanLocked\.current/);
   assert.match(workflow, /stopNativeLiveBarcodeScanner/);
   assert.match(workflow, /signalNativeBarcodeSuccess/);
-  assert.match(workflow, /Barcode found/);
+  assert.doesNotMatch(workflow, /Barcode found/);
+  assert.match(workflow, /lookupState === "looking_up" && !food/);
   assert.match(workflow, /Looking up product/);
-  assert.match(workflow, /Add to \{mealLabel\(meal\)\}/);
+  assert.match(workflow, /aria-busy="true"/);
+  assert.match(workflow, /`Add to \$\{mealLabel\(meal\)\}`/);
   assert.match(workflow, /Cancel/);
   assert.match(workflow, /Align the barcode inside the frame/);
   assert.match(workflow, /Toggle flash/);
