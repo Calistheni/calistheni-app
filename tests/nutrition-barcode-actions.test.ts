@@ -243,7 +243,7 @@ test("an OFF lookup error keeps the scanned barcode and reuses the contribution 
   );
 
   assert.match(workflow, /const isLookupErrorContribution\s*=/);
-  assert.match(workflow, /lookupState === "lookup_error" && Boolean\(code\)/);
+  assert.match(workflow, /lookupState === "lookup_error" \|\|[\s\S]*lookupState === "creating_ai"/);
   assert.match(contributionUi, /Couldn’t verify this product/);
   assert.match(contributionUi, /Open Food Facts is currently unavailable/);
   assert.match(contributionUi, /Scan nutrition label with AI/);
@@ -279,4 +279,33 @@ test("AI label contribution stops barcode capture without losing the scanned bar
   assert.match(workflow, /onClick=\{restartNativeScanner\}/);
   assert.match(workflow, /form\.set\("barcode", code\)/);
   assert.match(workflow, /barcode: code/);
+});
+
+test("AI label contribution immediately renders camera and gallery choices that share extraction", async () => {
+  const workflow = await readFile(quickActionsUrl, "utf8");
+  const chooserStart = workflow.lastIndexOf(
+    "<Dialog",
+    workflow.indexOf("Take photo now")
+  );
+  const sourceChooser = workflow.slice(
+    chooserStart,
+    workflow.indexOf("<Alert>\n                <AlertTitle>", chooserStart)
+  );
+  const imageHandler = workflow.slice(
+    workflow.indexOf("function chooseLabelImage"),
+    workflow.indexOf("useEffect(() => {\n    lookupRef.current")
+  );
+
+  assert.match(workflow, /setLabelSourceChooserOpen\(true\)/);
+  assert.match(sourceChooser, /Take photo now/);
+  assert.match(sourceChooser, /Choose from gallery/);
+  assert.match(sourceChooser, /capture="environment"/);
+  assert.match(sourceChooser, /Choose a clear photo of the nutrition label|Add a clear photo of the nutrition label/);
+  assert.match(imageHandler, /setLabelPreview\(URL\.createObjectURL\(file\)\)/);
+  assert.match(imageHandler, /void extractLabel\(file\)/);
+  assert.match(workflow, /Preparing photo…/);
+  assert.match(workflow, /Reading nutrition label…/);
+  assert.match(workflow, /form\.set\("barcode", code\)/);
+  assert.match(workflow, /Couldn&apos;t analyze this label/);
+  assert.match(workflow, /Enter manually/);
 });

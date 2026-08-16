@@ -502,6 +502,11 @@ function BarcodeWorkflow({
   const [contributionMode, setContributionMode] = useState<
     "manual" | "label" | null
   >(null);
+  const [labelSourceChooserOpen, setLabelSourceChooserOpen] = useState(false);
+  const [labelPreview, setLabelPreview] = useState<string | null>(null);
+  const [labelAnalysisStage, setLabelAnalysisStage] = useState<
+    "preparing" | "reading" | null
+  >(null);
   const [draft, setDraft] = useState({
     productName: "",
     brandName: "",
@@ -526,6 +531,12 @@ function BarcodeWorkflow({
   const nativeRuntime = nativeAvailability.nativePlatform;
   const nativeIosScanner =
     nativeRuntime && nativeAvailability.platform === "ios";
+  useEffect(
+    () => () => {
+      if (labelPreview) URL.revokeObjectURL(labelPreview);
+    },
+    [labelPreview]
+  );
   // Native Barcode is intentionally live-only. Image decoding is retained for
   // desktop browsers, where the Capacitor camera bridge is unavailable.
   const allowPhotoFallback = !nativeRuntime;
@@ -570,6 +581,9 @@ function BarcodeWorkflow({
     setError("");
     setMissingBarcode(false);
     setContributionMode(null);
+    setLabelSourceChooserOpen(false);
+    setLabelPreview(null);
+    setLabelAnalysisStage(null);
     setDraft({
       productName: "",
       brandName: "",
@@ -595,6 +609,9 @@ function BarcodeWorkflow({
       setError("");
       setMissingBarcode(false);
       setContributionMode(null);
+      setLabelSourceChooserOpen(false);
+      setLabelPreview(null);
+      setLabelAnalysisStage(null);
       setLookupState("scanning");
       setScannerSessionVersion((version) => version + 1);
     });
@@ -607,13 +624,33 @@ function BarcodeWorkflow({
   function openLabelContribution() {
     // Label capture is a separate, user-selected camera/photo flow. Stop the
     // barcode session first, but retain `code` for the eventual contribution.
-    void endNativeScannerSession("ai-label-contribution").finally(() => {
-      setError("");
-      setPhase(null);
-      setManualMode(false);
-      setContributionMode("label");
-      setLookupState("creating_ai");
+    void endNativeScannerSession("ai-label-contribution");
+    setError("");
+    setPhase(null);
+    setManualMode(false);
+    setContributionMode("label");
+    setLookupState("creating_ai");
+    setLabelSourceChooserOpen(true);
+  }
+  function clearLabelPreview() {
+    setLabelPreview((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return null;
     });
+  }
+  function returnToContributionChoices() {
+    setLabelSourceChooserOpen(false);
+    clearLabelPreview();
+    setLabelAnalysisStage(null);
+    setContributionMode(null);
+    setLookupState(isLookupErrorContribution ? "lookup_error" : "not_found");
+  }
+  function chooseLabelImage(file?: File) {
+    if (!file) return;
+    clearLabelPreview();
+    setLabelPreview(URL.createObjectURL(file));
+    setLabelSourceChooserOpen(false);
+    void extractLabel(file);
   }
   useEffect(() => {
     lookupRef.current = (value) => {
@@ -908,12 +945,14 @@ function BarcodeWorkflow({
   async function extractLabel(file?: File) {
     if (!file) return;
     setBusy(true);
+    setLabelAnalysisStage("preparing");
     setError("");
     try {
       const compressed = await compressWorkoutPhoto(file);
       const form = new FormData();
       form.set("barcode", code);
       form.set("image", compressed);
+      setLabelAnalysisStage("reading");
       const response = await fetch(
         "/api/nutrition/foods/barcode/extract-label",
         { method: "POST", body: form }
@@ -947,6 +986,7 @@ function BarcodeWorkflow({
       );
     } finally {
       setBusy(false);
+      setLabelAnalysisStage(null);
     }
   }
   // iOS owns the scanner surface completely. Rendering no web Sheet here keeps
@@ -1040,7 +1080,11 @@ function BarcodeWorkflow({
     Boolean(error) &&
     !manualMode;
   const isLookupErrorContribution =
-    lookupState === "lookup_error" && Boolean(code);
+    !missingBarcode &&
+    Boolean(code) &&
+    (lookupState === "lookup_error" ||
+      lookupState === "creating_ai" ||
+      lookupState === "creating_manual");
   const showContributionFallback =
     missingBarcode || isLookupErrorContribution;
   return (
@@ -1245,6 +1289,64 @@ function BarcodeWorkflow({
           )}
           {showContributionFallback ? (
             <div className="space-y-4">
+              <Dialog
+                open={contributionMode === "label" && labelSourceChooserOpen}
+                onOpenChange={setLabelSourceChooserOpen}
+              >
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Scan nutrition label with AI</DialogTitle>
+                    <DialogDescription>
+                      Add a clear photo of the nutrition label or macros table.
+                      Your scanned barcode stays attached to this product.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-2">
+                    <Button asChild variant="outline" disabled={busy}>
+                      <Label className="cursor-pointer justify-center">
+                        <Camera />
+                        Take photo now
+                        <Input
+                          className="sr-only"
+                          disabled={busy}
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            event.target.value = "";
+                            chooseLabelImage(file);
+                          }}
+                        />
+                      </Label>
+                    </Button>
+                    <Button asChild variant="outline" disabled={busy}>
+                      <Label className="cursor-pointer justify-center">
+                        <ImagePlus />
+                        Choose from gallery
+                        <Input
+                          className="sr-only"
+                          disabled={busy}
+                          type="file"
+                          accept="image/*"
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            event.target.value = "";
+                            chooseLabelImage(file);
+                          }}
+                        />
+                      </Label>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      disabled={busy}
+                      onClick={() => setLabelSourceChooserOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
               <Alert>
                 <AlertTitle>
                   {isLookupErrorContribution
@@ -1290,24 +1392,37 @@ function BarcodeWorkflow({
                 <div className="space-y-3">
                   <p className="font-medium">Add missing product</p>
                   {contributionMode === "label" ? (
-                    <Button asChild variant="outline" className="w-full" disabled={busy}>
-                      <Label className="cursor-pointer">
+                    <>
+                      {labelPreview ? (
+                        <div className="relative h-44 overflow-hidden rounded-lg border bg-muted">
+                          <Image
+                            src={labelPreview}
+                            alt="Selected nutrition label"
+                            fill
+                            unoptimized
+                            className="object-contain"
+                          />
+                          <Button
+                            className="absolute right-2 top-2"
+                            size="sm"
+                            variant="secondary"
+                            disabled={busy}
+                            onClick={clearLabelPreview}
+                          >
+                            Remove photo
+                          </Button>
+                        </div>
+                      ) : null}
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        disabled={busy}
+                        onClick={() => setLabelSourceChooserOpen(true)}
+                      >
                         <Camera />
-                        Take or choose nutrition label photo
-                        <Input
-                          disabled={busy}
-                          className="sr-only"
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          onChange={(event) => {
-                            const file = event.target.files?.[0];
-                            event.target.value = "";
-                            void extractLabel(file);
-                          }}
-                        />
-                      </Label>
-                    </Button>
+                        {labelPreview ? "Choose another photo" : "Take or choose nutrition label photo"}
+                      </Button>
+                    </>
                   ) : null}
                   {busy && contributionMode === "label" ? (
                     <div
@@ -1317,7 +1432,37 @@ function BarcodeWorkflow({
                       role="status"
                     >
                       <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                      Reading product information…
+                      {labelAnalysisStage === "preparing"
+                        ? "Preparing photo…"
+                        : "Reading nutrition label…"}
+                    </div>
+                  ) : null}
+                  {error && contributionMode === "label" ? (
+                    <div className="space-y-2">
+                      <Alert>
+                        <AlertTitle>Couldn&apos;t analyze this label</AlertTitle>
+                        <AlertDescription>{error}</AlertDescription>
+                      </Alert>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setLabelSourceChooserOpen(true)}
+                        >
+                          Try another photo
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setError("");
+                            setContributionMode("manual");
+                            setLookupState("creating_manual");
+                          }}
+                        >
+                          Enter manually
+                        </Button>
+                      </div>
                     </div>
                   ) : null}
                   <div className="grid gap-2 sm:grid-cols-2">
@@ -1376,7 +1521,8 @@ function BarcodeWorkflow({
                     </Button>
                     <Button
                       variant="outline"
-                      onClick={() => setContributionMode(null)}
+                      disabled={busy}
+                      onClick={returnToContributionChoices}
                     >
                       Back
                     </Button>
