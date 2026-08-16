@@ -29,25 +29,35 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bar
   if (!barcode) return createJsonErrorResponse("Invalid barcode.", 400, "INVALID_BARCODE");
 
   try {
+    if (process.env.NODE_ENV === "development") console.info("[Barcode] local lookup begin", { barcode });
     const local = await prisma.food.findUnique({ where: { barcode }, include: { aliases: { select: { name: true } }, details: { select: { categories: true, productImageUrl: true } }, servings: { select: { name: true, quantity: true, grams: true, householdUnit: true } } } });
     if (local && canUseNutritionFood(local, userId)) {
+      if (process.env.NODE_ENV === "development") console.info("[Barcode] local result found", { barcode, foodId: local.id });
       if (process.env.NODE_ENV === "development") console.info("[FoodVisibility]", { barcode, status: local.contributionStatus, createdBy: local.createdByUserId, requestUser: userId, creatorVisible: local.contributionStatus === "PENDING" && local.createdByUserId === userId });
       if (process.env.NODE_ENV === "development" && local.contributionStatus === "PENDING") console.info("[BarcodeLookup] creator-pending-hit", { barcode, foodId: local.id });
       await recordBarcodeLookup({ userId, succeeded: true, foodId: local.id }).catch((error) => console.warn("NUTRITION_BARCODE_ACTIVITY_FAILED", { error }));
-      return NextResponse.json({ local: { ...toFoodSummary(local), isOwnContribution: local.createdByUserId === userId }, external: null });
+      const food = { ...toFoodSummary(local), isOwnContribution: local.createdByUserId === userId };
+      return NextResponse.json({ status: "found", barcode, food, local: food, external: null });
     }
 
+    if (process.env.NODE_ENV === "development") console.info("[Barcode] local result miss", { barcode });
+    if (process.env.NODE_ENV === "development") console.info("[Barcode] OFF lookup begin", { barcode });
     const external = await getOpenFoodFactsProduct(barcode);
+    if (process.env.NODE_ENV === "development") console.info("[Barcode] OFF result found", { barcode });
     await recordBarcodeLookup({ userId, succeeded: true }).catch((error) => console.warn("NUTRITION_BARCODE_ACTIVITY_FAILED", { error }));
-    return NextResponse.json({ local: null, external: { ...withResolvedFoodIcon(external), raw: undefined } });
+    const food = { ...withResolvedFoodIcon(external), raw: undefined };
+    return NextResponse.json({ status: "found", barcode, food, local: null, external: food });
   } catch (error) {
     if (error instanceof ProviderError) {
+      if (error.code === "NOT_FOUND") {
+        if (process.env.NODE_ENV === "development") console.info("[Barcode] OFF result not_found", { barcode });
+        await recordBarcodeLookup({ userId, succeeded: false }).catch((activityError) => console.warn("NUTRITION_BARCODE_ACTIVITY_FAILED", { error: activityError }));
+        return NextResponse.json({ status: "not_found", barcode, local: null, external: null });
+      }
       const response =
         error.code === "INVALID_IDENTIFIER"
           ? { status: 400, code: "INVALID_BARCODE", message: "Invalid barcode." }
-          : error.code === "NOT_FOUND"
-            ? { status: 404, code: "OPEN_FOOD_FACTS_NOT_FOUND", message: "Food not found.", lookupComplete: true }
-            : error.code === "RATE_LIMITED"
+          : error.code === "RATE_LIMITED"
               ? { status: 429, code: "OPEN_FOOD_FACTS_RATE_LIMITED", message: "Open Food Facts is temporarily busy. Please try again shortly." }
               : error.code === "TIMEOUT"
                 ? { status: 503, code: "OPEN_FOOD_FACTS_UNAVAILABLE", message: "Open Food Facts did not respond in time. Please try again." }
@@ -55,8 +65,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bar
                   ? { status: 502, code: "OPEN_FOOD_FACTS_INVALID_RESPONSE", message: "Open Food Facts returned an unexpected response. Please try again later." }
                   : { status: 503, code: "OPEN_FOOD_FACTS_UNAVAILABLE", message: "Open Food Facts is currently unavailable. Please try again later." };
       console.warn("NUTRITION_BARCODE_PROVIDER_ERROR", { code: error.code });
+      if (process.env.NODE_ENV === "development") console.info("[Barcode] OFF result error", { barcode, code: error.code });
       await recordBarcodeLookup({ userId, succeeded: false }).catch((activityError) => console.warn("NUTRITION_BARCODE_ACTIVITY_FAILED", { error: activityError }));
-      return NextResponse.json({ error: { code: response.code, message: response.message }, lookupComplete: "lookupComplete" in response ? response.lookupComplete : false }, { status: response.status });
+      return NextResponse.json({ error: { code: response.code, message: response.message } }, { status: response.status });
     }
 
     console.error("NUTRITION_BARCODE_FAILED", { barcode, error });

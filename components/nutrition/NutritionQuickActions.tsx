@@ -119,6 +119,16 @@ type DescribeState =
 type Entry = Record<string, unknown>;
 type AiQuota = { used: number; remaining: number; limit: number };
 type AiLimits = { isPro: boolean; describe: AiQuota; aiScan?: AiQuota };
+type BarcodeLookupState =
+  | "idle"
+  | "scanning"
+  | "detected"
+  | "looking_up"
+  | "review"
+  | "not_found"
+  | "lookup_error"
+  | "creating_ai"
+  | "creating_manual";
 const mealLabel = (meal: QuickMeal) =>
   meal.charAt(0) + meal.slice(1).toLowerCase();
 const number = (value: unknown) =>
@@ -487,6 +497,7 @@ function BarcodeWorkflow({
   const [unit, setUnit] = useState("g");
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState<"reading" | "looking" | null>(null);
+  const [lookupState, setLookupState] = useState<BarcodeLookupState>("idle");
   const [error, setError] = useState("");
   const [missingBarcode, setMissingBarcode] = useState(false);
   const [contributionMode, setContributionMode] = useState<
@@ -508,6 +519,7 @@ function BarcodeWorkflow({
   const [torchOn, setTorchOn] = useState(false);
   const [scannerSessionVersion, setScannerSessionVersion] = useState(0);
   const scanLocked = useRef(false);
+  const lookupAbortRef = useRef<AbortController | null>(null);
   const lookupRef = useRef<(value: string) => void>(() => undefined);
   const scannerSessionRef = useRef(0);
   const scannerActiveRef = useRef(false);
@@ -534,6 +546,8 @@ function BarcodeWorkflow({
     return stopNativeLiveBarcodeScanner(reason);
   }, []);
   function reset() {
+    lookupAbortRef.current?.abort();
+    lookupAbortRef.current = null;
     scanLocked.current = false;
     setNativeScanner(false);
     setManualMode(false);
@@ -547,6 +561,7 @@ function BarcodeWorkflow({
     setUnit("g");
     setBusy(false);
     setPhase(null);
+    setLookupState("idle");
     setError("");
     setMissingBarcode(false);
     setContributionMode(null);
@@ -562,12 +577,20 @@ function BarcodeWorkflow({
     });
   }
   function restartNativeScanner() {
+    lookupAbortRef.current?.abort();
+    lookupAbortRef.current = null;
     void endNativeScannerSession("scan-again").finally(() => {
       scanLocked.current = false;
       setManualMode(false);
       setTorchAvailable(false);
       setTorchOn(false);
+      setCode("");
+      setDetected([]);
+      setFood(null);
       setError("");
+      setMissingBarcode(false);
+      setContributionMode(null);
+      setLookupState("scanning");
       setScannerSessionVersion((version) => version + 1);
     });
   }
@@ -620,6 +643,8 @@ function BarcodeWorkflow({
           if (cancelled) return;
           if (!nativeIosScanner) void signalNativeBarcodeSuccess();
           setCode(value);
+          setLookupState("detected");
+          if (process.env.NODE_ENV === "development") console.info("[Barcode] detected", { barcode: value });
           lookupRef.current(value);
         });
       },
@@ -701,37 +726,60 @@ function BarcodeWorkflow({
       return setError("Enter a valid 8–14 digit UPC, EAN, or GTIN.");
     setBusy(true);
     setPhase("looking");
+    setLookupState("looking_up");
     setError("");
     setMissingBarcode(false);
     setContributionMode(null);
+    let controller: AbortController | null = null;
     try {
-      const response = await fetch(`/api/nutrition/foods/barcode/${barcode}`);
+      lookupAbortRef.current?.abort();
+      const activeController = new AbortController();
+      controller = activeController;
+      lookupAbortRef.current = activeController;
+      const isCurrentLookup = () => lookupAbortRef.current === activeController;
+      const timeoutId = window.setTimeout(() => activeController.abort(), 12_000);
+      const response = await fetch(`/api/nutrition/foods/barcode/${encodeURIComponent(barcode)}`, {
+        signal: activeController.signal,
+      }).finally(() => window.clearTimeout(timeoutId));
+      if (!isCurrentLookup()) return;
       if (!response.ok) {
-        // "We couldn't find a food for this barcode." is now a recoverable
-        // branch: retain the decoded string and open contribution choices.
-        if (response.status === 404) {
-          setMissingBarcode(true);
-          setError("");
-          return;
-        }
         throw new Error(
           await responseMessage(response, "Barcode lookup failed.")
         );
       }
       const data = await response.json();
-      const match = await importFood(data.local ?? data.external);
+      if (data.status === "not_found") {
+        setCode(data.barcode);
+        setMissingBarcode(true);
+        setLookupState("not_found");
+        setError("");
+        if (process.env.NODE_ENV === "development") console.info("[Barcode] transition not_found", { barcode: data.barcode });
+        return;
+      }
+      if (data.status !== "found" || !data.food) {
+        throw new Error("Barcode lookup returned an unsupported result.");
+      }
+      const match = await importFood(data.food);
       setFood(match);
+      setLookupState("review");
       const defaultServing = match.servings?.[0];
       setGrams(defaultServing?.grams ?? 100);
       setQuantity(1);
       setUnit(defaultServing?.name.slice(0, 40) ?? "g");
     } catch (reason) {
+      if (reason instanceof DOMException && reason.name === "AbortError" && lookupAbortRef.current !== controller) return;
+      setLookupState("lookup_error");
       setError(
-        reason instanceof Error ? reason.message : "Barcode lookup failed."
+        reason instanceof DOMException && reason.name === "AbortError"
+          ? "Couldn’t look up this barcode in time. Try again or enter it manually."
+          : reason instanceof Error ? reason.message : "Barcode lookup failed."
       );
     } finally {
-      setBusy(false);
-      setPhase(null);
+      if (lookupAbortRef.current === controller) {
+        lookupAbortRef.current = null;
+        setBusy(false);
+        setPhase(null);
+      }
     }
   }
   async function photo(file?: File) {
@@ -744,6 +792,7 @@ function BarcodeWorkflow({
       setDetected(values);
       if (values.length === 1) {
         setCode(values[0]);
+        setLookupState("detected");
         await lookup(values[0]);
       } else if (!values.length)
         setError(
@@ -823,6 +872,7 @@ function BarcodeWorkflow({
       setFood(saved);
       setMissingBarcode(false);
       setContributionMode(null);
+      setLookupState("review");
       setGrams(savedGrams);
       setUnit(savedUnit);
       toast.success(
@@ -890,6 +940,8 @@ function BarcodeWorkflow({
     !manualMode &&
     !food &&
     !error &&
+    !missingBarcode &&
+    lookupState !== "not_found" &&
     phase !== "looking"
   ) {
     return null;
@@ -965,7 +1017,11 @@ function BarcodeWorkflow({
       </Sheet>
     );
   }
-  const showNativeStartupError = nativeRuntime && Boolean(error) && !manualMode;
+  const showNativeStartupError =
+    nativeRuntime &&
+    lookupState !== "lookup_error" &&
+    Boolean(error) &&
+    !manualMode;
   return (
     <Sheet open={open} onOpenChange={(value) => !value && dismiss()}>
       <NutritionMobileSheet
@@ -1176,13 +1232,13 @@ function BarcodeWorkflow({
               </div>
               {!contributionMode ? (
                 <div className="grid gap-2">
-                  <Button onClick={() => setContributionMode("label")}>
+                  <Button onClick={() => { setContributionMode("label"); setLookupState("creating_ai"); }}>
                     <Sparkles />
                     Scan nutrition label with AI
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => setContributionMode("manual")}
+                    onClick={() => { setContributionMode("manual"); setLookupState("creating_manual"); }}
                   >
                     Enter product manually
                   </Button>
@@ -1282,7 +1338,11 @@ function BarcodeWorkflow({
           {error && !showNativeStartupError ? (
             <>
               <Alert>
-                <AlertTitle>Barcode unavailable</AlertTitle>
+                <AlertTitle>
+                  {lookupState === "lookup_error"
+                    ? "Couldn’t look up this barcode"
+                    : "Barcode unavailable"}
+                </AlertTitle>
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
               {error === "Camera access is required to scan barcodes." &&
@@ -1294,6 +1354,29 @@ function BarcodeWorkflow({
                 </p>
               ) : null}
               <div className="flex flex-wrap gap-2">
+                {lookupState === "lookup_error" && code ? (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void lookup(code)}
+                    >
+                      Try again
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setError("");
+                        setMissingBarcode(true);
+                        setContributionMode("manual");
+                        setLookupState("creating_manual");
+                      }}
+                    >
+                      Enter product manually
+                    </Button>
+                  </>
+                ) : null}
                 {error === "Camera access is required to scan barcodes." &&
                 usesNativeBarcodeCameraLayer() ? (
                   <Button
@@ -1309,11 +1392,13 @@ function BarcodeWorkflow({
                   variant="outline"
                   onClick={restartNativeScanner}
                 >
-                  {canUseNativeLiveBarcodeScanner()
-                    ? "Scan again"
-                    : "Try again"}
+                  {lookupState === "lookup_error"
+                    ? "Scan another barcode"
+                    : canUseNativeLiveBarcodeScanner()
+                      ? "Scan again"
+                      : "Try again"}
                 </Button>
-                <Button
+                {lookupState !== "lookup_error" ? <Button
                   size="sm"
                   variant="outline"
                   onClick={() => {
@@ -1322,7 +1407,7 @@ function BarcodeWorkflow({
                   }}
                 >
                   Enter manually
-                </Button>
+                </Button> : null}
                 <Button size="sm" variant="ghost" onClick={dismiss}>
                   Search foods
                 </Button>

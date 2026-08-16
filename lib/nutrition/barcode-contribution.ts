@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
-import { FoodDataValueSource, FoodFreshnessStatus, FoodImportStatus, FoodRevisionReason, FoodSource, FoodType, FoodVerificationStatus, Prisma } from "@/lib/generated/prisma/client";
+import { FoodContributionStatus, FoodDataValueSource, FoodFreshnessStatus, FoodImportStatus, FoodRevisionReason, FoodSource, FoodType, FoodVerificationStatus, Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { normalizeBarcode, normalizeFoodQuery } from "./normalization";
 import { nutritionSanityWarning } from "./missing-food-validation";
@@ -24,12 +24,18 @@ export function labelExtractionToContribution(extraction: LabelExtraction) {
 
 export function barcodeNutritionWarning(value: BarcodeContribution["nutrition"]) { return nutritionSanityWarning({ nutrition: { ...value, fiberGrams: value.fiberGrams ?? null, sugarGrams: value.sugarGrams ?? null, saturatedFatGrams: value.saturatedFatGrams ?? null, sodiumMg: value.sodiumMg ?? null } } as never); }
 
+const barcodeFoodInclude = { aliases: { select: { name: true } }, details: { select: { categories: true, productImageUrl: true } }, servings: { select: { name: true, quantity: true, grams: true, householdUnit: true, isDefault: true } } } as const;
+
+function canReuseBarcodeFood(food: { type: FoodType; contributionStatus: FoodContributionStatus | null; createdByUserId: string | null }, userId: string) {
+  return food.type !== FoodType.USER_CREATED || food.contributionStatus === "APPROVED" || (food.contributionStatus === "PENDING" && food.createdByUserId === userId);
+}
+
 export async function saveBarcodeContribution(userId: string, input: BarcodeContribution) {
   const barcode = normalizeBarcode(input.barcode)!;
-  const existing = await prisma.food.findUnique({ where: { barcode }, include: { aliases: { select: { name: true } }, details: { select: { categories: true, productImageUrl: true } }, servings: { select: { name: true, quantity: true, grams: true, householdUnit: true, isDefault: true } } } });
+  const existing = await prisma.food.findUnique({ where: { barcode }, include: barcodeFoodInclude });
   // A pending proposal belongs only to its creator. Never disclose another
   // user's unverified nutrition simply because they scanned the same code.
-  if (existing && (existing.type !== FoodType.USER_CREATED || existing.contributionStatus === "APPROVED" || existing.createdByUserId === userId)) return { kind: "existing" as const, food: toFoodSummary(existing) };
+  if (existing && canReuseBarcodeFood(existing, userId)) return { kind: "existing" as const, food: toFoodSummary(existing) };
   const checksum = createHash("sha256").update(JSON.stringify(input)).digest("hex");
   try {
     const food = await prisma.$transaction(async (tx) => {
@@ -44,11 +50,18 @@ export async function saveBarcodeContribution(userId: string, input: BarcodeCont
       await tx.food.update({ where: { id: created.id }, data: { currentRevisionId: revision.id } });
       await tx.foodAlias.create({ data: { foodId: created.id, name: input.productName, normalizedName: normalizeFoodQuery(input.productName), source: FoodSource.USER } });
       if (input.servingGrams) await tx.foodServing.create({ data: { foodId: created.id, name: input.servingLabel ?? "Serving", grams: input.servingGrams, isDefault: true, source: FoodSource.USER } });
-      return tx.food.findUniqueOrThrow({ where: { id: created.id }, include: { aliases: { select: { name: true } }, details: { select: { categories: true, productImageUrl: true } }, servings: { select: { name: true, quantity: true, grams: true, householdUnit: true, isDefault: true } } } });
+      return tx.food.findUniqueOrThrow({ where: { id: created.id }, include: barcodeFoodInclude });
     });
     return { kind: "created" as const, food: { ...toFoodSummary(food), isOwnContribution: true }, warning: barcodeNutritionWarning(input.nutrition) };
   } catch (error) {
-    if (error instanceof Error && error.message === "BARCODE_EXISTS" || error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return { kind: "raced" as const };
+    if (error instanceof Error && error.message === "BARCODE_EXISTS" || error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      const raced = await prisma.food.findUnique({ where: { barcode }, include: barcodeFoodInclude });
+      if (raced && canReuseBarcodeFood(raced, userId)) {
+        if (process.env.NODE_ENV === "development") console.info("[Barcode] creator-visible pending match reused", { barcode, foodId: raced.id });
+        return { kind: "existing" as const, food: toFoodSummary(raced) };
+      }
+      return { kind: "raced" as const };
+    }
     throw error;
   }
 }

@@ -43,8 +43,8 @@ test("manual and photo barcodes share the local-first canonical lookup flow", as
   ]);
 
   assert.match(source, /await lookup\(values\[0\]\)/);
-  assert.match(source, /\/api\/nutrition\/foods\/barcode\/\$\{barcode\}/);
-  assert.match(source, /data\.local \?\? data\.external/);
+  assert.match(source, /\/api\/nutrition\/foods\/barcode\/\$\{encodeURIComponent\(barcode\)\}/);
+  assert.match(source, /data\.status === "not_found"/);
   assert.match(route, /prisma\.food\.findUnique/);
   assert.match(route, /getOpenFoodFactsProduct\(barcode\)/);
   assert.ok(
@@ -54,7 +54,7 @@ test("manual and photo barcodes share the local-first canonical lookup flow", as
   assert.match(source, /Add to \{mealLabel\(meal\)\}/);
   assert.match(source, /No supported barcode was detected/);
   assert.match(source, /Choose a detected barcode/);
-  assert.match(source, /We couldn't find a food for this barcode/);
+  assert.match(source, /Product not found/);
 });
 
 test("barcode photos are temporary and do not use a persistence endpoint", async () => {
@@ -157,7 +157,7 @@ test("native iOS scanning uses a full-screen controller instead of a WebView und
   assert.match(barcodeWorkflow, /App\.addListener\("pause"/);
   assert.doesNotMatch(barcodeWorkflow, /App\.addListener\("appStateChange"/);
   assert.match(barcodeWorkflow, /endNativeScannerSession\("scanner-session-cleanup"\)/);
-  assert.match(barcodeWorkflow, /\[open, nativeRuntime, nativeIosScanner, scannerSessionVersion, endNativeScannerSession\]/);
+  assert.match(barcodeWorkflow, /open,[\s\S]*nativeRuntime,[\s\S]*nativeIosScanner,[\s\S]*scannerSessionVersion,[\s\S]*endNativeScannerSession/);
   assert.doesNotMatch(
     barcodeWorkflow,
     /\[open, food, error, manualMode, nativeScanner, nativeRuntime\]/
@@ -194,4 +194,22 @@ test("native iOS scanning uses a full-screen controller instead of a WebView und
     scannerController.indexOf("func prepareForDismissal")
   );
   assert.doesNotMatch(deinitBlock, /stopCapture\(/);
+});
+
+test("a genuine barcode miss is an explicit creation state rather than a hidden native-scanner branch", async () => {
+  const [workflow, route] = await Promise.all([
+    readFile(quickActionsUrl, "utf8"),
+    readFile(
+      new URL("../app/api/nutrition/foods/barcode/[barcode]/route.ts", import.meta.url),
+      "utf8"
+    ),
+  ]);
+
+  assert.match(route, /status: "not_found", barcode/);
+  assert.match(route, /\[Barcode\] OFF result not_found/);
+  assert.match(workflow, /type BarcodeLookupState/);
+  assert.match(workflow, /setLookupState\("not_found"\)/);
+  assert.match(workflow, /!missingBarcode/);
+  assert.match(workflow, /setContributionMode\("manual"\);[\s\S]*setLookupState\("creating_manual"\)/);
+  assert.match(workflow, /window\.setTimeout\(\(\) => activeController\.abort\(\), 12_000\)/);
 });

@@ -9,6 +9,8 @@ test("barcode contributions reuse canonical Food moderation fields and preserve 
   assert.match(source, /createdByUserId: userId/);
   assert.match(source, /barcode,/);
   assert.match(source, /Recheck inside the write transaction/);
+  assert.match(source, /creator-visible pending match reused/);
+  assert.match(source, /canReuseBarcodeFood/);
 });
 
 test("label conversion only derives per-100-g data when the basis is safe", async () => {
