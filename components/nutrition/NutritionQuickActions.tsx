@@ -1021,6 +1021,10 @@ function BarcodeWorkflow({
     lookupState !== "lookup_error" &&
     Boolean(error) &&
     !manualMode;
+  const isLookupErrorContribution =
+    lookupState === "lookup_error" && Boolean(code);
+  const showContributionFallback =
+    missingBarcode || isLookupErrorContribution;
   return (
     <Sheet open={open} onOpenChange={(value) => !value && dismiss()}>
       <NutritionMobileSheet
@@ -1221,13 +1225,18 @@ function BarcodeWorkflow({
               </TabsContent>
             </Tabs>
           )}
-          {missingBarcode ? (
+          {showContributionFallback ? (
             <div className="space-y-4">
               <Alert>
-                <AlertTitle>Product not found</AlertTitle>
+                <AlertTitle>
+                  {isLookupErrorContribution
+                    ? "Couldn’t verify this product"
+                    : "Product not found"}
+                </AlertTitle>
                 <AlertDescription>
-                  We couldn&apos;t find this barcode in Calistheni or our food
-                  providers.
+                  {isLookupErrorContribution
+                    ? `${error || "Open Food Facts is currently unavailable."} You can still add this product to Calistheni.`
+                    : "We couldn’t find this barcode in Calistheni or our food providers."}
                 </AlertDescription>
               </Alert>
               <div className="rounded-lg bg-muted p-3 text-sm">
@@ -1242,12 +1251,18 @@ function BarcodeWorkflow({
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => { setContributionMode("manual"); setLookupState("creating_manual"); }}
+                    onClick={() => {
+                      setContributionMode("manual");
+                      setLookupState("creating_manual");
+                    }}
                   >
                     Enter product manually
                   </Button>
                   <Button variant="ghost" onClick={restartNativeScanner}>
                     Scan another barcode
+                  </Button>
+                  <Button variant="ghost" onClick={dismiss}>
+                    Search foods
                   </Button>
                   <Button variant="ghost" onClick={dismiss}>
                     Cancel
@@ -1352,7 +1367,7 @@ function BarcodeWorkflow({
               )}
             </div>
           ) : null}
-          {error && !showNativeStartupError ? (
+          {error && !showNativeStartupError && !isLookupErrorContribution ? (
             <>
               <Alert>
                 <AlertTitle>
@@ -1371,29 +1386,6 @@ function BarcodeWorkflow({
                 </p>
               ) : null}
               <div className="flex flex-wrap gap-2">
-                {lookupState === "lookup_error" && code ? (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => void lookup(code)}
-                    >
-                      Try again
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setError("");
-                        setMissingBarcode(true);
-                        setContributionMode("manual");
-                        setLookupState("creating_manual");
-                      }}
-                    >
-                      Enter product manually
-                    </Button>
-                  </>
-                ) : null}
                 {error === "Camera access is required to scan barcodes." &&
                 usesNativeBarcodeCameraLayer() ? (
                   <Button

@@ -215,3 +215,44 @@ test("a genuine barcode miss is an explicit creation state rather than a hidden 
   assert.match(workflow, /setContributionMode\("manual"\);[\s\S]*setLookupState\("creating_manual"\)/);
   assert.match(workflow, /window\.setTimeout\(\(\) => activeController\.abort\(\), 12_000\)/);
 });
+
+test("a genuine barcode miss keeps the scanned value and offers the existing contribution path, not retry", async () => {
+  const workflow = await readFile(quickActionsUrl, "utf8");
+  const missingFoodUi = workflow.slice(
+    workflow.indexOf("{showContributionFallback ? ("),
+    workflow.indexOf("{error && !showNativeStartupError")
+  );
+
+  assert.match(missingFoodUi, /Product not found/);
+  assert.match(missingFoodUi, /Scan nutrition label with AI/);
+  assert.match(missingFoodUi, /Enter product manually/);
+  assert.match(missingFoodUi, /saveContribution\(true\)/);
+  assert.match(workflow, /barcode: code/);
+  assert.doesNotMatch(missingFoodUi, /Try again/);
+});
+
+test("an OFF lookup error keeps the scanned barcode and reuses the contribution actions without retry", async () => {
+  const workflow = await readFile(quickActionsUrl, "utf8");
+  const contributionUi = workflow.slice(
+    workflow.indexOf("{showContributionFallback ? ("),
+    workflow.indexOf("{error && !showNativeStartupError")
+  );
+  const genericErrorUi = workflow.slice(
+    workflow.indexOf("{error && !showNativeStartupError"),
+    workflow.indexOf("{food ? (")
+  );
+
+  assert.match(workflow, /const isLookupErrorContribution\s*=/);
+  assert.match(workflow, /lookupState === "lookup_error" && Boolean\(code\)/);
+  assert.match(contributionUi, /Couldn’t verify this product/);
+  assert.match(contributionUi, /Open Food Facts is currently unavailable/);
+  assert.match(contributionUi, /Scan nutrition label with AI/);
+  assert.match(contributionUi, /Enter product manually/);
+  assert.match(contributionUi, /Scan another barcode/);
+  assert.match(contributionUi, /Search foods/);
+  assert.match(contributionUi, /Cancel/);
+  assert.doesNotMatch(contributionUi, /Try again/);
+  assert.match(genericErrorUi, /&& !isLookupErrorContribution/);
+  assert.doesNotMatch(genericErrorUi, /onClick=\{\(\) => void lookup\(code\)\}/);
+  assert.match(workflow, /barcode: code/);
+});
