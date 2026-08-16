@@ -52,7 +52,7 @@ test("picker uses accessible Radix tabs with one value-bound content panel per s
 });
 
 test("food picker opens with a stable viewport and never autofocuses a search input", async () => {
-  const [picker, sheet, dialog, drawer, popover] = await Promise.all([
+  const [picker, sheet, dialog, drawer, popover, globals] = await Promise.all([
     readFile(
       new URL("../components/nutrition/FoodPicker.tsx", import.meta.url),
       "utf8"
@@ -61,6 +61,7 @@ test("food picker opens with a stable viewport and never autofocuses a search in
     readFile(new URL("../components/ui/dialog.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/ui/drawer.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/ui/popover.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
   ]);
 
   assert.match(picker, /<NutritionMobileSheet[\s\S]*scrollable=\{false\}/);
@@ -71,12 +72,49 @@ test("food picker opens with a stable viewport and never autofocuses a search in
     /placeholder="Search foods"[\s\S]*aria-label="Search foods"[\s\S]*value=\{query\}/
   );
   assert.doesNotMatch(picker, /autoFocus/);
+  assert.doesNotMatch(picker, /scrollIntoView|window\.scrollTo/);
+  assert.match(
+    globals,
+    /\[data-slot="sheet-content"\] input,[\s\S]*scroll-margin-block: 0/
+  );
 
   for (const source of [sheet, dialog, drawer, popover]) {
     assert.match(source, /onOpenAutoFocus=\{\(event\) =>/);
     assert.match(source, /event\.preventDefault\(\)/);
     assert.match(source, /content\.focus\(\{ preventScroll: true \}\)/);
   }
+});
+
+test("Food Picker reserves the final quick-action row while capabilities are unknown", async () => {
+  const [picker, quickActions] = await Promise.all([
+    readFile(
+      new URL("../components/nutrition/FoodPicker.tsx", import.meta.url),
+      "utf8"
+    ),
+    readFile(
+      new URL(
+        "../components/nutrition/NutritionQuickActions.tsx",
+        import.meta.url
+      ),
+      "utf8"
+    ),
+  ]);
+
+  assert.match(picker, /quickActionCapabilitiesCache/);
+  assert.match(picker, /<NutritionQuickActionsPlaceholder \/>/);
+  assert.doesNotMatch(picker, /h-9 animate-pulse rounded-md bg-muted/);
+  assert.match(
+    quickActions,
+    /export function NutritionQuickActionsPlaceholder\(\)[\s\S]*data-slot="nutrition-quick-actions"[\s\S]*grid grid-cols-3 gap-2/
+  );
+  assert.match(
+    quickActions,
+    /function NutritionQuickActions\([\s\S]*data-slot="nutrition-quick-actions"[\s\S]*grid grid-cols-3 gap-2/
+  );
+  assert.match(
+    quickActions,
+    /\["Barcode", "AI Scan", "Describe"\]\.map\(\(label\)/
+  );
 });
 
 test("empty search starts with a stable Saved Foods surface and reuses the session cache", async () => {

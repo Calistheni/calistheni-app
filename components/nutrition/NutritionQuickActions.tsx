@@ -260,6 +260,39 @@ export type NutritionQuickActionCapabilities = {
   canUseBarcodeScan: boolean;
 };
 
+const quickActionButtonClass =
+  "min-w-0 gap-1 px-1 text-xs [&>svg]:size-3";
+
+/**
+ * Keeps the Food Picker's action row in the document while its lightweight
+ * capability request is in flight. The feature workflows remain lazy; only
+ * their final button geometry is reserved.
+ */
+export function NutritionQuickActionsPlaceholder() {
+  return (
+    <div
+      data-slot="nutrition-quick-actions"
+      className="grid grid-cols-3 gap-2"
+      aria-busy="true"
+      aria-label="Loading food actions"
+    >
+      {["Barcode", "AI Scan", "Describe"].map((label) => (
+        <Button
+          key={label}
+          className={quickActionButtonClass}
+          variant="outline"
+          size="sm"
+          disabled
+          tabIndex={-1}
+          aria-label={`Loading ${label} action`}
+        >
+          <span className="h-3 w-12 animate-pulse rounded bg-muted" />
+        </Button>
+      ))}
+    </div>
+  );
+}
+
 export function NutritionQuickActions({
   meal,
   date,
@@ -304,9 +337,9 @@ export function NutritionQuickActions({
   const UpgradeIcon = upgradeCopy.icon;
   return (
     <>
-      <div className="grid grid-cols-3 gap-2">
+      <div data-slot="nutrition-quick-actions" className="grid grid-cols-3 gap-2">
         <Button
-          className="min-w-0 gap-1 px-1 text-xs [&>svg]:size-3"
+          className={quickActionButtonClass}
           variant="outline"
           size="sm"
           aria-label={isLocked("barcode") ? "Barcode, Pro feature" : "Barcode"}
@@ -321,7 +354,7 @@ export function NutritionQuickActions({
           ) : null}
         </Button>
         <Button
-          className="min-w-0 gap-1 px-1 text-xs [&>svg]:size-3"
+          className={quickActionButtonClass}
           variant="outline"
           size="sm"
           aria-label={isLocked("ai") ? "AI Scan, Pro feature" : "AI Scan"}
@@ -336,7 +369,7 @@ export function NutritionQuickActions({
           ) : null}
         </Button>
         <Button
-          className="min-w-0 gap-1 px-1 text-xs [&>svg]:size-3"
+          className={quickActionButtonClass}
           variant="outline"
           size="sm"
           aria-label="Describe meal"

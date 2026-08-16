@@ -19,9 +19,10 @@ test("Nutrition mobile sheet owns one scroll body and a safe-area sticky footer"
 });
 
 test("Add Food uses the shared stable sheet shell instead of competing viewport-sized scroll regions", async () => {
-  const [picker, sheet] = await Promise.all([
+  const [picker, sheet, globals] = await Promise.all([
     readFile(new URL("../components/nutrition/FoodPicker.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/ui/sheet.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
   ]);
 
   assert.match(picker, /<NutritionMobileSheet/);
@@ -34,6 +35,11 @@ test("Add Food uses the shared stable sheet shell instead of competing viewport-
   assert.doesNotMatch(picker, /<ScrollArea/);
   assert.match(sheet, /transition-transform duration-200/);
   assert.doesNotMatch(sheet, /shadow-lg transition duration-200/);
+  assert.doesNotMatch(sheet, /transition-(?:all|height|top|bottom|max-height|min-height)/);
+  assert.match(
+    globals,
+    /\[data-slot="sheet-content"\] input,[\s\S]*scroll-margin-block: 0/
+  );
 });
 
 test("shared overlays keep initial focus off editable controls and inputs remain iOS zoom-safe", async () => {

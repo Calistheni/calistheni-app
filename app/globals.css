@@ -173,6 +173,18 @@
   html[data-native-app] [contenteditable="true"] {
     scroll-margin-block: calc(1rem + env(safe-area-inset-bottom));
   }
+  /* Fixed overlays own their own scroll area. An extra native scroll margin
+     makes WKWebView nudge an already-visible input while the keyboard opens. */
+  html[data-native-app] [data-slot="sheet-content"] input,
+  html[data-native-app] [data-slot="sheet-content"] textarea,
+  html[data-native-app] [data-slot="sheet-content"] select,
+  html[data-native-app] [data-slot="sheet-content"] [contenteditable="true"],
+  html[data-native-app] [data-slot="dialog-content"] input,
+  html[data-native-app] [data-slot="dialog-content"] textarea,
+  html[data-native-app] [data-slot="dialog-content"] select,
+  html[data-native-app] [data-slot="dialog-content"] [contenteditable="true"] {
+    scroll-margin-block: 0;
+  }
   html {
     @apply font-sans;
   }

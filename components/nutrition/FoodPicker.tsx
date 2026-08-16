@@ -9,7 +9,11 @@ import {
   type FoodUseSelection,
 } from "@/components/nutrition/FoodDetailsDialog";
 import { FoodVisual } from "@/components/nutrition/FoodVisual";
-import { NutritionQuickActions } from "@/components/nutrition/NutritionQuickActions";
+import {
+  NutritionQuickActions,
+  NutritionQuickActionsPlaceholder,
+  type NutritionQuickActionCapabilities,
+} from "@/components/nutrition/NutritionQuickActions";
 import { NutritionMobileSheet } from "@/components/nutrition/NutritionMobileSheet";
 import { NutritionSavedMeals } from "@/components/nutrition/NutritionSavedMeals";
 import { Button } from "@/components/ui/button";
@@ -73,6 +77,8 @@ type Food = {
 
 let savedFoodsCache: Food[] | null = null;
 let savedFoodsRequest: Promise<Food[]> | null = null;
+let quickActionCapabilitiesCache: NutritionQuickActionCapabilities | null =
+  null;
 
 async function loadSavedFoods() {
   if (savedFoodsCache) return savedFoodsCache;
@@ -117,14 +123,15 @@ export function FoodPicker({
   const [inspectedFood, setInspectedFood] = useState<Food | null>(null);
   const [quickAdding, setQuickAdding] = useState<string | null>(null);
   const [savedFoodsFailed, setSavedFoodsFailed] = useState(false);
-  const [quickActionCapabilities, setQuickActionCapabilities] = useState<{
-    canUseAiScan: boolean;
-    canUseBarcodeScan: boolean;
-  } | null>(null);
+  const [quickActionCapabilities, setQuickActionCapabilities] =
+    useState<NutritionQuickActionCapabilities | null>(
+      () => quickActionCapabilitiesCache
+    );
   const savedLoading =
     query.trim().length < 2 && savedFoodsCache === null && !savedFoodsFailed;
 
   useEffect(() => {
+    if (quickActionCapabilitiesCache) return;
     const controller = new AbortController();
     void fetch("/api/nutrition/capabilities", {
       cache: "no-store",
@@ -132,8 +139,10 @@ export function FoodPicker({
     })
       .then((response) => (response.ok ? response.json() : null))
       .then((capabilities) => {
-        if (capabilities && !controller.signal.aborted)
+        if (capabilities && !controller.signal.aborted) {
+          quickActionCapabilitiesCache = capabilities;
           setQuickActionCapabilities(capabilities);
+        }
       })
       .catch(() => {});
     return () => controller.abort();
@@ -310,10 +319,7 @@ export function FoodPicker({
                 capabilities={quickActionCapabilities}
               />
             ) : (
-              <div
-                className="h-9 animate-pulse rounded-md bg-muted"
-                aria-busy="true"
-              />
+              <NutritionQuickActionsPlaceholder />
             )}
             <Tabs defaultValue="food" className="flex min-h-0 flex-1 flex-col">
               <TabsList className="shrink-0 w-full">
