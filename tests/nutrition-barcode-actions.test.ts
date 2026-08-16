@@ -291,6 +291,23 @@ test("AI label contribution stops barcode capture without losing the scanned bar
   );
 });
 
+test("AI label contribution renders a source chooser and sends each source through the native acquisition abstraction on Capacitor", async () => {
+  const workflow = await readFile(quickActionsUrl, "utf8");
+  const contributionUi = workflow.slice(
+    workflow.indexOf("{showContributionFallback ? ("),
+    workflow.indexOf("{error && !showNativeStartupError")
+  );
+
+  assert.match(contributionUi, /<Dialog[\s\S]*Take photo[\s\S]*Choose from gallery[\s\S]*Cancel/);
+  assert.match(workflow, /setLabelSourceChooserOpen\(true\)/);
+  assert.match(workflow, /if \(nativeRuntime\)[\s\S]*acquireNativeNutritionLabelPhoto\(source\)/);
+  assert.match(workflow, /chooseLabelImage\(file\)/);
+  assert.match(workflow, /source === "camera"[\s\S]*labelCameraInputRef[\s\S]*labelGalleryInputRef/);
+  assert.match(workflow, /\[BarcodeAI\] invoking native camera/);
+  assert.match(workflow, /\[BarcodeAI\] invoking native photos/);
+  assert.match(workflow, /!contributionMode[\s\S]*!food[\s\S]*lookupState !== "not_found"/);
+});
+
 test("AI label contribution immediately renders camera and gallery choices that share extraction", async () => {
   const workflow = await readFile(quickActionsUrl, "utf8");
   const chooserStart = workflow.indexOf(

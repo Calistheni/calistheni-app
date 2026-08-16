@@ -53,6 +53,12 @@ import {
   toggleNativeBarcodeTorch,
   usesNativeBarcodeCameraLayer,
 } from "@/lib/native/barcode-scanner";
+import {
+  acquireNativeNutritionLabelPhoto,
+  canAcquireNativeNutritionLabelPhoto,
+  isNativePhotoCancellation,
+  type NutritionLabelPhotoSource,
+} from "@/lib/native/nutrition-label-camera";
 import { compressWorkoutPhoto } from "@/lib/workout-photo-client";
 import { rankNutritionFoodCandidates } from "@/lib/nutrition/search-ranking";
 import {
@@ -667,7 +673,7 @@ function BarcodeWorkflow({
       });
     void extractLabel(file);
   }
-  function requestLabelPhotoSource(source: "camera" | "gallery") {
+  async function requestLabelPhotoSource(source: NutritionLabelPhotoSource) {
     if (process.env.NODE_ENV === "development")
       console.info(
         source === "camera"
@@ -675,11 +681,69 @@ function BarcodeWorkflow({
           : "[BarcodeAI] gallery selected",
         { activeBarcode: code }
       );
+    if (nativeRuntime) {
+      setLabelSourceChooserOpen(false);
+      setAiLabelState("preparing");
+      setBusy(true);
+      if (!canAcquireNativeNutritionLabelPhoto()) {
+        setBusy(false);
+        setAiLabelState("error");
+        setError(
+          "Native photo capture is unavailable. Choose another photo source or enter the product manually."
+        );
+        if (process.env.NODE_ENV === "development")
+          console.info("[BarcodeAI] native acquisition failed", {
+            reason: "Camera plugin unavailable",
+          });
+        return;
+      }
+      try {
+        if (process.env.NODE_ENV === "development")
+          console.info(
+            source === "camera"
+              ? "[BarcodeAI] invoking native camera"
+              : "[BarcodeAI] invoking native photos"
+          );
+        const file = await acquireNativeNutritionLabelPhoto(source);
+        if (process.env.NODE_ENV === "development")
+          console.info(
+            source === "camera"
+              ? "[BarcodeAI] native camera returned image"
+              : "[BarcodeAI] native photos returned image",
+            { type: file.type, size: file.size }
+          );
+        chooseLabelImage(file);
+      } catch (reason) {
+        setBusy(false);
+        if (isNativePhotoCancellation(reason)) {
+          setAiLabelState("choosing_source");
+          setLabelSourceChooserOpen(true);
+          if (process.env.NODE_ENV === "development")
+            console.info("[BarcodeAI] photo chooser cancelled", {
+              activeBarcode: code,
+            });
+          return;
+        }
+        setAiLabelState("error");
+        setError(
+          "Couldn’t open the camera or photo library. You can choose another photo or enter the product manually."
+        );
+        if (process.env.NODE_ENV === "development")
+          console.info("[BarcodeAI] native acquisition failed", {
+            reason: reason instanceof Error ? reason.message : String(reason),
+          });
+      }
+      return;
+    }
     const input =
       source === "camera"
         ? labelCameraInputRef.current
         : labelGalleryInputRef.current;
-    if (!input) return;
+    if (!input) {
+      setAiLabelState("error");
+      setError("Couldn’t open the photo picker. Try again or enter manually.");
+      return;
+    }
     if (process.env.NODE_ENV === "development")
       console.info("[BarcodeAI] file input click requested", { source });
     input.click();
@@ -1050,6 +1114,7 @@ function BarcodeWorkflow({
     nativeIosScanner &&
     open &&
     !manualMode &&
+    !contributionMode &&
     !food &&
     !error &&
     !missingBarcode &&
