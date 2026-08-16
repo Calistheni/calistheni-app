@@ -59,7 +59,14 @@ export default async function FeedPage() {
           completedAt: "desc",
         },
         take: 50,
-        include: {
+        select: {
+          id: true,
+          userId: true,
+          title: true,
+          startedAt: true,
+          completedAt: true,
+          updatedAt: true,
+          visibility: true,
           user: {
             select: {
               id: true,
@@ -70,9 +77,17 @@ export default async function FeedPage() {
             },
           },
           exercises: {
-            include: {
-              exercise: true,
-              sets: true,
+            select: {
+              exercise: {
+                select: {
+                  name: true,
+                  trackingType: true,
+                  bodyweightLoadFactor: true,
+                },
+              },
+              sets: {
+                select: { completed: true, reps: true, weight: true },
+              },
             },
           },
           likes: { where: { userId: session.user.id }, select: { userId: true } },

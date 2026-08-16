@@ -1316,7 +1316,7 @@ export function RoutineBuilder({
               window.history.go(-2);
               return;
             }
-            if (href) window.location.assign(href);
+            if (href) router.push(href);
           }}>Discard changes</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

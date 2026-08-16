@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect } from "react";
 import {
   BadgeEuro,
   Gift,
@@ -45,8 +46,43 @@ const navigationIcons: Record<PrimaryNavigationKey, LucideIcon> = {
   profile: UserRound,
 };
 
+const routeWarmupTargets = {
+  "/home": ["/workouts", "/nutrition", "/profile"],
+  "/workouts": ["/routines", "/home", "/profile"],
+  "/routines": ["/workouts", "/home", "/profile"],
+  "/nutrition": ["/home", "/workouts", "/profile"],
+  "/parks": ["/home", "/profile", "/my-parks"],
+  "/feed": ["/home", "/profile", "/workouts"],
+  "/profile": ["/home", "/workouts", "/nutrition"],
+} as const;
+
+function getRouteWarmupTargets(pathname: string) {
+  const matchingRoute = Object.keys(routeWarmupTargets).find(
+    (route) => pathname === route || pathname.startsWith(`${route}/`)
+  ) as keyof typeof routeWarmupTargets | undefined;
+
+  return matchingRoute ? routeWarmupTargets[matchingRoute] : [];
+}
+
 export function AppShell({ children, user }: AppShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const isSignedIn = Boolean(user);
+
+  useEffect(() => {
+    if (!isSignedIn || !usesSignedInAppShell(pathname)) return;
+
+    // Let the current route paint first. This complements Link's viewport
+    // prefetching on WKWebView without boot-prefetching every destination or
+    // executing any route-local client feature (maps, scanners, charts, etc.).
+    const timeoutId = window.setTimeout(() => {
+      for (const href of getRouteWarmupTargets(pathname)) {
+        router.prefetch(href);
+      }
+    }, 800);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [isSignedIn, pathname, router]);
 
   if (!user || !usesSignedInAppShell(pathname)) return children;
 

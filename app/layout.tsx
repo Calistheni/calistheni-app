@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Space_Grotesk } from "next/font/google";
 import { cookies } from "next/headers";
-import "mapbox-gl/dist/mapbox-gl.css";
 import "./globals.css";
 import { auth } from "@/auth";
 import { AppShell } from "@/components/navigation/AppShell";

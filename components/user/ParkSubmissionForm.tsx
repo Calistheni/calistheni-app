@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import dynamic from "next/dynamic";
 import {
   AlertTriangle,
   ImagePlus,
@@ -10,7 +11,6 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useRef, useState } from "react";
-import { CoordinatePicker } from "@/components/CoordinatePicker";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -53,6 +53,25 @@ import type {
   ParkFormValues,
   ParkMutationPayload,
 } from "@/types/park";
+
+// Keep manual entry available while the map code arrives. Geolocation is an
+// optional convenience and must never decide whether this route can render.
+const CoordinatePicker = dynamic(
+  () =>
+    import("@/components/CoordinatePicker").then(
+      (module) => module.CoordinatePicker
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        aria-busy="true"
+        aria-label="Loading coordinate picker"
+        className="h-[320px] w-full rounded-lg border bg-muted/30 sm:h-[420px] lg:h-[600px]"
+      />
+    ),
+  }
+);
 
 type Equipment = {
   id: number;

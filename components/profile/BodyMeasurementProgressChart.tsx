@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { ProgressChart } from "@/components/charts/ProgressChart";
 import {
   DIRECT_MEASUREMENT_FIELDS,
@@ -27,6 +28,7 @@ export function BodyMeasurementProgressChart({
   entries: Entry[];
   isPro: boolean;
 }) {
+  const router = useRouter();
   const capabilities = getMeasurementCapabilities(isPro);
   const history = useMemo(() => resolveMeasurementHistory(entries), [entries]);
   const fields = DIRECT_MEASUREMENT_FIELDS as readonly Exclude<
@@ -72,7 +74,7 @@ export function BodyMeasurementProgressChart({
         `No ${metric.label} history yet. Add a check-in to start tracking this measurement.`
       }
       onLockedMetric={() => {
-        window.location.assign("/pro");
+        router.push("/pro");
       }}
     />
   );

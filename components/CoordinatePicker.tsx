@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useEffectEvent, useRef } from "react";
+import "mapbox-gl/dist/mapbox-gl.css";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;
@@ -20,6 +21,7 @@ export function CoordinatePicker({
   const markerRef = useRef<mapboxgl.Marker | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const initialCoordinatesRef = useRef({ lat, lon });
+  const [mapUnavailable, setMapUnavailable] = useState(false);
   const handleCoordinateChange = useEffectEvent(
     (nextLat: number, nextLon: number) => {
       onChange(nextLat, nextLon);
@@ -37,12 +39,22 @@ export function CoordinatePicker({
       ? Number(initialCoordinatesRef.current.lat)
       : 42.6977;
 
-    const map = new mapboxgl.Map({
-      container: containerRef.current,
-      style: "mapbox://styles/mapbox/standard",
-      center: [initialLng, initialLat],
-      zoom: 12,
-    });
+    let map: mapboxgl.Map;
+
+    try {
+      map = new mapboxgl.Map({
+        container: containerRef.current,
+        style: "mapbox://styles/mapbox/standard",
+        center: [initialLng, initialLat],
+        zoom: 12,
+      });
+    } catch {
+      // A native lifecycle or Mapbox initialization failure must not take down
+      // the submission route. The form's manual coordinate fields remain the
+      // fully supported fallback.
+      const failureTimeout = window.setTimeout(() => setMapUnavailable(true), 0);
+      return () => window.clearTimeout(failureTimeout);
+    }
     map.on("load", () => {
       map.resize();
     });
@@ -129,6 +141,18 @@ export function CoordinatePicker({
       duration: 500,
     });
   }, [lat, lon]);
+
+  if (mapUnavailable) {
+    return (
+      <div
+        role="status"
+        className="flex h-[320px] w-full items-center justify-center rounded-lg border bg-muted/30 p-4 text-center text-sm text-muted-foreground sm:h-[420px] lg:h-[600px]"
+      >
+        The map is unavailable right now. Enter coordinates manually below to
+        continue your submission.
+      </div>
+    );
+  }
 
   return (
     <div

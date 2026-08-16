@@ -6,7 +6,7 @@ import { BackButton } from "@/components/navigation/BackButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { FREE_ROUTINE_LIMIT, routineInclude } from "@/lib/routines";
+import { FREE_ROUTINE_LIMIT } from "@/lib/routines";
 import { getUserEntitlements } from "@/lib/entitlements";
 import { prisma } from "@/lib/prisma";
 
@@ -29,7 +29,13 @@ export default async function RoutinesPage() {
     prisma.workoutTemplate.findMany({
       where: { userId: session.user.id },
       orderBy: { updatedAt: "desc" },
-      include: routineInclude,
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        visibility: true,
+        _count: { select: { exercises: true } },
+      },
     }),
     getUserEntitlements(session.user.id),
   ]);
@@ -95,7 +101,7 @@ export default async function RoutinesPage() {
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <Badge variant="secondary">
-                        {routine.exercises.length} exercises
+                        {routine._count.exercises} exercises
                       </Badge>
                       <Badge variant="outline">{routine.visibility}</Badge>
                     </div>

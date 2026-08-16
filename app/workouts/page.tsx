@@ -67,15 +67,29 @@ export default async function WorkoutsPage() {
       where: { userId: session.user.id, completedAt: { not: null } },
       orderBy: { completedAt: "desc" },
       take: 6,
-      include: {
+      select: {
+        id: true,
+        title: true,
+        startedAt: true,
+        completedAt: true,
+        updatedAt: true,
+        visibility: true,
         user: {
           select: { id: true, name: true, image: true, bodyweightKg: true },
         },
         exercises: {
           orderBy: { order: "asc" },
-          include: {
-            exercise: true,
-            sets: { orderBy: { order: "asc" } },
+          select: {
+            exercise: {
+              select: {
+                trackingType: true,
+                bodyweightLoadFactor: true,
+              },
+            },
+            sets: {
+              orderBy: { order: "asc" },
+              select: { completed: true, reps: true, weight: true },
+            },
           },
         },
       },
