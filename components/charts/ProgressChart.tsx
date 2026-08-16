@@ -143,6 +143,7 @@ export function ProgressChart({
                     day: "numeric",
                   })
                 }
+                // type="category"
               />
               <YAxis
                 tickLine={false}
