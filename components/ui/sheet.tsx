@@ -56,6 +56,16 @@ function SheetContent({
   side?: "top" | "right" | "bottom" | "left"
   showCloseButton?: boolean
 }) {
+  const debugId = (props as { "data-overlay-debug-id"?: string })[
+    "data-overlay-debug-id"
+  ];
+  React.useEffect(() => {
+    if (process.env.NODE_ENV !== "development" || !debugId) return;
+    console.debug(`[mobile-overlay] ${debugId} SheetContent mounted`);
+    return () =>
+      console.debug(`[mobile-overlay] ${debugId} SheetContent unmounted`);
+  }, [debugId]);
+
   return (
     <SheetPortal>
       <SheetOverlay />

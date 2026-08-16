@@ -74,17 +74,36 @@ export function NativeShell() {
 
   useEffect(() => {
     let touchStartY = 0;
+    let scrollOwner: HTMLElement | null = null;
+    let initialScrollTop = 0;
     const handleTouchStart = (event: TouchEvent) => {
       touchStartY = event.touches[0]?.clientY ?? 0;
+      const target = event.target instanceof Element ? event.target : null;
+      scrollOwner = target?.closest(
+        "[data-keyboard-dismiss-on-scroll]"
+      ) as HTMLElement | null;
+      initialScrollTop = scrollOwner?.scrollTop ?? 0;
     };
     const handleTouchMove = (event: TouchEvent) => {
-      const target = event.target instanceof Element ? event.target : null;
       if (
-        !target?.closest("[data-keyboard-dismiss-on-scroll]") ||
+        !scrollOwner ||
         Math.abs((event.touches[0]?.clientY ?? touchStartY) - touchStartY) < 8
       )
         return;
-      dismissActiveTextInput();
+
+      const owner = scrollOwner;
+      const scrollTopAtTouchStart = initialScrollTop;
+
+      // A finger can drift slightly while iOS is focusing a field. Dismissing
+      // here used to blur that field before the marked scroll surface had
+      // moved, which made the native keyboard resize race the focus sequence.
+      // Keep scroll-to-dismiss, but only after the user actually scrolls.
+      requestAnimationFrame(() => {
+        if (owner.scrollTop !== scrollTopAtTouchStart) {
+          dismissActiveTextInput();
+          if (scrollOwner === owner) scrollOwner = null;
+        }
+      });
     };
     document.addEventListener("touchstart", handleTouchStart, {
       passive: true,

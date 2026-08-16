@@ -185,6 +185,13 @@
   html[data-native-app] [data-slot="dialog-content"] [contenteditable="true"] {
     scroll-margin-block: 0;
   }
+  /* Fixed overlays must not smooth-scroll or pick a new scroll anchor while
+     WKWebView changes its visual viewport for the native keyboard. */
+  html[data-native-app] [data-slot="sheet-content"],
+  html[data-native-app] [data-slot="dialog-content"] {
+    scroll-behavior: auto;
+    overflow-anchor: none;
+  }
   html {
     @apply font-sans;
   }

@@ -15,6 +15,10 @@ test("Nutrition mobile sheet owns one scroll body and a safe-area sticky footer"
   assert.match(source, /overflow-hidden overscroll-none p-0/);
   assert.match(source, /scrollable = true/);
   assert.match(source, /scrollable[\s\S]*"flex flex-col overflow-hidden"/);
+  assert.match(
+    source,
+    /scrollable \? \{ "data-keyboard-dismiss-on-scroll": true \} : \{\}/
+  );
   assert.match(source, /overscroll-none/);
 });
 
@@ -40,6 +44,10 @@ test("Add Food uses the shared stable sheet shell instead of competing viewport-
     globals,
     /\[data-slot="sheet-content"\] input,[\s\S]*scroll-margin-block: 0/
   );
+  assert.match(
+    globals,
+    /\[data-slot="sheet-content"\],[\s\S]*scroll-behavior: auto;[\s\S]*overflow-anchor: none/
+  );
 });
 
 test("shared overlays keep initial focus off editable controls and inputs remain iOS zoom-safe", async () => {
@@ -57,6 +65,20 @@ test("shared overlays keep initial focus off editable controls and inputs remain
   }
   assert.match(input, /text-base/);
   assert.match(textarea, /text-base/);
+});
+
+test("keyboard dismissal waits for a real marked-surface scroll instead of a focus-time touch drift", async () => {
+  const nativeShell = await readFile(
+    new URL("../components/native/NativeShell.tsx", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(nativeShell, /let initialScrollTop = 0/);
+  assert.match(nativeShell, /initialScrollTop = scrollOwner\?\.scrollTop \?\? 0/);
+  assert.match(
+    nativeShell,
+    /requestAnimationFrame\(\(\) => \{[\s\S]*owner\.scrollTop !== scrollTopAtTouchStart[\s\S]*dismissActiveTextInput\(\)/
+  );
 });
 
 test("Nutrition sheets stack above the fixed app navigation", async () => {
