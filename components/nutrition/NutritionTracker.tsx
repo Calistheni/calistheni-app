@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { NutritionDateNavigator } from "@/components/nutrition/NutritionDateNavigator";
 import { NutritionGoalCard } from "@/components/nutrition/NutritionGoalCard";
+import { NutritionMobileSheet } from "@/components/nutrition/NutritionMobileSheet";
 import { FoodVisual } from "@/components/nutrition/FoodVisual";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -35,7 +36,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Sheet,
-  SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
@@ -147,20 +147,20 @@ function NutritionSectionSkeleton() {
 function FoodPickerLoading() {
   return (
     <Sheet open>
-      <SheetContent
-        side="bottom"
-        className="h-[92dvh] max-h-[calc(100dvh-env(safe-area-inset-top)-0.5rem)] overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)]"
+      <NutritionMobileSheet
+        header={
+          <SheetHeader>
+            <SheetTitle>Add food</SheetTitle>
+            <SheetDescription>Preparing your food picker.</SheetDescription>
+          </SheetHeader>
+        }
       >
-        <SheetHeader>
-          <SheetTitle>Add food</SheetTitle>
-          <SheetDescription>Preparing your food picker.</SheetDescription>
-        </SheetHeader>
-        <div className="space-y-4 p-4" aria-busy="true">
+        <div className="space-y-4" aria-busy="true">
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-36 w-full" />
         </div>
-      </SheetContent>
+      </NutritionMobileSheet>
     </Sheet>
   );
 }

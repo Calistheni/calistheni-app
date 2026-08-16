@@ -10,13 +10,12 @@ import {
 } from "@/components/nutrition/FoodDetailsDialog";
 import { FoodVisual } from "@/components/nutrition/FoodVisual";
 import { NutritionQuickActions } from "@/components/nutrition/NutritionQuickActions";
+import { NutritionMobileSheet } from "@/components/nutrition/NutritionMobileSheet";
 import { NutritionSavedMeals } from "@/components/nutrition/NutritionSavedMeals";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Sheet,
-  SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
@@ -230,17 +229,17 @@ export function FoodPicker({
           if (!value && !inspectedFood) dismiss();
         }}
       >
-        <SheetContent
-          side="bottom"
-          className="h-[92dvh] max-h-[calc(100dvh-env(safe-area-inset-top)-0.5rem)] overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)]"
+        <NutritionMobileSheet
+          header={
+            <SheetHeader>
+              <SheetTitle>Add to {meal?.toLowerCase()}</SheetTitle>
+              <SheetDescription>
+                Tap a food for details or use + to add its default serving.
+              </SheetDescription>
+            </SheetHeader>
+          }
         >
-          <SheetHeader>
-            <SheetTitle>Add to {meal?.toLowerCase()}</SheetTitle>
-            <SheetDescription>
-              Tap a food for details or use + to add its default serving.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="space-y-4 p-4">
+          <div className="space-y-4">
             <Input
               placeholder="Search foods"
               aria-label="Search foods"
@@ -275,14 +274,10 @@ export function FoodPicker({
                 </TabsTrigger>
               </TabsList>
               <TabsContent value="food" className="mt-2">
-                <ScrollArea
-                  className="h-[min(48dvh,26rem)] rounded-lg border"
+                <div
+                  className="space-y-2 rounded-lg border p-1.5"
                   aria-label="Food search results"
                 >
-                  <div
-                    data-keyboard-dismiss-on-scroll
-                    className="space-y-2 p-1.5"
-                  >
                     {query.trim().length < 2 ? (
                       <p className="px-2 pt-1 text-sm font-medium">
                         Saved foods
@@ -397,8 +392,7 @@ export function FoodPicker({
                         </p>
                       </div>
                     )}
-                  </div>
-                </ScrollArea>
+                </div>
               </TabsContent>
               <TabsContent value="meals">
                 <NutritionSavedMeals
@@ -418,7 +412,7 @@ export function FoodPicker({
               </TabsContent>
             </Tabs>
           </div>
-        </SheetContent>
+        </NutritionMobileSheet>
       </Sheet>
       <FoodDetailsDialog
         food={inspectedFood as FoodDetailsPreview | null}

@@ -41,10 +41,16 @@ function proposalFromRawData(rawData: Prisma.JsonValue | null) {
     return null;
   }
 
-  const proposal = (rawData as Record<string, unknown>).proposal;
-  return proposal && typeof proposal === "object" && !Array.isArray(proposal)
-    ? (proposal as Record<string, unknown>)
-    : null;
+  const record = rawData as Record<string, unknown>;
+  const proposal = record.proposal;
+  if (proposal && typeof proposal === "object" && !Array.isArray(proposal)) {
+    return proposal as Record<string, unknown>;
+  }
+
+  // Barcode contributions persist their canonical proposal directly in
+  // FoodSourceRecord.rawData. Older generic submissions wrap it in `proposal`.
+  // Support both exact persisted shapes without inferring any metadata.
+  return typeof record.kind === "string" ? record : null;
 }
 
 function nutritionFromProposal(
@@ -79,7 +85,7 @@ function serializeContribution(
   return {
     id: food.id,
     name: food.name,
-    barcode: food.barcode,
+    barcode: food.barcode ? String(food.barcode) : null,
     brandName: food.brandName,
     contributionKind: submittedProposal?.kind === "BARCODE_PRODUCT" ? "BARCODE_PRODUCT" as const : "GENERIC_FOOD" as const,
     submissionMethod: typeof submittedProposal?.method === "string" ? submittedProposal.method : null,

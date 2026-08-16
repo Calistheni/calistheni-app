@@ -36,8 +36,16 @@ test("post-create flow can save and log the creator pending food without a new s
 });
 
 test("admin contribution cards show and copy the submitted barcode", async () => {
-  const ui = await readFile(new URL("../components/admin/NutritionContributionsAdmin.tsx", import.meta.url), "utf8");
-  assert.match(ui, /Barcode:/);
+  const [ui, history, moderation] = await Promise.all([
+    readFile(new URL("../components/admin/NutritionContributionsAdmin.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/nutrition/admin-food-contributions.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/admin/nutrition/foods/[id]/route.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(ui, /<span>Barcode<\/span>/);
+  assert.match(ui, /food\.barcode \?\? "—"/);
   assert.match(ui, /copyBarcode/);
   assert.match(ui, /font-mono/);
+  assert.match(history, /barcode: food\.barcode \? String\(food\.barcode\) : null/);
+  assert.match(history, /typeof record\.kind === "string" \? record : null/);
+  assert.match(moderation, /barcode: food\.barcode/);
 });
