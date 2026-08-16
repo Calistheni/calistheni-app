@@ -57,6 +57,7 @@ import {
   acquireNativeNutritionLabelPhoto,
   canAcquireNativeNutritionLabelPhoto,
   isNativePhotoCancellation,
+  NativePhotoPreparationError,
   type NutritionLabelPhotoSource,
 } from "@/lib/native/nutrition-label-camera";
 import { compressWorkoutPhoto } from "@/lib/workout-photo-client";
@@ -513,6 +514,9 @@ function BarcodeWorkflow({
   const [aiLabelState, setAiLabelState] = useState<
     "idle" | "choosing_source" | "preparing" | "analyzing" | "review" | "error"
   >("idle");
+  const [labelFailureStage, setLabelFailureStage] = useState<
+    "acquisition" | "preparation" | "analysis" | null
+  >(null);
   const [draft, setDraft] = useState({
     productName: "",
     brandName: "",
@@ -592,6 +596,7 @@ function BarcodeWorkflow({
     setLabelSourceChooserOpen(false);
     setLabelPreview(null);
     setAiLabelState("idle");
+    setLabelFailureStage(null);
     setDraft({
       productName: "",
       brandName: "",
@@ -620,6 +625,7 @@ function BarcodeWorkflow({
       setLabelSourceChooserOpen(false);
       setLabelPreview(null);
       setAiLabelState("idle");
+      setLabelFailureStage(null);
       setLookupState("scanning");
       setScannerSessionVersion((version) => version + 1);
     });
@@ -641,6 +647,7 @@ function BarcodeWorkflow({
     setContributionMode("label");
     setLookupState("creating_ai");
     setAiLabelState("choosing_source");
+    setLabelFailureStage(null);
     setLabelSourceChooserOpen(true);
     if (process.env.NODE_ENV === "development")
       console.info("[BarcodeAI] source chooser opened", { activeBarcode: code });
@@ -651,6 +658,7 @@ function BarcodeWorkflow({
       return null;
     });
     setAiLabelState("idle");
+    setLabelFailureStage(null);
   }
   function returnToContributionChoices() {
     setLabelSourceChooserOpen(false);
@@ -661,17 +669,29 @@ function BarcodeWorkflow({
   }
   function chooseLabelImage(file?: File) {
     if (!file) return;
-    clearLabelPreview();
-    setLabelPreview(URL.createObjectURL(file));
-    setLabelSourceChooserOpen(false);
-    setAiLabelState("preparing");
-    if (process.env.NODE_ENV === "development")
-      console.info("[BarcodeAI] image received", {
-        activeBarcode: code,
-        type: file.type,
-        size: file.size,
-      });
-    void extractLabel(file);
+    try {
+      clearLabelPreview();
+      setLabelPreview(URL.createObjectURL(file));
+      setLabelSourceChooserOpen(false);
+      setAiLabelState("preparing");
+      setLabelFailureStage(null);
+      if (process.env.NODE_ENV === "development")
+        console.info("[BarcodeAI] image received", {
+          activeBarcode: code,
+          type: file.type,
+          size: file.size,
+        });
+      void extractLabel(file);
+    } catch (reason) {
+      setBusy(false);
+      setAiLabelState("error");
+      setLabelFailureStage("preparation");
+      setError("Couldn’t prepare this photo. Try another image or enter manually.");
+      if (process.env.NODE_ENV === "development")
+        console.info("[BarcodeAI] image preparation failed", {
+          reason: reason instanceof Error ? reason.message : String(reason),
+        });
+    }
   }
   async function requestLabelPhotoSource(source: NutritionLabelPhotoSource) {
     if (process.env.NODE_ENV === "development")
@@ -688,6 +708,7 @@ function BarcodeWorkflow({
       if (!canAcquireNativeNutritionLabelPhoto()) {
         setBusy(false);
         setAiLabelState("error");
+        setLabelFailureStage("acquisition");
         setError(
           "Native photo capture is unavailable. Choose another photo source or enter the product manually."
         );
@@ -725,8 +746,15 @@ function BarcodeWorkflow({
           return;
         }
         setAiLabelState("error");
+        setLabelFailureStage(
+          reason instanceof NativePhotoPreparationError
+            ? "preparation"
+            : "acquisition"
+        );
         setError(
-          "Couldn’t open the camera or photo library. You can choose another photo or enter the product manually."
+          reason instanceof NativePhotoPreparationError
+            ? "Couldn’t prepare this photo. Try another image or enter the product manually."
+            : "Couldn’t open the camera or photo library. You can choose another photo or enter the product manually."
         );
         if (process.env.NODE_ENV === "development")
           console.info("[BarcodeAI] native acquisition failed", {
@@ -741,6 +769,7 @@ function BarcodeWorkflow({
         : labelGalleryInputRef.current;
     if (!input) {
       setAiLabelState("error");
+      setLabelFailureStage("acquisition");
       setError("Couldn’t open the photo picker. Try again or enter manually.");
       return;
     }
@@ -1048,16 +1077,24 @@ function BarcodeWorkflow({
   }
   async function extractLabel(file?: File) {
     if (!file) return;
+    let stage: "preparation" | "analysis" = "preparation";
     setBusy(true);
     setAiLabelState("preparing");
+    setLabelFailureStage(null);
     if (process.env.NODE_ENV === "development")
-      console.info("[BarcodeAI] preparing", { activeBarcode: code });
+      console.info("[BarcodeAI] image preparation begin", { activeBarcode: code });
     setError("");
     try {
       const compressed = await compressWorkoutPhoto(file);
+      if (process.env.NODE_ENV === "development")
+        console.info("[BarcodeAI] image preparation succeeded", {
+          type: compressed.type,
+          size: compressed.size,
+        });
       const form = new FormData();
       form.set("barcode", code);
       form.set("image", compressed);
+      stage = "analysis";
       setAiLabelState("analyzing");
       if (process.env.NODE_ENV === "development")
         console.info("[BarcodeAI] extraction request begin", {
@@ -1089,6 +1126,7 @@ function BarcodeWorkflow({
       });
       setContributionMode("label");
       setAiLabelState("review");
+      setLabelFailureStage(null);
       if (process.env.NODE_ENV === "development")
         console.info("[BarcodeAI] extraction success", { activeBarcode: code });
       if (process.env.NODE_ENV === "development")
@@ -1097,13 +1135,20 @@ function BarcodeWorkflow({
         });
     } catch (reason) {
       setError(
-        reason instanceof Error
-          ? reason.message
-          : "We couldn't read the nutrition label."
+        stage === "preparation"
+          ? "Couldn’t prepare this photo. Try another image or enter manually."
+          : reason instanceof Error
+            ? reason.message
+            : "We couldn't read the nutrition label."
       );
       setAiLabelState("error");
+      setLabelFailureStage(stage);
       if (process.env.NODE_ENV === "development")
-        console.info("[BarcodeAI] extraction failed", { activeBarcode: code });
+        console.info("[BarcodeAI] extraction failed", {
+          activeBarcode: code,
+          stage,
+          reason: reason instanceof Error ? reason.message : String(reason),
+        });
     } finally {
       setBusy(false);
     }
@@ -1575,7 +1620,13 @@ function BarcodeWorkflow({
                   {aiLabelState === "error" && contributionMode === "label" ? (
                     <div className="space-y-2">
                       <Alert>
-                        <AlertTitle>Couldn&apos;t analyze this label</AlertTitle>
+                        <AlertTitle>
+                          {labelFailureStage === "acquisition"
+                            ? "Couldn&apos;t open the camera or photo library"
+                            : labelFailureStage === "preparation"
+                              ? "Couldn&apos;t prepare this photo"
+                              : "Couldn&apos;t analyze this label"}
+                        </AlertTitle>
                         <AlertDescription>{error}</AlertDescription>
                       </Alert>
                       <div className="flex flex-wrap gap-2">
