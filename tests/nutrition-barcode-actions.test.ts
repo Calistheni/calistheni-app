@@ -279,13 +279,22 @@ test("AI label contribution stops barcode capture without losing the scanned bar
   assert.match(workflow, /onClick=\{restartNativeScanner\}/);
   assert.match(workflow, /form\.set\("barcode", code\)/);
   assert.match(workflow, /barcode: code/);
+  const detectedBarcodeHandler = workflow.slice(
+    workflow.indexOf("scanLocked.current = true;"),
+    workflow.indexOf("onManual:")
+  );
+  assert.match(detectedBarcodeHandler, /void endNativeScannerSession\("barcode-detected"\)/);
+  assert.match(detectedBarcodeHandler, /setCode\(value\);[\s\S]*lookupRef\.current\(value\)/);
+  assert.doesNotMatch(
+    detectedBarcodeHandler,
+    /endNativeScannerSession\("barcode-detected"\)\.then/
+  );
 });
 
 test("AI label contribution immediately renders camera and gallery choices that share extraction", async () => {
   const workflow = await readFile(quickActionsUrl, "utf8");
-  const chooserStart = workflow.lastIndexOf(
-    "<Dialog",
-    workflow.indexOf("Take photo now")
+  const chooserStart = workflow.indexOf(
+    'open={contributionMode === "label" && labelSourceChooserOpen}'
   );
   const sourceChooser = workflow.slice(
     chooserStart,
@@ -297,9 +306,10 @@ test("AI label contribution immediately renders camera and gallery choices that 
   );
 
   assert.match(workflow, /setLabelSourceChooserOpen\(true\)/);
-  assert.match(sourceChooser, /Take photo now/);
+  assert.match(sourceChooser, /Take photo/);
   assert.match(sourceChooser, /Choose from gallery/);
-  assert.match(sourceChooser, /capture="environment"/);
+  assert.match(workflow, /ref=\{labelCameraInputRef\}[\s\S]*capture="environment"/);
+  assert.match(workflow, /ref=\{labelGalleryInputRef\}/);
   assert.match(sourceChooser, /Choose a clear photo of the nutrition label|Add a clear photo of the nutrition label/);
   assert.match(imageHandler, /setLabelPreview\(URL\.createObjectURL\(file\)\)/);
   assert.match(imageHandler, /void extractLabel\(file\)/);
