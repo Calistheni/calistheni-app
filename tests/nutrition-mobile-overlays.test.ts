@@ -99,6 +99,11 @@ test("keyboard dismissal waits for a real marked-surface scroll instead of a foc
     nativeShell,
     /requestAnimationFrame\(\(\) => \{[\s\S]*owner\.scrollTop !== scrollTopAtTouchStart[\s\S]*dismissActiveTextInput\(\)/
   );
+  assert.match(
+    nativeShell,
+    /input, textarea, select, \[contenteditable="true"\]/
+  );
+  assert.match(nativeShell, /scrollOwner = null;[\s\S]*touchstart editable/);
 });
 
 test("iOS uses Capacitor body resize once instead of resizing the WKWebView frame", async () => {
@@ -184,4 +189,17 @@ test("mobile overlays retain shadcn titles, accessible search fields, and bounde
     /relative h-\[min\(16rem,30dvh\)\] max-h-\[30dvh\] overflow-hidden rounded-xl/
   );
   assert.match(quick, /flex flex-wrap gap-2/);
+});
+
+test("the visible Add Food search field claims native iOS focus without scrolling the result region", async () => {
+  const picker = await readFile(
+    new URL("../components/nutrition/FoodPicker.tsx", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(picker, /onPointerDown=\{handleSearchPointerDown\}/);
+  assert.match(picker, /getNativePlatform\(\) !== "ios"/);
+  assert.match(picker, /input\.focus\(\{ preventScroll: true \}\)/);
+  assert.match(picker, /data-slot="food-picker-results"/);
+  assert.doesNotMatch(picker, /scrollIntoView|window\.scrollTo/);
 });

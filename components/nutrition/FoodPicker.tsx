@@ -35,6 +35,7 @@ import {
   foodResultKey,
 } from "@/lib/nutrition/result-identity";
 import { NUTRITION_SEARCH_RESULT_LIMIT } from "@/lib/nutrition/search-ranking";
+import { getNativePlatform, isNativeApp } from "@/lib/native/platform";
 
 export type NutritionPickerMeal = "BREAKFAST" | "LUNCH" | "DINNER" | "SNACKS";
 
@@ -79,6 +80,28 @@ let savedFoodsCache: Food[] | null = null;
 let savedFoodsRequest: Promise<Food[]> | null = null;
 let quickActionCapabilitiesCache: NutritionQuickActionCapabilities | null =
   null;
+const isDevelopment = process.env.NODE_ENV === "development";
+
+function logSearchFocus(event: string, input: HTMLInputElement) {
+  if (!isDevelopment || !isNativeApp()) return;
+  const sheet = input.closest('[data-slot="sheet-content"]');
+  const results = sheet?.querySelector<HTMLElement>(
+    '[data-slot="food-picker-results"]'
+  );
+  const sheetBody = sheet?.querySelector<HTMLElement>(
+    '[data-slot="nutrition-sheet-scroll"]'
+  );
+  console.debug("[food-search-focus]", {
+    event,
+    activeElement: document.activeElement?.tagName ?? null,
+    windowScrollY: window.scrollY,
+    documentScrollTop: document.documentElement.scrollTop,
+    sheetScrollTop: sheetBody?.scrollTop ?? null,
+    resultsScrollTop: results?.scrollTop ?? null,
+    innerHeight: window.innerHeight,
+    visualViewportHeight: window.visualViewport?.height ?? null,
+  });
+}
 
 async function loadSavedFoods() {
   if (savedFoodsCache) return savedFoodsCache;
@@ -215,6 +238,25 @@ export function FoodPicker({
     close();
   }
 
+  function handleSearchPointerDown(
+    event: React.PointerEvent<HTMLInputElement>
+  ) {
+    const input = event.currentTarget;
+    logSearchFocus("pointerdown", input);
+    if (
+      !isNativeApp() ||
+      getNativePlatform() !== "ios" ||
+      document.activeElement === input
+    ) {
+      return;
+    }
+
+    // Search is already in the fixed picker header. Claim the user gesture
+    // and focus it without allowing WKWebView to scroll an ancestor first.
+    event.preventDefault();
+    input.focus({ preventScroll: true });
+  }
+
   async function toggleSaved(food: Food) {
     if (!food.id) return;
     const response = await fetch(
@@ -313,6 +355,9 @@ export function FoodPicker({
               placeholder="Search foods"
               aria-label="Search foods"
               value={query}
+              onPointerDown={handleSearchPointerDown}
+              onFocus={(event) => logSearchFocus("focus", event.currentTarget)}
+              onBlur={(event) => logSearchFocus("blur", event.currentTarget)}
               onChange={(event) => {
                 const value = event.target.value;
                 setQuery(value);

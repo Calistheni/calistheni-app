@@ -102,9 +102,7 @@ export function NativeShell() {
 
     let disposed = false;
     const listeners: Array<{ remove: () => Promise<void> }> = [];
-    const addListener = (
-      promise: Promise<{ remove: () => Promise<void> }>
-    ) => {
+    const addListener = (promise: Promise<{ remove: () => Promise<void> }>) => {
       void promise.then((listener) => {
         if (disposed) void listener.remove();
         else listeners.push(listener);
@@ -152,10 +150,30 @@ export function NativeShell() {
     const handleTouchStart = (event: TouchEvent) => {
       touchStartY = event.touches[0]?.clientY ?? 0;
       const target = event.target instanceof Element ? event.target : null;
+      // An editable control's touch is a focus gesture, never a
+      // scroll-to-dismiss gesture. In particular, this prevents the native
+      // WebView's initial touch sequence from being coupled to our keyboard
+      // dismissal bookkeeping before the keyboard is presented.
+      if (
+        target?.closest('input, textarea, select, [contenteditable="true"]')
+      ) {
+        scrollOwner = null;
+        initialScrollTop = 0;
+        logKeyboardResize("touchstart editable", {
+          target: target.tagName,
+          windowScrollY: window.scrollY,
+          documentScrollTop: document.documentElement.scrollTop,
+        });
+        return;
+      }
       scrollOwner = target?.closest(
         "[data-keyboard-dismiss-on-scroll]"
       ) as HTMLElement | null;
       initialScrollTop = scrollOwner?.scrollTop ?? 0;
+      logKeyboardResize("touchstart scroll owner", {
+        scrollOwner: scrollOwner?.getAttribute("data-slot") ?? null,
+        scrollTop: initialScrollTop,
+      });
     };
     const handleTouchMove = (event: TouchEvent) => {
       if (
