@@ -696,6 +696,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   const searchedViewportsRef = useRef<ViewportArea[]>([]);
   const lastSearchedViewportRef = useRef<ViewportArea | null>(null);
   const areaSearchPendingRef = useRef(false);
+  const clusterNavigationPendingRef = useRef(false);
   const loadAfterLocationMoveRef = useRef(false);
   const areaLoadFallbackRef = useRef<number | null>(null);
   const detailCacheRef = useRef(new Map<number, MapParkDetail>());
@@ -705,9 +706,11 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   const lastViewportKeyRef = useRef<string | null>(null);
   const viewportRequestRef = useRef<{
     key: string;
+    loadId: number;
     controller: AbortController;
     promise: Promise<void>;
   } | null>(null);
+  const viewportLoadIdRef = useRef(0);
   const mapLoadedRef = useRef(false);
   const placementModeRef = useRef(false);
   const onViewportParksChangeRef = useRef(onViewportParksChange);
@@ -753,6 +756,10 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     areaSearchPendingRef.current = true;
     beginAwayMove();
   }, [beginAwayMove]);
+  const beginClusterNavigation = useCallback(() => {
+    clusterNavigationPendingRef.current = true;
+    beginAwayFromUser();
+  }, [beginAwayFromUser]);
   const markManualCameraInteraction = useCallback(() => {
     areaSearchPendingRef.current = true;
     if (recenterInProgressRef.current) {
@@ -1692,6 +1699,18 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       return;
     }
 
+    if (viewportRequestRef.current?.key === key) {
+      return viewportRequestRef.current.promise;
+    }
+
+    // Every newly requested camera area owns a monotonically increasing load
+    // token. A fast second cluster click must win over an older IndexedDB or
+    // network response even when the aborted response resolves late.
+    const loadId = ++viewportLoadIdRef.current;
+    const isCurrentLoad = () => viewportLoadIdRef.current === loadId;
+    viewportRequestRef.current?.controller.abort();
+    viewportRequestRef.current = null;
+
     const cachedParks = viewportCacheRef.current.get(key);
     const cachedTimestamp = areaCacheTimestampRef.current.get(key) ?? 0;
     if (
@@ -1699,6 +1718,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       cachedParks &&
       Date.now() - cachedTimestamp < PARK_AREA_CACHE_MAX_AGE_MS
     ) {
+      if (!isCurrentLoad()) return;
       lastViewportKeyRef.current = key;
       lastSearchedViewportRef.current = viewport;
       setViewportError(null);
@@ -1711,6 +1731,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     if (!force && mode === "public") {
       try {
         const cachedArea = await loadParkArea(key);
+        if (!isCurrentLoad()) return;
         if (cachedArea) {
           viewportCacheRef.current.set(key, cachedArea.data);
           areaCacheTimestampRef.current.set(key, cachedArea.timestamp);
@@ -1737,12 +1758,6 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       }
     }
 
-    if (viewportRequestRef.current?.key === key) {
-      return viewportRequestRef.current.promise;
-    }
-
-    viewportRequestRef.current?.controller.abort();
-
     const controller = new AbortController();
     setViewportLoading(true);
     setViewportError(null);
@@ -1767,6 +1782,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
           | AdminParksMapResponse;
       })
       .then(async (result) => {
+        if (!isCurrentLoad()) return;
         const nextParks = result.parks as MapParkSummary[];
         if (mode === "public") {
           try {
@@ -1780,6 +1796,8 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
             console.error("Unable to cache the park area.", error);
           }
         }
+
+        if (!isCurrentLoad()) return;
 
         viewportCacheRef.current.set(result.areaKey, nextParks);
         areaCacheTimestampRef.current.set(result.areaKey, Date.now());
@@ -1808,22 +1826,26 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         }, 500);
       })
       .catch((error: Error) => {
-        if (error.name === "AbortError") {
+        if (error.name === "AbortError" || !isCurrentLoad()) {
           return;
         }
 
         setViewportError("Unable to load parks for this area.");
       })
       .finally(() => {
-        if (viewportRequestRef.current?.key === key) {
+        if (
+          viewportRequestRef.current?.key === key &&
+          viewportRequestRef.current.loadId === loadId
+        ) {
           viewportRequestRef.current = null;
         }
 
-        setViewportLoading(false);
+        if (isCurrentLoad()) setViewportLoading(false);
       });
 
     viewportRequestRef.current = {
       key,
+      loadId,
       controller,
       promise,
     };
@@ -2031,6 +2053,16 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
           window.clearTimeout(areaLoadFallbackRef.current);
           areaLoadFallbackRef.current = null;
         }
+        void requestViewportParksRef.current();
+        return;
+      }
+
+      if (clusterNavigationPendingRef.current) {
+        // Cluster navigation is the one exception to normal manual-map
+        // exploration: read the final camera bounds only after Mapbox has
+        // settled, then reuse the normal viewport loader for that area.
+        clusterNavigationPendingRef.current = false;
+        areaSearchPendingRef.current = false;
         void requestViewportParksRef.current();
         return;
       }
@@ -2279,8 +2311,6 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
           number
         ];
         const clusterId = feature.properties?.cluster_id;
-        beginAwayFromUser();
-
         if (clusterId !== undefined) {
           const source = map.getSource(
             "park-placeholders"
@@ -2288,6 +2318,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
           source.getClusterExpansionZoom(clusterId, (error, zoom) => {
             if (error) return;
 
+            beginClusterNavigation();
             map.easeTo({
               center: coordinates,
               zoom: zoom ?? PLACEHOLDER_MAX_ZOOM,
@@ -2298,6 +2329,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
           return;
         }
 
+        beginClusterNavigation();
         map.easeTo({
           center: coordinates,
           zoom: PLACEHOLDER_MAX_ZOOM,
@@ -2358,7 +2390,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
           const coordinates = (feature.geometry as GeoJSON.Point)
             .coordinates as [number, number];
 
-          beginAwayFromUser();
+          beginClusterNavigation();
           map.easeTo({
             center: coordinates,
             zoom: zoom ?? 12,
@@ -2631,6 +2663,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       }
     };
   }, [
+    beginClusterNavigation,
     beginAwayFromUser,
     beginTrackingMove,
     beginUserMove,

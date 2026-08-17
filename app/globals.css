@@ -257,10 +257,17 @@
   .app-shell-content-full-bleed {
     flex: 1;
     min-height: 0;
+    overflow: hidden;
+    padding-bottom: 0;
+    overscroll-behavior: none;
   }
 
   .app-shell:has([data-active-workout-dock]) .app-shell-content {
     padding-bottom: calc(8.75rem + env(safe-area-inset-bottom));
+  }
+
+  .app-shell:has([data-active-workout-dock]) .app-shell-content-full-bleed {
+    padding-bottom: 0;
   }
 
   @media (min-width: 48rem) {
@@ -278,6 +285,10 @@
 
     .app-shell:has([data-active-workout-dock]) .app-shell-content {
       padding-bottom: 5rem;
+    }
+
+    .app-shell:has([data-active-workout-dock]) .app-shell-content-full-bleed {
+      padding-bottom: 0;
     }
   }
 }
