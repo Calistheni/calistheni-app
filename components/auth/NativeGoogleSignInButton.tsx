@@ -22,7 +22,9 @@ export function NativeGoogleSignInButton({
 
   useEffect(() => {
     if (!isNativeApp()) return;
-    let browserFinished: Awaited<ReturnType<typeof Browser.addListener>> | undefined;
+    let browserFinished:
+      | Awaited<ReturnType<typeof Browser.addListener>>
+      | undefined;
     let appState: Awaited<ReturnType<typeof App.addListener>> | undefined;
     const clear = () => setIsSubmitting(false);
     const completed = () => {
@@ -52,11 +54,15 @@ export function NativeGoogleSignInButton({
     try {
       if (!isNativeApp()) {
         // This is Auth.js's normal browser flow and deliberately remains so.
-        await signIn("google", {
-          redirectTo: callbackUrl
-            ? sanitizeNativeRedirectPath(callbackUrl)
-            : "/onboarding",
-        });
+        await signIn(
+          "google",
+          {
+            redirectTo: callbackUrl
+              ? sanitizeNativeRedirectPath(callbackUrl)
+              : "/onboarding",
+          },
+          { prompt: "select_account" }
+        );
         return;
       }
 
@@ -80,13 +86,18 @@ export function NativeGoogleSignInButton({
         throw new Error(payload.error ?? "Unable to start Google sign-in.");
       }
 
-      await Browser.open({ url: payload.externalAuthUrl, presentationStyle: "fullscreen" });
+      await Browser.open({
+        url: payload.externalAuthUrl,
+        presentationStyle: "fullscreen",
+      });
       // Browser.open resolving means its sheet was presented, not that OAuth succeeded.
       window.setTimeout(() => setIsSubmitting(false), 5 * 60 * 1000);
     } catch (error) {
       console.error("[native-auth] external authorization failed", error);
       toast.error(
-        error instanceof Error ? error.message : "Unable to start Google sign-in."
+        error instanceof Error
+          ? error.message
+          : "Unable to start Google sign-in."
       );
       setIsSubmitting(false);
     }
