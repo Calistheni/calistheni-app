@@ -41,11 +41,14 @@ test("picker uses accessible Radix tabs with one value-bound content panel per s
     new URL("../components/ui/tabs.tsx", import.meta.url),
     "utf8"
   );
-  assert.match(source, /<Tabs defaultValue="food" className="flex min-h-0 flex-1 flex-col">/);
+  assert.match(
+    source,
+    /<Tabs defaultValue="food" className="flex min-h-0 flex-1 flex-col">/
+  );
   assert.match(source, /<TabsTrigger className="flex-1" value="food">\s*Food/);
-  assert.match(source, /<TabsContent value="food"/);
-  assert.match(source, /<TabsContent value="meals"/);
-  assert.match(source, /<TabsContent value="recipes"/);
+  assert.match(source, /<TabsContent\s+value="food"/);
+  assert.match(source, /<TabsContent\s+value="meals"/);
+  assert.match(source, /<TabsContent\s+value="recipes"/);
   assert.match(tabs, /TabsPrimitive\.Root/);
   assert.match(tabs, /data-\[state=active\]:bg-background/);
   assert.match(tabs, /min-w-0 flex-1/);
@@ -65,7 +68,10 @@ test("food picker opens with a stable viewport and never autofocuses a search in
   ]);
 
   assert.match(picker, /<NutritionMobileSheet[\s\S]*scrollable=\{false\}/);
-  assert.match(picker, /min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain/);
+  assert.match(
+    picker,
+    /min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain/
+  );
   assert.doesNotMatch(picker, /h-\[92dvh\]|h-\[min\(48dvh,26rem\)\]/);
   assert.match(
     picker,
@@ -129,7 +135,37 @@ test("empty search starts with a stable Saved Foods surface and reuses the sessi
   assert.match(source, /<Skeleton className="h-16 w-full" \/>/);
   assert.match(source, /value\.trim\(\)\.length < 2 && savedFoodsCache/);
   assert.match(source, /savedFoodsCache = food\.isSaved/);
-  assert.doesNotMatch(source, /setTimeout[\s\S]{0,140}"\/api\/nutrition\/saved-foods"/);
+  assert.doesNotMatch(
+    source,
+    /setTimeout[\s\S]{0,140}"\/api\/nutrition\/saved-foods"/
+  );
+});
+
+test("food search reserves the result region and exposes current-query loading and errors", async () => {
+  const source = await readFile(
+    new URL("../components/nutrition/FoodPicker.tsx", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(
+    source,
+    /const \[searchLoading, setSearchLoading\] = useState\(false\)/
+  );
+  assert.match(
+    source,
+    /const \[searchFailed, setSearchFailed\] = useState\(false\)/
+  );
+  assert.match(source, /setSearchLoading\(value\.trim\(\)\.length >= 2\)/);
+  assert.match(source, /query\.trim\(\)\.length >= 2 && searchLoading/);
+  assert.match(source, /Searching foods…/);
+  assert.match(source, /aria-busy="true"/);
+  assert.match(source, /query\.trim\(\)\.length >= 2 && searchFailed/);
+  assert.match(source, /Couldn&apos;t search foods\. Please try again\./);
+  assert.match(source, /data-slot="food-picker-results"/);
+  assert.match(
+    source,
+    /data-slot="food-picker-results"[\s\S]*min-h-0 flex-1[\s\S]*overflow-y-auto/
+  );
 });
 
 test("nutrition overlay inputs require an explicit user interaction before focus", async () => {

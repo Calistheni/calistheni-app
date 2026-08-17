@@ -83,7 +83,9 @@ let quickActionCapabilitiesCache: NutritionQuickActionCapabilities | null =
 async function loadSavedFoods() {
   if (savedFoodsCache) return savedFoodsCache;
   if (!savedFoodsRequest) {
-    savedFoodsRequest = fetch("/api/nutrition/saved-foods", { cache: "no-store" })
+    savedFoodsRequest = fetch("/api/nutrition/saved-foods", {
+      cache: "no-store",
+    })
       .then(async (response) => {
         if (!response.ok) throw new Error("Unable to load saved foods.");
         const data = await response.json();
@@ -123,6 +125,8 @@ export function FoodPicker({
   const [inspectedFood, setInspectedFood] = useState<Food | null>(null);
   const [quickAdding, setQuickAdding] = useState<string | null>(null);
   const [savedFoodsFailed, setSavedFoodsFailed] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchFailed, setSearchFailed] = useState(false);
   const [quickActionCapabilities, setQuickActionCapabilities] =
     useState<NutritionQuickActionCapabilities | null>(
       () => quickActionCapabilitiesCache
@@ -175,8 +179,9 @@ export function FoodPicker({
           `/api/nutrition/foods/search?q=${encodeURIComponent(query.trim())}`,
           { cache: "no-store", signal: controller.signal }
         );
-        if (!response.ok) return;
+        if (!response.ok) throw new Error("Unable to search foods.");
         const data = await response.json();
+        if (controller.signal.aborted) return;
         setFoods(
           deduplicateFoodResults(
             data.results ?? [
@@ -186,8 +191,13 @@ export function FoodPicker({
             ]
           ).slice(0, NUTRITION_SEARCH_RESULT_LIMIT) as Food[]
         );
+        setSearchLoading(false);
       } catch (error) {
-        if ((error as DOMException).name !== "AbortError") setFoods([]);
+        if ((error as DOMException).name !== "AbortError") {
+          setFoods([]);
+          setSearchFailed(true);
+          setSearchLoading(false);
+        }
       }
     }, 250);
     return () => {
@@ -200,6 +210,8 @@ export function FoodPicker({
     setQuery("");
     setFoods([]);
     setInspectedFood(null);
+    setSearchLoading(false);
+    setSearchFailed(false);
     close();
   }
 
@@ -229,10 +241,10 @@ export function FoodPicker({
       savedFoodsCache = food.isSaved
         ? savedFoodsCache.filter((item) => item.id !== food.id)
         : savedFoodsCache.some((item) => item.id === food.id)
-          ? savedFoodsCache.map((item) =>
-              item.id === food.id ? { ...item, isSaved: true } : item
-            )
-          : [{ ...food, isSaved: true }, ...savedFoodsCache];
+        ? savedFoodsCache.map((item) =>
+            item.id === food.id ? { ...item, isSaved: true } : item
+          )
+        : [{ ...food, isSaved: true }, ...savedFoodsCache];
     }
     toast.success(
       food.isSaved
@@ -304,6 +316,8 @@ export function FoodPicker({
               onChange={(event) => {
                 const value = event.target.value;
                 setQuery(value);
+                setSearchLoading(value.trim().length >= 2);
+                setSearchFailed(false);
                 if (value.trim().length < 2 && savedFoodsCache) {
                   setFoods(savedFoodsCache);
                 }
@@ -333,132 +347,153 @@ export function FoodPicker({
                   Recipes
                 </TabsTrigger>
               </TabsList>
-              <TabsContent value="food" className="mt-2 flex min-h-0 flex-1 flex-col">
+              <TabsContent
+                value="food"
+                className="mt-2 flex min-h-0 flex-1 flex-col"
+              >
                 <div
                   data-keyboard-dismiss-on-scroll
+                  data-slot="food-picker-results"
                   className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain rounded-lg border p-1.5 [-webkit-overflow-scrolling:touch]"
                   aria-label="Food search results"
                 >
-                    {query.trim().length < 2 && savedLoading ? (
-                      <div className="space-y-2 p-2" aria-busy="true">
-                        <p className="text-sm font-medium">Saved foods</p>
-                        <Skeleton className="h-16 w-full" />
-                        <Skeleton className="h-16 w-full" />
-                        <Skeleton className="h-16 w-full" />
-                      </div>
-                    ) : query.trim().length < 2 ? (
-                      <p className="px-2 pt-1 text-sm font-medium">
-                        Saved foods
-                      </p>
-                    ) : null}
-                    {!savedLoading && foods.length ? (
-                      foods.map((food) => {
-                        const key = foodResultKey(food);
-                        const adding = quickAdding === key;
-                        return (
-                          <div
-                            key={key}
-                            className="flex min-h-11 min-w-0 items-center gap-2 rounded-lg border p-2"
+                  {query.trim().length < 2 && savedLoading ? (
+                    <div className="space-y-2 p-2" aria-busy="true">
+                      <p className="text-sm font-medium">Saved foods</p>
+                      <Skeleton className="h-16 w-full" />
+                      <Skeleton className="h-16 w-full" />
+                      <Skeleton className="h-16 w-full" />
+                    </div>
+                  ) : query.trim().length < 2 ? (
+                    <p className="px-2 pt-1 text-sm font-medium">Saved foods</p>
+                  ) : null}
+                  {query.trim().length >= 2 && searchLoading ? (
+                    <div
+                      className="flex min-h-full items-center justify-center gap-2 p-4 text-center text-sm text-muted-foreground"
+                      role="status"
+                      aria-live="polite"
+                      aria-busy="true"
+                    >
+                      <Loader2 className="size-4 animate-spin" />
+                      Searching foods…
+                    </div>
+                  ) : !savedLoading && foods.length ? (
+                    foods.map((food) => {
+                      const key = foodResultKey(food);
+                      const adding = quickAdding === key;
+                      return (
+                        <div
+                          key={key}
+                          className="flex min-h-11 min-w-0 items-center gap-2 rounded-lg border p-2"
+                        >
+                          <button
+                            type="button"
+                            className="flex min-w-0 flex-1 items-center gap-3 rounded-md p-1 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            onClick={() => setInspectedFood(food)}
                           >
-                            <button
-                              type="button"
-                              className="flex min-w-0 flex-1 items-center gap-3 rounded-md p-1 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                              onClick={() => setInspectedFood(food)}
-                            >
-                              <FoodVisual
-                                imageUrl={food.imageUrl}
-                                iconPath={food.genericIcon?.url}
-                                name={food.name}
-                                size="sm"
-                              />
-                              <span className="min-w-0 flex-1">
-                                <span className="line-clamp-2 block font-medium">
-                                  {food.name}
-                                </span>
-                                <span className="mt-1 block text-xs text-muted-foreground">
-                                  {food.brandName ? `${food.brandName} · ` : ""}
-                                  {format(
-                                    Number(
-                                      food.nutritionPer100g.caloriesKcal ?? 0
-                                    )
-                                  )}{" "}
-                                  kcal · P{" "}
-                                  {format(
-                                    Number(
-                                      food.nutritionPer100g.proteinGrams ?? 0
-                                    )
-                                  )}{" "}
-                                  · C{" "}
-                                  {format(
-                                    Number(
-                                      food.nutritionPer100g.carbohydrateGrams ??
-                                        0
-                                    )
-                                  )}{" "}
-                                  · F{" "}
-                                  {format(
-                                    Number(food.nutritionPer100g.fatGrams ?? 0)
-                                  )}{" "}
-                                  per 100 g
-                                </span>
+                            <FoodVisual
+                              imageUrl={food.imageUrl}
+                              iconPath={food.genericIcon?.url}
+                              name={food.name}
+                              size="sm"
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="line-clamp-2 block font-medium">
+                                {food.name}
                               </span>
-                              {food.isSaved ? (
-                                <span className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                                  <Bookmark className="size-3" /> Saved
-                                </span>
-                              ) : null}
-                            </button>
+                              <span className="mt-1 block text-xs text-muted-foreground">
+                                {food.brandName ? `${food.brandName} · ` : ""}
+                                {format(
+                                  Number(
+                                    food.nutritionPer100g.caloriesKcal ?? 0
+                                  )
+                                )}{" "}
+                                kcal · P{" "}
+                                {format(
+                                  Number(
+                                    food.nutritionPer100g.proteinGrams ?? 0
+                                  )
+                                )}{" "}
+                                · C{" "}
+                                {format(
+                                  Number(
+                                    food.nutritionPer100g.carbohydrateGrams ?? 0
+                                  )
+                                )}{" "}
+                                · F{" "}
+                                {format(
+                                  Number(food.nutritionPer100g.fatGrams ?? 0)
+                                )}{" "}
+                                per 100 g
+                              </span>
+                            </span>
+                            {food.isSaved ? (
+                              <span className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                                <Bookmark className="size-3" /> Saved
+                              </span>
+                            ) : null}
+                          </button>
+                          <Button
+                            size="icon-sm"
+                            aria-label={`Quick add ${food.name}`}
+                            title="Add default serving"
+                            disabled={Boolean(quickAdding)}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              void quickAdd(food);
+                            }}
+                          >
+                            {adding ? (
+                              <Loader2 className="animate-spin" />
+                            ) : (
+                              <Plus />
+                            )}
+                          </Button>
+                          {food.id ? (
                             <Button
                               size="icon-sm"
-                              aria-label={`Quick add ${food.name}`}
-                              title="Add default serving"
-                              disabled={Boolean(quickAdding)}
-                              onClick={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                void quickAdd(food);
-                              }}
+                              variant="ghost"
+                              aria-label={
+                                food.isSaved
+                                  ? `Remove ${food.name} from saved foods`
+                                  : `Save ${food.name}`
+                              }
+                              onClick={() => void toggleSaved(food)}
                             >
-                              {adding ? (
-                                <Loader2 className="animate-spin" />
-                              ) : (
-                                <Plus />
-                              )}
+                              {food.isSaved ? <BookmarkX /> : <Bookmark />}
                             </Button>
-                            {food.id ? (
-                              <Button
-                                size="icon-sm"
-                                variant="ghost"
-                                aria-label={
-                                  food.isSaved
-                                    ? `Remove ${food.name} from saved foods`
-                                    : `Save ${food.name}`
-                                }
-                                onClick={() => void toggleSaved(food)}
-                              >
-                                {food.isSaved ? <BookmarkX /> : <Bookmark />}
-                              </Button>
-                            ) : null}
-                          </div>
-                        );
-                      })
-                    ) : query.trim().length >= 2 ? (
-                      <p className="p-4 text-center text-sm text-muted-foreground">
-                        No foods found. Try a more specific search.
+                          ) : null}
+                        </div>
+                      );
+                    })
+                  ) : query.trim().length >= 2 && searchFailed ? (
+                    <p
+                      className="p-4 text-center text-sm text-muted-foreground"
+                      role="alert"
+                    >
+                      Couldn&apos;t search foods. Please try again.
+                    </p>
+                  ) : query.trim().length >= 2 ? (
+                    <p className="p-4 text-center text-sm text-muted-foreground">
+                      No foods found. Try a more specific search.
+                    </p>
+                  ) : !savedLoading ? (
+                    <div className="p-4 text-center text-sm text-muted-foreground">
+                      <p className="font-medium text-foreground">
+                        No saved foods yet.
                       </p>
-                    ) : !savedLoading ? (
-                      <div className="p-4 text-center text-sm text-muted-foreground">
-                        <p className="font-medium text-foreground">
-                          No saved foods yet.
-                        </p>
-                        <p className="mt-1">
-                          Save foods you use often to find them here quickly.
-                        </p>
-                      </div>
-                    ) : null}
+                      <p className="mt-1">
+                        Save foods you use often to find them here quickly.
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
               </TabsContent>
-              <TabsContent value="meals" className="mt-2 min-h-0 flex-1 overflow-y-auto overscroll-contain">
+              <TabsContent
+                value="meals"
+                className="mt-2 min-h-0 flex-1 overflow-y-auto overscroll-contain"
+              >
                 <NutritionSavedMeals
                   mealCategory={meal!}
                   date={date}
@@ -467,7 +502,10 @@ export function FoodPicker({
                   }
                 />
               </TabsContent>
-              <TabsContent value="recipes" className="mt-2 min-h-0 flex-1 overflow-y-auto overscroll-contain">
+              <TabsContent
+                value="recipes"
+                className="mt-2 min-h-0 flex-1 overflow-y-auto overscroll-contain"
+              >
                 <Empty
                   title="No recipes yet"
                   text="Create a recipe and define its ingredients and servings."
