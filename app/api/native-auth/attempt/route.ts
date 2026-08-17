@@ -22,24 +22,45 @@ function hasTrustedOrigin(request: Request) {
 export async function POST(request: Request) {
   if (!hasTrustedOrigin(request)) {
     return NextResponse.json(
-      { error: "Native authentication must start from Calistheni.", code: "NATIVE_AUTH_ORIGIN_INVALID" },
+      {
+        error: "Native authentication must start from Calistheni.",
+        code: "NATIVE_AUTH_ORIGIN_INVALID",
+      },
       { status: 403 }
     );
   }
 
-  let body: { platform?: unknown; redirectTo?: unknown };
+  let body: { platform?: unknown; redirectTo?: unknown; intent?: unknown };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json(
-      { error: "Invalid native authentication request.", code: "NATIVE_AUTH_REQUEST_INVALID" },
+      {
+        error: "Invalid native authentication request.",
+        code: "NATIVE_AUTH_REQUEST_INVALID",
+      },
       { status: 400 }
     );
   }
 
   if (!isNativeAuthPlatform(body.platform)) {
     return NextResponse.json(
-      { error: "Unsupported native platform.", code: "NATIVE_AUTH_PLATFORM_INVALID" },
+      {
+        error: "Unsupported native platform.",
+        code: "NATIVE_AUTH_PLATFORM_INVALID",
+      },
+      { status: 400 }
+    );
+  }
+  // This endpoint currently starts fresh interactive logins only. Keep the
+  // intent explicit so a future same-account reauthentication flow cannot
+  // accidentally inherit this browser-session reset.
+  if (body.intent !== "login") {
+    return NextResponse.json(
+      {
+        error: "Unsupported native authentication intent.",
+        code: "NATIVE_AUTH_INTENT_INVALID",
+      },
       { status: 400 }
     );
   }
@@ -48,7 +69,9 @@ export async function POST(request: Request) {
   const now = new Date();
   const nonce = createNativeAuthSecret();
   const attempt = await prisma.$transaction(async (tx) => {
-    await tx.nativeAuthAttempt.deleteMany({ where: { expiresAt: { lt: now } } });
+    await tx.nativeAuthAttempt.deleteMany({
+      where: { expiresAt: { lt: now } },
+    });
     return tx.nativeAuthAttempt.create({
       data: {
         platform,
@@ -63,10 +86,12 @@ export async function POST(request: Request) {
   const startUrl = new URL("/api/native-auth/browser-start", getSiteUrl());
   startUrl.searchParams.set("attempt", attempt.id);
   startUrl.searchParams.set("nonce", nonce);
+  startUrl.searchParams.set("intent", "login");
 
   logNativeAuth("attempt_created", {
     attemptId: attempt.id,
     platform,
+    intent: "login",
   });
 
   return NextResponse.json({

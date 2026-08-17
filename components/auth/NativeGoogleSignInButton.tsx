@@ -73,6 +73,7 @@ export function NativeGoogleSignInButton({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           platform,
+          intent: "login",
           redirectTo: callbackUrl
             ? sanitizeNativeRedirectPath(callbackUrl)
             : "/home",

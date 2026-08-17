@@ -22,18 +22,44 @@ test("explicit Google sign-in asks Google to select an account on web and native
   }
 });
 
-test("Google account selection keeps the existing native handoff and Calistheni-only logout", async () => {
-  const [nativeStart, complete, accountMenu, mobileUtilities] =
-    await Promise.all([
-      readFile(new URL("app/mobile/auth/start/page.tsx", root), "utf8"),
-      readFile(new URL("app/api/auth/mobile/complete/route.ts", root), "utf8"),
-      readFile(new URL("components/navigation/AccountMenu.tsx", root), "utf8"),
-      readFile(
-        new URL("components/profile/MobileAccountUtilities.tsx", root),
-        "utf8"
-      ),
-    ]);
+test("a fresh native login clears only Calistheni's stale Browser session before account selection", async () => {
+  const [
+    button,
+    attempt,
+    browserStart,
+    nativeStart,
+    complete,
+    accountMenu,
+    mobileUtilities,
+  ] = await Promise.all([
+    readFile(
+      new URL("components/auth/NativeGoogleSignInButton.tsx", root),
+      "utf8"
+    ),
+    readFile(new URL("app/api/native-auth/attempt/route.ts", root), "utf8"),
+    readFile(
+      new URL("app/api/native-auth/browser-start/route.ts", root),
+      "utf8"
+    ),
+    readFile(new URL("app/mobile/auth/start/page.tsx", root), "utf8"),
+    readFile(new URL("app/api/auth/mobile/complete/route.ts", root), "utf8"),
+    readFile(new URL("components/navigation/AccountMenu.tsx", root), "utf8"),
+    readFile(
+      new URL("components/profile/MobileAccountUtilities.tsx", root),
+      "utf8"
+    ),
+  ]);
 
+  assert.match(button, /intent: "login"/);
+  assert.match(attempt, /body\.intent !== "login"/);
+  assert.match(attempt, /startUrl\.searchParams\.set\("intent", "login"\)/);
+  assert.match(browserStart, /intent !== "login"/);
+  assert.match(browserStart, /getAuthSessionCookieName/);
+  assert.match(
+    browserStart,
+    /response\.cookies\.set\(getAuthSessionCookieName\(\), ""/
+  );
+  assert.doesNotMatch(browserStart, /google\.com|accounts\.google\.com/);
   assert.match(
     nativeStart,
     /callbackUrl\.pathname = "\/api\/native-auth\/complete"/
