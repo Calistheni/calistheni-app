@@ -72,6 +72,8 @@ export async function POST(request: Request) {
       update: {},
     });
     return NextResponse.json({
+      saved: true,
+      foodId: food.id,
       food: { ...toFoodSummary(food), isSaved: true },
     });
   } catch (error) {

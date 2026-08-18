@@ -128,17 +128,16 @@ test("empty search starts with a stable Saved Foods surface and reuses the sessi
     new URL("../components/nutrition/FoodPicker.tsx", import.meta.url),
     "utf8"
   );
-  assert.match(source, /let savedFoodsCache: Food\[\] \| null = null/);
-  assert.match(source, /const savedLoading =[\s\S]*savedFoodsCache === null/);
-  assert.match(source, /void loadSavedFoods\(\)/);
+  assert.match(source, /getSavedFoodsCache/);
+  assert.match(source, /loadSavedFoodsCache<Food>\(\)/);
+  assert.match(
+    source,
+    /const savedLoading =[\s\S]*getSavedFoodsCache<Food>\(\) === null/
+  );
   assert.match(source, /query\.trim\(\)\.length < 2 && savedLoading/);
   assert.match(source, /<Skeleton className="h-16 w-full" \/>/);
-  assert.match(source, /value\.trim\(\)\.length < 2 && savedFoodsCache/);
-  assert.match(source, /savedFoodsCache = food\.isSaved/);
-  assert.doesNotMatch(
-    source,
-    /setTimeout[\s\S]{0,140}"\/api\/nutrition\/saved-foods"/
-  );
+  assert.match(source, /value\.trim\(\)\.length < 2/);
+  assert.match(source, /updateSavedFoodsCache\(savedFood, !saved\)/);
 });
 
 test("food search reserves the result region and exposes current-query loading and errors", async () => {

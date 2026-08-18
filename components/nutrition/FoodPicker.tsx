@@ -36,6 +36,11 @@ import {
 } from "@/lib/nutrition/result-identity";
 import { NUTRITION_SEARCH_RESULT_LIMIT } from "@/lib/nutrition/search-ranking";
 import { getNativePlatform, isNativeApp } from "@/lib/native/platform";
+import {
+  getSavedFoodsCache,
+  loadSavedFoodsCache,
+  updateSavedFoodsCache,
+} from "@/lib/nutrition/saved-foods-cache";
 
 export type NutritionPickerMeal = "BREAKFAST" | "LUNCH" | "DINNER" | "SNACKS";
 
@@ -73,11 +78,10 @@ type Food = {
   genericIcon?: { key?: string; url: string } | null;
   servings?: Array<{ name: string; grams: number; isDefault?: boolean }>;
   nutritionPer100g: Record<string, number | undefined>;
+  isLocal?: boolean;
   isSaved?: boolean;
 };
 
-let savedFoodsCache: Food[] | null = null;
-let savedFoodsRequest: Promise<Food[]> | null = null;
 let quickActionCapabilitiesCache: NutritionQuickActionCapabilities | null =
   null;
 const isDevelopment = process.env.NODE_ENV === "development";
@@ -103,31 +107,6 @@ function logSearchFocus(event: string, input: HTMLInputElement) {
   });
 }
 
-async function loadSavedFoods() {
-  if (savedFoodsCache) return savedFoodsCache;
-  if (!savedFoodsRequest) {
-    savedFoodsRequest = fetch("/api/nutrition/saved-foods", {
-      cache: "no-store",
-    })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Unable to load saved foods.");
-        const data = await response.json();
-        return deduplicateFoodResults(data.foods ?? []).slice(
-          0,
-          NUTRITION_SEARCH_RESULT_LIMIT
-        ) as Food[];
-      })
-      .then((foods) => {
-        savedFoodsCache = foods;
-        return foods;
-      })
-      .finally(() => {
-        savedFoodsRequest = null;
-      });
-  }
-  return savedFoodsRequest;
-}
-
 function format(value: number, digits = 1) {
   return Number.isInteger(value) ? String(value) : value.toFixed(digits);
 }
@@ -137,17 +116,24 @@ export function FoodPicker({
   date,
   close,
   onAddEntries,
+  onSavedFoodChange,
 }: {
   meal: NutritionPickerMeal | null;
   date: string;
   close: () => void;
   onAddEntries: (entries: NutritionPickerEntry[]) => void;
+  onSavedFoodChange?: (foodId: string, saved: boolean) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [foods, setFoods] = useState<Food[]>(() => savedFoodsCache ?? []);
+  const [foods, setFoods] = useState<Food[]>(
+    () => getSavedFoodsCache<Food>() ?? []
+  );
   const [inspectedFood, setInspectedFood] = useState<Food | null>(null);
   const [quickAdding, setQuickAdding] = useState<string | null>(null);
   const [savedFoodsFailed, setSavedFoodsFailed] = useState(false);
+  const [savingFoodIds, setSavingFoodIds] = useState<Set<string>>(
+    () => new Set()
+  );
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchFailed, setSearchFailed] = useState(false);
   const [quickActionCapabilities, setQuickActionCapabilities] =
@@ -155,7 +141,9 @@ export function FoodPicker({
       () => quickActionCapabilitiesCache
     );
   const savedLoading =
-    query.trim().length < 2 && savedFoodsCache === null && !savedFoodsFailed;
+    query.trim().length < 2 &&
+    getSavedFoodsCache<Food>() === null &&
+    !savedFoodsFailed;
 
   useEffect(() => {
     if (quickActionCapabilitiesCache) return;
@@ -180,11 +168,11 @@ export function FoodPicker({
     const controller = new AbortController();
     const isSearching = query.trim().length >= 2;
     if (!isSearching) {
-      if (savedFoodsCache) {
+      if (getSavedFoodsCache<Food>()) {
         return () => controller.abort();
       } else {
-        void loadSavedFoods()
-          .then((saved) => {
+        void loadSavedFoodsCache<Food>()
+          .then((saved: Food[]) => {
             if (!controller.signal.aborted) setFoods(saved);
           })
           .catch(() => {
@@ -205,6 +193,11 @@ export function FoodPicker({
         if (!response.ok) throw new Error("Unable to search foods.");
         const data = await response.json();
         if (controller.signal.aborted) return;
+        const savedFoodIds = new Set(
+          getSavedFoodsCache<Food>()
+            ?.map((food) => food.id)
+            .filter((id): id is string => Boolean(id)) ?? []
+        );
         setFoods(
           deduplicateFoodResults(
             data.results ?? [
@@ -212,7 +205,11 @@ export function FoodPicker({
               ...(data.localResults ?? []),
               ...(data.packagedResults ?? []),
             ]
-          ).slice(0, NUTRITION_SEARCH_RESULT_LIMIT) as Food[]
+          )
+            .slice(0, NUTRITION_SEARCH_RESULT_LIMIT)
+            .map((food) =>
+              food.id ? { ...food, isSaved: savedFoodIds.has(food.id) } : food
+            ) as Food[]
         );
         setSearchLoading(false);
       } catch (error) {
@@ -258,41 +255,59 @@ export function FoodPicker({
   }
 
   async function toggleSaved(food: Food) {
-    if (!food.id) return;
-    const response = await fetch(
-      food.isSaved
-        ? `/api/nutrition/saved-foods/${food.id}`
-        : "/api/nutrition/saved-foods",
-      food.isSaved
-        ? { method: "DELETE" }
-        : {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ foodId: food.id }),
-          }
-    );
-    if (!response.ok) return toast.error("Unable to update saved foods.");
-    setFoods((current) =>
-      food.isSaved
-        ? current.filter((item) => item.id !== food.id)
-        : current.map((item) =>
-            item.id === food.id ? { ...item, isSaved: true } : item
-          )
-    );
-    if (savedFoodsCache) {
-      savedFoodsCache = food.isSaved
-        ? savedFoodsCache.filter((item) => item.id !== food.id)
-        : savedFoodsCache.some((item) => item.id === food.id)
-        ? savedFoodsCache.map((item) =>
-            item.id === food.id ? { ...item, isSaved: true } : item
-          )
-        : [{ ...food, isSaved: true }, ...savedFoodsCache];
+    if (!food.id || savingFoodIds.has(food.id)) return;
+    const saved = Boolean(food.isSaved);
+    setSavingFoodIds((current) => new Set(current).add(food.id!));
+    try {
+      const response = await fetch(
+        saved
+          ? `/api/nutrition/saved-foods/${food.id}`
+          : "/api/nutrition/saved-foods",
+        saved
+          ? { method: "DELETE" }
+          : {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ foodId: food.id }),
+            }
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        return toast.error(
+          payload?.error?.message ??
+            payload?.error ??
+            "Unable to update saved foods."
+        );
+      }
+      const savedFood = (payload?.food ?? food) as Food;
+      setFoods((current) =>
+        saved
+          ? query.trim().length < 2
+            ? current.filter((item) => item.id !== food.id)
+            : current.map((item) =>
+                item.id === food.id ? { ...item, isSaved: false } : item
+              )
+          : query.trim().length < 2
+          ? [
+              { ...savedFood, isSaved: true },
+              ...current.filter((item) => item.id !== food.id),
+            ]
+          : current.map((item) =>
+              item.id === food.id ? { ...savedFood, isSaved: true } : item
+            )
+      );
+      updateSavedFoodsCache(savedFood, !saved);
+      onSavedFoodChange?.(food.id, !saved);
+      toast.success(
+        saved ? `Removed ${food.name} from saved foods.` : `${food.name} saved.`
+      );
+    } finally {
+      setSavingFoodIds((current) => {
+        const next = new Set(current);
+        next.delete(food.id!);
+        return next;
+      });
     }
-    toast.success(
-      food.isSaved
-        ? `Removed ${food.name} from saved foods.`
-        : `${food.name} saved.`
-    );
   }
 
   async function logFood({ foodId, grams, unit }: FoodUseSelection) {
@@ -363,8 +378,8 @@ export function FoodPicker({
                 setQuery(value);
                 setSearchLoading(value.trim().length >= 2);
                 setSearchFailed(false);
-                if (value.trim().length < 2 && savedFoodsCache) {
-                  setFoods(savedFoodsCache);
+                if (value.trim().length < 2) {
+                  setFoods(getSavedFoodsCache<Food>() ?? []);
                 }
               }}
             />
@@ -426,6 +441,9 @@ export function FoodPicker({
                     foods.map((food) => {
                       const key = foodResultKey(food);
                       const adding = quickAdding === key;
+                      const saving = food.id
+                        ? savingFoodIds.has(food.id)
+                        : false;
                       return (
                         <div
                           key={key}
@@ -499,6 +517,7 @@ export function FoodPicker({
                             <Button
                               size="icon-sm"
                               variant="ghost"
+                              disabled={saving}
                               aria-label={
                                 food.isSaved
                                   ? `Remove ${food.name} from saved foods`
@@ -506,7 +525,13 @@ export function FoodPicker({
                               }
                               onClick={() => void toggleSaved(food)}
                             >
-                              {food.isSaved ? <BookmarkX /> : <Bookmark />}
+                              {saving ? (
+                                <Loader2 className="animate-spin" />
+                              ) : food.isSaved ? (
+                                <BookmarkX />
+                              ) : (
+                                <Bookmark />
+                              )}
                             </Button>
                           ) : null}
                         </div>

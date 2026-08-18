@@ -50,6 +50,7 @@ import {
   type NutritionGoalValues,
 } from "@/lib/nutrition/goals";
 import { isNativeApp } from "@/lib/native/platform";
+import { invalidateSavedFoodsCache } from "@/lib/nutrition/saved-foods-cache";
 
 const FoodPicker = dynamic(
   () =>
@@ -180,6 +181,9 @@ export function NutritionTracker() {
   const [reusingEntry, setReusingEntry] = useState<Entry | null>(null);
   const [reuseMeal, setReuseMeal] = useState<Meal>("BREAKFAST");
   const [savedFoodIds, setSavedFoodIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [savingSavedFoodIds, setSavingSavedFoodIds] = useState<Set<string>>(
     () => new Set()
   );
   const [pickerKey, setPickerKey] = useState(0);
@@ -366,31 +370,42 @@ export function NutritionTracker() {
     );
   }
   async function saveFood(entry: Entry) {
+    if (savingSavedFoodIds.has(entry.foodId)) return;
     const saved = savedFoodIds.has(entry.foodId);
-    const response = await fetch(
-      saved
-        ? `/api/nutrition/saved-foods/${entry.foodId}`
-        : "/api/nutrition/saved-foods",
-      saved
-        ? { method: "DELETE" }
-        : {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ foodId: entry.foodId }),
-          }
-    );
-    if (!response.ok) return toast.error("Unable to save this food.");
-    setSavedFoodIds((current) => {
-      const next = new Set(current);
-      if (saved) next.delete(entry.foodId);
-      else next.add(entry.foodId);
-      return next;
-    });
-    toast.success(
-      saved
-        ? `${entry.foodNameSnapshot} removed from saved foods.`
-        : `${entry.foodNameSnapshot} saved.`
-    );
+    setSavingSavedFoodIds((current) => new Set(current).add(entry.foodId));
+    try {
+      const response = await fetch(
+        saved
+          ? `/api/nutrition/saved-foods/${entry.foodId}`
+          : "/api/nutrition/saved-foods",
+        saved
+          ? { method: "DELETE" }
+          : {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ foodId: entry.foodId }),
+            }
+      );
+      if (!response.ok) return toast.error("Unable to save this food.");
+      invalidateSavedFoodsCache();
+      setSavedFoodIds((current) => {
+        const next = new Set(current);
+        if (saved) next.delete(entry.foodId);
+        else next.add(entry.foodId);
+        return next;
+      });
+      toast.success(
+        saved
+          ? `${entry.foodNameSnapshot} removed from saved foods.`
+          : `${entry.foodNameSnapshot} saved.`
+      );
+    } finally {
+      setSavingSavedFoodIds((current) => {
+        const next = new Set(current);
+        next.delete(entry.foodId);
+        return next;
+      });
+    }
   }
 
   return (
@@ -460,6 +475,7 @@ export function NutritionTracker() {
                 }}
                 onSave={saveFood}
                 savedFoodIds={savedFoodIds}
+                savingSavedFoodIds={savingSavedFoodIds}
                 onActionMenuOpen={ensureSavedFoodIds}
               />
             ))}
@@ -479,6 +495,14 @@ export function NutritionTracker() {
           date={date}
           close={() => setMeal(null)}
           onAddEntries={applyServerEntries}
+          onSavedFoodChange={(foodId, saved) => {
+            setSavedFoodIds((current) => {
+              const next = new Set(current);
+              if (saved) next.add(foodId);
+              else next.delete(foodId);
+              return next;
+            });
+          }}
         />
       ) : null}
       {editing ? (
@@ -683,6 +707,7 @@ function MealSection({
   onUse,
   onSave,
   savedFoodIds,
+  savingSavedFoodIds,
   onActionMenuOpen,
 }: {
   label: string;
@@ -696,6 +721,7 @@ function MealSection({
   onUse: (entry: Entry) => void;
   onSave: (entry: Entry) => void;
   savedFoodIds: Set<string>;
+  savingSavedFoodIds: Set<string>;
   onActionMenuOpen: () => Promise<void>;
 }) {
   const total = nutritionTotals(entries);
@@ -784,7 +810,10 @@ function MealSection({
                       <CopyPlus /> Use
                     </DropdownMenuItem>
                   ) : null}
-                  <DropdownMenuItem onSelect={() => onSave(entry)}>
+                  <DropdownMenuItem
+                    disabled={savingSavedFoodIds.has(entry.foodId)}
+                    onSelect={() => onSave(entry)}
+                  >
                     {savedFoodIds.has(entry.foodId) ? (
                       <BookmarkX />
                     ) : (

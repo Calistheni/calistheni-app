@@ -14,10 +14,10 @@ export async function DELETE(
   if (!userId) return createUserUnauthorizedResponse();
   const { foodId } = await params;
   try {
-    await prisma.nutritionSavedFood.delete({
-      where: { userId_foodId: { userId, foodId } },
+    await prisma.nutritionSavedFood.deleteMany({
+      where: { userId, foodId },
     });
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ saved: false, foodId });
   } catch {
     return createJsonErrorResponse("Saved food was not found.", 404);
   }
