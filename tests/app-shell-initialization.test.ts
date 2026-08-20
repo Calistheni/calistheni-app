@@ -54,5 +54,10 @@ test("native startup surfaces use the same dark-safe fallback as the server root
   assert.match(capacitor, /backgroundColor: "#09090b"/);
   assert.match(capacitor, /style: "DARK"/);
   assert.match(nativeShell, /resolvedTheme/);
+  assert.match(nativeShell, /Keyboard\.setScroll\(\{ isDisabled: true \}\)/);
+  assert.match(
+    nativeShell,
+    /Capacitor\.getPlatform\(\) !== "ios"/
+  );
   assert.match(fallback, /background: #09090b/);
 });

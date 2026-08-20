@@ -169,4 +169,14 @@ test("active workout owns keyboard accommodation in its internal shell", async (
     nativeShell,
     /target\?\.closest\('input, textarea, select, \[contenteditable="true"\]'\)/
   );
+  assert.match(
+    nativeShell,
+    /if \(!isNativeApp\(\) \|\| Capacitor\.getPlatform\(\) !== "ios"\) return;[\s\S]*configureIOSKeyboard\(\)/
+  );
+  assert.match(
+    nativeShell,
+    /Keyboard\.setScroll\(\{ isDisabled: true \}\)/
+  );
+  assert.match(nativeShell, /let iOSKeyboardSetup: Promise<void> \| null = null/);
+  assert.doesNotMatch(builder, /Keyboard\.setScroll|window\.scrollTo/);
 });

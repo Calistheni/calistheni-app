@@ -16,20 +16,26 @@ import {
 import { dismissActiveTextInput } from "@/lib/mobile-keyboard";
 
 const isDevelopment = process.env.NODE_ENV === "development";
-let iOSKeyboardResizeSetup: Promise<void> | null = null;
+let iOSKeyboardSetup: Promise<void> | null = null;
 
 function logKeyboardResize(event: string, detail?: unknown) {
   if (!isDevelopment) return;
+  const workoutScrollOwner = document.querySelector<HTMLElement>(
+    "[data-active-workout-scroll-owner]"
+  );
   console.debug(`[native-keyboard] ${event}`, {
     detail,
     innerHeight: window.innerHeight,
     visualViewportHeight: window.visualViewport?.height ?? null,
+    windowScrollY: window.scrollY,
+    documentScrollTop: document.scrollingElement?.scrollTop ?? null,
+    workoutScrollTop: workoutScrollOwner?.scrollTop ?? null,
   });
 }
 
-function configureIOSKeyboardResize() {
-  if (!iOSKeyboardResizeSetup) {
-    iOSKeyboardResizeSetup = Keyboard.setResizeMode({
+function configureIOSKeyboard() {
+  if (!iOSKeyboardSetup) {
+    const resizeSetup = Keyboard.setResizeMode({
       mode: KeyboardResize.Body,
     })
       .then(() => Keyboard.getResizeMode())
@@ -37,8 +43,17 @@ function configureIOSKeyboardResize() {
       .catch((error: unknown) => {
         logKeyboardResize("resize mode setup failed", String(error));
       });
+    const webViewScrollSetup = Keyboard.setScroll({ isDisabled: true })
+      .then(() => logKeyboardResize("iOS WebView automatic scroll disabled"))
+      .catch((error: unknown) => {
+        logKeyboardResize("iOS WebView scroll setup failed", String(error));
+      });
+
+    iOSKeyboardSetup = Promise.all([resizeSetup, webViewScrollSetup]).then(
+      () => undefined
+    );
   }
-  return iOSKeyboardResizeSetup;
+  return iOSKeyboardSetup;
 }
 
 function logNativeSplash(event: string, detail?: unknown) {
@@ -112,7 +127,11 @@ export function NativeShell() {
     // Config applies before the bridge starts; also set the documented iOS
     // mode once per app session so a stale native bundle cannot leave the
     // active WebView on the old frame-resizing mode.
-    void configureIOSKeyboardResize();
+    // Configure the native keyboard once per iOS app session. Disabling the
+    // outer WKWebView scroll prevents UIKit focus accommodation from moving
+    // the document while Calistheni's explicit inner form/sheet scrollers
+    // remain available to reveal their focused controls.
+    void configureIOSKeyboard();
 
     if (isDevelopment) {
       addListener(
