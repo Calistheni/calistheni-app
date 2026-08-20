@@ -46,3 +46,18 @@ export function getWorkoutKeyboardScrollAdjustment({
   if (inputTop < visibleTop) return inputTop - visibleTop;
   return 0;
 }
+
+export function getWorkoutKeyboardScrollTarget({
+  scrollTop,
+  scrollHeight,
+  clientHeight,
+  adjustment,
+}: {
+  scrollTop: number;
+  scrollHeight: number;
+  clientHeight: number;
+  adjustment: number;
+}) {
+  const maxScrollTop = Math.max(0, scrollHeight - clientHeight);
+  return Math.min(maxScrollTop, Math.max(0, scrollTop + adjustment));
+}

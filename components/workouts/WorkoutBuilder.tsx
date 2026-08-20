@@ -171,6 +171,7 @@ import { isIOSApp, isNativePluginAvailable } from "@/lib/native/platform";
 import {
   getWorkoutKeyboardBottomSpace,
   getWorkoutKeyboardScrollAdjustment,
+  getWorkoutKeyboardScrollTarget,
 } from "@/lib/workout-keyboard";
 import { endWorkoutLiveActivity, syncWorkoutLiveActivity } from "@/lib/native/workout-live-activity";
 import { getAppleHealthWorkoutPayload } from "@/lib/apple-health-workout";
@@ -879,6 +880,8 @@ export function WorkoutBuilder({
   const focusedWorkoutInputRef = useRef<HTMLInputElement | null>(null);
   const keyboardHeightRef = useRef(0);
   const keyboardVisibleRef = useRef(false);
+  const keyboardScrollRequestRef = useRef(0);
+  const keyboardScrollFrameRef = useRef<number | null>(null);
   const loadedPerformanceReferenceIdsRef = useRef(new Set<string>());
   const completionViewportAnchorRef = useRef<{
     setLocalId: string;
@@ -1252,7 +1255,8 @@ export function WorkoutBuilder({
     return () => mediaQuery.removeEventListener("change", updateViewport);
   }, []);
 
-  const keepFocusedWorkoutInputVisible = useCallback(() => {
+  const keepFocusedWorkoutInputVisible = useCallback((requestId: number) => {
+    if (requestId !== keyboardScrollRequestRef.current) return;
     const input = focusedWorkoutInputRef.current;
     const scrollOwner = document.querySelector<HTMLElement>(
       "[data-active-workout-scroll-owner]"
@@ -1270,6 +1274,13 @@ export function WorkoutBuilder({
       keyboardHeight: keyboardHeightRef.current,
     });
 
+    const targetScrollTop = getWorkoutKeyboardScrollTarget({
+      scrollTop: scrollOwner.scrollTop,
+      scrollHeight: scrollOwner.scrollHeight,
+      clientHeight: scrollOwner.clientHeight,
+      adjustment: adjustedBy,
+    });
+
     logWorkoutKeyboard("visibility check", {
       field: input.getAttribute("aria-label"),
       containerScrollTop: scrollOwner.scrollTop,
@@ -1278,12 +1289,25 @@ export function WorkoutBuilder({
       keyboardHeight: keyboardHeightRef.current,
       obscured: adjustedBy !== 0,
       adjustedBy,
+      targetScrollTop,
     });
 
-    if (Math.abs(adjustedBy) > 1) {
-      scrollOwner.scrollBy({ top: adjustedBy, behavior: "auto" });
+    if (Math.abs(targetScrollTop - scrollOwner.scrollTop) > 1) {
+      scrollOwner.scrollTo({ top: targetScrollTop, behavior: "smooth" });
     }
   }, []);
+
+  const scheduleFocusedWorkoutInputVisibility = useCallback(() => {
+    const requestId = keyboardScrollRequestRef.current + 1;
+    keyboardScrollRequestRef.current = requestId;
+    if (keyboardScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(keyboardScrollFrameRef.current);
+    }
+    keyboardScrollFrameRef.current = window.requestAnimationFrame(() => {
+      keyboardScrollFrameRef.current = null;
+      keepFocusedWorkoutInputVisible(requestId);
+    });
+  }, [keepFocusedWorkoutInputVisible]);
 
   const setWorkoutKeyboardBottomSpace = useCallback((keyboardHeight: number) => {
     const scrollOwner = document.querySelector<HTMLElement>(
@@ -1318,10 +1342,10 @@ export function WorkoutBuilder({
       // The first focus must not move content before the keyboard is shown.
       // For an already-open keyboard, adjust only the workout scroller.
       if (keyboardVisibleRef.current) {
-        window.requestAnimationFrame(keepFocusedWorkoutInputVisible);
+        scheduleFocusedWorkoutInputVisibility();
       }
     },
-    [keepFocusedWorkoutInputVisible]
+    [scheduleFocusedWorkoutInputVisibility]
   );
 
   const handleWorkoutSetInputBlur = useCallback(
@@ -1356,9 +1380,7 @@ export function WorkoutBuilder({
       // Body resize has settled at this point. Measuring now avoids the
       // pre-keyboard focus jump and lets the native shell keep its own frame.
       setWorkoutKeyboardBottomSpace(keyboardHeight);
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(keepFocusedWorkoutInputVisible);
-      });
+      scheduleFocusedWorkoutInputVisibility();
     }).then((listener) => {
       if (disposed) void listener.remove();
       else showListener = listener;
@@ -1366,6 +1388,11 @@ export function WorkoutBuilder({
     void CapacitorKeyboard.addListener("keyboardDidHide", () => {
       keyboardVisibleRef.current = false;
       keyboardHeightRef.current = 0;
+      keyboardScrollRequestRef.current += 1;
+      if (keyboardScrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(keyboardScrollFrameRef.current);
+        keyboardScrollFrameRef.current = null;
+      }
       // Deliberately retain the user's workout scroll position on dismissal.
       setWorkoutKeyboardBottomSpace(0);
       logWorkoutKeyboard("keyboard hidden");
@@ -1376,11 +1403,15 @@ export function WorkoutBuilder({
 
     return () => {
       disposed = true;
+      if (keyboardScrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(keyboardScrollFrameRef.current);
+        keyboardScrollFrameRef.current = null;
+      }
       setWorkoutKeyboardBottomSpace(0);
       void showListener?.remove();
       void hideListener?.remove();
     };
-  }, [keepFocusedWorkoutInputVisible, setWorkoutKeyboardBottomSpace]);
+  }, [scheduleFocusedWorkoutInputVisibility, setWorkoutKeyboardBottomSpace]);
 
 
   useEffect(() => {
