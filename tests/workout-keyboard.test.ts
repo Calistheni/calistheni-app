@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   getWorkoutKeyboardBottomSpace,
   getWorkoutKeyboardScrollAdjustment,
+  getWorkoutKeyboardSpacerRemovalState,
   getWorkoutKeyboardScrollTarget,
 } from "@/lib/workout-keyboard";
 
@@ -82,6 +83,27 @@ test("workout keyboard scrolling computes one clamped target", () => {
   );
 });
 
+test("keyboard spacer removal never clamps an active final row", () => {
+  assert.deepEqual(
+    getWorkoutKeyboardSpacerRemovalState({
+      scrollTop: 460,
+      scrollHeight: 1400,
+      clientHeight: 600,
+      keyboardBottomSpace: 312,
+    }),
+    { maxScrollTopWithoutSpacer: 488, canRemoveSpacer: true }
+  );
+  assert.deepEqual(
+    getWorkoutKeyboardSpacerRemovalState({
+      scrollTop: 750,
+      scrollHeight: 1400,
+      clientHeight: 600,
+      keyboardBottomSpace: 312,
+    }),
+    { maxScrollTopWithoutSpacer: 488, canRemoveSpacer: false }
+  );
+});
+
 test("active workout owns keyboard accommodation in its internal shell", async () => {
   const [builder, shell, styles, nativeShell] = await Promise.all([
     readFile(new URL("components/workouts/WorkoutBuilder.tsx", root), "utf8"),
@@ -95,10 +117,14 @@ test("active workout owns keyboard accommodation in its internal shell", async (
   assert.match(builder, /getWorkoutKeyboardScrollAdjustment/);
   assert.match(builder, /getWorkoutKeyboardBottomSpace/);
   assert.match(builder, /getWorkoutKeyboardScrollTarget/);
+  assert.match(builder, /getWorkoutKeyboardSpacerRemovalState/);
   assert.match(builder, /--active-workout-keyboard-bottom-space/);
   assert.match(builder, /scrollOwner\.scrollTo\(\{ top: targetScrollTop, behavior: "smooth" \}\)/);
   assert.match(builder, /keyboardScrollRequestRef/);
   assert.match(builder, /cancelAnimationFrame\(keyboardScrollFrameRef\.current\)/);
+  assert.match(builder, /scheduleFocusedWorkoutInputVisibility\(true\)/);
+  assert.match(builder, /removeWorkoutKeyboardBottomSpaceWhenSafe/);
+  assert.match(builder, /keyboardSpacerRemovalPendingRef/);
   assert.match(builder, /data-workout-set-input/);
   assert.match(builder, /event\.key === "Enter"\) event\.currentTarget\.blur\(\)/);
   assert.match(builder, /text-base font-semibold tabular-nums md:text-sm/);

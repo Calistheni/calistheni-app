@@ -61,3 +61,24 @@ export function getWorkoutKeyboardScrollTarget({
   const maxScrollTop = Math.max(0, scrollHeight - clientHeight);
   return Math.min(maxScrollTop, Math.max(0, scrollTop + adjustment));
 }
+
+export function getWorkoutKeyboardSpacerRemovalState({
+  scrollTop,
+  scrollHeight,
+  clientHeight,
+  keyboardBottomSpace,
+}: {
+  scrollTop: number;
+  scrollHeight: number;
+  clientHeight: number;
+  keyboardBottomSpace: number;
+}) {
+  const maxScrollTopWithoutSpacer = Math.max(
+    0,
+    scrollHeight - keyboardBottomSpace - clientHeight
+  );
+  return {
+    maxScrollTopWithoutSpacer,
+    canRemoveSpacer: scrollTop <= maxScrollTopWithoutSpacer + 1,
+  };
+}
