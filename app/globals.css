@@ -247,7 +247,8 @@
     flex: 1;
     min-height: 0;
     height: 100%;
-    padding-bottom: 0;
+    padding-bottom: var(--active-workout-keyboard-bottom-space, 0px);
+    scroll-padding-bottom: var(--active-workout-keyboard-bottom-space, 0px);
     overflow-y: auto;
     overscroll-behavior-y: contain;
     scroll-behavior: auto;

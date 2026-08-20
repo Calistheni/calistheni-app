@@ -8,6 +8,21 @@ export type WorkoutKeyboardScrollMeasurement = {
   clearance?: number;
 };
 
+export const WORKOUT_KEYBOARD_CLEARANCE = 12;
+
+/**
+ * The focused route already has its ordinary safe-area spacing in its content.
+ * This adds only the live keyboard overlap plus the visual clearance needed to
+ * make the final set row scrollable above the keyboard.
+ */
+export function getWorkoutKeyboardBottomSpace(
+  keyboardHeight: number,
+  clearance = WORKOUT_KEYBOARD_CLEARANCE
+) {
+  if (keyboardHeight <= 0) return 0;
+  return Math.max(0, Math.ceil(keyboardHeight) + clearance);
+}
+
 /**
  * Returns only the scroll distance required to expose the focused set field.
  * The workout shell is the scroll owner; callers must never use this to move
@@ -20,7 +35,7 @@ export function getWorkoutKeyboardScrollAdjustment({
   containerBottom,
   viewportHeight,
   keyboardHeight,
-  clearance = 12,
+  clearance = WORKOUT_KEYBOARD_CLEARANCE,
 }: WorkoutKeyboardScrollMeasurement) {
   const visibleTop = containerTop + clearance;
   const visibleBottom =

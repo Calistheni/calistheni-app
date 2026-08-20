@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { getWorkoutKeyboardScrollAdjustment } from "@/lib/workout-keyboard";
+import {
+  getWorkoutKeyboardBottomSpace,
+  getWorkoutKeyboardScrollAdjustment,
+} from "@/lib/workout-keyboard";
 
 const root = new URL("../", import.meta.url);
 
@@ -33,6 +36,21 @@ test("workout keyboard adjustment uses only the minimum scroll needed", () => {
   );
 });
 
+test("keyboard-visible workout space extends the final row's scroll range only while needed", () => {
+  const adjustment = getWorkoutKeyboardScrollAdjustment({
+    inputTop: 748,
+    inputBottom: 780,
+    containerTop: 0,
+    containerBottom: 800,
+    viewportHeight: 800,
+    keyboardHeight: 300,
+  });
+
+  assert.equal(getWorkoutKeyboardBottomSpace(300), 312);
+  assert.ok(getWorkoutKeyboardBottomSpace(300) >= adjustment);
+  assert.equal(getWorkoutKeyboardBottomSpace(0), 0);
+});
+
 test("active workout owns keyboard accommodation in its internal shell", async () => {
   const [builder, shell, styles, nativeShell] = await Promise.all([
     readFile(new URL("components/workouts/WorkoutBuilder.tsx", root), "utf8"),
@@ -44,13 +62,15 @@ test("active workout owns keyboard accommodation in its internal shell", async (
   assert.match(builder, /Keyboard as CapacitorKeyboard/);
   assert.match(builder, /keyboardDidShow/);
   assert.match(builder, /getWorkoutKeyboardScrollAdjustment/);
+  assert.match(builder, /getWorkoutKeyboardBottomSpace/);
+  assert.match(builder, /--active-workout-keyboard-bottom-space/);
   assert.match(builder, /scrollOwner\.scrollBy\(\{ top: adjustedBy, behavior: "auto" \}\)/);
   assert.match(builder, /data-workout-set-input/);
   assert.match(builder, /event\.key === "Enter"\) event\.currentTarget\.blur\(\)/);
   assert.match(builder, /text-base font-semibold tabular-nums md:text-sm/);
   assert.match(shell, /data-active-workout-scroll-owner/);
   assert.match(shell, /locksViewport && "h-dvh overflow-hidden"/);
-  assert.match(styles, /\.app-shell-content-focused-workout \{[\s\S]*overflow-y: auto;[\s\S]*scroll-behavior: auto;[\s\S]*overflow-anchor: none;/);
+  assert.match(styles, /\.app-shell-content-focused-workout \{[\s\S]*padding-bottom: var\(--active-workout-keyboard-bottom-space, 0px\);[\s\S]*scroll-padding-bottom: var\(--active-workout-keyboard-bottom-space, 0px\);[\s\S]*overflow-y: auto;[\s\S]*scroll-behavior: auto;[\s\S]*overflow-anchor: none;/);
   assert.match(
     styles,
     /html\[data-native-app\]:has\(\[data-active-workout-scroll-owner\]\),[\s\S]*overflow: hidden;/
