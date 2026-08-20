@@ -89,6 +89,7 @@ export function AppShell({ children, user }: AppShellProps) {
   const activeKey = getActivePrimaryNavigation(pathname);
   const isFullBleed = isFullBleedAppRoute(pathname);
   const usesFocusedWorkoutMode = pathname === "/workouts/new";
+  const locksViewport = isFullBleed || usesFocusedWorkoutMode;
   const keepsMobileHeader = pathname === "/pro";
 
   return (
@@ -96,7 +97,7 @@ export function AppShell({ children, user }: AppShellProps) {
       <div
         className={cn(
           "app-shell flex min-h-dvh flex-col bg-background",
-          isFullBleed && "h-dvh overflow-hidden"
+          locksViewport && "h-dvh overflow-hidden"
         )}
       >
         <header
@@ -173,6 +174,12 @@ export function AppShell({ children, user }: AppShellProps) {
             isFullBleed && "app-shell-content-full-bleed",
             usesFocusedWorkoutMode && "app-shell-content-focused-workout"
           )}
+          {...(usesFocusedWorkoutMode
+            ? {
+                "data-active-workout-scroll-owner": true,
+                "data-keyboard-dismiss-on-scroll": true,
+              }
+            : {})}
         >
           {children}
         </div>

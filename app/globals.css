@@ -250,8 +250,18 @@
     padding-bottom: 0;
     overflow-y: auto;
     overscroll-behavior-y: contain;
+    scroll-behavior: auto;
+    overflow-anchor: none;
     background: var(--background);
     -webkit-overflow-scrolling: touch;
+  }
+
+  /* The active-workout shell is deliberately the sole vertical scroller.
+     Capacitor's body resize must not turn the document itself into a second
+     scroll target while an iOS set input receives focus. */
+  html[data-native-app]:has([data-active-workout-scroll-owner]),
+  html[data-native-app]:has([data-active-workout-scroll-owner]) body {
+    overflow: hidden;
   }
 
   .app-shell-content-full-bleed {

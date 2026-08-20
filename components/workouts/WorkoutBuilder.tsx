@@ -2,6 +2,8 @@
 
 import {
   type ReactNode,
+  type FocusEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -35,6 +37,7 @@ import {
 } from "lucide-react";
 import { arrayMove } from "@dnd-kit/sortable";
 import { Haptics, NotificationType } from "@capacitor/haptics";
+import { Keyboard as CapacitorKeyboard } from "@capacitor/keyboard";
 import {
   Accordion,
   AccordionContent,
@@ -164,7 +167,8 @@ import {
   resumeExerciseSetTimer,
   type ExerciseSetTimer,
 } from "@/lib/exercise-set-timer";
-import { isNativePluginAvailable } from "@/lib/native/platform";
+import { isIOSApp, isNativePluginAvailable } from "@/lib/native/platform";
+import { getWorkoutKeyboardScrollAdjustment } from "@/lib/workout-keyboard";
 import { endWorkoutLiveActivity, syncWorkoutLiveActivity } from "@/lib/native/workout-live-activity";
 import { getAppleHealthWorkoutPayload } from "@/lib/apple-health-workout";
 import { saveAppleHealthWorkout } from "@/lib/native/apple-health";
@@ -276,6 +280,12 @@ const WORKOUT_TABLE_CELL_CLASS =
 const WORKOUT_TABLE_VALUE_CLASS = "text-sm font-medium tabular-nums";
 const ACTIVE_EXERCISE_HEADER_ROW_CLASS =
   "flex min-w-0 flex-nowrap items-start gap-2 px-2.5 py-2";
+const isDevelopment = process.env.NODE_ENV === "development";
+
+function logWorkoutKeyboard(event: string, detail?: unknown) {
+  if (!isDevelopment) return;
+  console.debug(`[WorkoutKeyboard] ${event}`, detail ?? "");
+}
 
 const EMPTY_SET_VALUES: WorkoutSetInput = {
   reps: null,
@@ -863,6 +873,9 @@ export function WorkoutBuilder({
   const restTimer = useRestTimer();
   const exercisePickerContentRef = useRef<HTMLDivElement>(null);
   const setRowRefs = useRef(new Map<string, HTMLDivElement>());
+  const focusedWorkoutInputRef = useRef<HTMLInputElement | null>(null);
+  const keyboardHeightRef = useRef(0);
+  const keyboardVisibleRef = useRef(false);
   const loadedPerformanceReferenceIdsRef = useRef(new Set<string>());
   const completionViewportAnchorRef = useRef<{
     setLocalId: string;
@@ -1235,6 +1248,111 @@ export function WorkoutBuilder({
     mediaQuery.addEventListener("change", updateViewport);
     return () => mediaQuery.removeEventListener("change", updateViewport);
   }, []);
+
+  const keepFocusedWorkoutInputVisible = useCallback(() => {
+    const input = focusedWorkoutInputRef.current;
+    const scrollOwner = document.querySelector<HTMLElement>(
+      "[data-active-workout-scroll-owner]"
+    );
+    if (!input?.isConnected || !scrollOwner) return;
+
+    const inputRect = input.getBoundingClientRect();
+    const ownerRect = scrollOwner.getBoundingClientRect();
+    const adjustedBy = getWorkoutKeyboardScrollAdjustment({
+      inputTop: inputRect.top,
+      inputBottom: inputRect.bottom,
+      containerTop: ownerRect.top,
+      containerBottom: ownerRect.bottom,
+      viewportHeight: window.innerHeight,
+      keyboardHeight: keyboardHeightRef.current,
+    });
+
+    logWorkoutKeyboard("visibility check", {
+      field: input.getAttribute("aria-label"),
+      containerScrollTop: scrollOwner.scrollTop,
+      inputRect: { top: inputRect.top, bottom: inputRect.bottom },
+      viewportHeight: window.innerHeight,
+      keyboardHeight: keyboardHeightRef.current,
+      obscured: adjustedBy !== 0,
+      adjustedBy,
+    });
+
+    if (Math.abs(adjustedBy) > 1) {
+      scrollOwner.scrollBy({ top: adjustedBy, behavior: "auto" });
+    }
+  }, []);
+
+  const handleWorkoutSetInputFocus = useCallback(
+    (event: FocusEvent<HTMLInputElement>) => {
+      focusedWorkoutInputRef.current = event.currentTarget;
+      logWorkoutKeyboard("focus", {
+        field: event.currentTarget.getAttribute("aria-label"),
+        containerScrollTop: document.querySelector<HTMLElement>(
+          "[data-active-workout-scroll-owner]"
+        )?.scrollTop,
+      });
+
+      // The first focus must not move content before the keyboard is shown.
+      // For an already-open keyboard, adjust only the workout scroller.
+      if (keyboardVisibleRef.current) {
+        window.requestAnimationFrame(keepFocusedWorkoutInputVisible);
+      }
+    },
+    [keepFocusedWorkoutInputVisible]
+  );
+
+  const handleWorkoutSetInputBlur = useCallback(
+    (event: FocusEvent<HTMLInputElement>) => {
+      if (focusedWorkoutInputRef.current === event.currentTarget) {
+        focusedWorkoutInputRef.current = null;
+      }
+      logWorkoutKeyboard("blur", {
+        field: event.currentTarget.getAttribute("aria-label"),
+      });
+    },
+    []
+  );
+
+  const handleWorkoutSetInputKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (event.key === "Enter") event.currentTarget.blur();
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!isIOSApp()) return;
+
+    let disposed = false;
+    let showListener: { remove: () => Promise<void> } | undefined;
+    let hideListener: { remove: () => Promise<void> } | undefined;
+
+    void CapacitorKeyboard.addListener("keyboardDidShow", ({ keyboardHeight }) => {
+      keyboardVisibleRef.current = true;
+      keyboardHeightRef.current = keyboardHeight;
+      // Body resize has settled at this point. Measuring now avoids the
+      // pre-keyboard focus jump and lets the native shell keep its own frame.
+      window.requestAnimationFrame(keepFocusedWorkoutInputVisible);
+    }).then((listener) => {
+      if (disposed) void listener.remove();
+      else showListener = listener;
+    });
+    void CapacitorKeyboard.addListener("keyboardDidHide", () => {
+      keyboardVisibleRef.current = false;
+      keyboardHeightRef.current = 0;
+      // Deliberately retain the user's workout scroll position on dismissal.
+      logWorkoutKeyboard("keyboard hidden");
+    }).then((listener) => {
+      if (disposed) void listener.remove();
+      else hideListener = listener;
+    });
+
+    return () => {
+      disposed = true;
+      void showListener?.remove();
+      void hideListener?.remove();
+    };
+  }, [keepFocusedWorkoutInputVisible]);
 
 
   useEffect(() => {
@@ -2651,7 +2769,7 @@ export function WorkoutBuilder({
                   if (column.metric === "durationSeconds") {
                     return (
                       <div key={column.metric} className="min-w-0">
-                        {activeForThisSet ? <Input className={`${COMPACT_WORKOUT_NUMBER_INPUT_CLASS} w-full min-w-0`} type="text" readOnly value={formatDurationInput(exerciseTimerValue)} aria-label={`${exercise.name} set ${setIndex + 1} active duration`} /> : <DurationInput className={`${COMPACT_WORKOUT_NUMBER_INPUT_CLASS} w-full min-w-0`} placeholder="00:00" aria-description={description} aria-label={`${exercise.name} set ${setIndex + 1} duration in minutes and seconds`} durationSeconds={set.durationSeconds} onDurationChange={(seconds) => updateSet(selectedExercise.localId, setIndex, "durationSeconds", String(seconds))} />}
+                        {activeForThisSet ? <Input className={`${COMPACT_WORKOUT_NUMBER_INPUT_CLASS} w-full min-w-0`} type="text" readOnly value={formatDurationInput(exerciseTimerValue)} aria-label={`${exercise.name} set ${setIndex + 1} active duration`} /> : <DurationInput data-workout-set-input className={`${COMPACT_WORKOUT_NUMBER_INPUT_CLASS} w-full min-w-0`} placeholder="00:00" aria-description={description} aria-label={`${exercise.name} set ${setIndex + 1} duration in minutes and seconds`} durationSeconds={set.durationSeconds} onDurationChange={(seconds) => updateSet(selectedExercise.localId, setIndex, "durationSeconds", String(seconds))} onFocus={handleWorkoutSetInputFocus} onBlur={handleWorkoutSetInputBlur} onKeyDown={handleWorkoutSetInputKeyDown} />}
                       </div>
                     );
                   }
@@ -2666,8 +2784,12 @@ export function WorkoutBuilder({
                       placeholder=""
                       aria-description={description}
                       aria-label={`${exercise.name} set ${setIndex + 1} ${column.inputLabel}`}
+                      data-workout-set-input
                       value={column.metric === "weight" ? displayWeightInputValue(set.weight, measurementSystem) : column.metric === "distanceMeters" ? displayDistanceInputValue(set.distanceMeters, measurementSystem) : value ?? ""}
                       onChange={(event) => column.metric === "weight" || column.metric === "distanceMeters" ? updateSet(selectedExercise.localId, setIndex, column.metric, canonicalWorkoutInputValue(event.target.value, column.metric, measurementSystem)) : updateSet(selectedExercise.localId, setIndex, column.metric, event.target.value)}
+                      onFocus={handleWorkoutSetInputFocus}
+                      onBlur={handleWorkoutSetInputBlur}
+                      onKeyDown={handleWorkoutSetInputKeyDown}
                     />
                   );
                 })}
