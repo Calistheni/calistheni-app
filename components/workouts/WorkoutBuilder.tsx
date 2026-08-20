@@ -1403,11 +1403,13 @@ export function WorkoutBuilder({
 
   const handleWorkoutSetInputBlur = useCallback(
     (event: FocusEvent<HTMLInputElement>) => {
-      if (focusedWorkoutInputRef.current === event.currentTarget) {
-        focusedWorkoutInputRef.current = null;
-      }
       logWorkoutKeyboard("blur", {
         field: event.currentTarget.getAttribute("aria-label"),
+        // WKWebView can emit blur while it transfers focus into the native
+        // keyboard. Keep the last focused set input available for
+        // keyboardDidShow; a newly focused field replaces it immediately.
+        retainedForKeyboardGeometry:
+          focusedWorkoutInputRef.current === event.currentTarget,
       });
     },
     []
@@ -1454,6 +1456,10 @@ export function WorkoutBuilder({
       scrollOwner?.scrollTo({ top: scrollOwner.scrollTop, behavior: "auto" });
       // Deliberately retain the user's workout scroll position on dismissal.
       removeWorkoutKeyboardBottomSpaceWhenSafe();
+      // Clear only after native keyboard geometry is no longer needed. This
+      // avoids losing the input target to the transient blur iOS can emit
+      // between the tap and keyboardDidShow.
+      focusedWorkoutInputRef.current = null;
       logWorkoutKeyboard("keyboard hidden");
     }).then((listener) => {
       if (disposed) void listener.remove();

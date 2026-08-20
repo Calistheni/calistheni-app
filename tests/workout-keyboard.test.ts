@@ -123,6 +123,26 @@ test("active workout owns keyboard accommodation in its internal shell", async (
   assert.match(builder, /keyboardScrollRequestRef/);
   assert.match(builder, /cancelAnimationFrame\(keyboardScrollFrameRef\.current\)/);
   assert.match(builder, /scheduleFocusedWorkoutInputVisibility\(true\)/);
+  assert.match(
+    builder,
+    /focusedWorkoutInputRef\.current = event\.currentTarget;[\s\S]*if \(keyboardVisibleRef\.current\) \{[\s\S]*scheduleFocusedWorkoutInputVisibility\(\);/
+  );
+  assert.match(
+    builder,
+    /keyboardDidShow[\s\S]*setWorkoutKeyboardBottomSpace\(keyboardHeight\);[\s\S]*scheduleFocusedWorkoutInputVisibility\(true\);/
+  );
+  const inputHandlers = builder.slice(
+    builder.indexOf('data-workout-set-input'),
+    builder.indexOf('aria-label={pr?.isNew')
+  );
+  assert.match(inputHandlers, /onChange=\{[\s\S]*updateSet[\s\S]*\}/);
+  assert.doesNotMatch(inputHandlers, /onChange=\{[\s\S]*scheduleFocusedWorkoutInputVisibility/);
+  const blurHandler = builder.slice(
+    builder.indexOf('const handleWorkoutSetInputBlur'),
+    builder.indexOf('const handleWorkoutSetInputKeyDown')
+  );
+  assert.doesNotMatch(blurHandler, /focusedWorkoutInputRef\.current = null/);
+  assert.match(builder, /keyboardDidHide[\s\S]*focusedWorkoutInputRef\.current = null;/);
   assert.match(builder, /removeWorkoutKeyboardBottomSpaceWhenSafe/);
   assert.match(builder, /keyboardSpacerRemovalPendingRef/);
   assert.match(builder, /data-workout-set-input/);
