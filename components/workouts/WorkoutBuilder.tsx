@@ -3,6 +3,7 @@
 import {
   type ReactNode,
   type FocusEvent,
+  type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
   useEffect,
@@ -864,6 +865,11 @@ export function WorkoutBuilder({
       ? `edit-${initialWorkout.id}`
       : "server-active-workout"
   );
+  // This is a layout synchronization signal only. The actual inset remains on
+  // the scroll owner as a CSS variable so it does not participate in workout
+  // data updates or per-scroll rendering.
+  const [workoutKeyboardLayoutVersion, setWorkoutKeyboardLayoutVersion] =
+    useState(0);
   const [isActiveWorkoutSessionReady, setIsActiveWorkoutSessionReady] =
     useState(isEditing);
   const initialSelectedExercises = buildInitialExercises(initialWorkout);
@@ -1385,8 +1391,10 @@ export function WorkoutBuilder({
     (event: FocusEvent<HTMLInputElement>) => {
       focusedWorkoutInputRef.current = event.currentTarget;
       keyboardSpacerRemovalPendingRef.current = false;
+      const inputRect = event.currentTarget.getBoundingClientRect();
       logWorkoutKeyboard("focus", {
         field: event.currentTarget.getAttribute("aria-label"),
+        inputRect: { top: inputRect.top, bottom: inputRect.bottom },
         containerScrollTop: document.querySelector<HTMLElement>(
           "[data-active-workout-scroll-owner]"
         )?.scrollTop,
@@ -1422,6 +1430,42 @@ export function WorkoutBuilder({
     []
   );
 
+  const handleWorkoutSetInputValueInput = useCallback(
+    (event: FormEvent<HTMLInputElement>) => {
+      // Development-only diagnostic: confirms that keyboard visibility was
+      // resolved before the first editable value event, without logging the
+      // user's value.
+      logWorkoutKeyboard("input value event", {
+        field: event.currentTarget.getAttribute("aria-label"),
+      });
+    },
+    []
+  );
+
+  useLayoutEffect(() => {
+    if (
+      !isIOSApp() ||
+      workoutKeyboardLayoutVersion === 0 ||
+      !keyboardVisibleRef.current ||
+      !focusedWorkoutInputRef.current?.isConnected
+    ) {
+      return;
+    }
+
+    // The CSS variable was applied before this state update. useLayoutEffect
+    // gives React and the browser a committed layout boundary, then the
+    // scheduler's single frame measures the real post-keyboard scroll range.
+    // This deliberately replaces any dependency on the first controlled
+    // input-value rerender.
+    logWorkoutKeyboard("keyboard layout committed", {
+      keyboardHeight: keyboardHeightRef.current,
+      bottomInsetApplied: keyboardBottomSpaceRef.current,
+      innerHeight: window.innerHeight,
+      visualViewportHeight: window.visualViewport?.height,
+    });
+    scheduleFocusedWorkoutInputVisibility();
+  }, [scheduleFocusedWorkoutInputVisibility, workoutKeyboardLayoutVersion]);
+
   useEffect(() => {
     if (!isIOSApp()) return;
 
@@ -1435,7 +1479,15 @@ export function WorkoutBuilder({
       // Body resize has settled at this point. Measuring now avoids the
       // pre-keyboard focus jump and lets the native shell keep its own frame.
       setWorkoutKeyboardBottomSpace(keyboardHeight);
-      scheduleFocusedWorkoutInputVisibility(true);
+      // Trigger the final measurement only after the spacer is present in a
+      // committed layout. This must not wait for an input value change.
+      setWorkoutKeyboardLayoutVersion((current) => current + 1);
+      logWorkoutKeyboard("keyboard shown", {
+        keyboardHeight,
+        innerHeight: window.innerHeight,
+        visualViewportHeight: window.visualViewport?.height,
+        bottomInsetApplied: keyboardBottomSpaceRef.current,
+      });
     }).then((listener) => {
       if (disposed) void listener.remove();
       else showListener = listener;
@@ -1479,7 +1531,6 @@ export function WorkoutBuilder({
   }, [
     removeWorkoutKeyboardBottomSpace,
     removeWorkoutKeyboardBottomSpaceWhenSafe,
-    scheduleFocusedWorkoutInputVisibility,
     setWorkoutKeyboardBottomSpace,
   ]);
 
@@ -2929,7 +2980,7 @@ export function WorkoutBuilder({
                   if (column.metric === "durationSeconds") {
                     return (
                       <div key={column.metric} className="min-w-0">
-                        {activeForThisSet ? <Input className={`${COMPACT_WORKOUT_NUMBER_INPUT_CLASS} w-full min-w-0`} type="text" readOnly value={formatDurationInput(exerciseTimerValue)} aria-label={`${exercise.name} set ${setIndex + 1} active duration`} /> : <DurationInput data-workout-set-input className={`${COMPACT_WORKOUT_NUMBER_INPUT_CLASS} w-full min-w-0`} placeholder="00:00" aria-description={description} aria-label={`${exercise.name} set ${setIndex + 1} duration in minutes and seconds`} durationSeconds={set.durationSeconds} onDurationChange={(seconds) => updateSet(selectedExercise.localId, setIndex, "durationSeconds", String(seconds))} onFocus={handleWorkoutSetInputFocus} onBlur={handleWorkoutSetInputBlur} onKeyDown={handleWorkoutSetInputKeyDown} />}
+                        {activeForThisSet ? <Input className={`${COMPACT_WORKOUT_NUMBER_INPUT_CLASS} w-full min-w-0`} type="text" readOnly value={formatDurationInput(exerciseTimerValue)} aria-label={`${exercise.name} set ${setIndex + 1} active duration`} /> : <DurationInput data-workout-set-input className={`${COMPACT_WORKOUT_NUMBER_INPUT_CLASS} w-full min-w-0`} placeholder="00:00" aria-description={description} aria-label={`${exercise.name} set ${setIndex + 1} duration in minutes and seconds`} durationSeconds={set.durationSeconds} onDurationChange={(seconds) => updateSet(selectedExercise.localId, setIndex, "durationSeconds", String(seconds))} onFocus={handleWorkoutSetInputFocus} onBlur={handleWorkoutSetInputBlur} onKeyDown={handleWorkoutSetInputKeyDown} onInput={handleWorkoutSetInputValueInput} />}
                       </div>
                     );
                   }
@@ -2950,6 +3001,7 @@ export function WorkoutBuilder({
                       onFocus={handleWorkoutSetInputFocus}
                       onBlur={handleWorkoutSetInputBlur}
                       onKeyDown={handleWorkoutSetInputKeyDown}
+                      onInput={handleWorkoutSetInputValueInput}
                     />
                   );
                 })}

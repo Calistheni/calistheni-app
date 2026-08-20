@@ -122,14 +122,17 @@ test("active workout owns keyboard accommodation in its internal shell", async (
   assert.match(builder, /scrollOwner\.scrollTo\(\{ top: targetScrollTop, behavior: "smooth" \}\)/);
   assert.match(builder, /keyboardScrollRequestRef/);
   assert.match(builder, /cancelAnimationFrame\(keyboardScrollFrameRef\.current\)/);
-  assert.match(builder, /scheduleFocusedWorkoutInputVisibility\(true\)/);
   assert.match(
     builder,
     /focusedWorkoutInputRef\.current = event\.currentTarget;[\s\S]*if \(keyboardVisibleRef\.current\) \{[\s\S]*scheduleFocusedWorkoutInputVisibility\(\);/
   );
   assert.match(
     builder,
-    /keyboardDidShow[\s\S]*setWorkoutKeyboardBottomSpace\(keyboardHeight\);[\s\S]*scheduleFocusedWorkoutInputVisibility\(true\);/
+    /keyboardDidShow[\s\S]*setWorkoutKeyboardBottomSpace\(keyboardHeight\);[\s\S]*setWorkoutKeyboardLayoutVersion\(\(current\) => current \+ 1\);/
+  );
+  assert.match(
+    builder,
+    /useLayoutEffect\(\(\) => \{[\s\S]*workoutKeyboardLayoutVersion[\s\S]*scheduleFocusedWorkoutInputVisibility\(\);/
   );
   const inputHandlers = builder.slice(
     builder.indexOf('data-workout-set-input'),
