@@ -54,10 +54,19 @@ test("native startup surfaces use the same dark-safe fallback as the server root
   assert.match(capacitor, /backgroundColor: "#09090b"/);
   assert.match(capacitor, /style: "DARK"/);
   assert.match(nativeShell, /resolvedTheme/);
-  assert.match(nativeShell, /Keyboard\.setScroll\(\{ isDisabled: true \}\)/);
-  assert.match(
-    nativeShell,
-    /Capacitor\.getPlatform\(\) !== "ios"/
-  );
+  assert.doesNotMatch(nativeShell, /Keyboard\.setScroll/);
   assert.match(fallback, /background: #09090b/);
+});
+
+test("normal routes keep native page scrolling while only full-bleed routes lock the shell", () => {
+  const shell = read("components/navigation/AppShell.tsx");
+  const navigation = read("lib/navigation.ts");
+  const nativeShell = read("components/native/NativeShell.tsx");
+
+  assert.match(shell, /const locksViewport = isFullBleed \|\| usesFocusedWorkoutMode/);
+  assert.match(shell, /locksViewport && "h-dvh overflow-hidden"/);
+  assert.match(navigation, /return pathname === "\/parks"/);
+  assert.doesNotMatch(nativeShell, /Keyboard\.setScroll/);
+  assert.match(nativeShell, /touchmove", handleTouchMove, \{ passive: true \}/);
+  assert.doesNotMatch(nativeShell, /touchmove[\s\S]{0,200}preventDefault/);
 });

@@ -1565,6 +1565,30 @@ export function WorkoutBuilder({
     };
   }, [removeWorkoutKeyboardBottomSpaceWhenSafe]);
 
+  useEffect(() => {
+    if (isEditing || !isIOSApp()) return;
+
+    // Only the active workout disables UIKit's outer WKWebView focus scroll;
+    // the workout's CSS overflow container remains the user/manual scroll
+    // owner. Every exit path unmounts this component and restores the normal
+    // native page scroll used by the rest of Calistheni.
+    void CapacitorKeyboard.setScroll({ isDisabled: true })
+      .then(() => {
+        logWorkoutKeyboard("iOS WebView automatic scroll disabled");
+      })
+      .catch((error: unknown) => {
+        logWorkoutKeyboard("iOS WebView scroll setup failed", String(error));
+      });
+
+    return () => {
+      void CapacitorKeyboard.setScroll({ isDisabled: false })
+        .then(() => logWorkoutKeyboard("iOS WebView automatic scroll restored"))
+        .catch((error: unknown) => {
+          logWorkoutKeyboard("iOS WebView scroll restore failed", String(error));
+        });
+    };
+  }, [isEditing]);
+
 
   useEffect(() => {
     if (!scrollTargetSetId) {
