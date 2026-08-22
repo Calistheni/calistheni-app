@@ -70,3 +70,17 @@ test("normal routes keep native page scrolling while only full-bleed routes lock
   assert.match(nativeShell, /touchmove", handleTouchMove, \{ passive: true \}/);
   assert.doesNotMatch(nativeShell, /touchmove[\s\S]{0,200}preventDefault/);
 });
+
+test("primary navigation stays client-side and warms likely routes after paint", () => {
+  const shell = read("components/navigation/AppShell.tsx");
+  const parks = read("components/HomePage.tsx");
+  const nutrition = read("components/nutrition/NutritionTracker.tsx");
+
+  assert.match(shell, /window\.requestAnimationFrame/);
+  assert.match(shell, /requestIdleCallback/);
+  assert.match(shell, /router\.prefetch\(href\)/);
+  assert.match(shell, /onPointerDown=\{\(\) => \{[\s\S]*router\.prefetch\(item\.href\)/);
+  assert.doesNotMatch(shell, /window\.location|location\.href|<a\s/);
+  assert.match(parks, /dynamic\(\(\) => import\("@\/components\/ParksMap"\)/);
+  assert.match(nutrition, /dynamic\([\s\S]*import\("@\/components\/nutrition\/FoodPicker"\)/);
+});

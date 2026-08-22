@@ -14,6 +14,7 @@ import {
   registerSupplementNotificationListeners,
 } from "@/lib/native/supplement-reminders";
 import { dismissActiveTextInput } from "@/lib/mobile-keyboard";
+import { useNativeKeyboardVisibility } from "@/lib/native/keyboard-visibility";
 
 const isDevelopment = process.env.NODE_ENV === "development";
 let iOSKeyboardResizeSetup: Promise<void> | null = null;
@@ -56,6 +57,7 @@ function logNativeSplash(event: string, detail?: unknown) {
 /** Native-only presentation and keyboard behavior shared by every route. */
 export function NativeShell() {
   const { resolvedTheme } = useTheme();
+  useNativeKeyboardVisibility();
 
   useEffect(() => {
     logNativeSplash("NativeShell mounted");

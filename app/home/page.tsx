@@ -176,7 +176,6 @@ export default async function HomePage() {
 
   const [
     profile,
-    reportWorkouts,
     calendarWorkouts,
     calendarSupplements,
     allCompletedDates,
@@ -194,14 +193,6 @@ export default async function HomePage() {
         weeklyWorkoutGoal: true,
         createdAt: true,
       },
-    }),
-    prisma.workout.findMany({
-      where: {
-        userId: session.user.id,
-        completedAt: { gte: previousWeekStart },
-      },
-      orderBy: { completedAt: "desc" },
-      include: workoutInclude,
     }),
     prisma.workout.findMany({
       where: {
@@ -251,6 +242,13 @@ export default async function HomePage() {
   ]);
 
   if (!profile) redirect("/login");
+  // The 26-week calendar dataset already contains both weeks used by the
+  // report. Reusing it avoids a second large workout/exercise/set query on the
+  // most frequently entered native route.
+  const reportWorkouts = calendarWorkouts.filter(
+    (workout) =>
+      workout.completedAt && workout.completedAt >= previousWeekStart
+  );
 
   const weeklyReport = calculateWeeklyReport({
     weekStart,

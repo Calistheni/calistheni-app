@@ -48,19 +48,64 @@
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
 }
-.mapboxgl-popup-content {
-  background: #111827;
-  color: white;
+.calistheni-parks-map .mapboxgl-popup.calistheni-park-popup {
+  /* Mapbox owns this DOM subtree, so give the park popup an explicit dark
+     token scope instead of depending on inheritance from the app theme root. */
+  --popover: oklch(0.19 0.012 264);
+  --popover-foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 12%);
+  --muted: oklch(0.235 0.014 264);
+  --muted-foreground: oklch(0.72 0.012 264);
+  --secondary: oklch(0.245 0.016 264);
+  --secondary-foreground: oklch(0.985 0 0);
+  max-width: 280px !important;
+}
+
+.calistheni-parks-map
+  .mapboxgl-popup.calistheni-park-popup
+  .mapboxgl-popup-content {
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 12px;
   font-family: var(--font-sans);
   width: 280px;
   max-width: 280px;
   box-sizing: border-box;
+  box-shadow: 0 18px 48px rgb(0 0 0 / 0.32);
 }
 
-.mapboxgl-popup {
-  max-width: 280px !important;
+.calistheni-parks-map
+  .mapboxgl-popup.calistheni-park-popup:is(
+    .mapboxgl-popup-anchor-top,
+    .mapboxgl-popup-anchor-top-left,
+    .mapboxgl-popup-anchor-top-right
+  )
+  .mapboxgl-popup-tip {
+  border-bottom-color: var(--popover);
+}
+
+.calistheni-parks-map
+  .mapboxgl-popup.calistheni-park-popup:is(
+    .mapboxgl-popup-anchor-bottom,
+    .mapboxgl-popup-anchor-bottom-left,
+    .mapboxgl-popup-anchor-bottom-right
+  )
+  .mapboxgl-popup-tip {
+  border-top-color: var(--popover);
+}
+
+.calistheni-parks-map
+  .mapboxgl-popup.calistheni-park-popup.mapboxgl-popup-anchor-left
+  .mapboxgl-popup-tip {
+  border-right-color: var(--popover);
+}
+
+.calistheni-parks-map
+  .mapboxgl-popup.calistheni-park-popup.mapboxgl-popup-anchor-right
+  .mapboxgl-popup-tip {
+  border-left-color: var(--popover);
 }
 .park-marker {
   width: 12px;

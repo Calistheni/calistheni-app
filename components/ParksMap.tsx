@@ -442,11 +442,11 @@ function renderPopupMarkup({
         <h3 style="font-size:16px;font-weight:600;margin:0 0 8px 0;">
            "Loading park"
         </h3>
-        <div style="height:10px;border-radius:999px;background:#e5e7eb;margin-bottom:8px;"></div>
-        <div style="height:10px;width:70%;border-radius:999px;background:#e5e7eb;margin-bottom:12px;"></div>
+        <div style="height:10px;border-radius:999px;background:var(--muted);margin-bottom:8px;"></div>
+        <div style="height:10px;width:70%;border-radius:999px;background:var(--muted);margin-bottom:12px;"></div>
         <div style="display:flex;gap:6px;">
-          <span style="display:inline-block;width:54px;height:24px;border-radius:999px;background:#e5e7eb;"></span>
-          <span style="display:inline-block;width:72px;height:24px;border-radius:999px;background:#e5e7eb;"></span>
+          <span style="display:inline-block;width:54px;height:24px;border-radius:999px;background:var(--muted);"></span>
+          <span style="display:inline-block;width:72px;height:24px;border-radius:999px;background:var(--muted);"></span>
         </div>
       </div>
     `;
@@ -458,7 +458,7 @@ function renderPopupMarkup({
         <h3 style="font-size:16px;font-weight:600;margin:0 0 8px 0;">
           ${escapeHtml(park?.name ?? "Park")}
         </h3>
-        <p style="margin:0 0 12px 0;color:#6b7280;font-size:13px;">
+        <p style="margin:0 0 12px 0;color:var(--muted-foreground);font-size:13px;">
           ${escapeHtml(error)}
         </p>
         <button
@@ -504,7 +504,7 @@ function renderPopupMarkup({
       <h3 style="font-size:16px;font-weight:600;margin:0 0 6px 0;">
         ${escapeHtml(park?.name ?? "Park")}
       </h3>
-      <p style="margin:0;color:#6b7280;font-size:13px;">
+      <p style="margin:0;color:var(--muted-foreground);font-size:13px;">
         ${escapeHtml(park?.address ?? "Address unavailable")}
       </p>
 
@@ -531,7 +531,7 @@ function renderPopupMarkup({
               </span>
               ${
                 "equipmentCount" in park
-                  ? `<span style="margin-left:8px;color:#6b7280;font-size:11px;">${park.equipmentCount} equipment</span>`
+                  ? `<span style="margin-left:8px;color:var(--muted-foreground);font-size:11px;">${park.equipmentCount} equipment</span>`
                   : ""
               }
             </div>
@@ -572,8 +572,8 @@ function renderPopupMarkup({
               }"
               style="
                 display:inline-block;
-                background:#f3f4f6;
-                color:#111827;
+                background:var(--secondary);
+                color:var(--secondary-foreground);
                 border:none;
                 border-radius:6px;
                 padding:6px 10px;
@@ -1583,6 +1583,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
 
     const popup = new mapboxgl.Popup({
       closeButton: false,
+      className: "calistheni-park-popup",
       offset: 25,
     })
       .setLngLat(coordinates)
@@ -2871,7 +2872,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         <div className="absolute inset-0">
           <div
             ref={mapContainer}
-            className={`h-full w-full ${
+            className={`calistheni-parks-map h-full w-full ${
               isPlacementMode
                 ? "cursor-crosshair [&_.mapboxgl-canvas]:!cursor-crosshair"
                 : ""

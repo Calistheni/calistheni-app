@@ -47,12 +47,12 @@ const navigationIcons: Record<PrimaryNavigationKey, LucideIcon> = {
 };
 
 const routeWarmupTargets = {
-  "/home": ["/workouts", "/nutrition", "/profile"],
+  "/home": ["/workouts", "/nutrition", "/parks", "/feed"],
   "/workouts": ["/routines", "/home", "/profile"],
-  "/routines": ["/workouts", "/home", "/profile"],
+  "/routines": ["/workouts", "/home"],
   "/nutrition": ["/home", "/workouts", "/profile"],
   "/parks": ["/home", "/profile", "/my-parks"],
-  "/feed": ["/home", "/profile", "/workouts"],
+  "/feed": ["/home", "/profile"],
   "/profile": ["/home", "/workouts", "/nutrition"],
 } as const;
 
@@ -75,13 +75,28 @@ export function AppShell({ children, user }: AppShellProps) {
     // Let the current route paint first. This complements Link's viewport
     // prefetching on WKWebView without boot-prefetching every destination or
     // executing any route-local client feature (maps, scanners, charts, etc.).
-    const timeoutId = window.setTimeout(() => {
-      for (const href of getRouteWarmupTargets(pathname)) {
-        router.prefetch(href);
-      }
-    }, 800);
+    let idleId: number | null = null;
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+    const frameId = window.requestAnimationFrame(() => {
+      const warmRoutes = () => {
+        idleId = null;
+        for (const href of getRouteWarmupTargets(pathname)) {
+          router.prefetch(href);
+        }
+      };
 
-    return () => window.clearTimeout(timeoutId);
+      if ("requestIdleCallback" in window) {
+        idleId = window.requestIdleCallback(warmRoutes, { timeout: 1_200 });
+      } else {
+        fallbackTimer = setTimeout(warmRoutes, 300);
+      }
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      if (idleId !== null) window.cancelIdleCallback(idleId);
+      if (fallbackTimer !== null) clearTimeout(fallbackTimer);
+    };
   }, [isSignedIn, pathname, router]);
 
   if (!user || !usesSignedInAppShell(pathname)) return children;
@@ -134,6 +149,9 @@ export function AppShell({ children, user }: AppShellProps) {
                   <Link
                     key={item.key}
                     href={item.href}
+                    onPointerDown={() => {
+                      if (!active) router.prefetch(item.href);
+                    }}
                     aria-current={active ? "page" : undefined}
                     className={cn(
                       "flex h-9 items-center gap-2 rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground xl:px-3",
@@ -198,6 +216,9 @@ export function AppShell({ children, user }: AppShellProps) {
                   <Link
                     key={item.key}
                     href={item.href}
+                    onPointerDown={() => {
+                      if (!active) router.prefetch(item.href);
+                    }}
                     aria-current={active ? "page" : undefined}
                     className={cn(
                       "relative flex min-h-11 min-w-0 flex-1 basis-0 touch-manipulation flex-col items-center justify-center gap-0.5 overflow-hidden px-0.5 text-[10px] font-medium whitespace-nowrap text-muted-foreground transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
