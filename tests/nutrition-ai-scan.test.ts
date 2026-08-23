@@ -8,6 +8,10 @@ import {
 import { analyzeNutritionImage } from "../lib/nutrition/ai-provider";
 import { nutritionFoodIntent } from "../lib/nutrition/food-intent";
 import {
+  rankAiMealFoodCandidates,
+  selectAiMealFoodCandidate,
+} from "../lib/nutrition/ai-meal-food-matching";
+import {
   rankNutritionFoodCandidates,
   selectNutritionFoodCandidate,
 } from "../lib/nutrition/search-ranking";
@@ -67,6 +71,7 @@ test("AI server validates ephemeral images and uses provider structured output",
   assert.match(route, /reserveNutritionAiQuota\(userId, true, "aiScan"\)/);
   assert.match(route, /releaseNutritionAiQuota\(reservation\)/);
   assert.match(route, /resolveDescribedFoods/);
+  assert.match(route, /\{ aiMealPhoto: true \}/);
   assert.match(route, /resolved review foods/);
   assert.match(route, /DAILY_LIMIT_REACHED/);
   assert.doesNotMatch(route, /prisma/);
@@ -213,6 +218,169 @@ test("omelette, porcini, and butter ingredient intents resolve to safe generic f
     selectNutritionFoodCandidate(nutritionFoodIntent("butter").rankQuery, [candidate("Butter"), candidate("Peanut butter")])?.name,
     "Butter"
   );
+});
+
+test("AI common-food intents normalize presentation and resolve visible canonical foods", () => {
+  const generic = (name: string) => ({
+    id: `food-${name}`,
+    name,
+    provider: "USDA" as const,
+    type: "GENERIC",
+    isLocal: true,
+  });
+  const branded = (name: string, brandName: string) => ({
+    id: `food-${name}`,
+    name,
+    brandName,
+    provider: "OPEN_FOOD_FACTS" as const,
+    type: "BRANDED",
+    isLocal: true,
+  });
+
+  assert.deepEqual(nutritionFoodIntent("Roasted Potatoes"), {
+    rankQuery: "potatoes",
+    searchQueries: ["roasted potatoes", "potatoes"],
+    canonicalName: "Potatoes",
+  });
+  assert.deepEqual(nutritionFoodIntent("salmon fillet"), {
+    rankQuery: "salmon",
+    searchQueries: ["salmon fillet", "salmon"],
+    canonicalName: "Salmon",
+  });
+  assert.equal(nutritionFoodIntent("smoked salmon").rankQuery, "smoked salmon");
+
+  for (const [detected, canonical] of [
+    ["Salmon", "Salmon"],
+    ["Potatoes", "Potato"],
+    ["Potato", "Potato"],
+    ["Rice", "Rice"],
+    ["Chicken breast", "Chicken breast"],
+    ["Banana", "Banana"],
+    ["Eggs", "Egg"],
+  ] as const) {
+    assert.equal(
+      selectNutritionFoodCandidate(
+        nutritionFoodIntent(detected).rankQuery,
+        [generic(canonical)]
+      )?.name,
+      canonical
+    );
+  }
+
+  assert.equal(
+    selectNutritionFoodCandidate("salmon", [
+      branded("Ocean Kiss Salmon", "Ocean Kiss"),
+      generic("Salmon"),
+    ])?.name,
+    "Salmon"
+  );
+  assert.equal(
+    selectNutritionFoodCandidate("philadelphia cream cheese", [
+      generic("Cream cheese"),
+      branded("Philadelphia Cream Cheese", "Philadelphia"),
+    ])?.name,
+    "Philadelphia Cream Cheese"
+  );
+  assert.equal(
+    selectNutritionFoodCandidate("smoked salmon", [generic("Salmon")]),
+    null
+  );
+  assert.equal(
+    selectNutritionFoodCandidate("unlisted moonfruit", [generic("Banana")]),
+    null
+  );
+});
+
+test("AI photo matching prefers plain foods and preserves explicit dish or brand intent", () => {
+  const generic = (name: string) => ({
+    id: `generic-${name}`,
+    name,
+    provider: "USDA" as const,
+    type: "GENERIC",
+    isLocal: true,
+  });
+  const branded = (name: string, brandName: string) => ({
+    id: `branded-${name}`,
+    name,
+    brandName,
+    provider: "OPEN_FOOD_FACTS" as const,
+    type: "BRANDED",
+    isLocal: true,
+  });
+
+  assert.equal(
+    selectAiMealFoodCandidate("salmon", "salmon", [
+      generic("Salmon salad"),
+      generic("Salmon"),
+    ])?.name,
+    "Salmon"
+  );
+  assert.equal(
+    selectAiMealFoodCandidate("salmon fillet", "salmon", [
+      generic("Salmon salad"),
+      generic("Smoked salmon spread"),
+      generic("Salmon, cooked"),
+      generic("Salmon"),
+    ])?.name,
+    "Salmon"
+  );
+  assert.deepEqual(
+    rankAiMealFoodCandidates("potatoes", "potatoes", [
+      generic("Potato salad"),
+      generic("Potato, cooked, as ingredient"),
+      generic("Potato, cooked"),
+    ]).map((candidate) => candidate.name),
+    ["Potato, cooked", "Potato, cooked, as ingredient", "Potato salad"]
+  );
+  assert.equal(
+    selectAiMealFoodCandidate("salmon salad", "salmon salad", [
+      generic("Salmon"),
+      generic("Salmon salad"),
+    ])?.name,
+    "Salmon salad"
+  );
+  assert.equal(
+    selectAiMealFoodCandidate("Ocean Kiss salmon", "ocean kiss salmon", [
+      generic("Salmon"),
+      branded("Ocean Kiss Salmon", "Ocean Kiss"),
+    ])?.name,
+    "Ocean Kiss Salmon"
+  );
+  assert.deepEqual(
+    rankAiMealFoodCandidates("grilled salmon", "salmon", [
+      generic("Salmon salad"),
+      generic("Salmon, raw"),
+      generic("Salmon"),
+      generic("Salmon, cooked"),
+      generic("Salmon, grilled"),
+    ]).map((candidate) => candidate.name),
+    ["Salmon, grilled", "Salmon, cooked", "Salmon", "Salmon, raw", "Salmon salad"]
+  );
+  assert.equal(
+    selectAiMealFoodCandidate("unlisted moonfruit", "unlisted moonfruit", [generic("Banana")]),
+    null
+  );
+});
+
+test("AI ready-to-add review preserves estimated grams and does not create a duplicate", async () => {
+  const [workflow, resolver, service, visibility] = await Promise.all([
+    readFile(new URL("../components/nutrition/NutritionQuickActions.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/nutrition/describe-resolver.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/nutrition/service.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/nutrition/food-visibility.ts", import.meta.url), "utf8"),
+  ]);
+  const aiWorkflow = workflow.slice(
+    workflow.indexOf("function AiWorkflow"),
+    workflow.indexOf("function DescribeWorkflow")
+  );
+
+  assert.match(aiWorkflow, /if \(detected\.estimatedGrams && detected\.estimatedGrams > 0\)[\s\S]*return detected\.estimatedGrams/);
+  assert.match(aiWorkflow, /if \(!detected\.food\?\.id\)[\s\S]*unresolved\.push/);
+  assert.match(aiWorkflow, /const food = detected\.food[\s\S]*resolved\.push/);
+  assert.match(resolver, /if \("id" in candidate && candidate\.id\) return candidate/);
+  assert.match(service, /intent\.searchQueries\.map\(\(intentQuery\) => searchLocalFoods\(intentQuery, userId\)\)/);
+  assert.match(service, /isCanonicalAiMealFoodCandidate\(query, intent\.rankQuery, localMatch\)/);
+  assert.match(visibility, /contributionStatus: FoodContributionStatus\.PENDING, createdByUserId: userId/);
 });
 
 test("vision preserves dish identity and separates uncertain mushroom species", () => {

@@ -18,7 +18,7 @@ export function nutritionFoodQueryVariants(value: string) {
   let singular: string | null = null;
   if (last.endsWith("ies") && last.length > 3) singular = `${last.slice(0, -3)}y`;
   else if (last.endsWith("oes") && last.length > 3) singular = last.slice(0, -2);
-  else if (last.endsWith("es") && last.length > 3) singular = last.slice(0, -2);
+  else if (/(?:s|x|z|ch|sh)es$/.test(last) && last.length > 3) singular = last.slice(0, -2);
   else if (last.endsWith("s") && !last.endsWith("ss") && last.length > 2) singular = last.slice(0, -1);
   if (singular) variants.add([...words.slice(0, -1), singular].join(" "));
   return [...variants];

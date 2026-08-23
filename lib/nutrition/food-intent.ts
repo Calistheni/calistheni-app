@@ -43,6 +43,9 @@ const FOOD_INTENT_ALIASES: Record<string, readonly string[]> = {
   "cooked mushrooms": ["mushroom", "mushrooms"],
 };
 
+const LEADING_PRESENTATION = /^(?:cooked|raw|fried|boiled|baked|grilled|roasted|steamed|mashed|scrambled|sauteed|sautéed|french-style|french style)\s+/;
+const TRAILING_PRESENTATION = /\s+(?:fillet|fillets|portion|portions|piece|pieces)$/;
+
 export type NutritionFoodIntent = {
   /** The query used for deterministic ranking once synonyms are expanded. */
   rankQuery: string;
@@ -57,17 +60,16 @@ function displayName(value: string) {
 
 export function nutritionFoodIntent(query: string): NutritionFoodIntent {
   const normalized = normalizeFoodQuery(query);
-  const withoutPreparation = normalized.replace(
-    /^(?:cooked|raw|fried|boiled|grilled|roasted|sauteed|sautéed|french-style|french style)\s+/,
-    ""
-  );
-  const aliases = FOOD_INTENT_ALIASES[normalized] ?? FOOD_INTENT_ALIASES[withoutPreparation] ?? [];
+  const canonicalLookup = normalized
+    .replace(LEADING_PRESENTATION, "")
+    .replace(TRAILING_PRESENTATION, "");
+  const aliases = FOOD_INTENT_ALIASES[normalized] ?? FOOD_INTENT_ALIASES[canonicalLookup] ?? [];
   // This intentionally remains tiny: provider expansion is deterministic and
   // bounded, not a spelling-correction fan-out.
-  const searchQueries = [...new Set([normalized, ...aliases].map(normalizeFoodQuery).filter(Boolean))].slice(0, 5);
+  const searchQueries = [...new Set([normalized, ...aliases, canonicalLookup].map(normalizeFoodQuery).filter(Boolean))].slice(0, 5);
   return {
-    rankQuery: aliases[0] ? normalizeFoodQuery(aliases[0]) : normalized,
+    rankQuery: aliases[0] ? normalizeFoodQuery(aliases[0]) : canonicalLookup,
     searchQueries,
-    canonicalName: displayName(aliases[0] ? normalizeFoodQuery(aliases[0]) : normalized),
+    canonicalName: displayName(aliases[0] ? normalizeFoodQuery(aliases[0]) : canonicalLookup),
   };
 }

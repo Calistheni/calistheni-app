@@ -82,7 +82,8 @@ export async function POST(request: Request) {
     // separate, stricter search for every visual label.
     const resolved = await resolveDescribedFoods(
       description ?? "",
-      detected.foods.map((food) => conceptForVisionFood(food, description)), userId
+      detected.foods.map((food) => conceptForVisionFood(food, description)), userId,
+      { aiMealPhoto: true }
     );
     const foods = detected.foods.map((food, index) => {
       const concept = conceptForVisionFood(food, description);

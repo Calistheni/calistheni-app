@@ -2,6 +2,11 @@ import { FoodDataValueSource, FoodFreshnessStatus, FoodImportStatus, FoodRevisio
 import { prisma } from "@/lib/prisma";
 import { isMaterialFoodChange, normalizeFoodQuery, nutritionFoodQueryVariants } from "./normalization";
 import { nutritionFoodIntent } from "./food-intent";
+import {
+  isCanonicalAiMealFoodCandidate,
+  rankAiMealFoodCandidates,
+  selectAiMealFoodCandidate,
+} from "./ai-meal-food-matching";
 import { nutritionFoodVisibilityWhere } from "./food-visibility";
 import { getOpenFoodFactsProduct, searchOpenFoodFactsFoods } from "./providers/open-food-facts";
 import { ProviderError } from "./providers/http";
@@ -85,7 +90,7 @@ export async function searchLocalFoods(query: string, userId?: string) {
 }
 
 /** Shared top-N canonical preview set for smart Nutrition workflows. */
-export async function getNutritionCandidatesForIntent(query: string, limit = 5, userId?: string) {
+export async function getNutritionCandidatesForIntent(query: string, limit = 5, userId?: string, options?: { aiMealPhoto?: boolean }) {
   const intent = nutritionFoodIntent(query);
   if (process.env.NODE_ENV === "development") {
     console.info("[Nutrition candidate resolver] search queries", {
@@ -93,6 +98,28 @@ export async function getNutritionCandidatesForIntent(query: string, limit = 5, 
       rankQuery: intent.rankQuery,
       queries: intent.searchQueries,
     });
+  }
+  // AI Scan and Describe should reuse an existing visible canonical food
+  // without waiting for provider searches. Alias and moderation semantics are
+  // already part of searchLocalFoods; provider collection remains the fallback
+  // when the local pool has no safe match.
+  const localSearches = await Promise.all(
+    intent.searchQueries.map((intentQuery) => searchLocalFoods(intentQuery, userId))
+  );
+  const seenLocal = new Set<string>();
+  const uniqueLocalCandidates = localSearches.flat().filter((candidate) => {
+      if (seenLocal.has(candidate.id)) return false;
+      seenLocal.add(candidate.id);
+      return true;
+    });
+  const localCandidates = options?.aiMealPhoto
+    ? rankAiMealFoodCandidates(query, intent.rankQuery, uniqueLocalCandidates)
+    : rankNutritionFoodCandidates(intent.rankQuery, uniqueLocalCandidates);
+  const localMatch = options?.aiMealPhoto
+    ? selectAiMealFoodCandidate(query, intent.rankQuery, localCandidates)
+    : selectNutritionFoodCandidate(intent.rankQuery, localCandidates);
+  if (localMatch && (!options?.aiMealPhoto || isCanonicalAiMealFoodCandidate(query, intent.rankQuery, localMatch))) {
+    return localCandidates.slice(0, Math.max(1, Math.min(limit, 8)));
   }
   const results = await Promise.all(intent.searchQueries.map((intentQuery) => searchFoods(intentQuery, userId)));
   const seen = new Set<string>();
@@ -104,7 +131,9 @@ export async function getNutritionCandidatesForIntent(query: string, limit = 5, 
     seen.add(identity);
     return true;
   });
-  return rankNutritionFoodCandidates(intent.rankQuery, candidates)
+  return (options?.aiMealPhoto
+    ? rankAiMealFoodCandidates(query, intent.rankQuery, candidates)
+    : rankNutritionFoodCandidates(intent.rankQuery, candidates))
     .slice(0, Math.max(1, Math.min(limit, 8)));
 }
 

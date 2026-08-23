@@ -9,6 +9,11 @@ import {
 } from "./search-ranking";
 import { getNutritionCandidatesForIntent, importExternalFood, toFoodSummary } from "./service";
 import { nutritionFoodIntent } from "./food-intent";
+import {
+  isSuitableAiMealFoodCandidate,
+  rankAiMealFoodCandidates,
+  scoreAiMealFoodCandidate,
+} from "./ai-meal-food-matching";
 import type { ExternalFoodResult, FoodSummary } from "./types";
 import { prisma } from "@/lib/prisma";
 
@@ -35,10 +40,10 @@ export type DescribeResolution = Concept & {
   candidates: Candidate[];
 };
 
-function queryFor(concept: Concept) {
+function intentFor(concept: Concept) {
   return nutritionFoodIntent(
     [concept.preparation, concept.label].filter(Boolean).join(" ")
-  ).rankQuery;
+  );
 }
 
 function providerFor(candidate: ExternalFoodResult) {
@@ -63,22 +68,31 @@ async function canonicalize(candidate: Candidate): Promise<FoodSummary> {
   return canonicalSummary(imported.id);
 }
 
-export function getObviousDescribeCandidate(query: string, candidates: Candidate[]) {
-  const [top, second] = rankNutritionFoodCandidates(query, candidates);
-  if (!top || !isSufficientNutritionFoodCandidate(query, top)) {
+export function getObviousDescribeCandidate(query: string, candidates: Candidate[], aiDetectedQuery?: string) {
+  const ranked = aiDetectedQuery
+    ? rankAiMealFoodCandidates(aiDetectedQuery, query, candidates)
+    : rankNutritionFoodCandidates(query, candidates);
+  const [top, second] = ranked;
+  const isSufficient = (candidate: Candidate) => aiDetectedQuery
+    ? isSuitableAiMealFoodCandidate(aiDetectedQuery, query, candidate)
+    : isSufficientNutritionFoodCandidate(query, candidate);
+  const score = (candidate: Candidate) => aiDetectedQuery
+    ? scoreAiMealFoodCandidate(aiDetectedQuery, query, candidate)
+    : scoreNutritionFoodCandidate(query, candidate);
+  if (!top || !isSufficient(top)) {
     debugCandidateResolution("rejected automatic match", {
       query,
-      top: top ? { name: top.name, score: scoreNutritionFoodCandidate(query, top), reason: "weak-or-derivative" } : null,
+      top: top ? { name: top.name, score: score(top), reason: "weak-or-derivative" } : null,
     });
     return null;
   }
-  const topScore = scoreNutritionFoodCandidate(query, top);
-  const margin = topScore - (second ? scoreNutritionFoodCandidate(query, second) : 0);
+  const topScore = score(top);
+  const margin = topScore - (second ? score(second) : 0);
   const obvious = topScore >= NUTRITION_DESCRIBE_AUTO_MATCH_THRESHOLD && margin >= NUTRITION_DESCRIBE_AUTO_MATCH_MARGIN;
   debugCandidateResolution(obvious ? "selected deterministic match" : "ambiguous deterministic match", {
     query,
     top: { name: top.name, score: topScore },
-    second: second ? { name: second.name, score: scoreNutritionFoodCandidate(query, second) } : null,
+    second: second ? { name: second.name, score: score(second) } : null,
     margin,
   });
   return obvious ? top : null;
@@ -89,11 +103,18 @@ export function getObviousDescribeCandidate(query: string, candidates: Candidate
  * local/USDA/OFF search universe as Food search, then sends only opaque top-N
  * choices to the contextual selector. No provider record is imported here.
  */
-export async function resolveDescribedFoods(description: string, concepts: DescribedMealResult["foods"], userId?: string): Promise<DescribeResolution[]> {
+export async function resolveDescribedFoods(description: string, concepts: DescribedMealResult["foods"], userId?: string, options?: { aiMealPhoto?: boolean }): Promise<DescribeResolution[]> {
   const gathered = await Promise.all(concepts.map(async (concept, index) => {
-    const query = queryFor(concept);
+      const intent = intentFor(concept);
+      const query = intent.rankQuery;
+      const detectedQuery = [concept.preparation, concept.label].filter(Boolean).join(" ");
     try {
-      const candidates = await getNutritionCandidatesForIntent(query, NUTRITION_DESCRIBE_CANDIDATE_LIMIT, userId) as Candidate[];
+      const candidates = await getNutritionCandidatesForIntent(
+        detectedQuery,
+        NUTRITION_DESCRIBE_CANDIDATE_LIMIT,
+        userId,
+        options
+      ) as Candidate[];
       debugCandidateResolution("candidate pool", {
         label: concept.label,
         query,
@@ -103,9 +124,12 @@ export async function resolveDescribedFoods(description: string, concepts: Descr
           score: scoreNutritionFoodCandidate(query, candidate),
         })),
       });
-      return { concept, key: `concept_${index + 1}`, query, candidates, obvious: getObviousDescribeCandidate(query, candidates) };
+      const rankedCandidates = options?.aiMealPhoto
+        ? rankAiMealFoodCandidates(detectedQuery, query, candidates)
+        : candidates;
+      return { concept, key: `concept_${index + 1}`, query, detectedQuery, candidates: rankedCandidates, obvious: getObviousDescribeCandidate(query, rankedCandidates, options?.aiMealPhoto ? detectedQuery : undefined) };
     } catch {
-      return { concept, key: `concept_${index + 1}`, query, candidates: [] as Candidate[], obvious: null };
+      return { concept, key: `concept_${index + 1}`, query, detectedQuery, candidates: [] as Candidate[], obvious: null };
     }
   }));
 
@@ -140,7 +164,10 @@ export async function resolveDescribedFoods(description: string, concepts: Descr
       const selection = selections.get(entry.key);
       const index = selection?.candidateId ? Number(selection.candidateId.replace("candidate_", "")) - 1 : -1;
       const candidate = Number.isInteger(index) ? entry.candidates[index] : null;
-      if (candidate && selection && selection.confidence >= NUTRITION_DESCRIBE_AI_MATCH_THRESHOLD && isSufficientNutritionFoodCandidate(entry.query, candidate)) {
+      const suitable = candidate && (options?.aiMealPhoto
+        ? isSuitableAiMealFoodCandidate(entry.detectedQuery, entry.query, candidate)
+        : isSufficientNutritionFoodCandidate(entry.query, candidate));
+      if (candidate && selection && selection.confidence >= NUTRITION_DESCRIBE_AI_MATCH_THRESHOLD && suitable) {
         selected = candidate;
         confidence = selection.confidence;
       }
@@ -149,9 +176,9 @@ export async function resolveDescribedFoods(description: string, concepts: Descr
     // row. It remains explicitly review-required unless the deterministic or
     // contextual selector reached the automatic threshold.
     if (!selected) {
-      const fallback = entry.candidates.find((candidate) =>
-        isSufficientNutritionFoodCandidate(entry.query, candidate)
-      );
+      const fallback = entry.candidates.find((candidate) => options?.aiMealPhoto
+        ? isSuitableAiMealFoodCandidate(entry.detectedQuery, entry.query, candidate)
+        : isSufficientNutritionFoodCandidate(entry.query, candidate));
       if (fallback) {
         selected = fallback;
         confidence = Math.max(

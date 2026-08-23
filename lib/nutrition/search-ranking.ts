@@ -1,11 +1,11 @@
-import { normalizeBarcode, normalizeFoodQuery } from "./normalization";
+import { normalizeBarcode, normalizeFoodQuery, nutritionFoodQueryVariants } from "./normalization";
 import type { ExternalFoodResult, FoodSummary } from "./types";
 
 export type FoodQueryKind = "GENERIC" | "SPECIFIC_VARIANT" | "PRODUCT" | "BARCODE";
 
 const PACKAGE_SIZE = /\b\d+(?:[.,]\d+)?\s*(?:g|kg|ml|l|oz|lb)\b/i;
 const PRODUCT_TERMS = ["zero", "diet", "protein bar", "flavour", "flavor", "limited edition", "classic", "sugar free"];
-const MODIFIERS = ["raw", "uncooked", "dried", "dehydrated", "canned", "candied", "cooked", "boiled", "baked", "roasted", "grilled", "steamed", "fried", "mashed", "frozen", "sweetened", "juice", "sauce", "puree", "pie", "pudding", "split", "chips", "snack", "baby food", "with sugar", "with salt", "prepared", "restaurant", "fast food", "flour", "powder"];
+const MODIFIERS = ["raw", "uncooked", "dried", "dehydrated", "canned", "candied", "cooked", "boiled", "baked", "roasted", "grilled", "steamed", "fried", "smoked", "mashed", "frozen", "sweetened", "juice", "sauce", "puree", "pie", "pudding", "split", "chips", "snack", "baby food", "with sugar", "with salt", "prepared", "restaurant", "fast food", "flour", "powder"];
 const VARIETIES = ["granny smith", "fuji", "gala", "honeycrisp", "atlantic", "sockeye"];
 const PACKAGE_DESCRIPTION_TERMS = ["box", "blend", "nuggets", "flavoured", "flavored", "packet", "bottle", "can", "bar"];
 export const NUTRITION_SEARCH_RESULT_LIMIT = 20;
@@ -116,7 +116,10 @@ export function withSearchMetadata(result: ExternalFoodResult): ExternalFoodResu
 }
 
 function tokenMatches(name: string, token: string) {
-  return name.split(" ").some((word) => word === token || word === `${token}s` || `${word}s` === token);
+  const tokenVariants = new Set(nutritionFoodQueryVariants(token));
+  return name.split(" ").some((word) =>
+    nutritionFoodQueryVariants(word).some((variant) => tokenVariants.has(variant))
+  );
 }
 
 /** Rejects loose provider matches before they can receive a generic-food score. */
@@ -266,6 +269,10 @@ export function scoreNutritionFoodCandidate(query: string, candidate: NutritionF
   const generic = candidateIsGeneric(candidate);
   const community = candidateIsCommunity(candidate);
   const branded = !community && (Boolean(candidate.brandName) || candidate.searchMetadata?.isBranded === true || candidateProvider(candidate) === "OPEN_FOOD_FACTS");
+  const explicitlyNamesBrand = Boolean(
+    candidate.brandName
+    && normalizedQuery.includes(normalizeFoodQuery(candidate.brandName))
+  );
   let value = 0;
   if (core === normalizedQuery) value += 260;
   else if (name === normalizedQuery) value += 220;
@@ -274,6 +281,7 @@ export function scoreNutritionFoodCandidate(query: string, candidate: NutritionF
   if (generic) value += 155;
   if (candidateProvider(candidate) === "USDA") value += 45;
   if (candidate.isLocal) value += 90;
+  if (explicitlyNamesBrand) value += 360;
   // Community contributions are immediately useful to their creator, but an
   // unverified one must not outrank an equally exact trusted provider record.
   if (community && candidate.verificationStatus === "UNVERIFIED") value -= 75;
@@ -288,7 +296,7 @@ export function scoreNutritionFoodCandidate(query: string, candidate: NutritionF
     if (raw) value -= 130;
   } else if (tokens(query).some((token) => NATURALLY_RAW_FOODS.has(token)) && raw) value += 72;
   for (const modifier of MODIFIERS) if (hasModifier(name, modifier) && !normalizedQuery.includes(modifier) && !preparedIntent?.includes(modifier)) value -= 58;
-  if (kind === "GENERIC" && branded) value -= 280;
+  if (kind === "GENERIC" && branded && !explicitlyNamesBrand) value -= 280;
   value -= Math.max(0, name.length - normalizedQuery.length - 10) * 1.7;
   return value;
 }
@@ -323,9 +331,16 @@ export function diversifyNutritionFoodCandidates<T extends NutritionFoodCandidat
 
 /** Whether one candidate is safe to use as a local-first automatic match. */
 export function isSufficientNutritionFoodCandidate(query: string, candidate: NutritionFoodCandidate) {
-  if (classifyFoodQuery(query) !== "GENERIC") return true;
+  const kind = classifyFoodQuery(query);
   const name = normalizeFoodQuery(candidate.name);
+  const brand = normalizeFoodQuery(candidate.brandName ?? "");
   const queryTokens = tokens(query);
+  const tokenCoverage = queryTokens.filter((token) =>
+    tokenMatches(name, token) || tokenMatches(brand, token)
+  ).length;
+  if (kind === "SPECIFIC_VARIANT") return tokenCoverage === queryTokens.length;
+  if (kind === "PRODUCT") return tokenCoverage >= Math.min(2, queryTokens.length);
+  if (kind === "BARCODE") return true;
   const explicitProductIntent = queryTokens.length >= 2 && queryTokens.filter((token) => tokenMatches(name, token) || tokenMatches(normalizeFoodQuery(candidate.brandName ?? ""), token)).length >= 2;
   const strongConceptMatch = queryTokens.every((token) => tokenMatches(name, token))
     || Boolean(preparedFoodIntent(queryTokens)?.some((term) => hasModifier(name, term)));
