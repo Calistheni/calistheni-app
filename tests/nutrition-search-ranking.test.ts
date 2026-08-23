@@ -113,8 +113,10 @@ test("an insufficient local derivative does not prevent provider generic fallbac
   assert.equal(ranked[0]?.name, "Milk, whole");
   assert.equal(isSufficientNutritionFoodCandidate("milk", localCoconutMilk), false);
   assert.equal(isSufficientNutritionFoodCandidate("milk", { ...localCoconutMilk, name: "Milkshake" }), false);
-  assert.match(service, /searchUsdaFoods\(normalized, NUTRITION_PROVIDER_CANDIDATE_LIMIT\)/);
-  assert.match(service, /searchOpenFoodFactsFoods\(normalized, NUTRITION_PROVIDER_CANDIDATE_LIMIT\)/);
+  assert.doesNotMatch(service, /searchFineliFoods\(/);
+  assert.match(service, /no local Fineli candidates; run npm run nutrition:sync-fineli/);
+  assert.match(service, /searchUsdaFoods\(providerQuery, NUTRITION_PROVIDER_CANDIDATE_LIMIT\)/);
+  assert.match(service, /const useOpenFoodFacts = queryKind === "PRODUCT" \|\| queryKind === "BARCODE"/);
   assert.match(service, /const localResults = local\.status === "fulfilled" \? local\.value : \[\]/);
   assert.match(service, /diversifyNutritionFoodCandidates\(rankedResults\)\.slice\(0, NUTRITION_SEARCH_RESULT_LIMIT\)/);
 });

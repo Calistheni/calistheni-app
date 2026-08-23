@@ -20,7 +20,7 @@ import { isValidNutritionAmount } from "@/lib/nutrition/amount-input";
 
 export type FoodDetailsPreview = {
   id?: string;
-  provider?: "USDA" | "OPEN_FOOD_FACTS";
+  provider?: "FINELI" | "USDA" | "OPEN_FOOD_FACTS";
   externalId: string;
   name: string;
   isLocal?: boolean;

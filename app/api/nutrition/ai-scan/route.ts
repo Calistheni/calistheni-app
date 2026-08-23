@@ -107,6 +107,8 @@ export async function POST(request: Request) {
         visualConfidence: food.visualConfidence,
         matchConfidence: food.matchConfidence,
         match: food.food?.name ?? null,
+        source: food.food?.source ?? null,
+        sourceExternalId: food.food?.sourceExternalId ?? null,
         discarded: food.food ? null : "no-safe-canonical-match",
       })));
     }

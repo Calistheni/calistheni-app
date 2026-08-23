@@ -104,12 +104,18 @@ export function isUsdaGenericFood(result: ExternalFoodResult) {
   return dataType.includes("foundation") || dataType.includes("sr legacy") || dataType.includes("survey") || result.foodType === "GENERIC";
 }
 
+export function isFineliGenericFood(result: ExternalFoodResult) {
+  return result.provider === "FINELI" && result.searchMetadata?.fineliType === "FOOD";
+}
+
 export function isPackagedFoodResult(result: ExternalFoodResult) {
   if (result.provider === "OPEN_FOOD_FACTS") return true;
+  if (result.provider === "FINELI") return false;
   return !isUsdaGenericFood(result) || PACKAGE_DESCRIPTION_TERMS.some((term) => hasModifier(result.name, term));
 }
 
 export function withSearchMetadata(result: ExternalFoodResult): ExternalFoodResult {
+  if (result.provider === "FINELI") return result;
   const dataType = usdaDataType(result);
   const isGeneric = isUsdaGenericFood(result);
   return { ...result, searchMetadata: { source: result.provider, isGeneric, isBranded: !isGeneric, usdaDataType: dataType || null } };
@@ -146,9 +152,11 @@ export function scoreFoodResult(query: string, result: ExternalFoodResult) {
 
   const dataType = usdaDataType(result);
   const isUsdaGeneric = isUsdaGenericFood(result);
+  const isFineliGeneric = isFineliGenericFood(result);
   const isBranded = isPackagedFoodResult(result);
   if (kind === "GENERIC") {
     if (isUsdaGeneric) score += 130;
+    if (isFineliGeneric) score += 210;
     if (dataType.includes("foundation")) score += 38;
     else if (dataType.includes("sr legacy")) score += 32;
     else if (dataType.includes("survey")) score += 20;
@@ -228,18 +236,18 @@ export type NutritionFoodCandidate = {
   id?: string;
   externalId?: string;
   sourceExternalId?: string;
-  provider?: "USDA" | "OPEN_FOOD_FACTS";
+  provider?: "FINELI" | "USDA" | "OPEN_FOOD_FACTS";
   source?: string;
   name: string;
   brandName?: string | null;
   type?: string;
   verificationStatus?: string;
   isLocal?: boolean;
-  searchMetadata?: { isGeneric?: boolean; isBranded?: boolean };
+  searchMetadata?: { isGeneric?: boolean; isBranded?: boolean; fineliType?: "FOOD" | "DISH" | null };
 };
 
-function candidateProvider(candidate: NutritionFoodCandidate): "USDA" | "OPEN_FOOD_FACTS" {
-  return candidate.provider ?? (candidate.source === "USDA" ? "USDA" : "OPEN_FOOD_FACTS");
+function candidateProvider(candidate: NutritionFoodCandidate): "FINELI" | "USDA" | "OPEN_FOOD_FACTS" {
+  return candidate.provider ?? (candidate.source === "FINELI" ? "FINELI" : candidate.source === "USDA" ? "USDA" : "OPEN_FOOD_FACTS");
 }
 function candidateIsCommunity(candidate: NutritionFoodCandidate) {
   return candidate.source === "USER" || candidate.type === "USER_CREATED";
@@ -248,7 +256,7 @@ function candidateIsGeneric(candidate: NutritionFoodCandidate) {
   if (candidate.searchMetadata?.isGeneric !== undefined) return candidate.searchMetadata.isGeneric;
   if (candidateIsCommunity(candidate)) return true;
   if (candidate.type) return candidate.type === "GENERIC";
-  return candidateProvider(candidate) === "USDA";
+  return candidateProvider(candidate) === "USDA" || candidateProvider(candidate) === "FINELI";
 }
 function candidateCoreName(candidate: NutritionFoodCandidate) {
   // USDA commonly expresses ingredient variants as "Milk, whole" and
@@ -280,6 +288,10 @@ export function scoreNutritionFoodCandidate(query: string, candidate: NutritionF
   value += tokens(query).filter((token) => tokenMatches(name, token)).length * 32;
   if (generic) value += 155;
   if (candidateProvider(candidate) === "USDA") value += 45;
+  // Synced Fineli records are local FoodSummary objects and intentionally no
+  // longer carry transient provider search metadata. FINELI + GENERIC is the
+  // persisted equivalent of a Fineli FOOD record.
+  if (candidateProvider(candidate) === "FINELI" && candidateIsGeneric(candidate)) value += 170;
   if (candidate.isLocal) value += 90;
   if (explicitlyNamesBrand) value += 360;
   // Community contributions are immediately useful to their creator, but an
@@ -375,7 +387,7 @@ export function deduplicateExternalFoodResults(local: FoodSummary[], results: Ex
   const localIdentities = new Set(local.map((food) => `${normalizeFoodQuery(food.name)}:${normalizeFoodQuery(food.brandName ?? "")}:${[food.nutritionPer100g.caloriesKcal, food.nutritionPer100g.proteinGrams, food.nutritionPer100g.carbohydrateGrams, food.nutritionPer100g.fatGrams].map((value) => typeof value === "number" ? value.toFixed(2) : "-").join(":")}`));
   const seen = new Set<string>();
   return results.filter((result) => {
-    const source = result.provider === "USDA" ? "USDA" : "OPEN_FOOD_FACTS";
+    const source = result.provider;
     const identity = `${normalizeFoodQuery(result.name)}:${normalizeFoodQuery(result.brandName ?? "")}:${nutritionKey(result)}`;
     if (localSources.has(`${source}:${result.externalId}`) || localIdentities.has(identity)) return false;
     const key = `${source}:${result.externalId}`;

@@ -15,8 +15,8 @@ import { resolveFoodIcon } from "./food-icons";
 import type { ExternalFoodResult, FoodSearchResponse, FoodSummary, NutritionValues, ProviderState } from "./types";
 import { classifyFoodQuery, deduplicateExternalFoodResults, diversifyNutritionFoodCandidates, isPackagedFoodResult, isRelevantFoodResult, isUsdaGenericFood, limitFoodSearchResults, NUTRITION_PROVIDER_CANDIDATE_LIMIT, NUTRITION_SEARCH_RESULT_LIMIT, rankExternalFoodResults, rankNutritionFoodCandidates, selectNutritionFoodCandidate, selectPrimaryGenericFood, withSearchMetadata } from "./search-ranking";
 
-const providerFor = (provider: ExternalFoodResult["provider"]) => provider === "USDA" ? FoodSource.USDA : FoodSource.OPEN_FOOD_FACTS;
-const daysFor = (food: { source: FoodSource; type: FoodType; importStatus: FoodImportStatus }) => food.importStatus === FoodImportStatus.INCOMPLETE ? 7 : food.source === FoodSource.OPEN_FOOD_FACTS ? Number(process.env.OPEN_FOOD_FACTS_REVALIDATE_DAYS ?? 30) : food.type === FoodType.BRANDED ? 60 : Number(process.env.USDA_REVALIDATE_DAYS ?? 180);
+const providerFor = (provider: ExternalFoodResult["provider"]) => provider === "FINELI" ? FoodSource.FINELI : provider === "USDA" ? FoodSource.USDA : FoodSource.OPEN_FOOD_FACTS;
+const daysFor = (food: { source: FoodSource; type: FoodType; importStatus: FoodImportStatus }) => food.importStatus === FoodImportStatus.INCOMPLETE ? 7 : food.source === FoodSource.OPEN_FOOD_FACTS ? Number(process.env.OPEN_FOOD_FACTS_REVALIDATE_DAYS ?? 30) : food.source === FoodSource.FINELI ? Number(process.env.FINELI_REVALIDATE_DAYS ?? 180) : food.type === FoodType.BRANDED ? 60 : Number(process.env.USDA_REVALIDATE_DAYS ?? 180);
 const nextDate = (food: { source: FoodSource; type: FoodType; importStatus: FoodImportStatus }, from = new Date()) => new Date(from.getTime() + daysFor(food) * 86400000);
 const numeric = (value: unknown) => value === null || value === undefined ? undefined : Number(value);
 function nutritionFromRecord(food: Record<string, unknown>): NutritionValues { return { caloriesKcal: numeric(food.caloriesKcal), proteinGrams: numeric(food.proteinGrams), carbohydrateGrams: numeric(food.carbohydrateGrams), fatGrams: numeric(food.fatGrams), fiberGrams: numeric(food.fiberGrams), sugarGrams: numeric(food.sugarGrams), saturatedFatGrams: numeric(food.saturatedFatGrams), transFatGrams: numeric(food.transFatGrams), addedSugarGrams: numeric(food.addedSugarGrams), sodiumMg: numeric(food.sodiumMg), saltGrams: numeric(food.saltGrams), cholesterolMg: numeric(food.cholesterolMg), potassiumMg: numeric(food.potassiumMg), calciumMg: numeric(food.calciumMg), ironMg: numeric(food.ironMg) }; }
@@ -57,6 +57,17 @@ export function withResolvedFoodIcon(result: ExternalFoodResult): ExternalFoodRe
   const icon = resolveFoodIcon({ name: result.name, categories: result.details?.categories, imageUrl: result.imageUrl, type: result.foodType, source: result.provider });
   return icon ? { ...result, genericIcon: { key: icon.key, url: icon.url, match: icon.match } } : result;
 }
+function debugFoodCandidate(candidate: FoodSummary | ExternalFoodResult | null) {
+  if (!candidate) return null;
+  return {
+    name: candidate.name,
+    provider: "provider" in candidate ? candidate.provider : candidate.source,
+    providerId: "externalId" in candidate ? candidate.externalId : candidate.sourceExternalId,
+    providerType: "searchMetadata" in candidate
+      ? candidate.searchMetadata?.fineliType ?? null
+      : null,
+  };
+}
 export function toFoodSummary(food: Record<string, unknown>): FoodSummary { const next = food.nextRevalidateAt instanceof Date ? food.nextRevalidateAt : null; return { id: String(food.id), name: String(food.name), brandName: food.brandName ? String(food.brandName) : null, barcode: food.barcode ? String(food.barcode) : null, imageUrl: productImageFromRecord(food), genericIcon: foodIconReference(food), servings: servingsFromRecord(food), type: String(food.type), source: String(food.source), sourceExternalId: String(food.sourceExternalId), verificationStatus: String(food.verificationStatus), contributionStatus: typeof food.contributionStatus === "string" ? food.contributionStatus : null, freshnessStatus: String(food.freshnessStatus), confidenceScore: Number(food.confidenceScore), nutritionPer100g: nutritionFromRecord(food), importedAt: (food.importedAt as Date).toISOString(), lastRevalidatedAt: food.lastRevalidatedAt ? (food.lastRevalidatedAt as Date).toISOString() : null, nextRevalidateAt: next?.toISOString() ?? null, currentRevisionId: food.currentRevisionId ? String(food.currentRevisionId) : null, isLocal: true, revalidationRecommended: !next || next <= new Date() }; }
 async function findLocalFoods(normalized: string, userId?: string) {
   const terms = nutritionFoodQueryVariants(normalized);
@@ -78,7 +89,11 @@ async function findLocalFoods(normalized: string, userId?: string) {
       servings: { select: { name: true, quantity: true, grams: true, householdUnit: true, isDefault: true } },
     },
     orderBy: [{ selectionCount: "desc" }, { updatedAt: "desc" }],
-    take: 20,
+    // Provider datasets contain many variants for staples such as potato,
+    // rice, egg, and chicken. Ranking must see the clean canonical entries;
+    // truncating at 60 before relevance scoring made insertion/usage order
+    // choose the winner. Only the ranked top-N leaves this server function.
+    take: 250,
   });
   return localFoods.map((food) => toFoodSummary(food));
 }
@@ -118,8 +133,22 @@ export async function getNutritionCandidatesForIntent(query: string, limit = 5, 
   const localMatch = options?.aiMealPhoto
     ? selectAiMealFoodCandidate(query, intent.rankQuery, localCandidates)
     : selectNutritionFoodCandidate(intent.rankQuery, localCandidates);
-  if (localMatch && (!options?.aiMealPhoto || isCanonicalAiMealFoodCandidate(query, intent.rankQuery, localMatch))) {
+  const acceptsLocalMatch = Boolean(localMatch && (!options?.aiMealPhoto || isCanonicalAiMealFoodCandidate(query, intent.rankQuery, localMatch)));
+  if (process.env.NODE_ENV === "development" && options?.aiMealPhoto) {
+    console.info(`[AI Food Resolve] local candidates=${JSON.stringify({
+      detected: query,
+      candidates: localCandidates.map(debugFoodCandidate),
+      selected: debugFoodCandidate(localMatch),
+      acceptedAsGeneric: acceptsLocalMatch,
+    })}`);
+  }
+  if (localMatch && acceptsLocalMatch) {
     return localCandidates.slice(0, Math.max(1, Math.min(limit, 8)));
+  }
+  if (options?.aiMealPhoto && process.env.NODE_ENV === "development") {
+    const fineliCount = localCandidates.filter((candidate) => candidate.source === "FINELI").length;
+    if (!fineliCount) console.warn("[AI Food Resolve] no local Fineli candidates; run npm run nutrition:sync-fineli before relying on USDA fallback");
+    else console.info(`[AI Food Resolve] local Fineli candidates=${fineliCount}`);
   }
   const results = await Promise.all(intent.searchQueries.map((intentQuery) => searchFoods(intentQuery, userId)));
   const seen = new Set<string>();
@@ -131,6 +160,12 @@ export async function getNutritionCandidatesForIntent(query: string, limit = 5, 
     seen.add(identity);
     return true;
   });
+  if (process.env.NODE_ENV === "development" && options?.aiMealPhoto) {
+    console.info(`[AI Food Resolve] fallback=${JSON.stringify({
+      detected: query,
+      candidates: candidates.map(debugFoodCandidate),
+    })}`);
+  }
   return (options?.aiMealPhoto
     ? rankAiMealFoodCandidates(query, intent.rankQuery, candidates)
     : rankNutritionFoodCandidates(intent.rankQuery, candidates))
@@ -140,24 +175,20 @@ export async function getNutritionCandidatesForIntent(query: string, limit = 5, 
 export async function searchFoods(query: string, userId?: string): Promise<FoodSearchResponse> {
   const normalized = normalizeFoodQuery(query);
   const intent = nutritionFoodIntent(normalized);
+  const queryKind = classifyFoodQuery(normalized);
   const providerQueries = intent.searchQueries.slice(0, 3);
-  // The primary call remains equivalent to searchUsdaFoods(normalized, NUTRITION_PROVIDER_CANDIDATE_LIMIT)
-  // and searchOpenFoodFactsFoods(normalized, NUTRITION_PROVIDER_CANDIDATE_LIMIT); variants supplement it.
   const localRequest = findLocalFoods(normalized, userId);
-  // Always collect from both providers. Local hits are ranking evidence, never
-  // a reason to suppress the broader canonical/provider universe.
-  const [local, ...providerCalls] = await Promise.allSettled([
-    localRequest,
-    ...providerQueries.flatMap((providerQuery) => [
-      searchUsdaFoods(providerQuery, NUTRITION_PROVIDER_CANDIDATE_LIMIT),
-      searchOpenFoodFactsFoods(providerQuery, NUTRITION_PROVIDER_CANDIDATE_LIMIT),
-    ]),
+  const useUsda = queryKind !== "BARCODE";
+  const useOpenFoodFacts = queryKind === "PRODUCT" || queryKind === "BARCODE";
+  const [local, usdaCalls, offCalls] = await Promise.all([
+    localRequest.then(
+      (value): PromiseSettledResult<FoodSummary[]> => ({ status: "fulfilled", value }),
+      (reason): PromiseSettledResult<FoodSummary[]> => ({ status: "rejected", reason }),
+    ),
+    Promise.allSettled(useUsda ? providerQueries.map((providerQuery) => searchUsdaFoods(providerQuery, NUTRITION_PROVIDER_CANDIDATE_LIMIT)) : []),
+    Promise.allSettled(useOpenFoodFacts ? providerQueries.map((providerQuery) => searchOpenFoodFactsFoods(providerQuery, NUTRITION_PROVIDER_CANDIDATE_LIMIT)) : []),
   ]);
-  const usdaCalls = providerCalls.filter((_, index) => index % 2 === 0);
-  const offCalls = providerCalls.filter((_, index) => index % 2 === 1);
-  const usda = usdaCalls[0]!;
-  const off = offCalls[0]!;
-  const fulfilled = (calls: PromiseSettledResult<ExternalFoodResult>[][] | PromiseSettledResult<ExternalFoodResult[]>[]) => (calls as PromiseSettledResult<ExternalFoodResult[]>[]).flatMap((result) => result.status === "fulfilled" ? result.value : []);
+  const fulfilled = (calls: PromiseSettledResult<ExternalFoodResult[]>[]) => calls.flatMap((result) => result.status === "fulfilled" ? result.value : []);
   const state = (result: PromiseSettledResult<ExternalFoodResult[]>, configured = true): ProviderState => {
     if (result.status === "fulfilled") return { attempted: true, available: true, error: null };
     const code = result.reason instanceof ProviderError ? result.reason.code : "UNAVAILABLE";
@@ -168,6 +199,7 @@ export async function searchFoods(query: string, userId?: string): Promise<FoodS
     };
   };
   const providerState = (calls: PromiseSettledResult<ExternalFoodResult[]>[], configured = true): ProviderState => {
+    if (!calls.length) return { attempted: false, available: configured, error: null };
     if (calls.some((call) => call.status === "fulfilled")) return { attempted: true, available: true, error: null };
     return state(calls[0]!, configured);
   };
@@ -206,15 +238,17 @@ export async function searchFoods(query: string, userId?: string): Promise<FoodS
     console.info("[Nutrition search] empty result diagnostics", {
       query: normalized,
       localCount: localResults.length,
-      usdaCount: usda.status === "fulfilled" ? usda.value.length : 0,
-      openFoodFactsCount: off.status === "fulfilled" ? off.value.length : 0,
+      fineliCount: localResults.filter((food) => food.source === "FINELI").length,
+      usdaCount: fulfilled(usdaCalls).length,
+      openFoodFactsCount: fulfilled(offCalls).length,
       mergedCount: initialProviderCandidates.length,
       filteredCount: providerResults.length,
     });
   }
-  const rankedGenericResults = rankExternalFoodResults(normalized, providerResults.filter(isUsdaGenericFood));
-  const primaryGeneric = selectPrimaryGenericFood(normalized, rankedGenericResults);
-  const genericResults = primaryGeneric ? [primaryGeneric, ...rankedGenericResults.filter((food) => food.externalId !== primaryGeneric.externalId)] : rankedGenericResults;
+  const rankedUsdaResults = rankExternalFoodResults(normalized, providerResults.filter(isUsdaGenericFood));
+  const primaryGeneric = selectPrimaryGenericFood(normalized, rankedUsdaResults);
+  const usdaGenericResults = primaryGeneric ? [primaryGeneric, ...rankedUsdaResults.filter((food) => food.externalId !== primaryGeneric.externalId)] : rankedUsdaResults;
+  const genericResults = usdaGenericResults;
   const rankedPackagedResults = rankExternalFoodResults(normalized, providerResults.filter(isPackagedFoodResult));
   const packagedResults = rankedPackagedResults.slice(0, 8);
   // Rank the complete preview pool before applying the user-visible budget.
@@ -227,20 +261,24 @@ export async function searchFoods(query: string, userId?: string): Promise<FoodS
     ...rankedPackagedResults,
   ]);
   const limited = limitFoodSearchResults({ genericResults, localResults, packagedResults });
-  const providers = { usda: providerState(usdaCalls, Boolean(process.env.USDA_FDC_API_KEY)), openFoodFacts: providerState(offCalls) };
+  const localFineliAvailable = localResults.some((food) => food.source === "FINELI");
+  const providers = { fineli: { attempted: false, available: localFineliAvailable, error: null } satisfies ProviderState, usda: providerState(usdaCalls, Boolean(process.env.USDA_FDC_API_KEY)), openFoodFacts: providerState(offCalls) };
   const warnings = [
     local.status === "rejected" ? "Saved foods are temporarily unavailable; provider results are still shown." : null,
     providers.usda.error ? "USDA results are temporarily unavailable." : null,
     providers.openFoodFacts.error ? "Packaged product results are temporarily unavailable." : null,
   ].filter((message): message is string => Boolean(message));
   const results = diversifyNutritionFoodCandidates(rankedResults).slice(0, NUTRITION_SEARCH_RESULT_LIMIT);
-  if (process.env.NODE_ENV === "development") console.info("[FoodSearch]", { query, normalized, local: localResults.length, usda: fulfilled(usdaCalls).length, off: fulfilled(offCalls).length, merged: providerResults.length, final: results.length });
+  if (process.env.NODE_ENV === "development") console.info("[FoodSearch]", { query, normalized, local: localResults.length, fineli: localResults.filter((food) => food.source === "FINELI").length, usda: fulfilled(usdaCalls).length, off: fulfilled(offCalls).length, merged: providerResults.length, final: results.length });
   const missingIntent = classifyFoodQuery(normalized) === "GENERIC" && !selectNutritionFoodCandidate(intent.rankQuery, results)
     ? intent.canonicalName
     : null;
-  return { query: normalized, queryKind: classifyFoodQuery(normalized), ...limited, results, externalResults: [...limited.genericResults, ...limited.packagedResults], providers, warnings, missingIntent };
+  return { query: normalized, queryKind, ...limited, results, externalResults: [...limited.genericResults, ...limited.packagedResults], providers, warnings, missingIntent };
 }
-async function fetchExternal(provider: "USDA" | "OPEN_FOOD_FACTS", externalId: string) { return provider === "USDA" ? getUsdaFood(externalId) : getOpenFoodFactsProduct(externalId); }
+async function fetchExternal(provider: ExternalFoodResult["provider"], externalId: string) {
+  if (provider === "FINELI") throw new ProviderError("UNAVAILABLE", "Fineli foods are synchronized from the official open-data package, not fetched during requests.");
+  return provider === "USDA" ? getUsdaFood(externalId) : getOpenFoodFactsProduct(externalId);
+}
 const nutritionFields = ["caloriesKcal", "proteinGrams", "carbohydrateGrams", "fatGrams", "fiberGrams", "sugarGrams", "saturatedFatGrams", "transFatGrams", "addedSugarGrams", "sodiumMg", "saltGrams", "cholesterolMg", "potassiumMg", "calciumMg", "ironMg"] as const;
 function persistenceFood(result: ExternalFoodResult) { return { type: result.foodType === "GENERIC" ? FoodType.GENERIC : FoodType.BRANDED, name: result.name, normalizedName: normalizeFoodQuery(result.name), description: result.description ?? null, brandName: result.brandName ?? null, barcode: result.barcode ?? null, imageUrl: result.imageUrl ?? null, languageCode: result.languageCode ?? null, countryCodes: result.countryCodes, nutritionBasisGrams: 100, ...result.nutritionPer100g, calorieValueSource: FoodDataValueSource.PROVIDER, source: providerFor(result.provider), sourceExternalId: result.externalId, sourceUpdatedAt: result.sourceUpdatedAt ?? null, verificationStatus: result.verificationStatus === "OFFICIAL_SOURCE" ? FoodVerificationStatus.OFFICIAL_SOURCE : result.verificationStatus === "COMMUNITY_SOURCE" ? FoodVerificationStatus.COMMUNITY_SOURCE : FoodVerificationStatus.UNVERIFIED, importStatus: result.isComplete ? FoodImportStatus.ACTIVE : FoodImportStatus.INCOMPLETE, freshnessStatus: FoodFreshnessStatus.FRESH, confidenceScore: result.confidenceScore, lastFetchedAt: new Date(), lastRevalidatedAt: new Date(), nextRevalidateAt: nextDate({ source: providerFor(result.provider), type: result.foodType === "GENERIC" ? FoodType.GENERIC : FoodType.BRANDED, importStatus: result.isComplete ? FoodImportStatus.ACTIVE : FoodImportStatus.INCOMPLETE }) }; }
 function revisionData(foodId: string, revisionNumber: number, result: ExternalFoodResult, sourceRecordId: string, reason: FoodRevisionReason) { const food = persistenceFood(result); return { foodId, revisionNumber, reason, source: food.source, sourceExternalId: result.externalId, name: result.name, brandName: result.brandName, barcode: result.barcode, imageUrl: result.imageUrl, nutritionBasisGrams: 100, ...result.nutritionPer100g, confidenceScore: result.confidenceScore, verificationStatus: food.verificationStatus, sourceUpdatedAt: result.sourceUpdatedAt ?? null, sourceRecordId, normalizedDataChecksum: result.checksum }; }
@@ -251,8 +289,12 @@ async function persistProviderDetails(tx: Prisma.TransactionClient, foodId: stri
   await tx.foodNutrient.deleteMany({ where: { foodId } });
   if (details.nutrients.length) await tx.foodNutrient.createMany({ data: details.nutrients.map((nutrient) => ({ foodId, ...nutrient, basisGrams: 100, source, sourceExternalId: result.externalId })) });
 }
-export async function importExternalFood(provider: "USDA" | "OPEN_FOOD_FACTS", externalId: string) {
-  const result = await fetchExternal(provider, externalId); const source = providerFor(provider); const existing = await prisma.food.findUnique({ where: { source_sourceExternalId: { source, sourceExternalId: result.externalId } }, select: { id: true } }); if (existing) { await prisma.food.update({ where: { id: existing.id }, data: { selectionCount: { increment: 1 } } }); return prisma.food.findUniqueOrThrow({ where: { id: existing.id } }); }
+
+export async function importExternalFood(provider: ExternalFoodResult["provider"], externalId: string) {
+  const source = providerFor(provider);
+  const existing = await prisma.food.findUnique({ where: { source_sourceExternalId: { source, sourceExternalId: externalId } }, select: { id: true } });
+  if (existing) { await prisma.food.update({ where: { id: existing.id }, data: { selectionCount: { increment: 1 } } }); return prisma.food.findUniqueOrThrow({ where: { id: existing.id } }); }
+  const result = await fetchExternal(provider, externalId);
   try { return await prisma.$transaction(async (tx) => { const food = await tx.food.create({ data: { ...persistenceFood(result), selectionCount: 1 } }); const sourceRecord = await tx.foodSourceRecord.create({ data: { foodId: food.id, source, sourceExternalId: result.externalId, rawData: result.raw as Prisma.InputJsonValue, checksum: result.checksum, sourceUpdatedAt: result.sourceUpdatedAt ?? null, responseStatus: 200 } }); const revision = await tx.foodRevision.create({ data: revisionData(food.id, 1, result, sourceRecord.id, FoodRevisionReason.INITIAL_IMPORT) }); await tx.food.update({ where: { id: food.id }, data: { currentRevisionId: revision.id } }); if (result.servings.length) await tx.foodServing.createMany({ data: result.servings.map((serving, index) => ({ foodId: food.id, name: serving.name, quantity: serving.quantity, grams: serving.grams, householdUnit: serving.householdUnit ?? null, isDefault: index === 0, source, sourceExternalId: serving.sourceExternalId ?? null })) }); await tx.foodAlias.create({ data: { foodId: food.id, name: result.name, normalizedName: normalizeFoodQuery(result.name), languageCode: result.languageCode ?? null, source } }); await persistProviderDetails(tx, food.id, result, source); return tx.food.findUniqueOrThrow({ where: { id: food.id } }); }); } catch (error) { if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return prisma.food.findUniqueOrThrow({ where: { source_sourceExternalId: { source, sourceExternalId: result.externalId } } }); throw error; }
 }
 
@@ -260,6 +302,7 @@ export async function revalidateFood(foodId: string, force = false) {
   const food = await prisma.food.findUnique({ where: { id: foodId }, include: { currentRevision: true } });
   if (!food) return { status: "NOT_FOUND" as const };
   if (!force && food.nextRevalidateAt && food.nextRevalidateAt > new Date()) return { status: "SKIPPED_FRESH" as const, foodId };
+  if (food.source === FoodSource.FINELI) return { status: "SKIPPED_DATASET_SYNC" as const, foodId };
   if (food.source !== FoodSource.USDA && food.source !== FoodSource.OPEN_FOOD_FACTS) return { status: "SKIPPED_UNSUPPORTED" as const, foodId };
   const provider = food.source === FoodSource.USDA ? "USDA" : "OPEN_FOOD_FACTS";
   try {

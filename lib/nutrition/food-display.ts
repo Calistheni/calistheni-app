@@ -1,6 +1,6 @@
 type FoodResultPresentation = {
   isLocal?: boolean;
-  provider?: "USDA" | "OPEN_FOOD_FACTS";
+  provider?: "FINELI" | "USDA" | "OPEN_FOOD_FACTS";
   source?: string;
   verificationStatus?: string;
   contributionStatus?: string | null;
@@ -40,6 +40,7 @@ export function foodResultClassification(food: FoodResultPresentation) {
       : "Community food";
   }
   if (food.isLocal) return "Saved food";
+  if (food.provider === "FINELI") return "Generic food";
   if (food.provider === "OPEN_FOOD_FACTS") return "Packaged product";
   if (food.provider === "USDA") {
     if (food.searchMetadata) return food.searchMetadata.isBranded ? "Packaged product" : "Generic food";

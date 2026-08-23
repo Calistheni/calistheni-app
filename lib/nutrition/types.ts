@@ -41,7 +41,7 @@ export type FoodProviderDetails = {
 };
 
 export type ExternalFoodResult = {
-  provider: "USDA" | "OPEN_FOOD_FACTS";
+  provider: "FINELI" | "USDA" | "OPEN_FOOD_FACTS";
   externalId: string;
   foodType: "GENERIC" | "BRANDED";
   name: string;
@@ -60,12 +60,12 @@ export type ExternalFoodResult = {
   providerVersion?: string;
   details?: FoodProviderDetails;
   genericIcon?: FoodIconReference;
-  searchMetadata?: { source: "USDA" | "OPEN_FOOD_FACTS"; isGeneric: boolean; isBranded: boolean; usdaDataType?: string | null };
+  searchMetadata?: { source: "FINELI" | "USDA" | "OPEN_FOOD_FACTS"; isGeneric: boolean; isBranded: boolean; usdaDataType?: string | null; fineliType?: "FOOD" | "DISH" | null };
   checksum: string;
   raw: unknown;
 };
 
 export type ProviderState = { attempted: boolean; available: boolean; error: "UNAVAILABLE" | "TIMEOUT" | "RATE_LIMITED" | null };
-export type FoodSearchResponse = { query: string; queryKind: "GENERIC" | "SPECIFIC_VARIANT" | "PRODUCT" | "BARCODE"; localResults: FoodSummary[]; genericResults: ExternalFoodResult[]; packagedResults: ExternalFoodResult[]; externalResults: ExternalFoodResult[]; results: Array<FoodSummary | ExternalFoodResult>; providers: { usda: ProviderState; openFoodFacts: ProviderState }; warnings: string[]; missingIntent: string | null };
+export type FoodSearchResponse = { query: string; queryKind: "GENERIC" | "SPECIFIC_VARIANT" | "PRODUCT" | "BARCODE"; localResults: FoodSummary[]; genericResults: ExternalFoodResult[]; packagedResults: ExternalFoodResult[]; externalResults: ExternalFoodResult[]; results: Array<FoodSummary | ExternalFoodResult>; providers: { fineli: ProviderState; usda: ProviderState; openFoodFacts: ProviderState }; warnings: string[]; missingIntent: string | null };
 export type FoodIconReference = { key: string; url: string; match: "EXPLICIT" | "EXACT" | "ALIAS" | "KEYWORD" | "CATEGORY" };
 export type FoodSummary = { id: string; name: string; brandName: string | null; barcode: string | null; imageUrl?: string | null; genericIcon?: FoodIconReference; servings?: Array<{ name: string; quantity: number; grams: number; householdUnit?: string | null; isDefault?: boolean }>; type: string; source: string; sourceExternalId: string; verificationStatus: string; contributionStatus?: string | null; freshnessStatus: string; confidenceScore: number; nutritionPer100g: NutritionValues; importedAt: string; lastRevalidatedAt: string | null; nextRevalidateAt: string | null; currentRevisionId: string | null; isLocal: true; revalidationRecommended: boolean };

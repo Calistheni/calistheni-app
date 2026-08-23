@@ -15,6 +15,11 @@ export default async function NutritionDataSourcesPage() {
       <p>Generic and branded nutrition records may include data from USDA FoodData Central. USDA data remains subject to its published data terms and source guidance.</p>
     </section>
     <section className="space-y-2 text-sm text-muted-foreground">
+      <h2 className="text-lg font-semibold text-foreground">Fineli</h2>
+      <p>Generic-food data may include Fineli data from the Finnish Institute for Health and Welfare (THL), licensed under CC BY 4.0. Fineli and THL do not endorse Calistheni.</p>
+      <a href="https://fineli.fi/fineli/en/avoin-data" target="_blank" rel="noreferrer" className="underline underline-offset-4">Fineli open-data terms</a>
+    </section>
+    <section className="space-y-2 text-sm text-muted-foreground">
       <h2 className="text-lg font-semibold text-foreground">Open Food Facts</h2>
       <p>Some packaged-food information comes from Open Food Facts, a community-maintained database. Check product packaging when accuracy is important, especially for allergens and ingredients.</p>
     </section>

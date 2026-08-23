@@ -22,6 +22,7 @@ export function foodCompleteness(values: NutritionValues) {
 }
 
 function sourceLabel(source: string) {
+  if (source === "FINELI") return "Finnish Institute for Health and Welfare, Fineli data";
   if (source === "USDA") return "USDA FoodData Central data";
   if (source === "OPEN_FOOD_FACTS") return "Open Food Facts Community Data";
   if (source === "CALISTHENI") return "Calistheni verified data";

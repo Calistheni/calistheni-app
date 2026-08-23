@@ -69,7 +69,7 @@ export type NutritionPickerEntry = {
 
 type Food = {
   id?: string;
-  provider?: "USDA" | "OPEN_FOOD_FACTS";
+  provider?: "FINELI" | "USDA" | "OPEN_FOOD_FACTS";
   source?: string;
   externalId: string;
   name: string;

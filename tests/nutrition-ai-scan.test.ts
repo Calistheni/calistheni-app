@@ -8,9 +8,11 @@ import {
 import { analyzeNutritionImage } from "../lib/nutrition/ai-provider";
 import { nutritionFoodIntent } from "../lib/nutrition/food-intent";
 import {
+  isCanonicalAiMealFoodCandidate,
   rankAiMealFoodCandidates,
   selectAiMealFoodCandidate,
 } from "../lib/nutrition/ai-meal-food-matching";
+import { normalizeFineliFood } from "../lib/nutrition/providers/fineli";
 import {
   rankNutritionFoodCandidates,
   selectNutritionFoodCandidate,
@@ -360,6 +362,82 @@ test("AI photo matching prefers plain foods and preserves explicit dish or brand
     selectAiMealFoodCandidate("unlisted moonfruit", "unlisted moonfruit", [generic("Banana")]),
     null
   );
+  assert.equal(
+    selectAiMealFoodCandidate("salmon fillet", "salmon", [
+      generic("Salmon nuggets, cooked as purchased, unheated"),
+      generic("Salmon, cooked"),
+    ])?.name,
+    "Salmon, cooked"
+  );
+  assert.equal(
+    selectAiMealFoodCandidate("potatoes", "potatoes", [
+      generic("Potato, boiled, NFS"),
+      generic("Potato, cooked"),
+    ])?.name,
+    "Potato, cooked"
+  );
+  assert.equal(
+    isCanonicalAiMealFoodCandidate(
+      "salmon fillet",
+      "salmon",
+      generic("Salmon nuggets, cooked as purchased, unheated")
+    ),
+    false
+  );
+  assert.equal(
+    isCanonicalAiMealFoodCandidate(
+      "boiled potato",
+      "potato",
+      generic("Potato, boiled, NFS")
+    ),
+    false
+  );
+});
+
+test("AI photo resolution prefers Fineli FOOD for salmon and potato while allowing an explicit DISH", () => {
+  const fineli = (name: string, id: number, type: "FOOD" | "DISH", preparation = "BOIL") => normalizeFineliFood({
+    id,
+    type: { code: type, name: { en: type === "FOOD" ? "Basic food" : "Dish" } },
+    name: { en: name },
+    preparationMethod: [{ code: preparation, name: { en: preparation } }],
+    ingredientClass: [],
+    functionClass: [],
+    ediblePortion: 100,
+    units: [],
+    energyKcal: 150,
+    fat: 5,
+    protein: 20,
+    carbohydrate: 2,
+    salt: 0.1,
+    saturatedFat: 1,
+    sugar: 0,
+  });
+  const salmon = fineli("Salmon, Cooked", 5001, "FOOD");
+  const potato = fineli("Potato, Cooked", 5002, "FOOD");
+  const salad = fineli("Salmon Salad", 5003, "DISH", "MIX");
+  const usdaSalad = { name: "Salmon salad", provider: "USDA" as const, type: "GENERIC" };
+
+  assert.equal(selectAiMealFoodCandidate("salmon fillet", "salmon", [usdaSalad, salad, salmon])?.name, "Salmon, Cooked");
+  assert.equal(selectAiMealFoodCandidate("potatoes", "potatoes", [potato])?.name, "Potato, Cooked");
+  assert.equal(selectAiMealFoodCandidate("salmon salad", "salmon salad", [salmon, salad])?.name, "Salmon Salad");
+});
+
+test("locally synced Fineli single-food recipes honor explicit preparation", () => {
+  const local = (name: string, type: "GENERIC" | "RECIPE" = "GENERIC") => ({
+    id: name,
+    source: "FINELI",
+    sourceExternalId: name,
+    type,
+    isLocal: true,
+    name,
+  });
+  const usda = (name: string) => ({ id: name, source: "USDA", sourceExternalId: name, type: "GENERIC", isLocal: true, name });
+
+  assert.equal(selectAiMealFoodCandidate("boiled potato", "potato", [local("Potato, Peeled"), local("Potato, Peeled, Boiled Without Salt", "RECIPE")])?.name, "Potato, Peeled, Boiled Without Salt");
+  assert.equal(selectAiMealFoodCandidate("cooked rice", "rice", [local("Rice, White"), local("Rice, Boiled Without Salt", "RECIPE")])?.name, "Rice, Boiled Without Salt");
+  assert.equal(selectAiMealFoodCandidate("boiled egg", "egg", [usda("Egg, whole, cooked, fried"), local("Egg, Boiled", "RECIPE")])?.name, "Egg, Boiled");
+  assert.equal(selectAiMealFoodCandidate("cooked chicken", "chicken", [usda("Chicken, cooked, stewed"), local("Chicken, Grilled", "RECIPE")])?.name, "Chicken, Grilled");
+  assert.equal(selectAiMealFoodCandidate("banana", "banana", [local("Banana, With Skin"), local("Banana, Without Skin")])?.name, "Banana, Without Skin");
 });
 
 test("AI ready-to-add review preserves estimated grams and does not create a duplicate", async () => {
@@ -381,6 +459,21 @@ test("AI ready-to-add review preserves estimated grams and does not create a dup
   assert.match(service, /intent\.searchQueries\.map\(\(intentQuery\) => searchLocalFoods\(intentQuery, userId\)\)/);
   assert.match(service, /isCanonicalAiMealFoodCandidate\(query, intent\.rankQuery, localMatch\)/);
   assert.match(visibility, /contributionStatus: FoodContributionStatus\.PENDING, createdByUserId: userId/);
+});
+
+test("AI scan development review displays true canonical provider provenance", async () => {
+  const [workflow, route, service] = await Promise.all([
+    readFile(new URL("../components/nutrition/NutritionQuickActions.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/nutrition/ai-scan/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/nutrition/service.ts", import.meta.url), "utf8"),
+  ]);
+  const aiWorkflow = workflow.slice(workflow.indexOf("function AiWorkflow"), workflow.indexOf("function DescribeWorkflow"));
+  assert.match(aiWorkflow, /<ReviewList items=\{items\} setItems=\{setItems\} showDebugSources \/>/);
+  assert.match(workflow, /showDebugSource && process\.env\.NODE_ENV === "development"/);
+  assert.match(workflow, /data-testid="ai-food-source"/);
+  assert.match(workflow, /if \(food\.source === "FINELI"\) return "Fineli"/);
+  assert.match(route, /source: food\.food\?\.source \?\? null/);
+  assert.match(service, /provider: "provider" in candidate \? candidate\.provider : candidate\.source/);
 });
 
 test("vision preserves dish identity and separates uncertain mushroom species", () => {

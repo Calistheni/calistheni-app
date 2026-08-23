@@ -1,6 +1,6 @@
 # Nutrition food foundation
 
-Calistheni searches its local `Food` catalogue first. When fewer than five strong local matches exist, the server queries USDA FoodData Central and Open Food Facts in parallel and returns previews. Previews are never persisted until the user imports one.
+Calistheni searches its local `Food` catalogue first. Generic searches prefer locally synchronized Fineli foods, deeper generic searches retain USDA FoodData Central, and product/barcode work retains Open Food Facts.
 
 ## Configuration
 
@@ -8,11 +8,13 @@ Obtain a USDA key at <https://fdc.nal.usda.gov/api-key-signup>, then set `USDA_F
 
 USDA uses `/foods/search` and `/food/{fdcId}`. Open Food Facts uses its current product endpoint for barcode lookups and its documented legacy full-text search endpoint for preview search. Provider calls have short timeouts; failures return partial/local results.
 
+Fineli uses the official **Basic Package 2** open-data ZIP (`FINELI_DATASET_URL=https://fineli.fi/fineli/content/file/49`), containing the complete food catalogue and 74 components, and requires no API key. Fineli's public website can present a Cloudflare managed challenge to backend clients, so user searches and AI scans never call it. Download the official ZIP in a browser and run `npm run nutrition:sync-fineli -- --archive /path/to/package-or-extracted-folder`; the repeatable sync imports `FOOD` records as generic foods and `DISH` records as recipes, with multilingual aliases and immutable revisions when provider data changes. The command refuses the 55-component Basic Package 1 and the 40-component industry package. Production should run the same controlled command after a fresh official package is made available, rather than downloading data in a user request. Fineli data is provided by the Finnish Institute for Health and Welfare (THL) under CC BY 4.0; attribution is shown on the Nutrition data-sources page. Fineli/THL does not endorse Calistheni.
+
 ## Canonical data, freshness, and revisions
 
-Canonical nutrition is normalized to 100 g. USDA generic foods revalidate after 180 days by default; Open Food Facts products after 30 days; incomplete data after seven days. HTTP caching is separate from persisted freshness. A stale local result remains usable immediately.
+Canonical nutrition is normalized to 100 g. Fineli records are updated only by the controlled dataset sync; USDA generic foods revalidate after 180 days by default; Open Food Facts products after 30 days; incomplete data after seven days. HTTP caching is separate from persisted freshness. A stale local result remains usable immediately.
 
-Each import stores a raw source audit record and immutable revision 1. A refresh stores another source record, but makes a new revision only when identity or normalized nutrition changes by more than `0.05` units. A less-complete provider response never replaces an active complete record. Removed sources retain their last known data with `SOURCE_REMOVED` freshness.
+Each import stores a raw source audit record and immutable revision 1. Fineli dataset sync and provider refreshes add a new source record and revision only when normalized provider data changes. Historical snapshots remain attached to their original revision.
 
 ## Historical snapshots
 

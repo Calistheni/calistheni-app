@@ -1,6 +1,6 @@
 export type FoodUsePreview = {
   id?: string;
-  provider?: "USDA" | "OPEN_FOOD_FACTS";
+  provider?: "FINELI" | "USDA" | "OPEN_FOOD_FACTS";
   externalId: string;
   isLocal?: boolean;
   servings?: Array<{ name: string; grams: number; isDefault?: boolean }>;

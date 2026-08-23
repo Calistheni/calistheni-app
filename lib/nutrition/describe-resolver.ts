@@ -197,9 +197,16 @@ export async function resolveDescribedFoods(description: string, concepts: Descr
       };
     }
     try {
+      const food = await canonicalize(selected);
+      debugCandidateResolution("selected canonical food", {
+        detected: entry.detectedQuery,
+        name: food.name,
+        provider: food.source,
+        providerId: food.sourceExternalId,
+      });
       return {
         ...entry.concept,
-        food: await canonicalize(selected),
+        food,
         confidence,
         needsReview: (confidence ?? 0) < NUTRITION_AUTO_MATCH_THRESHOLD,
         candidates: entry.candidates,

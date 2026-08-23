@@ -15,7 +15,7 @@ import { foodResultClassification, meaningfulFoodBrand } from "@/lib/nutrition/f
 
 type Result = {
   id?: string;
-  provider?: "USDA" | "OPEN_FOOD_FACTS";
+  provider?: "FINELI" | "USDA" | "OPEN_FOOD_FACTS";
   externalId: string;
   name: string;
   brandName?: string | null;
@@ -24,7 +24,7 @@ type Result = {
   genericIcon?: { key: string; url: string; match: string } | null;
   source?: string;
   foodType?: "GENERIC" | "BRANDED";
-  searchMetadata?: { source: "USDA" | "OPEN_FOOD_FACTS"; isGeneric: boolean; isBranded: boolean; usdaDataType?: string | null };
+  searchMetadata?: { source: "FINELI" | "USDA" | "OPEN_FOOD_FACTS"; isGeneric: boolean; isBranded: boolean; usdaDataType?: string | null; fineliType?: "FOOD" | "DISH" | null };
   verificationStatus: string;
   contributionStatus?: string | null;
   freshnessStatus?: string;

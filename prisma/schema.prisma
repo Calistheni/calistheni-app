@@ -37,6 +37,7 @@ enum FoodType {
 }
 
 enum FoodSource {
+  FINELI
   USDA
   OPEN_FOOD_FACTS
   USER

@@ -70,8 +70,9 @@ import {
 export type QuickMeal = "BREAKFAST" | "LUNCH" | "DINNER" | "SNACKS";
 type Food = {
   id?: string;
-  provider?: "USDA" | "OPEN_FOOD_FACTS";
+  provider?: "FINELI" | "USDA" | "OPEN_FOOD_FACTS";
   externalId?: string;
+  source?: "FINELI" | "USDA" | "OPEN_FOOD_FACTS" | "USER" | "CALISTHENI";
   name: string;
   brandName?: string | null;
   contributionStatus?: "PENDING" | "APPROVED" | "REJECTED" | null;
@@ -103,6 +104,14 @@ type AiCandidateSuggestion = {
   missingIntent?: string | null;
 };
 type AiMissingProposal = MissingFoodProposal & { suggestionKey: string };
+
+function foodDebugSource(food: Food) {
+  if (food.source === "FINELI") return "Fineli";
+  if (food.source === "USDA") return "USDA";
+  if (food.source === "OPEN_FOOD_FACTS") return "Open Food Facts";
+  if (food.source === "USER") return "User-created";
+  return "Local";
+}
 type DescribeReviewItem =
   | { key: string; type: "resolved"; item: DraftItem }
   | {
@@ -1848,6 +1857,7 @@ function FoodAmountCard({
   editing,
   confidence,
   needsReview,
+  showDebugSource,
 }: {
   food: Food;
   grams: number;
@@ -1862,6 +1872,7 @@ function FoodAmountCard({
   editing?: boolean;
   confidence?: number;
   needsReview?: boolean;
+  showDebugSource?: boolean;
 }) {
   const [amountInputVersion, setAmountInputVersion] = useState(0);
   const macro = macrosFor(food, grams * quantity);
@@ -1881,6 +1892,14 @@ function FoodAmountCard({
             {food.brandName ? (
               <p className="truncate text-xs text-muted-foreground">
                 {food.brandName}
+              </p>
+            ) : null}
+            {showDebugSource && process.env.NODE_ENV === "development" ? (
+              <p
+                className="mt-1 text-xs text-muted-foreground"
+                data-testid="ai-food-source"
+              >
+                Source: {foodDebugSource(food)}
               </p>
             ) : null}
             {needsReview || (confidence !== undefined && confidence < 0.85) ? (
@@ -2544,7 +2563,7 @@ function AiWorkflow({
               <p className="text-sm font-medium">We found</p>
             ) : null}
             {items.length ? (
-              <ReviewList items={items} setItems={setItems} />
+              <ReviewList items={items} setItems={setItems} showDebugSources />
             ) : null}
             {suggestions.map((suggestion) => (
               <Card key={suggestion.key}>
@@ -3324,11 +3343,13 @@ function DraftSearch({
 function ReviewList({
   items,
   setItems,
+  showDebugSources = false,
 }: {
   items: DraftItem[];
   setItems: (
     items: DraftItem[] | ((items: DraftItem[]) => DraftItem[])
   ) => void;
+  showDebugSources?: boolean;
 }) {
   const [replaceKey, setReplaceKey] = useState<string | null>(null);
   const [editingKey, setEditingKey] = useState<string | null>(null);
@@ -3343,6 +3364,7 @@ function ReviewList({
             unit={item.unit}
             confidence={item.confidence}
             needsReview={item.needsReview}
+            showDebugSource={showDebugSources}
             editing={editingKey === item.key}
             edit={() =>
               setEditingKey((current) =>

@@ -10,8 +10,9 @@ import { createUserUnauthorizedResponse, getAuthenticatedUserId } from "@/lib/us
 export async function GET(_request: Request, { params }: { params: Promise<{ provider: string; externalId: string }> }) {
   if (!(await getAuthenticatedUserId())) return createUserUnauthorizedResponse();
   const { provider, externalId } = await params;
-  if (provider !== "USDA" && provider !== "OPEN_FOOD_FACTS") return createJsonErrorResponse("Unsupported food provider.", 400, "INVALID_PROVIDER");
+  if (provider !== "FINELI" && provider !== "USDA" && provider !== "OPEN_FOOD_FACTS") return createJsonErrorResponse("Unsupported food provider.", 400, "INVALID_PROVIDER");
   try {
+    if (provider === "FINELI") throw new ProviderError("NOT_FOUND", "Fineli foods are served from the synchronized local catalogue.");
     const food = provider === "USDA"
       ? await getUsdaFood(normalizeUsdaFdcId(externalId))
       : await getOpenFoodFactsProduct(normalizeBarcode(externalId) ?? "");

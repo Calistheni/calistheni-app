@@ -23,6 +23,7 @@
     "secondary-muscles:apply": "node --env-file=.env.local scripts/backfill-secondary-muscles.mjs --apply",
     "seed:rewards": "node scripts/seed-rewards.mjs",
     "seed:supplements": "node --env-file=.env.local scripts/seed-supplements.mjs",
+    "nutrition:sync-fineli": "node --env-file-if-exists=.env.local --conditions=react-server ./node_modules/tsx/dist/cli.mjs scripts/sync-fineli.mts",
     "preview:secondary-muscles": "node --env-file=.env.local scripts/classify-secondary-muscles.mjs --dry-run",
     "classify:secondary-muscles": "node --env-file=.env.local scripts/classify-secondary-muscles.mjs",
     "cleanup:pending-park-photos": "node scripts/cleanup-pending-park-photos.mjs",

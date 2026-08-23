@@ -21,7 +21,7 @@ import {
 type MealCategory = "BREAKFAST" | "LUNCH" | "DINNER" | "SNACKS";
 type Food = {
   id?: string;
-  provider?: "USDA" | "OPEN_FOOD_FACTS";
+  provider?: "FINELI" | "USDA" | "OPEN_FOOD_FACTS";
   externalId: string;
   name: string;
   brandName?: string | null;
