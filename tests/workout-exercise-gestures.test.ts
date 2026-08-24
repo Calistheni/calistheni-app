@@ -34,7 +34,7 @@ test("swipe offset is clamped and a swipe never deletes by itself", () => {
     swipeAction.indexOf("function cancelGesture")
   );
   assert.doesNotMatch(finishGesture, /onDelete/);
-  assert.match(swipeAction, /aria-label=\{`Delete \$\{exerciseName\}`\}/);
+  assert.match(swipeAction, /aria-label=\{`Delete \$\{setLabel\}`\}/);
   assert.match(swipeAction, /onClick=\{onDelete\}/);
 });
 
@@ -66,10 +66,10 @@ test("header controls remain outside the drag activator with reserved right-side
   assert.match(swipeAction, /button, input, textarea, select, a/);
 });
 
-test("swipe delete is controlled, exclusive, cancelable, and preserves vertical scrolling", () => {
-  assert.match(builder, /openSwipeExerciseId, setOpenSwipeExerciseId/);
-  assert.match(builder, /setOpenSwipeExerciseId\(open \? selectedExercise\.localId : null\)/);
-  assert.match(builder, /onDragStart=\{\(\) => setOpenSwipeExerciseId\(null\)\}/);
+test("set swipe delete is controlled, exclusive, cancelable, and preserves vertical scrolling", () => {
+  assert.match(builder, /openSwipeSetId, setOpenSwipeSetId/);
+  assert.match(builder, /setOpenSwipeSetId\(open \? set\.localId : null\)/);
+  assert.match(builder, /onDragStart=\{\(\) => setOpenSwipeSetId\(null\)\}/);
   assert.match(swipeAction, /className=\{`relative z-10 touch-pan-y/);
   assert.match(
     swipeAction,
@@ -81,7 +81,7 @@ test("swipe delete is controlled, exclusive, cancelable, and preserves vertical 
 });
 
 test("closed swipe rows do not paint or expose the destructive action", () => {
-  assert.match(swipeAction, /const isDeleteRevealed = offset < 0/);
+  assert.match(swipeAction, /const isDeleteRevealed = !disabled && offset < 0/);
   assert.match(
     swipeAction,
     /isDeleteRevealed \? "visible opacity-100" : "invisible opacity-0"/
@@ -95,7 +95,27 @@ test("closed swipe rows do not paint or expose the destructive action", () => {
   assert.match(swipeAction, /variant="destructive"/);
 });
 
-test("superset rail has reserved space and moves inside each swipeable exercise", () => {
+test("only individual set rows reveal delete and use the existing removeSet path", () => {
+  const setTable = builder.slice(
+    builder.indexOf("function renderExerciseSetTable"),
+    builder.indexOf("function renderSupersetExerciseRow")
+  );
+  const exerciseRows = builder.slice(
+    builder.indexOf("function renderSupersetExerciseRow"),
+    builder.indexOf('<aside className="hidden space-y-4 lg:block">')
+  );
+
+  assert.match(setTable, /<WorkoutSetSwipeDeleteAction/);
+  assert.match(setTable, /setLabel=\{`\$\{exercise\.name\} set \$\{setIndex \+ 1\}`\}/);
+  assert.match(setTable, /onDelete=\{\(\) => removeSet\(selectedExercise\.localId, setIndex\)\}/);
+  assert.match(setTable, /disabled=\{selectedExercise\.sets\.length <= 1\}/);
+  assert.doesNotMatch(setTable, /Set \$\{setIndex \+ 1\} actions|Remove set/);
+  assert.doesNotMatch(exerciseRows, /<WorkoutSetSwipeDeleteAction/);
+  assert.match(exerciseRows, /setExercisePendingRemoval/);
+  assert.match(exerciseRows, /data-exercise-drag-activator/);
+});
+
+test("superset rail stays reserved while superset sets share set-level swipe behavior", () => {
   assert.match(superset, /absolute inset-y-0 left-0 w-0\.5/);
   assert.match(superset, /px-0 py-2 pl-2/);
   assert.match(superset, /<div className="pl-2 md:border-t md:pl-0">/);
@@ -104,7 +124,8 @@ test("superset rail has reserved space and moves inside each swipeable exercise"
     builder.indexOf("function renderSupersetExerciseRow"),
     builder.indexOf("function closeSupersetRoundForm")
   );
-  assert.match(supersetRow, /<WorkoutExerciseSwipeAction[\s\S]*<AccordionItem/);
+  assert.doesNotMatch(supersetRow, /WorkoutSetSwipeDeleteAction/);
+  assert.match(supersetRow, /renderExerciseSetTable\(selectedExercise, exercise\)/);
   assert.match(superset, /Add sets to an exercise below, or use Add round for the full superset/);
   assert.doesNotMatch(builder, /Add a set here for this exercise only/);
 });

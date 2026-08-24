@@ -288,21 +288,6 @@
     padding-bottom: calc(4rem + env(safe-area-inset-bottom));
   }
 
-  /* The workout route keeps a small content gutter, but its native-style
-     header paints through both that gutter and the iOS body safe-area inset. */
-  .active-workout-mobile-header {
-    width: calc(
-      100% + 1rem + env(safe-area-inset-left) +
-        env(safe-area-inset-right)
-    );
-    margin-inline-start: calc(-0.5rem - env(safe-area-inset-left));
-  }
-
-  .active-workout-mobile-header-inset {
-    padding-inline-start: calc(0.5rem + env(safe-area-inset-left));
-    padding-inline-end: calc(0.5rem + env(safe-area-inset-right));
-  }
-
   .app-scrollbar-hidden {
     -ms-overflow-style: none;
     scrollbar-width: none;
@@ -343,16 +328,6 @@
     display: none;
     width: 0;
     height: 0;
-  }
-
-  @media (min-width: 40rem) and (max-width: 47.999rem) {
-    .active-workout-mobile-header {
-      width: calc(
-        100% + 3rem + env(safe-area-inset-left) +
-          env(safe-area-inset-right)
-      );
-      margin-inline-start: calc(-1.5rem - env(safe-area-inset-left));
-    }
   }
 
   /* The active-workout shell is deliberately the sole vertical scroller.

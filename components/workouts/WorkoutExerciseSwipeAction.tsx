@@ -28,14 +28,16 @@ type SwipeGesture = {
   initiallyOpen: boolean;
 };
 
-export function WorkoutExerciseSwipeAction({
-  exerciseName,
+export function WorkoutSetSwipeDeleteAction({
+  setLabel,
+  disabled = false,
   isOpen,
   onOpenChange,
   onDelete,
   children,
 }: {
-  exerciseName: string;
+  setLabel: string;
+  disabled?: boolean;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   onDelete: () => void;
@@ -62,6 +64,7 @@ export function WorkoutExerciseSwipeAction({
 
   function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (
+      disabled ||
       event.pointerType === "mouse" ||
       event.button !== 0 ||
       (event.target as HTMLElement).closest(INTERACTIVE_CONTROL_SELECTOR)
@@ -124,14 +127,14 @@ export function WorkoutExerciseSwipeAction({
   }
 
   const offset =
-    gestureOffset ?? (isOpen ? -WORKOUT_EXERCISE_SWIPE_ACTION_WIDTH : 0);
-  const isDeleteRevealed = offset < 0;
+    gestureOffset ?? (!disabled && isOpen ? -WORKOUT_EXERCISE_SWIPE_ACTION_WIDTH : 0);
+  const isDeleteRevealed = !disabled && offset < 0;
 
   return (
     <div
       ref={rootRef}
       className="relative w-full max-w-full overflow-hidden"
-      data-workout-exercise-swipe
+      data-workout-set-swipe
     >
       <div
         className={`absolute inset-y-0 right-0 flex items-stretch ${
@@ -144,7 +147,7 @@ export function WorkoutExerciseSwipeAction({
           type="button"
           variant="destructive"
           className="h-full w-full rounded-none px-2"
-          aria-label={`Delete ${exerciseName}`}
+          aria-label={`Delete ${setLabel}`}
           tabIndex={isDeleteRevealed ? 0 : -1}
           onClick={onDelete}
         >

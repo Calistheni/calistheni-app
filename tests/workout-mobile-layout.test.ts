@@ -36,24 +36,16 @@ test("active workout uses compact mobile gutters without losing its desktop cons
   assert.match(builder, /grid w-full min-w-0 max-w-full gap-6 overflow-x-clip/);
   assert.match(builder, /w-full min-w-0 max-w-full space-y-0 md:space-y-2/);
   assert.match(mobileHeader, /grid-cols-\[2\.5rem_2\.5rem_minmax\(0,1fr\)_3\.75rem\]/);
-  assert.match(mobileHeader, /active-workout-mobile-header sticky top-0/);
-  assert.match(
-    styles,
-    /\.active-workout-mobile-header \{[\s\S]*100% \+ 1rem \+ env\(safe-area-inset-left\)[\s\S]*margin-inline-start: calc\(-0\.5rem - env\(safe-area-inset-left\)\)/
-  );
+  assert.match(mobileHeader, /sticky top-0[\s\S]*overflow-hidden rounded-xl border bg-card\/95 shadow-sm/);
+  assert.doesNotMatch(mobileHeader, /active-workout-mobile-header|-mx-2|sm:-mx-6/);
 });
 
-test("mobile header is an integrated full-width workout surface", () => {
-  assert.match(mobileHeader, /shrink-0 border-b bg-card\/95 backdrop-blur/);
-  assert.doesNotMatch(mobileHeader, /overflow-hidden rounded-xl border bg-card/);
-  assert.doesNotMatch(mobileHeader, /shadow-sm/);
-  assert.match(mobileHeader, /active-workout-mobile-header-inset grid grid-cols-\[2\.5rem/);
-  assert.match(mobileHeader, /active-workout-mobile-header-inset grid grid-cols-3 border-t/);
-  assert.match(mobileHeader, /active-workout-mobile-header-inset border-t py-1\.5/);
-  assert.match(
-    styles,
-    /\.active-workout-mobile-header-inset \{[\s\S]*padding-inline-start: calc\(0\.5rem \+ env\(safe-area-inset-left\)\);[\s\S]*padding-inline-end: calc\(0\.5rem \+ env\(safe-area-inset-right\)\)/
-  );
+test("mobile header is one compact rounded surface with connected rows", () => {
+  assert.match(mobileHeader, /shrink-0 overflow-hidden rounded-xl border bg-card\/95 shadow-sm backdrop-blur/);
+  assert.match(mobileHeader, /gap-1 px-2 pt-\[calc\(env\(safe-area-inset-top\)\+0\.25rem\)\] pb-1/);
+  assert.match(mobileHeader, /grid grid-cols-3 border-t border-border\/60 text-center/);
+  assert.match(mobileHeader, /<div className="border-t px-2 py-1\.5">/);
+  assert.equal((mobileHeader.match(/rounded-xl/g) ?? []).length, 1);
   assert.doesNotMatch(mobileHeader, /divide-x|bg-muted\/30/);
 });
 

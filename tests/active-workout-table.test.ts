@@ -41,8 +41,9 @@ test("the visible table keeps history out of current inputs and removes the dele
   assert.doesNotMatch(table, /placeholder=\{getSetPlaceholder/);
   assert.match(table, /formatPreviousSetPerformance/);
   assert.match(table, /set\.rpe \?\? "RPE"/);
-  assert.match(table, /Remove set/);
-  assert.doesNotMatch(table, /aria-label=\{`Remove set \$\{setIndex \+ 1\}`\}/);
+  assert.match(table, /WorkoutSetSwipeDeleteAction/);
+  assert.match(table, /onDelete=\{\(\) => removeSet\(selectedExercise\.localId, setIndex\)\}/);
+  assert.doesNotMatch(table, /Remove set|Set \$\{setIndex \+ 1\} actions/);
 });
 
 test("previous performance is position-specific instead of repeating a fallback best", () => {

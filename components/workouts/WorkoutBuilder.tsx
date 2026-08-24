@@ -123,7 +123,7 @@ import {
   SortableExerciseList,
   type SortableExerciseActivator,
 } from "@/components/workouts/SortableExerciseList";
-import { WorkoutExerciseSwipeAction } from "@/components/workouts/WorkoutExerciseSwipeAction";
+import { WorkoutSetSwipeDeleteAction } from "@/components/workouts/WorkoutExerciseSwipeAction";
 import { toast } from "sonner";
 import { ExerciseDetailPreview } from "@/components/exercises/ExerciseDetailPreview";
 import {
@@ -1036,7 +1036,7 @@ export function WorkoutBuilder({
     localId: string;
     exerciseName: string;
   } | null>(null);
-  const [openSwipeExerciseId, setOpenSwipeExerciseId] = useState<string | null>(null);
+  const [openSwipeSetId, setOpenSwipeSetId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isWorkoutDetailsOpen, setIsWorkoutDetailsOpen] = useState(false);
   const [isExercisePickerOpen, setIsExercisePickerOpen] = useState(false);
@@ -2148,7 +2148,6 @@ export function WorkoutBuilder({
   }
 
   function removeExercise(localId: string) {
-    setOpenSwipeExerciseId(null);
     setExerciseTimer((current) => current?.exerciseLocalId === localId ? null : current);
     setSelectedExercises((current) => current.filter((item) => item.localId !== localId));
     setSupersets((current) =>
@@ -2202,6 +2201,7 @@ export function WorkoutBuilder({
   }
 
   function removeSet(localId: string, setIndex: number) {
+    setOpenSwipeSetId(null);
     const setLocalId = selectedExercises.find((exercise) => exercise.localId === localId)?.sets[setIndex]?.localId;
     setExerciseTimer((current) => current?.setLocalId === setLocalId ? null : current);
     setSelectedExercises((current) =>
@@ -2979,24 +2979,25 @@ export function WorkoutBuilder({
           });
 
           return (
-            <div
+            <WorkoutSetSwipeDeleteAction
               key={set.localId}
-              ref={(row) => { if (row) setRowRefs.current.set(set.localId, row); else setRowRefs.current.delete(set.localId); }}
-              tabIndex={isWarned ? -1 : undefined}
-              aria-describedby={isWarned ? warningId : undefined}
-              className={`group border-y px-0 py-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:rounded-md md:border md:p-1 ${isWarned ? "border-destructive bg-destructive/10" : set.completed ? "border-primary/40 bg-primary/10" : "border-transparent bg-transparent md:border-border/70 md:bg-muted/20"}`}
+              setLabel={`${exercise.name} set ${setIndex + 1}`}
+              disabled={selectedExercise.sets.length <= 1}
+              isOpen={openSwipeSetId === set.localId}
+              onOpenChange={(open) =>
+                setOpenSwipeSetId(open ? set.localId : null)
+              }
+              onDelete={() => removeSet(selectedExercise.localId, setIndex)}
             >
-              <div className={`grid w-full min-w-0 items-center gap-1 ${getSetTableGridClass(exercise.trackingType, rpeTrackingEnabled)}`}>
+              <div
+                ref={(row) => { if (row) setRowRefs.current.set(set.localId, row); else setRowRefs.current.delete(set.localId); }}
+                tabIndex={isWarned ? -1 : undefined}
+                aria-describedby={isWarned ? warningId : undefined}
+                className={`group border-y px-0 py-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:rounded-md md:border md:p-1 ${isWarned ? "border-destructive bg-destructive/10" : set.completed ? "border-primary/40 bg-primary/10" : "border-transparent bg-transparent md:border-border/70 md:bg-muted/20"}`}
+              >
+                <div className={`grid w-full min-w-0 items-center gap-1 ${getSetTableGridClass(exercise.trackingType, rpeTrackingEnabled)}`}>
                 <span className={`relative ${WORKOUT_TABLE_CELL_CLASS} ${WORKOUT_TABLE_VALUE_CLASS} gap-0.5 text-muted-foreground`} aria-label={`Set ${setIndex + 1}${set.completed ? ", completed" : ""}`}>
                   {setIndex + 1}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button type="button" size="icon" variant="ghost" className="absolute size-4 shrink-0 p-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100" aria-label={`Set ${setIndex + 1} actions`}><EllipsisVertical className="size-3" /></Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                      <DropdownMenuItem variant="destructive" onSelect={() => removeSet(selectedExercise.localId, setIndex)} disabled={selectedExercise.sets.length <= 1}><Trash2 />Remove set</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
                 </span>
                 <span className={`${WORKOUT_TABLE_CELL_CLASS} flex-col leading-tight`} title={formatPreviousSetPerformance(reference, exercise.trackingType, setIndex)}>
                   <span className={`truncate ${WORKOUT_TABLE_VALUE_CLASS} text-foreground`}>{previous.primary}</span>
@@ -3047,7 +3048,8 @@ export function WorkoutBuilder({
                 </span>
               </div>
               {isWarned ? <p id={warningId} role="status" className="mt-1 flex items-center gap-1 px-1 text-xs font-medium text-destructive"><AlertTriangle className="size-3.5" aria-hidden="true" />Not marked done</p> : null}
-            </div>
+              </div>
+            </WorkoutSetSwipeDeleteAction>
           );
         })}
       </div>
@@ -3070,19 +3072,6 @@ export function WorkoutBuilder({
     ).length;
 
     return (
-      <WorkoutExerciseSwipeAction
-        exerciseName={exercise.name}
-        isOpen={openSwipeExerciseId === selectedExercise.localId}
-        onOpenChange={(open) =>
-          setOpenSwipeExerciseId(open ? selectedExercise.localId : null)
-        }
-        onDelete={() =>
-          setExercisePendingRemoval({
-            localId: selectedExercise.localId,
-            exerciseName: exercise.name,
-          })
-        }
-      >
       <AccordionItem
         key={selectedExercise.localId}
         value={selectedExercise.localId}
@@ -3465,7 +3454,6 @@ export function WorkoutBuilder({
           </Button>
         </AccordionContent>
       </AccordionItem>
-      </WorkoutExerciseSwipeAction>
     );
   }
 
@@ -3959,7 +3947,7 @@ export function WorkoutBuilder({
                 )
                 .map((exercise) => exercise.localId)}
               onMove={moveExercise}
-              onDragStart={() => setOpenSwipeExerciseId(null)}
+              onDragStart={() => setOpenSwipeSetId(null)}
             >
               <Accordion
                 type="multiple"
@@ -4076,7 +4064,7 @@ export function WorkoutBuilder({
                       <SortableExerciseList
                         ids={supersetMembers.map((member) => getSupersetMembershipSortableId(superset.key, member.localId))}
                         onMove={(activeId, overId) => moveSupersetExercise(superset.key, activeId, overId)}
-                        onDragStart={() => setOpenSwipeExerciseId(null)}
+                        onDragStart={() => setOpenSwipeSetId(null)}
                       >
                         <Accordion type="multiple" value={openExerciseIds} onValueChange={setOpenExerciseIds}>
                           {supersetMembers.map((member, memberIndex) => {
@@ -4103,19 +4091,6 @@ export function WorkoutBuilder({
                     label={getExerciseInstanceLabel(selectedExercise.localId, exercise.id, exercise.name)}
                   >
                     {(dragActivator) => (
-                    <WorkoutExerciseSwipeAction
-                      exerciseName={exercise.name}
-                      isOpen={openSwipeExerciseId === selectedExercise.localId}
-                      onOpenChange={(open) =>
-                        setOpenSwipeExerciseId(open ? selectedExercise.localId : null)
-                      }
-                      onDelete={() =>
-                        setExercisePendingRemoval({
-                          localId: selectedExercise.localId,
-                          exerciseName: exercise.name,
-                        })
-                      }
-                    >
                   <AccordionItem
                     value={selectedExercise.localId}
                     className="relative w-full max-w-full border-b border-border/70 bg-transparent pb-1 [overflow-anchor:none] md:overflow-hidden md:rounded-xl md:border md:border-border md:bg-card md:pb-0 md:shadow-sm md:last:border-b"
@@ -4634,7 +4609,6 @@ export function WorkoutBuilder({
                       </Button>
                     </AccordionContent>
                   </AccordionItem>
-                  </WorkoutExerciseSwipeAction>
                     )}
                   </SortableExerciseActivatorItem>
                 );
