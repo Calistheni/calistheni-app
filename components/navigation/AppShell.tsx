@@ -190,7 +190,8 @@ export function AppShell({ children, user }: AppShellProps) {
           className={cn(
             "app-shell-content min-h-0",
             isFullBleed && "app-shell-content-full-bleed",
-            usesFocusedWorkoutMode && "app-shell-content-focused-workout"
+            usesFocusedWorkoutMode &&
+              "app-shell-content-focused-workout app-scrollbar-hidden"
           )}
           {...(usesFocusedWorkoutMode
             ? {

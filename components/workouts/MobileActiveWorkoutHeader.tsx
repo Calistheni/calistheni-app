@@ -37,8 +37,8 @@ export function MobileActiveWorkoutHeader({
   onSkipRestTimer,
 }: MobileActiveWorkoutHeaderProps) {
   return (
-    <div className="sticky top-0 z-30 -mx-2 w-auto max-w-[calc(100%+1rem)] shrink-0 border-b bg-card/95 backdrop-blur sm:-mx-6 sm:max-w-[calc(100%+3rem)] md:hidden [overflow-anchor:none]">
-      <div className="grid grid-cols-[2.5rem_2.5rem_minmax(0,1fr)_3.75rem] gap-1 px-2 pt-[calc(env(safe-area-inset-top)+0.25rem)] pb-1">
+    <div className="active-workout-mobile-header sticky top-0 z-30 shrink-0 border-b bg-card/95 backdrop-blur md:hidden [overflow-anchor:none]">
+      <div className="active-workout-mobile-header-inset grid grid-cols-[2.5rem_2.5rem_minmax(0,1fr)_3.75rem] gap-1 pt-[calc(env(safe-area-inset-top)+0.25rem)] pb-1">
         <Button asChild size="icon" variant="ghost" className="size-10">
           <Link href="/home" aria-label="Go to home">
             <House className="size-4" aria-hidden="true" />
@@ -74,7 +74,7 @@ export function MobileActiveWorkoutHeader({
         </Button>
       </div>
 
-      <div className="grid grid-cols-3 border-t border-border/60 text-center">
+      <div className="active-workout-mobile-header-inset grid grid-cols-3 border-t border-border/60 text-center">
         <Button
           type="button"
           variant="ghost"
@@ -106,7 +106,7 @@ export function MobileActiveWorkoutHeader({
       </div>
 
       {activeRestTimer ? (
-        <div className="border-t px-2 py-1.5">
+        <div className="active-workout-mobile-header-inset border-t py-1.5">
           <div className="mb-1.5 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-end gap-2">
             <p className="min-w-0 truncate pb-0.5 text-xs font-medium text-muted-foreground">
               {activeRestTimer.exerciseName}

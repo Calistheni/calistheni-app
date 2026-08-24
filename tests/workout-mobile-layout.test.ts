@@ -7,6 +7,7 @@ const builder = read("components/workouts/WorkoutBuilder.tsx");
 const superset = read("components/workouts/SupersetGroupCard.tsx");
 const mobileHeader = read("components/workouts/MobileActiveWorkoutHeader.tsx");
 const activeWorkoutPage = read("app/workouts/new/page.tsx");
+const styles = read("app/globals.css");
 
 test("superset sections and sortable exercise wrappers can shrink within a narrow viewport", () => {
   assert.match(superset, /block w-full min-w-0 max-w-full/);
@@ -35,16 +36,46 @@ test("active workout uses compact mobile gutters without losing its desktop cons
   assert.match(builder, /grid w-full min-w-0 max-w-full gap-6 overflow-x-clip/);
   assert.match(builder, /w-full min-w-0 max-w-full space-y-0 md:space-y-2/);
   assert.match(mobileHeader, /grid-cols-\[2\.5rem_2\.5rem_minmax\(0,1fr\)_3\.75rem\]/);
-  assert.match(mobileHeader, /-mx-2[\s\S]*max-w-\[calc\(100%\+1rem\)\][\s\S]*sm:-mx-6/);
+  assert.match(mobileHeader, /active-workout-mobile-header sticky top-0/);
+  assert.match(
+    styles,
+    /\.active-workout-mobile-header \{[\s\S]*100% \+ 1rem \+ env\(safe-area-inset-left\)[\s\S]*margin-inline-start: calc\(-0\.5rem - env\(safe-area-inset-left\)\)/
+  );
 });
 
 test("mobile header is an integrated full-width workout surface", () => {
   assert.match(mobileHeader, /shrink-0 border-b bg-card\/95 backdrop-blur/);
   assert.doesNotMatch(mobileHeader, /overflow-hidden rounded-xl border bg-card/);
   assert.doesNotMatch(mobileHeader, /shadow-sm/);
-  assert.match(mobileHeader, /gap-1 px-2 pt-\[calc\(env\(safe-area-inset-top\)\+0\.25rem\)\] pb-1/);
-  assert.match(mobileHeader, /grid grid-cols-3 border-t border-border\/60 text-center/);
+  assert.match(mobileHeader, /active-workout-mobile-header-inset grid grid-cols-\[2\.5rem/);
+  assert.match(mobileHeader, /active-workout-mobile-header-inset grid grid-cols-3 border-t/);
+  assert.match(mobileHeader, /active-workout-mobile-header-inset border-t py-1\.5/);
+  assert.match(
+    styles,
+    /\.active-workout-mobile-header-inset \{[\s\S]*padding-inline-start: calc\(0\.5rem \+ env\(safe-area-inset-left\)\);[\s\S]*padding-inline-end: calc\(0\.5rem \+ env\(safe-area-inset-right\)\)/
+  );
   assert.doesNotMatch(mobileHeader, /divide-x|bg-muted\/30/);
+});
+
+test("workout scrollbar paint is hidden without changing scroll ownership", () => {
+  const shell = read("components/navigation/AppShell.tsx");
+  const hiddenScrollbarRules = styles.slice(
+    styles.indexOf(".app-scrollbar-hidden"),
+    styles.indexOf(".app-shell-content-focused-workout")
+  );
+
+  assert.match(shell, /app-shell-content-focused-workout app-scrollbar-hidden/);
+  assert.match(hiddenScrollbarRules, /scrollbar-width: none/);
+  assert.match(hiddenScrollbarRules, /::-webkit-scrollbar/);
+  assert.doesNotMatch(hiddenScrollbarRules, /overflow:\s*hidden/);
+  assert.match(
+    styles,
+    /\.app-shell-content-focused-workout \{[\s\S]*overflow-y: auto;[\s\S]*-webkit-overflow-scrolling: touch;/
+  );
+  assert.match(
+    styles,
+    /html\[data-native-app\] \*::\-webkit-scrollbar \{[\s\S]*display: none;/
+  );
 });
 
 test("mobile exercises are continuous divider-separated sections with desktop cards retained", () => {
