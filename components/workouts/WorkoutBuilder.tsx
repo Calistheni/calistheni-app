@@ -118,9 +118,12 @@ import {
   type SupersetRoundFormEntry,
 } from "@/components/workouts/SupersetRoundForm";
 import {
+  SortableExerciseActivatorItem,
   SortableExerciseItem,
   SortableExerciseList,
+  type SortableExerciseActivator,
 } from "@/components/workouts/SortableExerciseList";
+import { WorkoutExerciseSwipeAction } from "@/components/workouts/WorkoutExerciseSwipeAction";
 import { toast } from "sonner";
 import { ExerciseDetailPreview } from "@/components/exercises/ExerciseDetailPreview";
 import {
@@ -285,7 +288,7 @@ const WORKOUT_TABLE_CELL_CLASS =
   "flex min-w-0 items-center justify-center px-1 text-center";
 const WORKOUT_TABLE_VALUE_CLASS = "text-sm font-medium tabular-nums";
 const ACTIVE_EXERCISE_HEADER_ROW_CLASS =
-  "flex min-w-0 flex-nowrap items-start gap-2 px-2.5 py-2";
+  "flex min-w-0 flex-nowrap items-start gap-2 px-0 py-2 md:px-2.5";
 const isDevelopment = process.env.NODE_ENV === "development";
 
 function logWorkoutKeyboard(event: string, detail?: unknown) {
@@ -1033,6 +1036,7 @@ export function WorkoutBuilder({
     localId: string;
     exerciseName: string;
   } | null>(null);
+  const [openSwipeExerciseId, setOpenSwipeExerciseId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isWorkoutDetailsOpen, setIsWorkoutDetailsOpen] = useState(false);
   const [isExercisePickerOpen, setIsExercisePickerOpen] = useState(false);
@@ -2144,6 +2148,7 @@ export function WorkoutBuilder({
   }
 
   function removeExercise(localId: string) {
+    setOpenSwipeExerciseId(null);
     setExerciseTimer((current) => current?.exerciseLocalId === localId ? null : current);
     setSelectedExercises((current) => current.filter((item) => item.localId !== localId));
     setSupersets((current) =>
@@ -2979,7 +2984,7 @@ export function WorkoutBuilder({
               ref={(row) => { if (row) setRowRefs.current.set(set.localId, row); else setRowRefs.current.delete(set.localId); }}
               tabIndex={isWarned ? -1 : undefined}
               aria-describedby={isWarned ? warningId : undefined}
-              className={`group rounded-md border p-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isWarned ? "border-destructive bg-destructive/10" : set.completed ? "border-primary/40 bg-primary/10" : "border-border/70 bg-muted/20"}`}
+              className={`group border-y px-0 py-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:rounded-md md:border md:p-1 ${isWarned ? "border-destructive bg-destructive/10" : set.completed ? "border-primary/40 bg-primary/10" : "border-transparent bg-transparent md:border-border/70 md:bg-muted/20"}`}
             >
               <div className={`grid w-full min-w-0 items-center gap-1 ${getSetTableGridClass(exercise.trackingType, rpeTrackingEnabled)}`}>
                 <span className={`relative ${WORKOUT_TABLE_CELL_CLASS} ${WORKOUT_TABLE_VALUE_CLASS} gap-0.5 text-muted-foreground`} aria-label={`Set ${setIndex + 1}${set.completed ? ", completed" : ""}`}>
@@ -3054,7 +3059,7 @@ export function WorkoutBuilder({
     groupPosition: number,
     supersetLabel: string,
     supersetKey: string,
-    dragHandle: ReactNode
+    dragActivator: SortableExerciseActivator
   ) {
     const exercise = exercises.find(
       (item) => item.id === selectedExercise.exerciseId
@@ -3065,6 +3070,19 @@ export function WorkoutBuilder({
     ).length;
 
     return (
+      <WorkoutExerciseSwipeAction
+        exerciseName={exercise.name}
+        isOpen={openSwipeExerciseId === selectedExercise.localId}
+        onOpenChange={(open) =>
+          setOpenSwipeExerciseId(open ? selectedExercise.localId : null)
+        }
+        onDelete={() =>
+          setExercisePendingRemoval({
+            localId: selectedExercise.localId,
+            exerciseName: exercise.name,
+          })
+        }
+      >
       <AccordionItem
         key={selectedExercise.localId}
         value={selectedExercise.localId}
@@ -3072,9 +3090,14 @@ export function WorkoutBuilder({
       >
         <div className={ACTIVE_EXERCISE_HEADER_ROW_CLASS}>
           {renderExerciseThumbnailDetailsTrigger(exercise)}
-          <AccordionTrigger className="min-w-0 flex-1 items-center gap-1 p-0 hover:no-underline">
-            <div className="flex min-w-0 flex-1 items-center gap-1.5">
-              <div className="min-w-0 flex-1 text-left">
+          <div
+            {...dragActivator.attributes}
+            {...dragActivator.listeners}
+            className="min-w-0 flex-1 cursor-grab touch-pan-y select-none text-left active:cursor-grabbing"
+            aria-label={`Reorder ${dragActivator.label}`}
+            data-exercise-drag-activator
+            onContextMenu={(event) => event.preventDefault()}
+          >
                 <div className="flex min-w-0 items-start gap-1.5">
                   <Badge
                     variant="outline"
@@ -3090,17 +3113,22 @@ export function WorkoutBuilder({
                 <p className="truncate text-xs leading-tight text-muted-foreground">
                   {exercise.muscle} · {formatTrackingTypeLabel(exercise.trackingType)}
                 </p>
-              </div>
-              <span
-                className="shrink-0 whitespace-nowrap text-xs font-semibold tabular-nums text-muted-foreground"
-                aria-label={`${completedSets} of ${selectedExercise.sets.length} sets completed`}
+          </div>
+          <div className="flex shrink-0 flex-nowrap items-center gap-0.5 whitespace-nowrap">
+            <span
+              className="min-w-7 shrink-0 text-center text-xs font-semibold tabular-nums text-muted-foreground"
+              aria-label={`${completedSets} of ${selectedExercise.sets.length} sets completed`}
+            >
+              {completedSets}/{selectedExercise.sets.length}
+            </span>
+            <div className="size-10 shrink-0">
+              <AccordionTrigger
+                className="size-10 min-w-10 flex-none justify-center gap-0 p-0 hover:no-underline"
+                aria-label={`Toggle ${exercise.name}`}
               >
-                {completedSets}/{selectedExercise.sets.length}
-              </span>
+                <span className="sr-only">Toggle {exercise.name}</span>
+              </AccordionTrigger>
             </div>
-          </AccordionTrigger>
-          <div className="flex shrink-0 flex-nowrap items-center gap-1 whitespace-nowrap">
-            {dragHandle}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -3143,7 +3171,7 @@ export function WorkoutBuilder({
             </DropdownMenu>
           </div>
         </div>
-        <AccordionContent className="space-y-2 border-t border-border/60 bg-muted/15 px-3 pt-2 pb-3 pl-4">
+        <AccordionContent className="space-y-2 bg-transparent px-0 pt-1 pb-3 md:border-t md:border-border/60 md:bg-muted/15 md:px-3 md:pt-2 md:pl-4">
           <div className="flex items-center justify-end gap-1.5">
             <Popover>
               <PopoverTrigger asChild>
@@ -3425,23 +3453,19 @@ export function WorkoutBuilder({
             })}
           </div>
           {renderExerciseSetTable(selectedExercise, exercise)}
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">
-              Add a set here for this exercise only, or use Done for a full round.
-            </p>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="w-full"
-              onClick={() => addSet(selectedExercise.localId)}
-            >
-              <Plus />
-              Add set
-            </Button>
-          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="w-full"
+            onClick={() => addSet(selectedExercise.localId)}
+          >
+            <Plus />
+            Add set
+          </Button>
         </AccordionContent>
       </AccordionItem>
+      </WorkoutExerciseSwipeAction>
     );
   }
 
@@ -3492,8 +3516,8 @@ export function WorkoutBuilder({
 
   return (
     <>
-      <div className="grid w-full min-w-0 max-w-full gap-6 overflow-x-clip pb-[calc(env(safe-area-inset-bottom)+1.5rem)] lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)] lg:pb-8">
-        <section className="min-w-0 space-y-2.5 sm:space-y-4">
+      <div className="grid w-full min-w-0 max-w-full gap-6 overflow-x-clip pb-[calc(env(safe-area-inset-bottom)+0.75rem)] lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)] lg:pb-8">
+        <section className="min-w-0 space-y-1 md:space-y-4">
           {!isEditing ? (
             <MobileActiveWorkoutHeader
               restMuted={restTimer.isMuted}
@@ -3903,11 +3927,12 @@ export function WorkoutBuilder({
           ) : null}
 
           {selectedExercises.length >= 2 ? (
-            <div className="flex justify-end">
+            <div className="flex justify-end py-0.5 md:py-0">
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
+                className="h-8 md:h-9"
                 onClick={() => openSupersetEditor("new")}
                 disabled={selectedExercises.length < 2}
               >
@@ -3934,12 +3959,13 @@ export function WorkoutBuilder({
                 )
                 .map((exercise) => exercise.localId)}
               onMove={moveExercise}
+              onDragStart={() => setOpenSwipeExerciseId(null)}
             >
               <Accordion
                 type="multiple"
                 value={openExerciseIds}
                 onValueChange={setOpenExerciseIds}
-                className="w-full min-w-0 max-w-full space-y-2"
+                className="w-full min-w-0 max-w-full space-y-0 md:space-y-2"
               >
               {getSupersetRenderEntries(supersets, selectedExercises).map((entry) => {
                 const selectedExercise = entry.exercise;
@@ -4050,14 +4076,15 @@ export function WorkoutBuilder({
                       <SortableExerciseList
                         ids={supersetMembers.map((member) => getSupersetMembershipSortableId(superset.key, member.localId))}
                         onMove={(activeId, overId) => moveSupersetExercise(superset.key, activeId, overId)}
+                        onDragStart={() => setOpenSwipeExerciseId(null)}
                       >
                         <Accordion type="multiple" value={openExerciseIds} onValueChange={setOpenExerciseIds}>
                           {supersetMembers.map((member, memberIndex) => {
                             const memberExercise = exercises.find((item) => item.id === member.exerciseId);
                             if (!memberExercise) return null;
-                            return <SortableExerciseItem key={member.localId} id={getSupersetMembershipSortableId(superset.key, member.localId)} label={`${memberExercise.name} in ${label}`}>
-                              {(dragHandle) => renderSupersetExerciseRow(member, memberIndex, label, superset.key, dragHandle)}
-                            </SortableExerciseItem>;
+                            return <SortableExerciseActivatorItem key={member.localId} id={getSupersetMembershipSortableId(superset.key, member.localId)} label={`${memberExercise.name} in ${label}`}>
+                              {(dragActivator) => renderSupersetExerciseRow(member, memberIndex, label, superset.key, dragActivator)}
+                            </SortableExerciseActivatorItem>;
                           })}
                         </Accordion>
                       </SortableExerciseList>
@@ -4070,22 +4097,39 @@ export function WorkoutBuilder({
                 }
 
                 return (
-                  <SortableExerciseItem
+                  <SortableExerciseActivatorItem
                     key={entry.key}
                     id={selectedExercise.localId}
                     label={getExerciseInstanceLabel(selectedExercise.localId, exercise.id, exercise.name)}
                   >
-                    {(dragHandle) => (
-                    <>
+                    {(dragActivator) => (
+                    <WorkoutExerciseSwipeAction
+                      exerciseName={exercise.name}
+                      isOpen={openSwipeExerciseId === selectedExercise.localId}
+                      onOpenChange={(open) =>
+                        setOpenSwipeExerciseId(open ? selectedExercise.localId : null)
+                      }
+                      onDelete={() =>
+                        setExercisePendingRemoval({
+                          localId: selectedExercise.localId,
+                          exerciseName: exercise.name,
+                        })
+                      }
+                    >
                   <AccordionItem
                     value={selectedExercise.localId}
-                    className="relative overflow-hidden rounded-xl border border-border bg-card shadow-sm [overflow-anchor:none]"
+                    className="relative w-full max-w-full border-b border-border/70 bg-transparent pb-1 [overflow-anchor:none] md:overflow-hidden md:rounded-xl md:border md:border-border md:bg-card md:pb-0 md:shadow-sm md:last:border-b"
                   >
                     <div className={ACTIVE_EXERCISE_HEADER_ROW_CLASS}>
                     {renderExerciseThumbnailDetailsTrigger(exercise)}
-                    <AccordionTrigger className="min-w-0 flex-1 items-center gap-1 p-0 hover:no-underline">
-                        <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                          <div className="min-w-0 flex-1 text-left">
+                    <div
+                      {...dragActivator.attributes}
+                      {...dragActivator.listeners}
+                      className="min-w-0 flex-1 cursor-grab touch-pan-y select-none text-left active:cursor-grabbing"
+                      aria-label={`Reorder ${dragActivator.label}`}
+                      data-exercise-drag-activator
+                      onContextMenu={(event) => event.preventDefault()}
+                    >
                             <h2
                               className="break-words text-sm leading-tight font-semibold text-primary line-clamp-3 min-[375px]:line-clamp-2 sm:text-base"
                               title={`${exercise.name} · ${exercise.muscle}`}
@@ -4095,17 +4139,22 @@ export function WorkoutBuilder({
                             <p className="truncate text-xs leading-tight text-muted-foreground">
                               {exercise.muscle} · {formatTrackingTypeLabel(exercise.trackingType)}
                             </p>
-                          </div>
-                          <span
-                            className="shrink-0 whitespace-nowrap text-xs font-semibold tabular-nums text-muted-foreground"
-                            aria-label={`${completedSets} of ${selectedExercise.sets.length} sets completed`}
+                    </div>
+                      <div className="flex shrink-0 flex-nowrap items-center gap-0.5 whitespace-nowrap">
+                        <span
+                          className="min-w-7 shrink-0 text-center text-xs font-semibold tabular-nums text-muted-foreground"
+                          aria-label={`${completedSets} of ${selectedExercise.sets.length} sets completed`}
+                        >
+                          {completedSets}/{selectedExercise.sets.length}
+                        </span>
+                        <div className="size-10 shrink-0">
+                          <AccordionTrigger
+                            className="size-10 min-w-10 flex-none justify-center gap-0 p-0 hover:no-underline"
+                            aria-label={`Toggle ${exercise.name}`}
                           >
-                            {completedSets}/{selectedExercise.sets.length}
-                          </span>
+                            <span className="sr-only">Toggle {exercise.name}</span>
+                          </AccordionTrigger>
                         </div>
-                      </AccordionTrigger>
-                      <div className="flex shrink-0 flex-nowrap items-center gap-1 whitespace-nowrap">
-                        {dragHandle}
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
@@ -4173,7 +4222,7 @@ export function WorkoutBuilder({
                       </div>
                     </div>
 
-                    <AccordionContent className="space-y-2 border-t px-2 pt-2 pb-2">
+                    <AccordionContent className="space-y-2 px-0 pt-1 pb-3 md:border-t md:px-2 md:pt-2 md:pb-2">
                       <div className="flex min-w-0 items-center gap-1.5">
                         <Select
                           value={isCustomRest ? "custom" : String(restSeconds)}
@@ -4585,9 +4634,9 @@ export function WorkoutBuilder({
                       </Button>
                     </AccordionContent>
                   </AccordionItem>
-                  </>
+                  </WorkoutExerciseSwipeAction>
                     )}
-                  </SortableExerciseItem>
+                  </SortableExerciseActivatorItem>
                 );
               })}
               </Accordion>

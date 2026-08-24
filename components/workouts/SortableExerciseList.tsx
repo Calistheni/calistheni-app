@@ -10,6 +10,7 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -22,13 +23,22 @@ import { GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+export type SortableExerciseActivator = {
+  attributes: ReturnType<typeof useSortable>["attributes"];
+  listeners: ReturnType<typeof useSortable>["listeners"];
+  isDragging: boolean;
+  label: string;
+};
+
 export function SortableExerciseList({
   ids,
   onMove,
+  onDragStart,
   children,
 }: {
   ids: string[];
   onMove: (activeId: string, overId: string) => void;
+  onDragStart?: (event: DragStartEvent) => void;
   children: ReactNode;
 }) {
   const sensors = useSensors(
@@ -36,7 +46,7 @@ export function SortableExerciseList({
       activationConstraint: { distance: 8 },
     }),
     useSensor(TouchSensor, {
-      activationConstraint: { delay: 200, tolerance: 6 },
+      activationConstraint: { delay: 250, tolerance: 8 },
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
@@ -55,6 +65,7 @@ export function SortableExerciseList({
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
+      onDragStart={onDragStart}
       onDragEnd={handleDragEnd}
     >
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
@@ -99,13 +110,52 @@ export function SortableExerciseItem({
   return (
     <div
       ref={setNodeRef}
-      className={cn("w-full min-w-0 max-w-full", isDragging && "relative z-40 opacity-70")}
+      className={cn(
+        "w-full min-w-0 max-w-full",
+        isDragging && "relative z-40 opacity-70"
+      )}
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
       }}
     >
       {children(dragHandle)}
+    </div>
+  );
+}
+
+export function SortableExerciseActivatorItem({
+  id,
+  label,
+  children,
+}: {
+  id: string;
+  label: string;
+  children: (activator: SortableExerciseActivator) => ReactNode;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "w-full min-w-0 max-w-full",
+        isDragging &&
+          "relative z-40 bg-card/95 opacity-90 shadow-lg ring-1 ring-primary/40"
+      )}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
+    >
+      {children({ attributes, listeners, isDragging, label })}
     </div>
   );
 }

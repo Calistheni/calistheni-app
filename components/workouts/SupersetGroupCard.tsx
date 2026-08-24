@@ -79,14 +79,14 @@ export function SupersetGroupCard({
       className="block w-full min-w-0 max-w-full"
     >
       <section
-        className="relative w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-border bg-card shadow-sm [overflow-anchor:none]"
+        className="relative w-full min-w-0 max-w-full border-b border-border/70 bg-transparent pb-2 [overflow-anchor:none] md:overflow-hidden md:rounded-xl md:border md:border-border md:bg-card md:pb-0 md:shadow-sm"
         aria-label={`${label}, ${exerciseNames.length} exercises`}
       >
         <span
-          className={cn("absolute inset-y-0 left-0 w-1", styles.accent)}
+          className={cn("absolute inset-y-0 left-0 w-0.5", styles.accent)}
           aria-hidden="true"
         />
-        <header className="space-y-2.5 px-3 py-3 pl-4">
+        <header className="space-y-2 px-0 py-2 pl-2 md:space-y-2.5 md:px-3 md:py-3 md:pl-4">
           <div className="flex min-w-0 items-start gap-2">
             <div className="min-w-0 flex-1 space-y-1.5">
               <div className="flex flex-wrap items-center gap-1.5">
@@ -206,7 +206,12 @@ export function SupersetGroupCard({
           </div>
         </header>
         <CollapsibleContent>
-          <div className="border-t">{children}</div>
+          <div className="pl-2 md:border-t md:pl-0">
+            <p className="pb-1 text-xs text-muted-foreground md:px-3 md:pt-2">
+              Add sets to an exercise below, or use Add round for the full superset.
+            </p>
+            {children}
+          </div>
         </CollapsibleContent>
       </section>
     </Collapsible>

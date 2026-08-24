@@ -26,7 +26,22 @@ test("mobile header uses icon-only sound control and balanced primary actions", 
   assert.match(source, /Mute rest timer sound/);
   assert.match(source, /Enable rest timer sound/);
   assert.doesNotMatch(source, /Rest: \{restMuted/);
-  assert.match(source, /grid-cols-\[2\.25rem_2\.25rem_minmax\(0,1fr\)_4rem\]/);
+  assert.match(source, /grid-cols-\[2\.5rem_2\.5rem_minmax\(0,1fr\)_3\.75rem\]/);
+  assert.match(source, /variant="ghost" className="size-10"/);
+  assert.match(source, /variant="outline"[\s\S]*className="h-10 min-w-0/);
+});
+
+test("active rest time is the visual focus without changing its actions", async () => {
+  const source = await readFile(header, "utf8");
+  assert.match(
+    source,
+    /text-3xl leading-none font-black tracking-tight tabular-nums text-foreground/
+  );
+  assert.match(source, /grid grid-cols-4 gap-1/);
+  assert.match(source, />\s*\+30s\s*</);
+  assert.match(source, />\s*\+1m\s*</);
+  assert.match(source, />\s*Reset\s*</);
+  assert.match(source, />\s*Skip\s*</);
 });
 
 test("focused active workout owns one dark, safe-area-aware scroll region", async () => {
