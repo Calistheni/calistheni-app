@@ -1,5 +1,11 @@
 "use client";
 
+import type {
+  FocusEventHandler,
+  FormEventHandler,
+  KeyboardEventHandler,
+} from "react";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -44,6 +50,10 @@ type SupersetRoundFormProps = {
   ) => void;
   onCancel: () => void;
   onSave: () => void;
+  onInputFocus: FocusEventHandler<HTMLInputElement>;
+  onInputBlur: FocusEventHandler<HTMLInputElement>;
+  onInputKeyDown: KeyboardEventHandler<HTMLInputElement>;
+  onInput: FormEventHandler<HTMLInputElement>;
 };
 
 export function SupersetRoundForm({
@@ -54,7 +64,19 @@ export function SupersetRoundForm({
   onChange,
   onCancel,
   onSave,
+  onInputFocus,
+  onInputBlur,
+  onInputKeyDown,
+  onInput,
 }: SupersetRoundFormProps) {
+  const keyboardInputProps = {
+    "data-workout-set-input": true,
+    onFocus: onInputFocus,
+    onBlur: onInputBlur,
+    onKeyDown: onInputKeyDown,
+    onInput,
+  } as const;
+
   return (
     <form
       className="flex min-h-0 flex-1 flex-col overflow-hidden"
@@ -65,13 +87,15 @@ export function SupersetRoundForm({
     >
       <div
         data-slot="superset-round-scroll-area"
-        className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-4 pb-6 [-webkit-overflow-scrolling:touch]"
+        data-active-workout-scroll-owner
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 pb-6 [-webkit-overflow-scrolling:touch]"
       >
-        {entries.map((entry) => (
-          <fieldset
-            key={entry.localId}
-            className="space-y-3 rounded-xl border p-3"
-          >
+        <div className="space-y-3">
+          {entries.map((entry) => (
+            <fieldset
+              key={entry.localId}
+              className="space-y-3 rounded-xl border p-3"
+            >
             <legend className="px-1 font-semibold">{entry.exerciseName}</legend>
             <p className="text-xs text-muted-foreground">
               Set {entry.setNumber}
@@ -84,6 +108,7 @@ export function SupersetRoundForm({
                   </span>
                   <div className="relative">
                     <Input
+                      {...keyboardInputProps}
                       className="text-base"
                       type="number"
                       inputMode="decimal"
@@ -106,6 +131,7 @@ export function SupersetRoundForm({
                 <label className="space-y-1.5 text-sm font-medium">
                   <span>Reps</span>
                   <Input
+                    {...keyboardInputProps}
                     className="text-base"
                     type="number"
                     inputMode="numeric"
@@ -125,6 +151,7 @@ export function SupersetRoundForm({
                   <span>Duration</span>
                   <div className="relative">
                     <Input
+                      {...keyboardInputProps}
                       className="text-base"
                       type="number"
                       inputMode="numeric"
@@ -152,6 +179,7 @@ export function SupersetRoundForm({
                   <span>Distance</span>
                   <div className="relative">
                     <Input
+                      {...keyboardInputProps}
                       className="text-base"
                       type="number"
                       inputMode="decimal"
@@ -177,6 +205,7 @@ export function SupersetRoundForm({
                 <label className="space-y-1.5 text-sm font-medium">
                   <span>Steps</span>
                   <Input
+                    {...keyboardInputProps}
                     className="text-base"
                     type="number"
                     inputMode="numeric"
@@ -194,6 +223,7 @@ export function SupersetRoundForm({
                 <label className="space-y-1.5 text-sm font-medium">
                   <span>Floors</span>
                   <Input
+                    {...keyboardInputProps}
                     className="text-base"
                     type="number"
                     inputMode="numeric"
@@ -237,8 +267,17 @@ export function SupersetRoundForm({
                 </label>
               ) : null}
             </div>
-          </fieldset>
-        ))}
+            </fieldset>
+          ))}
+        </div>
+        <div
+          data-active-workout-keyboard-spacer
+          aria-hidden="true"
+          className="w-full shrink-0 [overflow-anchor:none]"
+          style={{
+            height: "var(--active-workout-keyboard-bottom-space, 0px)",
+          }}
+        />
       </div>
       <div className="z-10 shrink-0 grid grid-cols-2 gap-2 border-t bg-background p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
         <Button

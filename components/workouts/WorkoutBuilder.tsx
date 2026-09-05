@@ -174,6 +174,7 @@ import {
 import { isIOSApp, isNativePluginAvailable } from "@/lib/native/platform";
 import {
   getWorkoutKeyboardBottomSpace,
+  getWorkoutKeyboardRequiredBottomSpace,
   getWorkoutKeyboardScrollAdjustment,
   getWorkoutKeyboardSpacerRemovalState,
   getWorkoutKeyboardScrollTarget,
@@ -893,6 +894,7 @@ export function WorkoutBuilder({
   const keyboardScrollRequestRef = useRef(0);
   const keyboardScrollFrameRef = useRef<number | null>(null);
   const keyboardBottomSpaceRef = useRef(0);
+  const keyboardSpacerOwnerRef = useRef<HTMLElement | null>(null);
   const keyboardSpacerRemovalPendingRef = useRef(false);
   const loadedPerformanceReferenceIdsRef = useRef(new Set<string>());
   const completionViewportAnchorRef = useRef<{
@@ -1269,12 +1271,12 @@ export function WorkoutBuilder({
   }, []);
 
   const keepFocusedWorkoutInputVisible = useCallback((requestId: number) => {
-    if (requestId !== keyboardScrollRequestRef.current) return;
+    if (requestId !== keyboardScrollRequestRef.current) return false;
     const input = focusedWorkoutInputRef.current;
-    const scrollOwner = document.querySelector<HTMLElement>(
+    const scrollOwner = input?.closest<HTMLElement>(
       "[data-active-workout-scroll-owner]"
     );
-    if (!input?.isConnected || !scrollOwner) return;
+    if (!input?.isConnected || !scrollOwner) return false;
 
     const inputRect = input.getBoundingClientRect();
     const ownerRect = scrollOwner.getBoundingClientRect();
@@ -1286,6 +1288,31 @@ export function WorkoutBuilder({
       viewportHeight: window.innerHeight,
       keyboardHeight: keyboardHeightRef.current,
     });
+
+    const requiredBottomSpace = getWorkoutKeyboardRequiredBottomSpace({
+      currentBottomSpace: keyboardBottomSpaceRef.current,
+      scrollTop: scrollOwner.scrollTop,
+      scrollHeight: scrollOwner.scrollHeight,
+      clientHeight: scrollOwner.clientHeight,
+      adjustment: adjustedBy,
+    });
+
+    if (requiredBottomSpace > keyboardBottomSpaceRef.current + 1) {
+      keyboardBottomSpaceRef.current = requiredBottomSpace;
+      keyboardSpacerOwnerRef.current = scrollOwner;
+      scrollOwner.style.setProperty(
+        "--active-workout-keyboard-bottom-space",
+        `${requiredBottomSpace}px`
+      );
+      logWorkoutKeyboard("bottom space increased for range", {
+        scrollTop: scrollOwner.scrollTop,
+        scrollHeight: scrollOwner.scrollHeight,
+        clientHeight: scrollOwner.clientHeight,
+        adjustedBy,
+        requiredBottomSpace,
+      });
+      return true;
+    }
 
     const targetScrollTop = getWorkoutKeyboardScrollTarget({
       scrollTop: scrollOwner.scrollTop,
@@ -1299,7 +1326,17 @@ export function WorkoutBuilder({
       containerScrollTop: scrollOwner.scrollTop,
       inputRect: { top: inputRect.top, bottom: inputRect.bottom },
       viewportHeight: window.innerHeight,
+      visualViewportHeight: window.visualViewport?.height,
+      visualViewportTop: window.visualViewport?.offsetTop,
       keyboardHeight: keyboardHeightRef.current,
+      keyboardTop: window.innerHeight - keyboardHeightRef.current,
+      scrollHeight: scrollOwner.scrollHeight,
+      clientHeight: scrollOwner.clientHeight,
+      maxScrollTop: Math.max(
+        0,
+        scrollOwner.scrollHeight - scrollOwner.clientHeight
+      ),
+      bottomSpace: keyboardBottomSpaceRef.current,
       obscured: adjustedBy !== 0,
       adjustedBy,
       targetScrollTop,
@@ -1308,38 +1345,56 @@ export function WorkoutBuilder({
     if (Math.abs(targetScrollTop - scrollOwner.scrollTop) > 1) {
       scrollOwner.scrollTo({ top: targetScrollTop, behavior: "smooth" });
     }
+    return false;
   }, []);
 
-  const scheduleFocusedWorkoutInputVisibility = useCallback((afterLayout = false) => {
+  const scheduleFocusedWorkoutInputVisibility = useCallback(() => {
     const requestId = keyboardScrollRequestRef.current + 1;
     keyboardScrollRequestRef.current = requestId;
     if (keyboardScrollFrameRef.current !== null) {
       window.cancelAnimationFrame(keyboardScrollFrameRef.current);
     }
-    keyboardScrollFrameRef.current = window.requestAnimationFrame(() => {
-      if (!afterLayout) {
-        keyboardScrollFrameRef.current = null;
-        keepFocusedWorkoutInputVisible(requestId);
-        return;
+    const checkAfterLayout = () => {
+      keyboardScrollFrameRef.current = null;
+      const spacerChanged = keepFocusedWorkoutInputVisible(requestId);
+      if (spacerChanged && requestId === keyboardScrollRequestRef.current) {
+        // The spacer can initially fill unused room in a short scroll owner.
+        // Re-measure on the next layout frame and scroll only once the new
+        // maxScrollTop can reach the focused field.
+        keyboardScrollFrameRef.current = window.requestAnimationFrame(
+          checkAfterLayout
+        );
       }
-      // The second frame is only a layout boundary after adding the keyboard
-      // spacer. It does not add a second scroll write.
-      keyboardScrollFrameRef.current = window.requestAnimationFrame(() => {
-        keyboardScrollFrameRef.current = null;
-        keepFocusedWorkoutInputVisible(requestId);
-      });
-    });
+    };
+    keyboardScrollFrameRef.current = window.requestAnimationFrame(
+      checkAfterLayout
+    );
   }, [keepFocusedWorkoutInputVisible]);
 
   const setWorkoutKeyboardBottomSpace = useCallback((keyboardHeight: number) => {
-    const scrollOwner = document.querySelector<HTMLElement>(
-      "[data-active-workout-scroll-owner]"
-    );
+    const scrollOwner =
+      focusedWorkoutInputRef.current?.closest<HTMLElement>(
+        "[data-active-workout-scroll-owner]"
+      ) ??
+      document.querySelector<HTMLElement>("[data-active-workout-scroll-owner]");
     if (!scrollOwner) return;
 
     if (keyboardHeight > 0) {
-      const bottomSpace = getWorkoutKeyboardBottomSpace(keyboardHeight);
+      const baseBottomSpace = getWorkoutKeyboardBottomSpace(keyboardHeight);
+      const sameOwner = keyboardSpacerOwnerRef.current === scrollOwner;
+      const bottomSpace = sameOwner
+        ? Math.max(keyboardBottomSpaceRef.current, baseBottomSpace)
+        : baseBottomSpace;
+      if (
+        keyboardSpacerOwnerRef.current &&
+        !sameOwner
+      ) {
+        keyboardSpacerOwnerRef.current.style.removeProperty(
+          "--active-workout-keyboard-bottom-space"
+        );
+      }
       keyboardBottomSpaceRef.current = bottomSpace;
+      keyboardSpacerOwnerRef.current = scrollOwner;
       keyboardSpacerRemovalPendingRef.current = false;
       scrollOwner.style.setProperty(
         "--active-workout-keyboard-bottom-space",
@@ -1352,20 +1407,17 @@ export function WorkoutBuilder({
   }, []);
 
   const removeWorkoutKeyboardBottomSpace = useCallback(() => {
-    const scrollOwner = document.querySelector<HTMLElement>(
-      "[data-active-workout-scroll-owner]"
-    );
+    const scrollOwner = keyboardSpacerOwnerRef.current;
     if (!scrollOwner) return;
     scrollOwner.style.removeProperty("--active-workout-keyboard-bottom-space");
     keyboardBottomSpaceRef.current = 0;
+    keyboardSpacerOwnerRef.current = null;
     keyboardSpacerRemovalPendingRef.current = false;
     logWorkoutKeyboard("bottom space removed");
   }, []);
 
   const removeWorkoutKeyboardBottomSpaceWhenSafe = useCallback(() => {
-    const scrollOwner = document.querySelector<HTMLElement>(
-      "[data-active-workout-scroll-owner]"
-    );
+    const scrollOwner = keyboardSpacerOwnerRef.current;
     const keyboardBottomSpace = keyboardBottomSpaceRef.current;
     if (!scrollOwner || keyboardBottomSpace <= 0) return;
 
@@ -1399,7 +1451,7 @@ export function WorkoutBuilder({
       logWorkoutKeyboard("focus", {
         field: event.currentTarget.getAttribute("aria-label"),
         inputRect: { top: inputRect.top, bottom: inputRect.bottom },
-        containerScrollTop: document.querySelector<HTMLElement>(
+        containerScrollTop: event.currentTarget.closest<HTMLElement>(
           "[data-active-workout-scroll-owner]"
         )?.scrollTop,
       });
@@ -1407,10 +1459,11 @@ export function WorkoutBuilder({
       // The first focus must not move content before the keyboard is shown.
       // For an already-open keyboard, adjust only the workout scroller.
       if (keyboardVisibleRef.current) {
+        setWorkoutKeyboardBottomSpace(keyboardHeightRef.current);
         scheduleFocusedWorkoutInputVisibility();
       }
     },
-    [scheduleFocusedWorkoutInputVisibility]
+    [scheduleFocusedWorkoutInputVisibility, setWorkoutKeyboardBottomSpace]
   );
 
   const handleWorkoutSetInputBlur = useCallback(
@@ -1504,9 +1557,7 @@ export function WorkoutBuilder({
         window.cancelAnimationFrame(keyboardScrollFrameRef.current);
         keyboardScrollFrameRef.current = null;
       }
-      const scrollOwner = document.querySelector<HTMLElement>(
-        "[data-active-workout-scroll-owner]"
-      );
+      const scrollOwner = keyboardSpacerOwnerRef.current;
       // Stop a browser-owned smooth adjustment at its present position before
       // evaluating whether removing the spacer would clamp the scroll range.
       scrollOwner?.scrollTo({ top: scrollOwner.scrollTop, behavior: "auto" });
@@ -1539,11 +1590,6 @@ export function WorkoutBuilder({
   ]);
 
   useEffect(() => {
-    const scrollOwner = document.querySelector<HTMLElement>(
-      "[data-active-workout-scroll-owner]"
-    );
-    if (!scrollOwner) return;
-
     let userScrollIntent = false;
     const handleTouchStart = () => {
       userScrollIntent = true;
@@ -1559,13 +1605,16 @@ export function WorkoutBuilder({
       removeWorkoutKeyboardBottomSpaceWhenSafe();
     };
 
-    scrollOwner.addEventListener("touchstart", handleTouchStart, {
+    document.addEventListener("touchstart", handleTouchStart, {
       passive: true,
     });
-    scrollOwner.addEventListener("scroll", handleScroll, { passive: true });
+    document.addEventListener("scroll", handleScroll, {
+      capture: true,
+      passive: true,
+    });
     return () => {
-      scrollOwner.removeEventListener("touchstart", handleTouchStart);
-      scrollOwner.removeEventListener("scroll", handleScroll);
+      document.removeEventListener("touchstart", handleTouchStart);
+      document.removeEventListener("scroll", handleScroll, true);
     };
   }, [removeWorkoutKeyboardBottomSpaceWhenSafe]);
 
@@ -3498,6 +3547,10 @@ export function WorkoutBuilder({
         onChange={updateSupersetResult}
         onCancel={closeSupersetRoundForm}
         onSave={saveActiveSupersetRound}
+        onInputFocus={handleWorkoutSetInputFocus}
+        onInputBlur={handleWorkoutSetInputBlur}
+        onInputKeyDown={handleWorkoutSetInputKeyDown}
+        onInput={handleWorkoutSetInputValueInput}
       />
     );
   }

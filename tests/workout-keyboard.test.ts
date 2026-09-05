@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   getWorkoutKeyboardBottomSpace,
+  getWorkoutKeyboardRequiredBottomSpace,
   getWorkoutKeyboardScrollAdjustment,
   getWorkoutKeyboardSpacerRemovalState,
   getWorkoutKeyboardScrollTarget,
@@ -70,6 +71,64 @@ test("a short two-exercise superset gets real scroll range for its second exerci
 
   assert.equal(adjustment, 132);
   assert.ok(scrollHeightWithSpacer - clientHeight >= adjustment);
+});
+
+test("short content grows the existing spacer by the unavailable scroll range", () => {
+  assert.equal(
+    getWorkoutKeyboardRequiredBottomSpace({
+      currentBottomSpace: 312,
+      scrollTop: 0,
+      scrollHeight: 800,
+      clientHeight: 800,
+      adjustment: 132,
+    }),
+    444
+  );
+});
+
+test("A1, A2, and later-round fields use the same full-rectangle geometry", () => {
+  const fields = [
+    { label: "A1 round 1", top: 450, bottom: 498, expected: 10 },
+    { label: "A2 round 1", top: 588, bottom: 636, expected: 148 },
+    { label: "A1 round 3", top: 706, bottom: 754, expected: 266 },
+    { label: "A2 round 3", top: 764, bottom: 812, expected: 324 },
+  ];
+
+  for (const field of fields) {
+    assert.equal(
+      getWorkoutKeyboardScrollAdjustment({
+        inputTop: field.top,
+        inputBottom: field.bottom,
+        containerTop: 0,
+        containerBottom: 800,
+        viewportHeight: 800,
+        keyboardHeight: 300,
+      }),
+      field.expected,
+      field.label
+    );
+  }
+});
+
+test("filled normal and larger-superset layouts keep their existing spacer and minimal target", () => {
+  const measurement = {
+    currentBottomSpace: 312,
+    scrollTop: 220,
+    scrollHeight: 1500,
+    clientHeight: 800,
+    adjustment: 34,
+  };
+
+  assert.equal(getWorkoutKeyboardRequiredBottomSpace(measurement), 312);
+  assert.equal(
+    getWorkoutKeyboardScrollTarget({
+      scrollTop: measurement.scrollTop,
+      scrollHeight: measurement.scrollHeight,
+      clientHeight: measurement.clientHeight,
+      adjustment: measurement.adjustment,
+    }),
+    254
+  );
 });
 
 test("both exercises in every superset use the shared keyboard-aware set table", async () => {
@@ -154,6 +213,7 @@ test("active workout owns keyboard accommodation in its internal shell", async (
   assert.match(builder, /keyboardDidShow/);
   assert.match(builder, /getWorkoutKeyboardScrollAdjustment/);
   assert.match(builder, /getWorkoutKeyboardBottomSpace/);
+  assert.match(builder, /getWorkoutKeyboardRequiredBottomSpace/);
   assert.match(builder, /getWorkoutKeyboardScrollTarget/);
   assert.match(builder, /getWorkoutKeyboardSpacerRemovalState/);
   assert.match(builder, /--active-workout-keyboard-bottom-space/);
@@ -187,6 +247,15 @@ test("active workout owns keyboard accommodation in its internal shell", async (
   assert.match(builder, /removeWorkoutKeyboardBottomSpaceWhenSafe/);
   assert.match(builder, /keyboardSpacerRemovalPendingRef/);
   assert.match(builder, /data-workout-set-input/);
+  assert.match(builder, /input\?\.closest<HTMLElement>\([\s\S]*data-active-workout-scroll-owner/);
+  assert.match(
+    builder,
+    /requiredBottomSpace > keyboardBottomSpaceRef\.current \+ 1[\s\S]*setProperty\([\s\S]*return true;/
+  );
+  assert.match(
+    builder,
+    /const spacerChanged = keepFocusedWorkoutInputVisible\(requestId\);[\s\S]*if \(spacerChanged[\s\S]*requestAnimationFrame/
+  );
   assert.match(builder, /event\.key === "Enter"\) event\.currentTarget\.blur\(\)/);
   assert.match(builder, /text-base font-semibold tabular-nums md:text-sm/);
   assert.match(shell, /data-active-workout-scroll-owner/);

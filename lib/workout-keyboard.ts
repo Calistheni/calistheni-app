@@ -62,6 +62,32 @@ export function getWorkoutKeyboardScrollTarget({
   return Math.min(maxScrollTop, Math.max(0, scrollTop + adjustment));
 }
 
+/**
+ * Returns the spacer height required to make the requested adjustment
+ * reachable. Adding the measured deficit to the current spacer is important
+ * for short content: a new spacer can first fill unused client-height space
+ * without increasing scrollHeight at all.
+ */
+export function getWorkoutKeyboardRequiredBottomSpace({
+  currentBottomSpace,
+  scrollTop,
+  scrollHeight,
+  clientHeight,
+  adjustment,
+}: {
+  currentBottomSpace: number;
+  scrollTop: number;
+  scrollHeight: number;
+  clientHeight: number;
+  adjustment: number;
+}) {
+  const maxScrollTop = Math.max(0, scrollHeight - clientHeight);
+  const requestedScrollTop = Math.max(0, scrollTop + adjustment);
+  const missingRange = Math.max(0, requestedScrollTop - maxScrollTop);
+
+  return Math.ceil(currentBottomSpace + missingRange);
+}
+
 export function getWorkoutKeyboardSpacerRemovalState({
   scrollTop,
   scrollHeight,
