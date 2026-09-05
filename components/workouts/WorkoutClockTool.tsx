@@ -4,10 +4,9 @@ import { App } from "@capacitor/app";
 import { Haptics, NotificationType } from "@capacitor/haptics";
 import { TimerReset } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { WorkoutTimeWheel } from "@/components/workouts/WorkoutTimeWheel";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle, DrawerTrigger } from "@/components/ui/drawer";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cancelWorkoutClockNotification, scheduleWorkoutClockNotification } from "@/lib/native/workout-clock-notifications";
 import { isNativeApp, isNativePluginAvailable } from "@/lib/native/platform";
@@ -27,6 +26,7 @@ import {
   startWorkoutCountdown,
   startWorkoutStopwatch,
 } from "@/lib/workout-clock";
+import { getWorkoutTimerDurationSeconds } from "@/lib/workout-clock-wheel";
 import { cn } from "@/lib/utils";
 
 type WorkoutClockToolProps = {
@@ -37,12 +37,6 @@ type WorkoutClockToolProps = {
 };
 
 const TIMER_PRESETS = [30, 60, 120, 180, 300] as const;
-
-function clampInteger(value: string, maximum: number) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return 0;
-  return Math.min(maximum, Math.max(0, Math.trunc(parsed)));
-}
 
 export function WorkoutClockTool({ workoutId, muted, onInitializeAudio, onPlayCompletionSound }: WorkoutClockToolProps) {
   const [open, setOpen] = useState(false);
@@ -141,12 +135,12 @@ export function WorkoutClockTool({ workoutId, muted, onInitializeAudio, onPlayCo
   const stopwatchElapsedMs = getWorkoutStopwatchElapsedMs(stopwatch, nowMs);
   const countdownRemainingMs = getWorkoutCountdownRemainingMs(countdown, nowMs);
   const anyRunning = stopwatch.status === "running" || countdown.status === "running";
-  const configuredDurationSeconds = hours * 3600 + minutes * 60 + seconds;
+  const configuredDurationSeconds = getWorkoutTimerDurationSeconds(hours, minutes, seconds);
   const timerSetupDisabled = countdown.status === "running" || countdown.status === "paused";
   const timerDisplayMs = countdown.status === "idle" ? configuredDurationSeconds * 1000 : countdownRemainingMs;
 
   function changeConfiguredDuration(nextHours: number, nextMinutes: number, nextSeconds: number) {
-    const durationSeconds = nextHours * 3600 + nextMinutes * 60 + nextSeconds;
+    const durationSeconds = getWorkoutTimerDurationSeconds(nextHours, nextMinutes, nextSeconds);
     if (countdown.runId) void cancelScheduledNotification(countdown.runId);
     setHours(nextHours);
     setMinutes(nextMinutes);
@@ -233,24 +227,38 @@ export function WorkoutClockTool({ workoutId, muted, onInitializeAudio, onPlayCo
             </div>
           </TabsContent>
           <TabsContent value="timer" className="space-y-4">
-            <div className="py-4 text-center">
-              <p className="text-5xl font-black tracking-tight tabular-nums">{formatWorkoutCountdown(timerDisplayMs)}</p>
-              {countdown.status === "completed" ? <p className="mt-2 text-sm font-semibold text-primary">Timer complete</p> : null}
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="space-y-1"><Label htmlFor="workout-clock-hours">Hours</Label><Input id="workout-clock-hours" type="number" inputMode="numeric" min={0} max={23} disabled={timerSetupDisabled} value={hours} onChange={(event) => changeConfiguredDuration(clampInteger(event.target.value, 23), minutes, seconds)} /></div>
-              <div className="space-y-1"><Label htmlFor="workout-clock-minutes">Minutes</Label><Input id="workout-clock-minutes" type="number" inputMode="numeric" min={0} max={59} disabled={timerSetupDisabled} value={minutes} onChange={(event) => changeConfiguredDuration(hours, clampInteger(event.target.value, 59), seconds)} /></div>
-              <div className="space-y-1"><Label htmlFor="workout-clock-seconds">Seconds</Label><Input id="workout-clock-seconds" type="number" inputMode="numeric" min={0} max={59} disabled={timerSetupDisabled} value={seconds} onChange={(event) => changeConfiguredDuration(hours, minutes, clampInteger(event.target.value, 59))} /></div>
-            </div>
-            <div className="grid grid-cols-5 gap-1">
-              {TIMER_PRESETS.map((preset) => <Button key={preset} type="button" size="sm" variant="outline" className="h-8 px-1 text-xs" disabled={timerSetupDisabled} onClick={() => setPreset(preset)}>{preset < 60 ? `${preset}s` : `${preset / 60}m`}</Button>)}
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {countdown.status === "running" ? <Button type="button" variant="outline" aria-label="Pause timer" onClick={pauseTimer}>Pause</Button> : countdown.status === "paused" ? <Button type="button" aria-label="Resume timer" onClick={resumeTimer}>Resume</Button> : <Button type="button" aria-label="Start timer" disabled={configuredDurationSeconds <= 0} onClick={startTimer}>Start</Button>}
-              <Button type="button" variant="outline" aria-label="Reset timer" onClick={resetTimer}>Reset</Button>
-              <Button type="button" size="sm" variant="outline" disabled={!timerSetupDisabled} onClick={() => addTimerSeconds(30)}>+30s</Button>
-              <Button type="button" size="sm" variant="outline" disabled={!timerSetupDisabled} onClick={() => addTimerSeconds(60)}>+1m</Button>
-            </div>
+            {timerSetupDisabled ? (
+              <>
+                <div className="py-6 text-center">
+                  <p className="text-5xl font-black tracking-tight tabular-nums">{formatWorkoutCountdown(timerDisplayMs)}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {countdown.status === "running" ? <Button type="button" variant="outline" aria-label="Pause timer" onClick={pauseTimer}>Pause</Button> : <Button type="button" aria-label="Resume timer" onClick={resumeTimer}>Resume</Button>}
+                  <Button type="button" variant="outline" aria-label="Reset timer" onClick={resetTimer}>Reset</Button>
+                  <Button type="button" size="sm" variant="outline" onClick={() => addTimerSeconds(30)}>+30s</Button>
+                  <Button type="button" size="sm" variant="outline" onClick={() => addTimerSeconds(60)}>+1m</Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="relative overflow-hidden rounded-xl" aria-label="Timer duration picker">
+                  <div className="pointer-events-none absolute inset-x-0 top-1/2 z-0 h-11 -translate-y-1/2 rounded-lg border border-border/70 bg-muted/70" aria-hidden="true" />
+                  <div className="relative z-10 flex min-w-0">
+                    <WorkoutTimeWheel label="Hours" maximum={23} value={hours} unit={(hour) => hour === 1 ? "hour" : "hours"} onChange={(hour) => changeConfiguredDuration(hour, minutes, seconds)} />
+                    <WorkoutTimeWheel label="Minutes" maximum={59} value={minutes} unit={() => "min"} onChange={(minute) => changeConfiguredDuration(hours, minute, seconds)} />
+                    <WorkoutTimeWheel label="Seconds" maximum={59} value={seconds} unit={() => "sec"} onChange={(second) => changeConfiguredDuration(hours, minutes, second)} />
+                  </div>
+                </div>
+                {countdown.status === "completed" ? <p className="text-center text-sm font-semibold text-primary">Timer complete</p> : null}
+                <div className="grid grid-cols-5 gap-1">
+                  {TIMER_PRESETS.map((preset) => <Button key={preset} type="button" size="sm" variant="outline" className="h-8 px-1 text-xs" onClick={() => setPreset(preset)}>{preset < 60 ? `${preset}s` : `${preset / 60}m`}</Button>)}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+                  <Button type="button" aria-label="Start timer" disabled={configuredDurationSeconds <= 0} onClick={startTimer}>Start</Button>
+                </div>
+              </>
+            )}
             <p className="sr-only" aria-live="polite">{completionMessage}</p>
           </TabsContent>
         </Tabs>
