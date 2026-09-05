@@ -20,6 +20,7 @@ import {
   HomeWorkoutActions,
 } from "@/components/home/HomeWorkoutOverview";
 import { HomeWeeklyReportAnnouncement } from "@/components/home/HomeWeeklyReportAnnouncement";
+import { HomeSupplementQuickActions } from "@/components/home/HomeSupplementQuickActions";
 import { TrainingActivityCalendar } from "@/components/home/TrainingActivityCalendar";
 import { WeeklyGoalEditor } from "@/components/home/WeeklyGoalEditor";
 import { Badge } from "@/components/ui/badge";
@@ -205,7 +206,8 @@ export default async function HomePage() {
     getDailySupplementCalendarAdherence(
       session.user.id,
       calendarRange.start,
-      calendarRange.end
+      calendarRange.end,
+      now
     ),
     prisma.workout.findMany({
       where: { userId: session.user.id, completedAt: { not: null } },
@@ -334,6 +336,9 @@ export default async function HomePage() {
         </div>
         <div className="mt-8">
           <HomeWorkoutActions />
+          <HomeSupplementQuickActions
+            initialPlans={calendarSupplements.quickActionPlans}
+          />
         </div>
       </header>
 

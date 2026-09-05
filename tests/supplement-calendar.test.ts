@@ -69,5 +69,8 @@ test("training calendar exposes private daily details through blue filter contro
   assert.match(source, /activity level \$\{activityIntensity\} of 4/);
   assert.match(service, /where: \{ userId, createdAt: \{ lt: end \}/);
   assert.match(service, /scheduledFor: \{ gte: start, lt: end \}/);
-  assert.match(homePage, /getDailySupplementCalendarAdherence\(session\.user\.id/);
+  assert.match(
+    homePage,
+    /getDailySupplementCalendarAdherence\(\s*session\.user\.id/
+  );
 });

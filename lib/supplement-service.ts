@@ -9,15 +9,22 @@ export async function getSupplementAdherence(userId: string, start: Date, end: D
 }
 
 /** Bounded, authenticated-user-only adherence data for the private home calendar. */
-export async function getDailySupplementCalendarAdherence(userId: string, start: Date, end: Date) {
+export async function getDailySupplementCalendarAdherence(userId: string, start: Date, end: Date, quickActionDate = new Date()) {
   const plans = await prisma.userSupplementPlan.findMany({
     where: { userId, createdAt: { lt: end }, OR: [{ archivedAt: null }, { archivedAt: { gt: start } }] },
     select: {
+      id: true,
+      customName: true,
+      dosage: true,
+      unit: true,
       frequency: true,
       weekdays: true,
       everyNDays: true,
+      preferredTime: true,
+      isActive: true,
       createdAt: true,
       archivedAt: true,
+      supplementDefinition: { select: { name: true } },
       logs: {
         where: { scheduledFor: { gte: start, lt: end } },
         select: { scheduledFor: true, completedAt: true, dosageSnapshot: true, unitSnapshot: true, supplementNameSnapshot: true },
@@ -34,7 +41,26 @@ export async function getDailySupplementCalendarAdherence(userId: string, start:
       name: log.supplementNameSnapshot,
     })),
   }));
-  return { hasPlans: plans.length > 0, states: buildDailySupplementCalendarStates(calendarPlans, start, end) };
+  const quickActionDay = utcDay(quickActionDate);
+  const quickActionDateKeys = new Set([-1, 0, 1].map((offset) => new Date(quickActionDay.getTime() + offset * 86_400_000).toISOString().slice(0, 10)));
+  const quickActionPlans = plans.map((plan) => ({
+    id: plan.id,
+    customName: plan.customName,
+    dosage: plan.dosage?.toString() ?? null,
+    unit: plan.unit,
+    frequency: plan.frequency,
+    weekdays: plan.weekdays,
+    everyNDays: plan.everyNDays,
+    preferredTime: plan.preferredTime,
+    isActive: plan.isActive,
+    createdAt: plan.createdAt.toISOString(),
+    archivedAt: plan.archivedAt?.toISOString() ?? null,
+    supplementDefinition: plan.supplementDefinition,
+    logs: plan.logs
+      .filter((log) => quickActionDateKeys.has(log.scheduledFor.toISOString().slice(0, 10)))
+      .map((log) => ({ scheduledFor: log.scheduledFor.toISOString() })),
+  }));
+  return { hasPlans: plans.length > 0, states: buildDailySupplementCalendarStates(calendarPlans, start, end), quickActionPlans };
 }
 
 export async function getSupplementDashboard(userId: string, now = new Date()) {

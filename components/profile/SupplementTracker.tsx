@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getLocalSupplementDateKey } from "@/lib/supplement-log";
+import { createSupplementLogRequest } from "@/lib/supplement-log-client";
 import { isReminderPlanDueOn } from "@/lib/supplement-reminder-due";
 import { cancelAllSupplementReminders, checkSupplementReminderPermission, deviceTimeZone, reconcileSupplementReminders, requestSupplementReminderPermission, type ReminderPermission, type ReminderSettings } from "@/lib/native/supplement-reminders";
 
@@ -98,11 +99,7 @@ export function SupplementTracker() {
     setError("");
     const response = completed
       ? await fetch(`/api/user/supplements/${plan.id}/logs?scheduledDate=${encodeURIComponent(today)}`, { method: "DELETE" })
-      : await fetch(`/api/user/supplements/${plan.id}/logs`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scheduledDate: today }),
-      });
+      : await createSupplementLogRequest(plan.id, today);
 
     if (!response.ok) {
       setError(await responseError(response, completed ? "Unable to undo this supplement." : "Unable to take this supplement."));

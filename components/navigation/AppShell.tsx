@@ -24,6 +24,10 @@ import {
   type PrimaryNavigationKey,
   usesSignedInAppShell,
 } from "@/lib/navigation";
+import {
+  getPrimaryNavigationTapAction,
+  scrollPrimaryRouteToTop,
+} from "@/lib/navigation-scroll";
 import { cn } from "@/lib/utils";
 import { AccountMenu } from "./AccountMenu";
 
@@ -106,6 +110,30 @@ export function AppShell({ children, user }: AppShellProps) {
   const usesFocusedWorkoutMode = pathname === "/workouts/new";
   const locksViewport = isFullBleed || usesFocusedWorkoutMode;
   const keepsMobileHeader = pathname === "/pro";
+  const handlePrimaryNavigationClick = (
+    event: React.MouseEvent<HTMLAnchorElement>,
+    href: string
+  ) => {
+    if (
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
+
+    const action = getPrimaryNavigationTapAction(
+      pathname,
+      href,
+      isFullBleedAppRoute(pathname)
+    );
+    if (action === "navigate") return;
+
+    event.preventDefault();
+    if (action === "scroll") scrollPrimaryRouteToTop();
+  };
 
   return (
     <ActiveWorkoutProvider>
@@ -149,6 +177,9 @@ export function AppShell({ children, user }: AppShellProps) {
                   <Link
                     key={item.key}
                     href={item.href}
+                    onClick={(event) =>
+                      handlePrimaryNavigationClick(event, item.href)
+                    }
                     onPointerDown={() => {
                       if (!active) router.prefetch(item.href);
                     }}
@@ -217,6 +248,9 @@ export function AppShell({ children, user }: AppShellProps) {
                   <Link
                     key={item.key}
                     href={item.href}
+                    onClick={(event) =>
+                      handlePrimaryNavigationClick(event, item.href)
+                    }
                     onPointerDown={() => {
                       if (!active) router.prefetch(item.href);
                     }}
