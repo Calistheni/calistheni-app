@@ -3508,6 +3508,7 @@ export function WorkoutBuilder({
         <section className="min-w-0 space-y-1 md:space-y-4">
           {!isEditing ? (
             <MobileActiveWorkoutHeader
+              workoutId={activeWorkoutSessionId}
               restMuted={restTimer.isMuted}
               duration={workoutTimer.formattedElapsed}
               volume={
@@ -3528,6 +3529,8 @@ export function WorkoutBuilder({
                   : null
               }
               onToggleRestSound={toggleRestSound}
+              onInitializeAudio={restTimer.initializeAudio}
+              onPlayTimerCompletionSound={restTimer.testSound}
               onAddExercise={() => setIsExercisePickerOpen(true)}
               onFinish={requestFinishWorkout}
               onOpenTimerControls={() => setIsTimerSheetOpen(true)}

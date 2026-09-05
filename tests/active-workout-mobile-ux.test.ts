@@ -26,7 +26,7 @@ test("mobile header uses icon-only sound control and balanced primary actions", 
   assert.match(source, /Mute rest timer sound/);
   assert.match(source, /Enable rest timer sound/);
   assert.doesNotMatch(source, /Rest: \{restMuted/);
-  assert.match(source, /grid-cols-\[2\.5rem_2\.5rem_minmax\(0,1fr\)_3\.75rem\]/);
+  assert.match(source, /grid-cols-\[2\.5rem_2\.5rem_2\.5rem_minmax\(0,1fr\)_3\.75rem\]/);
   assert.match(source, /variant="ghost" className="size-10"/);
   assert.match(source, /variant="outline"[\s\S]*className="h-10 min-w-0/);
 });

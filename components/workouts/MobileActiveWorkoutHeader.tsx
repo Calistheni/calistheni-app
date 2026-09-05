@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { House, Volume2, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { WorkoutClockTool } from "@/components/workouts/WorkoutClockTool";
 
 type MobileActiveWorkoutHeaderProps = {
+  workoutId: string;
   restMuted: boolean;
   duration: string;
   volume: string;
@@ -13,6 +15,8 @@ type MobileActiveWorkoutHeaderProps = {
     remainingTime: string;
   } | null;
   onToggleRestSound: () => void;
+  onInitializeAudio: () => Promise<void>;
+  onPlayTimerCompletionSound: () => Promise<void>;
   onAddExercise: () => void;
   onFinish: () => void;
   onOpenTimerControls: () => void;
@@ -22,6 +26,7 @@ type MobileActiveWorkoutHeaderProps = {
 };
 
 export function MobileActiveWorkoutHeader({
+  workoutId,
   restMuted,
   duration,
   volume,
@@ -29,6 +34,8 @@ export function MobileActiveWorkoutHeader({
   isSaving,
   activeRestTimer,
   onToggleRestSound,
+  onInitializeAudio,
+  onPlayTimerCompletionSound,
   onAddExercise,
   onFinish,
   onOpenTimerControls,
@@ -38,7 +45,7 @@ export function MobileActiveWorkoutHeader({
 }: MobileActiveWorkoutHeaderProps) {
   return (
     <div className="sticky top-0 z-30 shrink-0 overflow-hidden rounded-xl border bg-card/95 shadow-sm backdrop-blur md:hidden [overflow-anchor:none]">
-      <div className="grid grid-cols-[2.5rem_2.5rem_minmax(0,1fr)_3.75rem] gap-1 px-2 pt-[calc(env(safe-area-inset-top)+0.25rem)] pb-1">
+      <div className="grid grid-cols-[2.5rem_2.5rem_2.5rem_minmax(0,1fr)_3.75rem] gap-1 px-2 pt-[calc(env(safe-area-inset-top)+0.25rem)] pb-1">
         <Button asChild size="icon" variant="ghost" className="size-10">
           <Link href="/home" aria-label="Go to home">
             <House className="size-4" aria-hidden="true" />
@@ -54,6 +61,12 @@ export function MobileActiveWorkoutHeader({
         >
           {restMuted ? <VolumeX className="size-4" aria-hidden="true" /> : <Volume2 className="size-4" aria-hidden="true" />}
         </Button>
+        <WorkoutClockTool
+          workoutId={workoutId}
+          muted={restMuted}
+          onInitializeAudio={onInitializeAudio}
+          onPlayCompletionSound={onPlayTimerCompletionSound}
+        />
         <Button
           type="button"
           size="sm"

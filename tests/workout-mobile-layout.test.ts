@@ -35,7 +35,7 @@ test("active workout uses compact mobile gutters without losing its desktop cons
   assert.doesNotMatch(activeWorkoutPage, /bg-background px-4/);
   assert.match(builder, /grid w-full min-w-0 max-w-full gap-6 overflow-x-clip/);
   assert.match(builder, /w-full min-w-0 max-w-full space-y-0 md:space-y-2/);
-  assert.match(mobileHeader, /grid-cols-\[2\.5rem_2\.5rem_minmax\(0,1fr\)_3\.75rem\]/);
+  assert.match(mobileHeader, /grid-cols-\[2\.5rem_2\.5rem_2\.5rem_minmax\(0,1fr\)_3\.75rem\]/);
   assert.match(mobileHeader, /sticky top-0[\s\S]*overflow-hidden rounded-xl border bg-card\/95 shadow-sm/);
   assert.doesNotMatch(mobileHeader, /active-workout-mobile-header|-mx-2|sm:-mx-6/);
 });
