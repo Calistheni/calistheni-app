@@ -23,6 +23,7 @@ import { HomeWeeklyReportAnnouncement } from "@/components/home/HomeWeeklyReport
 import { HomeSupplementQuickActions } from "@/components/home/HomeSupplementQuickActions";
 import { TrainingActivityCalendar } from "@/components/home/TrainingActivityCalendar";
 import { WeeklyGoalEditor } from "@/components/home/WeeklyGoalEditor";
+import { LocalWorkoutDateTime } from "@/components/workouts/LocalWorkoutDateTime";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -544,9 +545,12 @@ export default async function HomePage() {
                       {recentSummary.title ?? "Workout"}
                     </p>
                     <p className="mt-2 text-sm text-muted-foreground">
-                      {formatShortDate(
-                        recentWorkout.completedAt ?? recentWorkout.startedAt
-                      )}
+                      <LocalWorkoutDateTime
+                        value={(
+                          recentWorkout.completedAt ?? recentWorkout.startedAt
+                        ).toISOString()}
+                        format="date"
+                      />
                     </p>
                   </div>
                   <div className="grid grid-cols-3 gap-4 border-y py-4 md:min-w-md md:border-y-0 md:border-l md:py-0 md:pl-6">

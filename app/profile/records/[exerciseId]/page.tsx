@@ -23,6 +23,7 @@ import {
 } from "@/lib/exercise-display";
 import { prisma } from "@/lib/prisma";
 import { calculateSetVolumeKg } from "@/lib/workout-volume";
+import { LocalWorkoutDateTime } from "@/components/workouts/LocalWorkoutDateTime";
 
 export const metadata: Metadata = {
   title: "Exercise Records",
@@ -31,24 +32,6 @@ export const metadata: Metadata = {
     follow: false,
   },
 };
-
-function formatDate(value: string) {
-  return new Date(value).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function formatDateTime(value: string) {
-  return new Date(value).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
 
 export default async function ExerciseRecordsPage({
   params,
@@ -278,7 +261,7 @@ export default async function ExerciseRecordsPage({
               <CardContent className="p-4">
                 <p className="text-sm text-muted-foreground">First performed</p>
                 <p className="mt-1 text-lg font-bold">
-                  {formatDate(firstPerformance.startedAt)}
+                  <LocalWorkoutDateTime value={firstPerformance.startedAt} format="date" />
                 </p>
               </CardContent>
             </Card>
@@ -286,9 +269,10 @@ export default async function ExerciseRecordsPage({
               <CardContent className="p-4">
                 <p className="text-sm text-muted-foreground">Last performed</p>
                 <p className="mt-1 text-lg font-bold">
-                  {formatDate(
-                    lastPerformance?.startedAt ?? firstPerformance.startedAt
-                  )}
+                  <LocalWorkoutDateTime
+                    value={lastPerformance?.startedAt ?? firstPerformance.startedAt}
+                    format="date"
+                  />
                 </p>
               </CardContent>
             </Card>
@@ -321,7 +305,7 @@ export default async function ExerciseRecordsPage({
                       className="mt-2 inline-block text-xs font-medium text-primary underline-offset-4 hover:underline"
                       aria-label={`View workout where ${record.metric.label} was achieved`}
                     >
-                      {formatDate(record.achievedAt)}
+                      <LocalWorkoutDateTime value={record.achievedAt} format="date" />
                     </Link>
                   </CardContent>
                 </Card>
@@ -353,7 +337,7 @@ export default async function ExerciseRecordsPage({
                       <p className="font-medium">{record.metric.label}</p>
                       <p className="text-sm text-muted-foreground">
                         {record.workoutTitle ?? "Workout"} ·{" "}
-                        {formatDateTime(record.achievedAt)}
+                        <LocalWorkoutDateTime value={record.achievedAt} />
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -390,7 +374,7 @@ export default async function ExerciseRecordsPage({
                         {performance.workoutTitle ?? "Workout"}
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        {formatDateTime(performance.startedAt)}
+                        <LocalWorkoutDateTime value={performance.startedAt} />
                       </p>
                     </div>
                     <div className="flex max-w-xl flex-wrap gap-2 sm:justify-end">

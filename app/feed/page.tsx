@@ -10,7 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
 import { mapWorkoutSummary } from "@/lib/workouts";
-import { displayUsername, relativeTime } from "@/lib/community";
+import { displayUsername } from "@/lib/community";
+import { LocalWorkoutRelativeTime } from "@/components/workouts/LocalWorkoutDateTime";
 import { WorkoutSocialActions } from "@/components/community/WorkoutSocialActions";
 import { ClickableWorkoutCard } from "@/components/community/ClickableWorkoutCard";
 
@@ -162,7 +163,7 @@ export default async function FeedPage() {
                         {workout.user?.name ?? "Calistheni athlete"}
                       </Link>
                       <p className="text-xs text-muted-foreground">
-                        {displayUsername(workout.user ?? { id: "athlete" })} · {relativeTime(workoutRecord.completedAt ?? workoutRecord.startedAt)}
+                        {displayUsername(workout.user ?? { id: "athlete" })} · <LocalWorkoutRelativeTime value={(workoutRecord.completedAt ?? workoutRecord.startedAt).toISOString()} />
                       </p>
                     </div>
                   </div>

@@ -7,6 +7,7 @@ import { auth } from "@/auth";
 import { BackButton } from "@/components/navigation/BackButton";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { LocalWorkoutDateTime } from "@/components/workouts/LocalWorkoutDateTime";
 import { exerciseVisibilityWhere } from "@/lib/exercise-access";
 import { getExerciseThumbnailSrc } from "@/lib/exercise-display";
 import {
@@ -168,7 +169,10 @@ export default async function PersonalRecordsPage() {
                     </h2>
                     <p className="text-xs text-muted-foreground">
                       Last performed {" "}
-                      {exercise.latestActivityAt.toLocaleDateString()}
+                      <LocalWorkoutDateTime
+                        value={exercise.latestActivityAt.toISOString()}
+                        format="date"
+                      />
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {exercise.summaryRecords.length === 0 ? (

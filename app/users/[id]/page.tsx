@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
 import { mapWorkoutSummary } from "@/lib/workouts";
 import { ClickableWorkoutCard } from "@/components/community/ClickableWorkoutCard";
+import { LocalWorkoutDateTime } from "@/components/workouts/LocalWorkoutDateTime";
 import { displayUsername } from "@/lib/community";
 import { WorkoutSocialActions } from "@/components/community/WorkoutSocialActions";
 
@@ -210,7 +211,7 @@ export default async function UserProfilePage({
                     </Link>
                   </h3>
                   <p className="text-sm text-muted-foreground">
-                    {new Date(workout.startedAt).toLocaleString()}
+                    <LocalWorkoutDateTime value={workout.startedAt} />
                   </p>
                 </CardHeader>
                 <CardContent className="space-y-3">

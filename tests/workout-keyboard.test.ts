@@ -53,6 +53,44 @@ test("keyboard-visible workout space extends the final row's scroll range only w
   assert.equal(getWorkoutKeyboardBottomSpace(0), 0);
 });
 
+test("a short two-exercise superset gets real scroll range for its second exercise", () => {
+  const clientHeight = 800;
+  const contentHeight = 650;
+  const keyboardHeight = 300;
+  const adjustment = getWorkoutKeyboardScrollAdjustment({
+    inputTop: 588,
+    inputBottom: 620,
+    containerTop: 0,
+    containerBottom: clientHeight,
+    viewportHeight: clientHeight,
+    keyboardHeight,
+  });
+  const scrollHeightWithSpacer =
+    contentHeight + getWorkoutKeyboardBottomSpace(keyboardHeight);
+
+  assert.equal(adjustment, 132);
+  assert.ok(scrollHeightWithSpacer - clientHeight >= adjustment);
+});
+
+test("both exercises in every superset use the shared keyboard-aware set table", async () => {
+  const builder = await readFile(
+    new URL("components/workouts/WorkoutBuilder.tsx", root),
+    "utf8"
+  );
+  const supersetRow = builder.slice(
+    builder.indexOf("function renderSupersetExerciseRow"),
+    builder.indexOf("function closeSupersetRoundForm")
+  );
+  const setTable = builder.slice(
+    builder.indexOf("function renderExerciseSetTable"),
+    builder.indexOf("function renderSupersetExerciseRow")
+  );
+
+  assert.match(supersetRow, /renderExerciseSetTable\(selectedExercise, exercise\)/);
+  assert.match(setTable, /data-workout-set-input/);
+  assert.match(setTable, /onFocus=\{handleWorkoutSetInputFocus\}/);
+});
+
 test("workout keyboard scrolling computes one clamped target", () => {
   assert.equal(
     getWorkoutKeyboardScrollTarget({
@@ -153,7 +191,10 @@ test("active workout owns keyboard accommodation in its internal shell", async (
   assert.match(builder, /text-base font-semibold tabular-nums md:text-sm/);
   assert.match(shell, /data-active-workout-scroll-owner/);
   assert.match(shell, /locksViewport && "h-dvh overflow-hidden"/);
-  assert.match(styles, /\.app-shell-content-focused-workout \{[\s\S]*padding-bottom: var\(--active-workout-keyboard-bottom-space, 0px\);[\s\S]*scroll-padding-bottom: var\(--active-workout-keyboard-bottom-space, 0px\);[\s\S]*overflow-y: auto;[\s\S]*scroll-behavior: auto;[\s\S]*overflow-anchor: none;/);
+  assert.match(styles, /\.app-shell-content-focused-workout \{[\s\S]*scroll-padding-bottom: var\(--active-workout-keyboard-bottom-space, 0px\);[\s\S]*overflow-y: auto;[\s\S]*scroll-behavior: auto;[\s\S]*overflow-anchor: none;/);
+  assert.match(styles, /\.app-shell-content-focused-workout \{[^}]*\n\s+padding-bottom: 0;/);
+  assert.doesNotMatch(styles, /\.app-shell-content-focused-workout \{[^}]*\n\s+padding-bottom: var\(--active-workout-keyboard-bottom-space/);
+  assert.match(builder, /data-active-workout-keyboard-spacer[\s\S]*height: "var\(--active-workout-keyboard-bottom-space, 0px\)"/);
   assert.match(
     styles,
     /html\[data-native-app\]:has\(\[data-active-workout-scroll-owner\]\),[\s\S]*overflow: hidden;/

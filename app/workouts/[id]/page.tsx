@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { SaveWorkoutAsRoutineButton } from "@/components/routines/RoutineActions";
 import { DeleteWorkoutButton } from "@/components/workouts/DeleteWorkoutButton";
+import { LocalWorkoutDateTime } from "@/components/workouts/LocalWorkoutDateTime";
 import { WorkoutSocialActions } from "@/components/community/WorkoutSocialActions";
 import { parsePositiveInteger } from "@/lib/api-response";
 import { getExerciseRecordHref } from "@/lib/exercise-routes";
@@ -196,7 +197,7 @@ export default async function WorkoutDetailPage({
         <div>
           <h1 className="text-3xl font-bold">{detail.title ?? "Workout"}</h1>
           <p className="text-sm text-muted-foreground">
-            {new Date(detail.startedAt).toLocaleString()}
+            <LocalWorkoutDateTime value={detail.startedAt} />
           </p>
           {!isOwner ? (
             <p className="text-sm text-muted-foreground">

@@ -4634,6 +4634,15 @@ export function WorkoutBuilder({
         </aside>
       </div>
 
+      <div
+        data-active-workout-keyboard-spacer
+        aria-hidden="true"
+        className="w-full shrink-0 [overflow-anchor:none]"
+        style={{
+          height: "var(--active-workout-keyboard-bottom-space, 0px)",
+        }}
+      />
+
       {!isEditing ? (
         <Sheet
           open={isFinishSheetOpen}

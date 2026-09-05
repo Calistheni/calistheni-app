@@ -23,6 +23,7 @@ import {
   TrainHeroActions,
   TrainStartShowcase,
 } from "@/components/workouts/TrainPageWorkout";
+import { LocalWorkoutDateTime } from "@/components/workouts/LocalWorkoutDateTime";
 import { prisma } from "@/lib/prisma";
 import { getPersistedVolumeSetCompletion } from "@/lib/workout-volume";
 import { mapWorkoutSummary } from "@/lib/workouts";
@@ -279,7 +280,10 @@ export default async function WorkoutsPage() {
                   </h3>
                   <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
                     <CalendarDays className="size-4" aria-hidden="true" />
-                    {formatDate(completedAt)}
+                    <LocalWorkoutDateTime
+                      value={completedAt.toISOString()}
+                      format="date"
+                    />
                   </p>
                   <div className="mt-5 grid grid-cols-3 border-t pt-4">
                     <WorkoutMetric label="Exercises" value={summary.exerciseCount.toLocaleString()} />
