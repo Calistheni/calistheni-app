@@ -64,6 +64,19 @@ export function classifyFoodQuery(query: string): FoodQueryKind {
 }
 
 function tokens(value: string) { return normalizeFoodQuery(value).split(" ").filter(Boolean); }
+function searchableNames(candidate: { name: string; localizedNames?: Array<{ name: string }> }) {
+  return [...new Set([
+    candidate.name,
+    ...(candidate.localizedNames ?? []).map((localized) => localized.name),
+  ].map(normalizeFoodQuery).filter(Boolean))];
+}
+function matchesAnyName(names: string[], token: string) {
+  return names.some((name) => tokenMatches(name, token));
+}
+function matchesAnyNameWithUnicodePrefix(names: string[], token: string) {
+  return matchesAnyName(names, token)
+    || (/[^\u0000-\u007f]/.test(token) && names.some((name) => tokenPrefixMatches(name, token)));
+}
 function usdaDataType(result: ExternalFoodResult) {
   const raw = result.raw;
   return raw && typeof raw === "object" && "dataType" in raw && typeof raw.dataType === "string" ? raw.dataType.toLowerCase() : "";
@@ -118,7 +131,15 @@ export function withSearchMetadata(result: ExternalFoodResult): ExternalFoodResu
   if (result.provider === "FINELI") return result;
   const dataType = usdaDataType(result);
   const isGeneric = isUsdaGenericFood(result);
-  return { ...result, searchMetadata: { source: result.provider, isGeneric, isBranded: !isGeneric, usdaDataType: dataType || null } };
+  const next = { ...result, searchMetadata: { source: result.provider, isGeneric, isBranded: !isGeneric, usdaDataType: dataType || null } };
+  if (result.localizedNames) {
+    // Provider aliases are ranking metadata, not a public API shape change.
+    Object.defineProperty(next, "localizedNames", {
+      value: result.localizedNames,
+      enumerable: false,
+    });
+  }
+  return next;
 }
 
 function tokenMatches(name: string, token: string) {
@@ -128,27 +149,60 @@ function tokenMatches(name: string, token: string) {
   );
 }
 
+function tokenPrefixMatches(name: string, token: string) {
+  const normalizedToken = normalizeFoodQuery(token);
+  if (normalizedToken.length < 3) return false;
+  return name.split(" ").some((word) =>
+    nutritionFoodQueryVariants(word).some((variant) => variant.startsWith(normalizedToken))
+  );
+}
+
+function hasNamePrefix(names: string[], query: string) {
+  const normalizedQuery = normalizeFoodQuery(query);
+  if (!normalizedQuery) return false;
+  return names.some((name) =>
+    name.startsWith(normalizedQuery)
+    || name.split(" ").some((word) => word.startsWith(normalizedQuery))
+  );
+}
+
 /** Rejects loose provider matches before they can receive a generic-food score. */
 export function isRelevantFoodResult(query: string, result: ExternalFoodResult) {
   const queryTokens = tokens(query);
-  const name = normalizeFoodQuery(result.name);
+  const names = searchableNames(result);
   const brand = normalizeFoodQuery(result.brandName ?? "");
-  const coverage = queryTokens.filter((token) => tokenMatches(name, token) || tokenMatches(brand, token)).length;
+  const coverage = queryTokens.filter((token) => matchesAnyNameWithUnicodePrefix(names, token) || tokenMatches(brand, token)).length;
   if (!queryTokens.length || !coverage) return false;
-  if (classifyFoodQuery(query) === "PRODUCT") return coverage >= Math.min(2, queryTokens.length) || name.includes(normalizeFoodQuery(query));
+  if (classifyFoodQuery(query) === "PRODUCT") return coverage >= Math.min(2, queryTokens.length) || names.some((name) => name.includes(normalizeFoodQuery(query)));
+  return coverage === queryTokens.length;
+}
+
+/** Applies word-boundary relevance to local SQL candidates after indexed retrieval. */
+export function isRelevantNutritionFoodCandidate(query: string, candidate: NutritionFoodCandidate) {
+  const queryTokens = tokens(query);
+  if (!queryTokens.length) return false;
+  const names = searchableNames(candidate);
+  const brand = normalizeFoodQuery(candidate.brandName ?? "");
+  const coverage = queryTokens.filter((token) =>
+    matchesAnyName(names, token)
+    || names.some((name) => tokenPrefixMatches(name, token))
+    || tokenMatches(brand, token)
+  ).length;
   return coverage === queryTokens.length;
 }
 
 export function scoreFoodResult(query: string, result: ExternalFoodResult) {
   const normalizedQuery = normalizeFoodQuery(query);
   const name = normalizeFoodQuery(result.name);
+  const names = searchableNames(result);
   const queryTokens = tokens(query);
   const kind = classifyFoodQuery(query);
   let score = 0;
-  if (name === normalizedQuery) score += 220;
-  else if (name.startsWith(`${normalizedQuery} `) || name.startsWith(`${normalizedQuery},`)) score += 150;
-  score += queryTokens.filter((token) => name.includes(token)).length * 28;
-  score -= Math.max(0, name.length - normalizedQuery.length - 12) * 1.5;
+  if (names.some((candidate) => candidate === normalizedQuery)) score += 220;
+  else if (hasNamePrefix(names, normalizedQuery)) score += 150;
+  score += queryTokens.filter((token) => matchesAnyName(names, token)).length * 28;
+  const closestNameLength = Math.min(...names.map((candidate) => candidate.length));
+  score -= Math.max(0, closestNameLength - normalizedQuery.length - 12) * 1.5;
 
   const dataType = usdaDataType(result);
   const isUsdaGeneric = isUsdaGenericFood(result);
@@ -239,6 +293,7 @@ export type NutritionFoodCandidate = {
   provider?: "FINELI" | "USDA" | "OPEN_FOOD_FACTS";
   source?: string;
   name: string;
+  localizedNames?: Array<{ name: string; languageCode?: string }>;
   brandName?: string | null;
   type?: string;
   verificationStatus?: string;
@@ -273,6 +328,7 @@ export function scoreNutritionFoodCandidate(query: string, candidate: NutritionF
   const normalizedQuery = normalizeFoodQuery(query);
   const kind = classifyFoodQuery(query);
   const name = normalizeFoodQuery(candidate.name);
+  const names = searchableNames(candidate);
   const core = candidateCoreName(candidate);
   const generic = candidateIsGeneric(candidate);
   const community = candidateIsCommunity(candidate);
@@ -282,10 +338,9 @@ export function scoreNutritionFoodCandidate(query: string, candidate: NutritionF
     && normalizedQuery.includes(normalizeFoodQuery(candidate.brandName))
   );
   let value = 0;
-  if (core === normalizedQuery) value += 260;
-  else if (name === normalizedQuery) value += 220;
-  else if (name.startsWith(`${normalizedQuery},`) || name.startsWith(`${normalizedQuery} `)) value += 150;
-  value += tokens(query).filter((token) => tokenMatches(name, token)).length * 32;
+  if (core === normalizedQuery || names.some((candidateName) => candidateName === normalizedQuery)) value += 260;
+  else if (hasNamePrefix(names, normalizedQuery)) value += 150;
+  value += tokens(query).filter((token) => matchesAnyName(names, token)).length * 32;
   if (generic) value += 155;
   if (candidateProvider(candidate) === "USDA") value += 45;
   // Synced Fineli records are local FoodSummary objects and intentionally no
@@ -345,16 +400,17 @@ export function diversifyNutritionFoodCandidates<T extends NutritionFoodCandidat
 export function isSufficientNutritionFoodCandidate(query: string, candidate: NutritionFoodCandidate) {
   const kind = classifyFoodQuery(query);
   const name = normalizeFoodQuery(candidate.name);
+  const names = searchableNames(candidate);
   const brand = normalizeFoodQuery(candidate.brandName ?? "");
   const queryTokens = tokens(query);
   const tokenCoverage = queryTokens.filter((token) =>
-    tokenMatches(name, token) || tokenMatches(brand, token)
+    matchesAnyNameWithUnicodePrefix(names, token) || tokenMatches(brand, token)
   ).length;
   if (kind === "SPECIFIC_VARIANT") return tokenCoverage === queryTokens.length;
   if (kind === "PRODUCT") return tokenCoverage >= Math.min(2, queryTokens.length);
   if (kind === "BARCODE") return true;
-  const explicitProductIntent = queryTokens.length >= 2 && queryTokens.filter((token) => tokenMatches(name, token) || tokenMatches(normalizeFoodQuery(candidate.brandName ?? ""), token)).length >= 2;
-  const strongConceptMatch = queryTokens.every((token) => tokenMatches(name, token))
+  const explicitProductIntent = queryTokens.length >= 2 && queryTokens.filter((token) => matchesAnyNameWithUnicodePrefix(names, token) || tokenMatches(normalizeFoodQuery(candidate.brandName ?? ""), token)).length >= 2;
+  const strongConceptMatch = queryTokens.every((token) => matchesAnyNameWithUnicodePrefix(names, token))
     || Boolean(preparedFoodIntent(queryTokens)?.some((term) => hasModifier(name, term)));
   const derivativeOnly = ["nectar", "juice", "candy", "sweet", "soda", "drink", "pudding", "split", "chips", "flavored", "flavoured"].some((term) => hasModifier(name, term));
   const plantMilkForPlainMilk = queryTokens.length === 1
@@ -384,15 +440,21 @@ function nutritionKey(result: ExternalFoodResult) {
 /** Removes only exact source records and clearly identical provider previews. */
 export function deduplicateExternalFoodResults(local: FoodSummary[], results: ExternalFoodResult[]) {
   const localSources = new Set(local.map((food) => `${food.source}:${food.sourceExternalId}`));
+  const localBarcodes = new Set(local.flatMap((food) => food.barcode ? [food.barcode] : []));
   const localIdentities = new Set(local.map((food) => `${normalizeFoodQuery(food.name)}:${normalizeFoodQuery(food.brandName ?? "")}:${[food.nutritionPer100g.caloriesKcal, food.nutritionPer100g.proteinGrams, food.nutritionPer100g.carbohydrateGrams, food.nutritionPer100g.fatGrams].map((value) => typeof value === "number" ? value.toFixed(2) : "-").join(":")}`));
   const seen = new Set<string>();
+  const seenBarcodes = new Set<string>();
   return results.filter((result) => {
     const source = result.provider;
     const identity = `${normalizeFoodQuery(result.name)}:${normalizeFoodQuery(result.brandName ?? "")}:${nutritionKey(result)}`;
-    if (localSources.has(`${source}:${result.externalId}`) || localIdentities.has(identity)) return false;
+    if (localSources.has(`${source}:${result.externalId}`) || localIdentities.has(identity) || Boolean(result.barcode && localBarcodes.has(result.barcode))) return false;
     const key = `${source}:${result.externalId}`;
     if (seen.has(key)) return false;
     seen.add(key);
+    if (result.barcode) {
+      if (seenBarcodes.has(result.barcode)) return false;
+      seenBarcodes.add(result.barcode);
+    }
     if (seen.has(`identity:${identity}`)) return false;
     seen.add(`identity:${identity}`);
     return true;

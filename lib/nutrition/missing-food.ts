@@ -15,7 +15,7 @@ import { prisma } from "@/lib/prisma";
 import { nutritionAiConfigured } from "./ai-provider";
 import { nutritionFoodIntent } from "./food-intent";
 import { nutritionFoodVisibilityWhere } from "./food-visibility";
-import { normalizeFoodQuery } from "./normalization";
+import { foldFoodQueryAccents, foodSearchIndexKeys, normalizeFoodQuery } from "./normalization";
 import { getNutritionCandidatesForIntent, toFoodSummary } from "./service";
 import { selectNutritionFoodCandidate } from "./search-ranking";
 import type { ExternalFoodResult, FoodSummary } from "./types";
@@ -69,9 +69,11 @@ export async function proposeMissingFood(input: { name: string; context?: string
 
 export async function saveMissingFood(userId: string, proposal: MissingFoodProposal) {
   const normalizedName = normalizeFoodQuery(proposal.canonicalName);
-  const existing = await prisma.food.findFirst({ where: { AND: [{ OR: [{ normalizedName }, { aliases: { some: { normalizedName } } }] }, nutritionFoodVisibilityWhere(userId)] }, include: { aliases: { select: { name: true } }, details: { select: { categories: true, productImageUrl: true } }, servings: { select: { name: true, quantity: true, grams: true, householdUnit: true } } } });
+  const searchKeys = foodSearchIndexKeys(proposal.canonicalName);
+  const existing = await prisma.food.findFirst({ where: { AND: [{ OR: [{ normalizedName: { in: searchKeys } }, { aliases: { some: { normalizedName: { in: searchKeys } } } }] }, nutritionFoodVisibilityWhere(userId)] }, include: { aliases: { select: { name: true } }, details: { select: { categories: true, productImageUrl: true } }, servings: { select: { name: true, quantity: true, grams: true, householdUnit: true } } } });
   if (existing) return { food: toFoodSummary(existing), duplicate: true };
-  const sourceExternalId = `community:${normalizedName}`;
+  // Retain the historical accent-folded identity while indexing both forms.
+  const sourceExternalId = `community:${foldFoodQueryAccents(proposal.canonicalName)}`;
   const checksum = createHash("sha256").update(JSON.stringify(proposal)).digest("hex");
   // A model's self-reported confidence is never authoritative community
   // verification. Keep it deliberately below trusted provider confidence.
@@ -82,7 +84,7 @@ export async function saveMissingFood(userId: string, proposal: MissingFoodPropo
       const sourceRecord = await tx.foodSourceRecord.create({ data: { foodId: created.id, source: FoodSource.USER, sourceExternalId, rawData: { createdByUserId: userId, aiAssisted: true, proposal } as Prisma.InputJsonValue, checksum, responseStatus: 201 } });
       const revision = await tx.foodRevision.create({ data: { foodId: created.id, revisionNumber: 1, reason: FoodRevisionReason.USER_CORRECTION, source: FoodSource.USER, sourceExternalId, name: proposal.canonicalName, nutritionBasisGrams: 100, ...proposal.nutrition, confidenceScore: communityConfidence, verificationStatus: FoodVerificationStatus.UNVERIFIED, sourceRecordId: sourceRecord.id, normalizedDataChecksum: checksum, createdByUserId: userId } });
       await tx.food.update({ where: { id: created.id }, data: { currentRevisionId: revision.id } });
-      await tx.foodAlias.create({ data: { foodId: created.id, name: proposal.canonicalName, normalizedName, source: FoodSource.USER } });
+      await tx.foodAlias.createMany({ data: searchKeys.map((key) => ({ foodId: created.id, name: proposal.canonicalName, normalizedName: key, source: FoodSource.USER })), skipDuplicates: true });
       if (proposal.defaultServingGrams) await tx.foodServing.create({ data: { foodId: created.id, name: "Serving", grams: proposal.defaultServingGrams, isDefault: true, source: FoodSource.USER } });
       return tx.food.findUniqueOrThrow({ where: { id: created.id }, include: { aliases: { select: { name: true } }, details: { select: { categories: true, productImageUrl: true } }, servings: { select: { name: true, quantity: true, grams: true, householdUnit: true } } } });
     });

@@ -2,8 +2,30 @@ import { createHash } from "node:crypto";
 import type { ExternalFoodResult, NutritionValues } from "./types";
 
 const nutrients = ["caloriesKcal", "proteinGrams", "carbohydrateGrams", "fatGrams", "fiberGrams", "sugarGrams", "saturatedFatGrams", "transFatGrams", "addedSugarGrams", "sodiumMg", "saltGrams", "cholesterolMg", "potassiumMg", "calciumMg", "ironMg"] as const;
-/** Keep Unicode for display/language matching, but make search accent-insensitive. */
-export function normalizeFoodQuery(value: string) { return value.normalize("NFKD").replace(/\p{M}/gu, "").normalize("NFKC").trim().toLocaleLowerCase().replace(/[\u2018\u2019]/g, "'").replace(/[^\p{L}\p{N}\s'\-]/gu, " ").replace(/\s+/g, " "); }
+/** Preserve the user's script and accents in the primary normalized form. */
+export function normalizeFoodQuery(value: string) {
+  return value
+    .normalize("NFKC")
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[^\p{L}\p{M}\p{N}\s'\-]/gu, " ")
+    .replace(/\s+/g, " ");
+}
+
+/** Accent-insensitive fallback; never replaces the original-script key. */
+export function foldFoodQueryAccents(value: string) {
+  return normalizeFoodQuery(value)
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .normalize("NFKC");
+}
+
+/** Both keys are indexed: original-script first, accent-folded as fallback. */
+export function foodSearchIndexKeys(value: string) {
+  const normalized = normalizeFoodQuery(value);
+  return normalized ? [...new Set([normalized, foldFoodQueryAccents(normalized)])] : [];
+}
 /**
  * Conservative singular/plural equivalents for canonical food lookup.
  * This is deliberately not general stemming: it only helps the common
@@ -12,15 +34,17 @@ export function normalizeFoodQuery(value: string) { return value.normalize("NFKD
 export function nutritionFoodQueryVariants(value: string) {
   const normalized = normalizeFoodQuery(value);
   if (!normalized) return [];
-  const variants = new Set([normalized]);
-  const words = normalized.split(" ");
-  const last = words.at(-1) ?? "";
-  let singular: string | null = null;
-  if (last.endsWith("ies") && last.length > 3) singular = `${last.slice(0, -3)}y`;
-  else if (last.endsWith("oes") && last.length > 3) singular = last.slice(0, -2);
-  else if (/(?:s|x|z|ch|sh)es$/.test(last) && last.length > 3) singular = last.slice(0, -2);
-  else if (last.endsWith("s") && !last.endsWith("ss") && last.length > 2) singular = last.slice(0, -1);
-  if (singular) variants.add([...words.slice(0, -1), singular].join(" "));
+  const variants = new Set(foodSearchIndexKeys(normalized));
+  for (const base of [...variants]) {
+    const words = base.split(" ");
+    const last = words.at(-1) ?? "";
+    let singular: string | null = null;
+    if (last.endsWith("ies") && last.length > 3) singular = `${last.slice(0, -3)}y`;
+    else if (last.endsWith("oes") && last.length > 3) singular = last.slice(0, -2);
+    else if (/(?:s|x|z|ch|sh)es$/.test(last) && last.length > 3) singular = last.slice(0, -2);
+    else if (last.endsWith("s") && !last.endsWith("ss") && last.length > 2) singular = last.slice(0, -1);
+    if (singular) variants.add([...words.slice(0, -1), singular].join(" "));
+  }
   return [...variants];
 }
 export function normalizeBarcode(value: string) { return /^\d{8,14}$/.test(value) ? value : null; }

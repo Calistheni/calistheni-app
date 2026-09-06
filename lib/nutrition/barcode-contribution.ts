@@ -3,7 +3,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { FoodContributionStatus, FoodDataValueSource, FoodFreshnessStatus, FoodImportStatus, FoodRevisionReason, FoodSource, FoodType, FoodVerificationStatus, Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { normalizeBarcode, normalizeFoodQuery } from "./normalization";
+import { foodSearchIndexKeys, normalizeBarcode, normalizeFoodQuery } from "./normalization";
 import { nutritionSanityWarning } from "./missing-food-validation";
 import { toFoodSummary } from "./service";
 import { z } from "zod";
@@ -48,7 +48,7 @@ export async function saveBarcodeContribution(userId: string, input: BarcodeCont
       const sourceRecord = await tx.foodSourceRecord.create({ data: { foodId: created.id, source: FoodSource.USER, sourceExternalId, rawData: proposal as Prisma.InputJsonValue, checksum, responseStatus: 201 } });
       const revision = await tx.foodRevision.create({ data: { foodId: created.id, revisionNumber: 1, reason: FoodRevisionReason.USER_CORRECTION, source: FoodSource.USER, sourceExternalId, name: input.productName, brandName: input.brandName ?? null, barcode, nutritionBasisGrams: 100, ...input.nutrition, confidenceScore: input.method === "AI_LABEL" ? .7 : .65, verificationStatus: FoodVerificationStatus.UNVERIFIED, sourceRecordId: sourceRecord.id, normalizedDataChecksum: checksum, createdByUserId: userId } });
       await tx.food.update({ where: { id: created.id }, data: { currentRevisionId: revision.id } });
-      await tx.foodAlias.create({ data: { foodId: created.id, name: input.productName, normalizedName: normalizeFoodQuery(input.productName), source: FoodSource.USER } });
+      await tx.foodAlias.createMany({ data: foodSearchIndexKeys(input.productName).map((normalizedName) => ({ foodId: created.id, name: input.productName, normalizedName, source: FoodSource.USER })), skipDuplicates: true });
       if (input.servingGrams) await tx.foodServing.create({ data: { foodId: created.id, name: input.servingLabel ?? "Serving", grams: input.servingGrams, isDefault: true, source: FoodSource.USER } });
       return tx.food.findUniqueOrThrow({ where: { id: created.id }, include: barcodeFoodInclude });
     });

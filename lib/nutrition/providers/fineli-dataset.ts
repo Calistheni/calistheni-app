@@ -222,6 +222,13 @@ export function parseFineliBasicPackage(files: FineliDatasetFiles): FineliDatase
       name,
       description: preparation || undefined,
       languageCode: "en",
+      localizedNames: [
+        ["en", namesEn.get(id)],
+        ["fi", namesFi.get(id)],
+        ["sv", namesSv.get(id)],
+      ].flatMap(([languageCode, localizedName]) => localizedName
+        ? [{ name: localizedName, languageCode }]
+        : []),
       countryCodes: ["fi"],
       nutritionPer100g,
       servings: [{ name: "100 g", quantity: 100, grams: 100, householdUnit: "g", sourceExternalId: "G" }, ...(portions.get(id) ?? [])],
@@ -247,12 +254,20 @@ export function searchFineliDataset(query: string, foods: readonly FineliDataset
   const terms = normalized.split(" ").filter(Boolean);
   return foods
     .filter((food) => food.searchMetadata.fineliType === "FOOD")
-    .filter((food) => terms.every((term) => normalizeFoodQuery(food.name).includes(term)))
+    .filter((food) => {
+      const names = [food.name, ...(food.localizedNames ?? []).map((entry) => entry.name)].map(normalizeFoodQuery);
+      return terms.every((term) => names.some((name) => name.includes(term)));
+    })
     .sort((left, right) => {
-      const leftName = normalizeFoodQuery(left.name);
-      const rightName = normalizeFoodQuery(right.name);
-      const score = (name: string) => (name === normalized ? 400 : name.startsWith(`${normalized} `) ? 250 : 0) + (/\baverage\b/.test(name) ? 160 : 0) - Math.max(0, name.length - normalized.length);
-      return score(rightName) - score(leftName) || left.externalId.localeCompare(right.externalId);
+      const score = (food: FineliDatasetRecord) => Math.max(...[
+        food.name,
+        ...(food.localizedNames ?? []).map((entry) => entry.name),
+      ].map(normalizeFoodQuery).map((name) =>
+        (name === normalized ? 400 : name.startsWith(`${normalized} `) ? 250 : 0)
+        + (/\baverage\b/.test(name) ? 160 : 0)
+        - Math.max(0, name.length - normalized.length)
+      ));
+      return score(right) - score(left) || left.externalId.localeCompare(right.externalId);
     })
     .slice(0, limit);
 }

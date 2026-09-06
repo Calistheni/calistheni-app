@@ -115,9 +115,10 @@ test("an insufficient local derivative does not prevent provider generic fallbac
   assert.equal(isSufficientNutritionFoodCandidate("milk", { ...localCoconutMilk, name: "Milkshake" }), false);
   assert.doesNotMatch(service, /searchFineliFoods\(/);
   assert.match(service, /no local Fineli candidates; run npm run nutrition:sync-fineli/);
-  assert.match(service, /searchUsdaFoods\(providerQuery, NUTRITION_PROVIDER_CANDIDATE_LIMIT\)/);
-  assert.match(service, /const useOpenFoodFacts = queryKind === "PRODUCT" \|\| queryKind === "BARCODE"/);
-  assert.match(service, /const localResults = local\.status === "fulfilled" \? local\.value : \[\]/);
+  assert.match(service, /searchEligibleRemoteFoodProviders\(/);
+  assert.match(service, /searchers: \{ USDA: searchUsdaFoods, OPEN_FOOD_FACTS: searchOpenFoodFactsFoods \}/);
+  assert.match(service, /localFoodSearchSufficiency\(normalized, localResults, NUTRITION_SEARCH_RESULT_LIMIT\)/);
+  assert.match(service, /const localResults = local\.status === "fulfilled" \? local\.value\.foods : \[\]/);
   assert.match(service, /diversifyNutritionFoodCandidates\(rankedResults\)\.slice\(0, NUTRITION_SEARCH_RESULT_LIMIT\)/);
 });
 
@@ -166,7 +167,7 @@ test("mushroom, porcini, and omelette keep useful generic or dish candidates", (
 
 test("generic search has a synonym fallback instead of returning an empty provider universe", async () => {
   const service = await import("node:fs/promises").then((fs) => fs.readFile(new URL("../lib/nutrition/service.ts", import.meta.url), "utf8"));
-  assert.match(service, /if \(!providerResults\.length\)/);
+  assert.match(service, /if \(!providerResults\.length && useUsda\)/);
   assert.match(service, /nutritionFoodIntent\(normalized\)\.searchQueries/);
   assert.match(service, /empty result diagnostics/);
 });
@@ -307,7 +308,7 @@ test("search UI keeps request identity, aborts stale work, and renders generic b
 test("tracker picker keeps search controls outside a bounded shadcn result scroller", async () => {
   const source = await import("node:fs/promises").then((fs) => fs.readFile(new URL("../components/nutrition/NutritionTracker.tsx", import.meta.url), "utf8"));
   assert.match(source, /NUTRITION_SEARCH_RESULT_LIMIT/);
-  assert.match(source, /<ScrollArea className="h-\[min\(48dvh,26rem\)\] rounded-lg border"/);
+  assert.match(source, /<ScrollArea\s+className="h-\[min\(48dvh,26rem\)\] rounded-lg border"/);
   assert.match(source, /aria-label="Food search results"/);
   assert.match(source, /No foods found\. Try a more specific search\./);
 });

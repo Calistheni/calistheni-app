@@ -10,6 +10,7 @@ import {
 } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { normalizeFoodQuery } from "./normalization";
+import { buildProviderFoodAliasCandidates } from "./provider-food-aliases";
 import type { ExternalFoodResult } from "./types";
 
 function foodData(result: ExternalFoodResult) {
@@ -64,15 +65,9 @@ function revisionData(foodId: string, revisionNumber: number, result: ExternalFo
 async function replaceRelatedData(tx: Prisma.TransactionClient, foodId: string, result: ExternalFoodResult) {
   await tx.foodServing.deleteMany({ where: { foodId, source: FoodSource.FINELI } });
   if (result.servings.length) await tx.foodServing.createMany({ data: result.servings.map((serving, index) => ({ foodId, name: serving.name, quantity: serving.quantity, grams: serving.grams, householdUnit: serving.householdUnit ?? null, isDefault: index === 0, source: FoodSource.FINELI, sourceExternalId: serving.sourceExternalId ?? null })) });
-  const raw = result.raw && typeof result.raw === "object" ? result.raw as Record<string, unknown> : null;
-  const rawName = raw?.name && typeof raw.name === "object" ? raw.name as Record<string, unknown> : null;
-  const aliases = new Map<string, { name: string; languageCode: string | null }>();
-  for (const [name, languageCode] of [[result.name, result.languageCode ?? null], [rawName?.en, "en"], [rawName?.fi, "fi"], [rawName?.sv, "sv"]] as Array<[unknown, string | null]>) {
-    if (typeof name !== "string" || !name.trim()) continue;
-    aliases.set(normalizeFoodQuery(name), { name: name.trim(), languageCode });
-  }
-  for (const [normalizedName, alias] of aliases) {
-    await tx.foodAlias.upsert({ where: { foodId_normalizedName: { foodId, normalizedName } }, create: { foodId, name: alias.name, normalizedName, languageCode: alias.languageCode, source: FoodSource.FINELI }, update: { name: alias.name, languageCode: alias.languageCode, source: FoodSource.FINELI } });
+  const aliases = buildProviderFoodAliasCandidates({ provider: "FINELI", rawData: result.raw, fallbackName: result.name, fallbackLanguageCode: result.languageCode });
+  for (const alias of aliases) {
+    await tx.foodAlias.upsert({ where: { foodId_normalizedName: { foodId, normalizedName: alias.normalizedName } }, create: { foodId, ...alias, source: FoodSource.FINELI }, update: { ...alias, source: FoodSource.FINELI } });
   }
   if (!result.details) return;
   const details = result.details;

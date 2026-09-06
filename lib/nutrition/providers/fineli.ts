@@ -67,6 +67,15 @@ function english(value: { en?: string; fi?: string; sv?: string } | undefined) {
   return value?.en?.trim() || value?.fi?.trim() || value?.sv?.trim() || null;
 }
 
+function localizedNames(value: { en?: string; fi?: string; sv?: string } | undefined) {
+  if (!value) return [];
+  return Object.entries(value).flatMap(([languageCode, name]) =>
+    typeof name === "string" && name.trim()
+      ? [{ name: name.normalize("NFKC").trim(), languageCode }]
+      : []
+  );
+}
+
 function codeForUnit(unit: z.infer<typeof unitSchema>) {
   return (unit.code ?? unit.unit?.code ?? "").toUpperCase();
 }
@@ -124,6 +133,7 @@ export function normalizeFineliFood(input: unknown): ExternalFoodResult {
     name,
     description: [english(food.type.name) ?? english(food.type.description), ...food.preparationMethod.map((entry) => english(entry.name) ?? english(entry.description))].filter(Boolean).join(" · ") || undefined,
     languageCode: food.name.en ? "en" : food.name.fi ? "fi" : "sv",
+    localizedNames: localizedNames(food.name),
     countryCodes: ["fi"],
     nutritionPer100g,
     servings: mapFineliServings(food),

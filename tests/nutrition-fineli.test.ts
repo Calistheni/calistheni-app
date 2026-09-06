@@ -170,6 +170,8 @@ test("parses Basic Package CSV records, preserves FOOD/DISH, and maps verified p
   assert.deepEqual(apple.servings.map((serving) => serving.name), ["100 g", "Medium-sized piece"]);
   assert.equal(apple.providerVersion, "fixture-2026");
   assert.equal(apple.name, "Apple, Average, With Skin");
+  assert.ok(apple.localizedNames?.some((name) => name.name === "OMENA, KESKIMÄÄRIN, KUORINEEN" && name.languageCode === "fi"));
+  assert.ok(apple.localizedNames?.some((name) => name.name === "ÄPPLE, GENOMSNITTLIGT, MED SKAL" && name.languageCode === "sv"));
   assert.deepEqual((apple.raw as { name: unknown }).name, {
     en: "APPLE, AVERAGE, WITH SKIN",
     fi: "OMENA, KESKIMÄÄRIN, KUORINEEN",
@@ -182,6 +184,18 @@ test("local dataset search excludes DISH and prefers the average generic entry",
   assert.equal(searchFineliDataset("apple", records)[0]?.name, "Apple, Average, With Skin");
   assert.deepEqual(searchFineliDataset("salmon", records).map((food) => food.name), ["Salmon, Cooked"]);
   assert.equal(searchFineliDataset("potato", records)[0]?.name, "Potato, Boiled");
+});
+
+test("local Fineli dataset search matches Finnish and Swedish localized names", () => {
+  const records = parseFineliBasicPackage({
+    foodCsv: datasetFoodCsv,
+    componentValueCsv: datasetValuesCsv,
+    foodNameEnCsv: `FOODID;FOODNAME\n28916;APPLE, AVERAGE, WITH SKIN`,
+    foodNameFiCsv: `FOODID;FOODNAME\n28916;OMENA, KESKIMÄÄRIN, KUORINEEN`,
+    foodNameSvCsv: `FOODID;FOODNAME\n28916;ÄPPLE, GENOMSNITTLIGT, MED SKAL`,
+  });
+  assert.equal(searchFineliDataset("omena", records)[0]?.externalId, "28916");
+  assert.equal(searchFineliDataset("äpple", records)[0]?.externalId, "28916");
 });
 
 test("manual generic ranking favors Fineli while USDA remains a valid deeper candidate", () => {
@@ -219,7 +233,7 @@ test("Fineli is additive, locally synchronized, idempotent, attributed, and abse
   assert.match(sync, /expected Basic Package 2 with 74 components/);
   assert.match(sync, /syncFineliDatasetFood/);
   assert.match(sync, /Cloudflare challenge/);
-  assert.match(service, /queryKind === "PRODUCT" \|\| queryKind === "BARCODE"/);
+  assert.match(service, /eligibleRemoteFoodProviders/);
   assert.match(dataSources, /Finnish Institute for Health and Welfare \(THL\)[\s\S]*CC BY 4\.0/);
   assert.match(docs, /nutrition:sync-fineli/);
   assert.match(docs, /FINELI_DATASET_URL=https:\/\/fineli\.fi\/fineli\/content\/file\/49/);
