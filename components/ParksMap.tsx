@@ -17,13 +17,14 @@ import { LoaderCircle, MapPin, Plus, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AdminMapParkPopup } from "@/components/admin/AdminMapParkPopup";
 import { useMapUserFocus } from "@/components/parks/useMapUserFocus";
+import { buildParkOverviewGeoJson } from "@/lib/park-map-overview";
 import { isParkArchivedForAdminMap } from "@/lib/park-map-query";
 import type {
   AdminParkDetail,
   AdminParkMapSummary,
   AdminParksMapResponse,
-  ParkClusterPlaceholder,
   ParkDetail,
+  ParkOverviewFeature,
   ParkQrStatus,
   ParksMapResponse,
   ParkSummary,
@@ -42,6 +43,7 @@ mapboxgl.accessToken = MAPBOX_ACCESS_TOKEN;
 
 const PARK_AREA_CACHE_MAX_AGE_MS = 15 * 60 * 1000;
 const PLACEHOLDER_MAX_ZOOM = 8;
+const PLACEHOLDER_RESOLUTION_ZOOM = 12;
 const MEANINGFUL_CENTER_SHIFT_RATIO = 0.18;
 const MEANINGFUL_ZOOM_DELTA = 0.5;
 // A selected admin park should be easy to identify without losing the useful
@@ -262,6 +264,37 @@ function getViewportArea(map: mapboxgl.Map): ViewportArea {
   };
 }
 
+function getOverviewViewport(
+  feature: Extract<ParkOverviewFeature, { featureKind: "aggregate" }>
+): ViewportArea {
+  const { west, south, east, north } = feature.bounds;
+  const zoom = PLACEHOLDER_RESOLUTION_ZOOM;
+  const center: [number, number] = [
+    normalizeLongitude((west + east) / 2),
+    (south + north) / 2,
+  ];
+  const params = new URLSearchParams({
+    west: west.toFixed(6),
+    south: south.toFixed(6),
+    east: east.toFixed(6),
+    north: north.toFixed(6),
+    zoom: zoom.toFixed(2),
+  });
+
+  return {
+    areaKey: ["overview", feature.id, west, south, east, north].join(":"),
+    center,
+    east,
+    latitudeSpan: north - south,
+    longitudeSpan: Math.abs(east - west),
+    north,
+    params,
+    south,
+    west,
+    zoom,
+  };
+}
+
 function viewportContainsCoordinate(
   viewport: ViewportArea,
   longitude: number,
@@ -306,22 +339,6 @@ function hasMeaningfulViewportChange(
     Math.abs(current.center[1] - searched.center[1]) >= latitudeThreshold ||
     longitudeDelta >= longitudeThreshold
   );
-}
-
-function buildPlaceholderGeoJson(
-  clusters: ParkClusterPlaceholder[]
-): GeoJSON.FeatureCollection {
-  return {
-    type: "FeatureCollection",
-    features: clusters.map((cluster, index) => ({
-      type: "Feature",
-      properties: { id: index, count: cluster.count },
-      geometry: {
-        type: "Point",
-        coordinates: [cluster.lon, cluster.lat],
-      },
-    })),
-  };
 }
 
 function getSearchResultZoom(featureType: string | undefined) {
@@ -413,6 +430,8 @@ function buildGeoJson(parks: ParkSummary[]): GeoJSON.FeatureCollection {
       type: "Feature",
       properties: {
         id: park.id,
+        parkId: park.id,
+        featureKind: "park",
         archived: isParkArchivedForAdminMap(park),
       },
       geometry: {
@@ -692,7 +711,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   const areaParkIdsRef = useRef(new Map<string, Set<number>>());
   const parkAreaMembershipRef = useRef(new Map<number, Set<string>>());
   const loadedParksRef = useRef(new Map<number, MapParkSummary>());
-  const placeholderClustersRef = useRef<ParkClusterPlaceholder[]>([]);
+  const placeholderClustersRef = useRef<ParkOverviewFeature[]>([]);
   const searchedViewportsRef = useRef<ViewportArea[]>([]);
   const lastSearchedViewportRef = useRef<ViewportArea | null>(null);
   const areaSearchPendingRef = useRef(false);
@@ -708,9 +727,10 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     key: string;
     loadId: number;
     controller: AbortController;
-    promise: Promise<void>;
+    promise: Promise<MapParkSummary[] | undefined>;
   } | null>(null);
   const viewportLoadIdRef = useRef(0);
+  const placeholderResolutionIdRef = useRef(0);
   const mapLoadedRef = useRef(false);
   const placementModeRef = useRef(false);
   const onViewportParksChangeRef = useRef(onViewportParksChange);
@@ -1619,7 +1639,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
           viewportContainsCoordinate(viewport, cluster.lon, cluster.lat)
         )
     );
-    source.setData(buildPlaceholderGeoJson(visibleClusters));
+    source.setData(buildParkOverviewGeoJson(visibleClusters));
   }
 
   function recordSearchedViewport(viewport: ViewportArea) {
@@ -1676,13 +1696,18 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   async function requestViewportParks({
     force = false,
     cacheOnly = false,
-  }: { force?: boolean; cacheOnly?: boolean } = {}) {
+    viewport: requestedViewport,
+  }: {
+    force?: boolean;
+    cacheOnly?: boolean;
+    viewport?: ViewportArea;
+  } = {}): Promise<MapParkSummary[] | undefined> {
     const map = mapRef.current;
     if (!map || !mapLoadedRef.current) {
       return;
     }
 
-    const viewport = getViewportArea(map);
+    const viewport = requestedViewport ?? getViewportArea(map);
     const key =
       mode === "admin"
         ? `${viewport.areaKey}:qr-${qrStatusFilter}:park-${parkStatusFilter}`
@@ -1726,7 +1751,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       setIsAreaTruncated(areaTruncatedRef.current.get(key) ?? false);
       setShowSearchThisArea(false);
       applyAreaParks(key, cachedParks, viewport);
-      return;
+      return cachedParks;
     }
 
     if (!force && mode === "public") {
@@ -1748,7 +1773,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
             cacheOnly ||
             Date.now() - cachedArea.timestamp < PARK_AREA_CACHE_MAX_AGE_MS
           ) {
-            return;
+            return cachedArea.data;
           }
         } else if (cacheOnly) {
           return;
@@ -1783,7 +1808,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
           | AdminParksMapResponse;
       })
       .then(async (result) => {
-        if (!isCurrentLoad()) return;
+        if (!isCurrentLoad()) return undefined;
         const nextParks = result.parks as MapParkSummary[];
         if (mode === "public") {
           try {
@@ -1798,7 +1823,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
           }
         }
 
-        if (!isCurrentLoad()) return;
+        if (!isCurrentLoad()) return undefined;
 
         viewportCacheRef.current.set(result.areaKey, nextParks);
         areaCacheTimestampRef.current.set(result.areaKey, Date.now());
@@ -1815,7 +1840,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
           });
 
           features.slice(0, 20).forEach((feature) => {
-            const parkId = Number(feature.properties?.id);
+            const parkId = Number(feature.properties?.parkId);
 
             if (
               !detailCacheRef.current.has(parkId) &&
@@ -1825,13 +1850,15 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
             }
           });
         }, 500);
+        return nextParks;
       })
       .catch((error: Error) => {
         if (error.name === "AbortError" || !isCurrentLoad()) {
-          return;
+          return undefined;
         }
 
         setViewportError("Unable to load parks for this area.");
+        return undefined;
       })
       .finally(() => {
         if (
@@ -2105,12 +2132,12 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
 
       map.addSource("park-placeholders", {
         type: "geojson",
-        data: buildPlaceholderGeoJson([]),
+        data: buildParkOverviewGeoJson([]),
         cluster: true,
         clusterRadius: 100,
         clusterMaxZoom: PLACEHOLDER_MAX_ZOOM,
         clusterProperties: {
-          park_count: ["+", ["get", "count"]],
+          park_count: ["+", ["get", "park_count_value"]],
         },
       });
 
@@ -2147,7 +2174,20 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         id: "park-placeholder-circles",
         type: "circle",
         source: "park-placeholders",
-        maxzoom: PLACEHOLDER_MAX_ZOOM,
+        maxzoom: PLACEHOLDER_RESOLUTION_ZOOM,
+        filter: [
+          "any",
+          [
+            "all",
+            ["has", "point_count"],
+            [">=", ["get", "point_count"], 2],
+          ],
+          [
+            "all",
+            ["==", ["get", "featureKind"], "aggregate"],
+            [">=", ["get", "count"], 2],
+          ],
+        ],
         paint: {
           "circle-color": initialMarkerColor,
           "circle-opacity": 1,
@@ -2172,7 +2212,20 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         id: "park-placeholder-counts",
         type: "symbol",
         source: "park-placeholders",
-        maxzoom: PLACEHOLDER_MAX_ZOOM,
+        maxzoom: PLACEHOLDER_RESOLUTION_ZOOM,
+        filter: [
+          "any",
+          [
+            "all",
+            ["has", "point_count"],
+            [">=", ["get", "point_count"], 2],
+          ],
+          [
+            "all",
+            ["==", ["get", "featureKind"], "aggregate"],
+            [">=", ["get", "count"], 2],
+          ],
+        ],
         layout: {
           "text-field": [
             "to-string",
@@ -2185,10 +2238,34 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       });
 
       map.addLayer({
+        id: "park-placeholder-points",
+        type: "circle",
+        source: "park-placeholders",
+        maxzoom: PLACEHOLDER_RESOLUTION_ZOOM,
+        filter: [
+          "all",
+          ["!", ["has", "point_count"]],
+          ["==", ["get", "featureKind"], "park"],
+          ["has", "parkId"],
+        ],
+        paint: {
+          "circle-color": initialMarkerColor,
+          "circle-radius": 10,
+          "circle-stroke-width": 2,
+          "circle-stroke-color": "#ffffff",
+          "circle-emissive-strength": 1,
+        },
+      });
+
+      map.addLayer({
         id: "clusters",
         type: "circle",
         source: "parks",
-        filter: ["has", "point_count"],
+        filter: [
+          "all",
+          ["has", "point_count"],
+          [">=", ["get", "point_count"], 2],
+        ],
         paint: {
           "circle-color": initialMarkerColor,
           "circle-radius": [
@@ -2231,7 +2308,11 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         id: "cluster-count",
         type: "symbol",
         source: "parks",
-        filter: ["has", "point_count"],
+        filter: [
+          "all",
+          ["has", "point_count"],
+          [">=", ["get", "point_count"], 2],
+        ],
         layout: {
           "text-field": ["get", "point_count_abbreviated"],
           "text-size": 12,
@@ -2255,7 +2336,12 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         type: "circle",
         source: "parks",
         minzoom: 12,
-        filter: ["!", ["has", "point_count"]],
+        filter: [
+          "all",
+          ["!", ["has", "point_count"]],
+          ["==", ["get", "featureKind"], "park"],
+          ["has", "parkId"],
+        ],
         paint: {
           "circle-color": [
             "case",
@@ -2284,7 +2370,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         void fetch("/api/parks/map/clusters")
           .then(async (response) => {
             if (!response.ok) throw new Error("Unable to load park overview.");
-            return (await response.json()) as ParkClusterPlaceholder[];
+            return (await response.json()) as ParkOverviewFeature[];
           })
           .then((clusters) => {
             placeholderClustersRef.current = clusters;
@@ -2311,13 +2397,30 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
           number,
           number
         ];
+        const resolutionId = ++placeholderResolutionIdRef.current;
         const clusterId = feature.properties?.cluster_id;
         if (clusterId !== undefined) {
+          if (process.env.NODE_ENV !== "production") {
+            console.debug("[Parks map] overview cluster click", {
+              source: "park-placeholders",
+              featureKind: "mapbox-cluster",
+              clusterId,
+              displayedCount:
+                feature.properties?.park_count ??
+                feature.properties?.point_count,
+              sourceCount: feature.properties?.point_count,
+              coordinates,
+            });
+          }
           const source = map.getSource(
             "park-placeholders"
           ) as mapboxgl.GeoJSONSource;
           source.getClusterExpansionZoom(clusterId, (error, zoom) => {
-            if (error) return;
+            if (
+              error ||
+              resolutionId !== placeholderResolutionIdRef.current
+            )
+              return;
 
             beginClusterNavigation();
             map.easeTo({
@@ -2330,13 +2433,95 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
           return;
         }
 
-        beginClusterNavigation();
-        map.easeTo({
-          center: coordinates,
-          zoom: PLACEHOLDER_MAX_ZOOM,
-          duration: 900,
-          essential: true,
+        const overviewId = String(feature.properties?.overviewId ?? "");
+        const aggregate = placeholderClustersRef.current.find(
+          (candidate) =>
+            candidate.featureKind === "aggregate" &&
+            candidate.id === overviewId
+        );
+        if (
+          !aggregate ||
+          aggregate.featureKind !== "aggregate" ||
+          aggregate.count < 2
+        ) {
+          if (process.env.NODE_ENV !== "production") {
+            console.warn("[Parks map] discarded invalid overview aggregate", {
+              overviewId,
+              displayedCount: feature.properties?.count,
+              coordinates,
+            });
+          }
+          placeholderClustersRef.current =
+            placeholderClustersRef.current.filter(
+              (candidate) =>
+                candidate.featureKind !== "aggregate" ||
+                candidate.id !== overviewId
+            );
+          updatePlaceholderSource();
+          return;
+        }
+
+        const viewport = getOverviewViewport(aggregate);
+        if (process.env.NODE_ENV !== "production") {
+          console.debug("[Parks map] resolving overview aggregate", {
+            source: "park-placeholders",
+            featureKind: aggregate.featureKind,
+            displayedCount: aggregate.count,
+            coordinates,
+            bounds: aggregate.bounds,
+          });
+        }
+        void requestViewportParksRef.current({
+          force: true,
+          viewport,
+        }).then((resolvedParks) => {
+          if (resolutionId !== placeholderResolutionIdRef.current) return;
+          if (!resolvedParks?.length) {
+            if (process.env.NODE_ENV !== "production") {
+              console.warn("[Parks map] overview aggregate resolved empty", {
+                overviewId: aggregate.id,
+                displayedCount: aggregate.count,
+                fetchedParkCount: resolvedParks?.length ?? 0,
+              });
+            }
+            return;
+          }
+
+          beginClusterNavigation();
+          map.easeTo({
+            center: coordinates,
+            zoom: Math.max(map.getZoom(), PLACEHOLDER_RESOLUTION_ZOOM),
+            duration: 900,
+            essential: true,
+          });
         });
+      });
+
+      map.on("click", "park-placeholder-points", (event) => {
+        if (placementModeRef.current) {
+          event.preventDefault();
+          return;
+        }
+        const feature = event.features?.[0];
+        placeholderResolutionIdRef.current += 1;
+        const parkId = Number(feature?.properties?.parkId);
+        const overviewPark = placeholderClustersRef.current.find(
+          (candidate) =>
+            candidate.featureKind === "park" && candidate.park.id === parkId
+        );
+        if (
+          !overviewPark ||
+          overviewPark.featureKind !== "park" ||
+          !Number.isInteger(parkId)
+        )
+          return;
+
+        openParkPopupRef.current(
+          map,
+          parkId,
+          [overviewPark.lon, overviewPark.lat],
+          overviewPark.park
+        );
       });
 
       map.on("click", "clusters", (event) => {
@@ -2347,6 +2532,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         const features = map.queryRenderedFeatures(event.point, {
           layers: ["clusters"],
         });
+        const clusterInteractionId = ++placeholderResolutionIdRef.current;
 
         const feature = features[0];
 
@@ -2355,13 +2541,79 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         }
 
         const clusterId = feature.properties?.cluster_id;
-        const pointCount = feature.properties?.point_count;
+        const pointCount = Number(feature.properties?.point_count);
 
-        if (clusterId === undefined) {
+        if (
+          clusterId === undefined ||
+          !Number.isInteger(pointCount) ||
+          pointCount < 2
+        ) {
+          if (process.env.NODE_ENV !== "production") {
+            console.warn("[Parks map] ignored invalid park cluster", {
+              source: "parks",
+              clusterId,
+              displayedCount: feature.properties?.point_count,
+            });
+          }
           return;
         }
 
         const source = map.getSource("parks") as mapboxgl.GeoJSONSource;
+        const coordinates = (feature.geometry as GeoJSON.Point)
+          .coordinates as [number, number];
+        const openFirstClusterPark = () => {
+          source.getClusterLeaves(
+            clusterId,
+            Math.min(pointCount, 100),
+            0,
+            (error, leaves) => {
+              if (
+                clusterInteractionId !== placeholderResolutionIdRef.current
+              )
+                return;
+              const memberIds = (leaves ?? [])
+                .map((leaf) => Number(leaf.properties?.parkId))
+                .filter((parkId) => Number.isInteger(parkId));
+              const parkPreview = memberIds
+                .map((parkId) => parksRef.current.find((park) => park.id === parkId))
+                .find((park) => park !== undefined);
+
+              if (process.env.NODE_ENV !== "production") {
+                console.debug("[Parks map] terminal cluster resolution", {
+                  source: "parks",
+                  clusterId,
+                  displayedCount: pointCount,
+                  leafCount: leaves?.length ?? 0,
+                  memberIds,
+                  error: error?.message,
+                });
+              }
+              if (!error && parkPreview) {
+                openParkPopupRef.current(
+                  map,
+                  parkPreview.id,
+                  [parkPreview.lon, parkPreview.lat],
+                  parkPreview
+                );
+                return;
+              }
+
+              // A stale cluster should disappear on the next source render,
+              // rather than remaining as a clickable marker with no members.
+              source.setData(buildGeoJson(parksRef.current));
+            }
+          );
+        };
+
+        if (process.env.NODE_ENV !== "production") {
+          console.debug("[Parks map] park cluster click", {
+            source: "parks",
+            featureKind: "mapbox-cluster",
+            clusterId,
+            displayedCount: pointCount,
+            coordinates,
+          });
+        }
 
         // Prefetch small clusters
         if (pointCount <= 10) {
@@ -2371,7 +2623,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
             }
 
             leaves.forEach((leaf) => {
-              const parkId = Number(leaf.properties?.id);
+              const parkId = Number(leaf.properties?.parkId);
 
               if (
                 !detailCacheRef.current.has(parkId) &&
@@ -2384,17 +2636,22 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         }
 
         source.getClusterExpansionZoom(clusterId, (error, zoom) => {
-          if (error) {
+          if (clusterInteractionId !== placeholderResolutionIdRef.current)
+            return;
+          if (error || zoom === null || zoom === undefined) {
+            openFirstClusterPark();
             return;
           }
 
-          const coordinates = (feature.geometry as GeoJSON.Point)
-            .coordinates as [number, number];
+          if (zoom <= map.getZoom() || map.getZoom() >= map.getMaxZoom()) {
+            openFirstClusterPark();
+            return;
+          }
 
           beginClusterNavigation();
           map.easeTo({
             center: coordinates,
-            zoom: zoom ?? 12,
+            zoom,
             duration: 1200,
             essential: true,
           });
@@ -2411,7 +2668,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
           return;
         }
 
-        const parkId = Number(feature.properties?.id);
+        const parkId = Number(feature.properties?.parkId);
         const parkPreview = parksRef.current.find((park) => park.id === parkId);
 
         if (!parkPreview) {
@@ -2435,7 +2692,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         });
 
         markers.slice(0, 5).forEach((feature) => {
-          const parkId = Number(feature.properties?.id);
+          const parkId = Number(feature.properties?.parkId);
 
           if (
             !detailCacheRef.current.has(parkId) &&
@@ -2454,7 +2711,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
           const clusterId = feature.properties?.cluster_id;
           const pointCount = feature.properties?.point_count;
 
-          if (!clusterId || pointCount > 5) {
+          if (clusterId === undefined || pointCount > 5) {
             return;
           }
 
@@ -2464,7 +2721,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
             }
 
             leaves.forEach((leaf) => {
-              const parkId = Number(leaf.properties?.id);
+              const parkId = Number(leaf.properties?.parkId);
 
               if (
                 !detailCacheRef.current.has(parkId) &&
@@ -2692,6 +2949,11 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       "#6b7280",
       markerColor,
     ]);
+    map.setPaintProperty(
+      "park-placeholder-points",
+      "circle-color",
+      markerColor
+    );
     map.setPaintProperty(
       "park-placeholder-circles",
       "circle-color",

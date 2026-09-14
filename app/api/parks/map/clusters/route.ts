@@ -1,22 +1,28 @@
 import { unstable_cache } from "next/cache";
 import { NextResponse } from "next/server";
 import { createInternalServerErrorResponse } from "@/lib/api-response";
+import {
+  buildParkOverviewFeatures,
+  type ParkOverviewRow,
+} from "@/lib/park-map-overview";
 import { prisma } from "@/lib/prisma";
-import type { ParkClusterPlaceholder } from "@/types/park";
-
-type ClusterRow = {
-  lat: number;
-  lon: number;
-  count: number;
-};
+import type { ParkOverviewFeature } from "@/types/park";
 
 const getGlobalParkClusters = unstable_cache(
-  async (): Promise<ParkClusterPlaceholder[]> => {
-    const rows = await prisma.$queryRaw<ClusterRow[]>`
+  async (): Promise<ParkOverviewFeature[]> => {
+    const rows = await prisma.$queryRaw<ParkOverviewRow[]>`
       SELECT
+        FLOOR(("lat" + 90) / 2)::int AS "latCell",
+        FLOOR(("lon" + 180) / 2)::int AS "lonCell",
         AVG("lat")::float8 AS "lat",
         AVG("lon")::float8 AS "lon",
-        COUNT(*)::int AS "count"
+        COUNT(*)::int AS "count",
+        MIN("id")::int AS "parkId",
+        MIN("name") AS "name",
+        MIN("title") AS "title",
+        MIN("address") AS "address",
+        MIN("photoUrl") AS "photoUrl",
+        MAX("updatedAt") AS "updatedAt"
       FROM "Park"
       WHERE "deletedAt" IS NULL
         AND "submissionStatus" = 'APPROVED'
@@ -24,13 +30,9 @@ const getGlobalParkClusters = unstable_cache(
       ORDER BY COUNT(*) DESC
     `;
 
-    return rows.map((row) => ({
-      lat: Number(row.lat),
-      lon: Number(row.lon),
-      count: Number(row.count),
-    }));
+    return buildParkOverviewFeatures(rows);
   },
-  ["parks-global-cluster-placeholders-v1"],
+  ["parks-global-overview-v2"],
   { revalidate: 900, tags: ["parks-map-clusters"] }
 );
 

@@ -42,11 +42,28 @@ export type AdminParksMapResponse = Omit<ParksMapResponse, "parks"> & {
   parks: AdminParkMapSummary[];
 };
 
-export type ParkClusterPlaceholder = {
-  lat: number;
-  lon: number;
-  count: number;
+export type ParkOverviewBounds = {
+  west: number;
+  south: number;
+  east: number;
+  north: number;
 };
+
+export type ParkOverviewFeature =
+  | {
+      featureKind: "park";
+      park: ParkSummary;
+      lat: number;
+      lon: number;
+    }
+  | {
+      featureKind: "aggregate";
+      id: string;
+      lat: number;
+      lon: number;
+      count: number;
+      bounds: ParkOverviewBounds;
+    };
 
 export type ParkDetail = ParkSummary & {
   equipment: string[];
