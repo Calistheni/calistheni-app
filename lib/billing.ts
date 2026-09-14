@@ -2,6 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { getStripe } from "@/lib/stripe";
+import { resolveStripeCustomer } from "@/lib/stripe-customer-recovery";
 
 export async function getOrCreateStripeCustomer(userId: string) {
   const user = await prisma.user.findUnique({
@@ -13,39 +14,56 @@ export async function getOrCreateStripeCustomer(userId: string) {
   });
 
   if (!user) throw new Error("Authenticated user does not exist.");
-  if (user.subscription?.stripeCustomerId) {
-    return user.subscription.stripeCustomerId;
-  }
 
-  await prisma.subscription.upsert({
-    where: { userId },
-    create: { userId },
-    update: {},
-  });
+  if (!user.subscription) {
+    await prisma.subscription.upsert({
+      where: { userId },
+      create: { userId },
+      update: {},
+    });
+  }
 
   const stripe = getStripe();
-  const customer = await stripe.customers.create(
-    {
-      ...(user.email ? { email: user.email } : {}),
-      metadata: { userId },
+  const resolution = await resolveStripeCustomer({
+    existingCustomerId: user.subscription?.stripeCustomerId ?? null,
+    retrieveCustomer: (customerId) => stripe.customers.retrieve(customerId),
+    createCustomer: async () => {
+      const customer = await stripe.customers.create(
+        {
+          ...(user.email ? { email: user.email } : {}),
+          metadata: { userId },
+        },
+        { idempotencyKey: `calistheni-customer-${userId}` }
+      );
+      return customer.id;
     },
-    { idempotencyKey: `calistheni-customer-${userId}` }
-  );
-  const persisted = await prisma.subscription.updateMany({
-    where: { userId, stripeCustomerId: null },
-    data: { stripeCustomerId: customer.id },
+    persistCustomer: async (customerId, expectedCustomerId) => {
+      const persisted = await prisma.subscription.updateMany({
+        where: { userId, stripeCustomerId: expectedCustomerId },
+        data: { stripeCustomerId: customerId },
+      });
+      return persisted.count === 1;
+    },
+    readPersistedCustomer: async () => {
+      const concurrentResult = await prisma.subscription.findUnique({
+        where: { userId },
+        select: { stripeCustomerId: true },
+      });
+      return concurrentResult?.stripeCustomerId ?? null;
+    },
   });
 
-  if (persisted.count === 1) return customer.id;
-
-  const concurrentResult = await prisma.subscription.findUnique({
-    where: { userId },
-    select: { stripeCustomerId: true },
-  });
-
-  if (!concurrentResult?.stripeCustomerId) {
-    throw new Error("Unable to persist Stripe customer.");
+  if (
+    resolution.state === "recovered_missing" ||
+    resolution.state === "recovered_deleted"
+  ) {
+    console.info("[billing.customer]", {
+      event: "stale_customer_recovered",
+      userId,
+      recoveryReason:
+        resolution.state === "recovered_missing" ? "missing" : "deleted",
+    });
   }
 
-  return concurrentResult.stripeCustomerId;
+  return resolution.customerId;
 }

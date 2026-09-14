@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getOrCreateStripeCustomer } from "@/lib/billing";
+import { buildStripeCheckoutSessionParameters } from "@/lib/stripe-checkout-request";
 import {
   getUserSubscription,
   hasProAccess,
@@ -10,7 +11,12 @@ import {
   getStripe,
   getValidatedStripeProPriceIds,
 } from "@/lib/stripe";
-import { getSafeStripeErrorDiagnostics } from "@/lib/stripe-diagnostics";
+import {
+  type CheckoutFailureStage,
+  getCheckoutFailureCode,
+  getSafeStripeEnvironmentDiagnostics,
+  getSafeStripeErrorDiagnostics,
+} from "@/lib/stripe-diagnostics";
 import { getSiteUrl } from "@/lib/site-url";
 import {
   createUserUnauthorizedResponse,
@@ -65,7 +71,7 @@ export async function POST(request: Request) {
     );
   }
 
-  let stage = "subscription_lookup";
+  let stage: CheckoutFailureStage = "subscription_lookup";
   let hasStripeCustomerId = false;
   console.info("[billing.checkout]", {
     event: "request_received",
@@ -74,6 +80,7 @@ export async function POST(request: Request) {
     billingInterval: getBillingInterval(plan),
     hasStripeSecret: Boolean(process.env.STRIPE_SECRET_KEY?.trim()),
     hasPriceId: hasConfiguredPrice(plan),
+    ...getSafeStripeEnvironmentDiagnostics(),
   });
 
   try {
@@ -112,28 +119,25 @@ export async function POST(request: Request) {
       );
     }
 
-    stage = "price_validation";
+    stage = "stripe_config";
+    const stripe = getStripe();
+    stage = "price_retrieval";
     const prices = await getValidatedStripeProPriceIds();
+    stage = "origin_resolution";
+    const siteUrl = getSiteUrl();
     stage = "customer_resolution";
     const customer = await getOrCreateStripeCustomer(userId);
     hasStripeCustomerId = true;
-    const stripe = getStripe();
     stage = "checkout_session_creation";
-    const session = await stripe.checkout.sessions.create({
-      mode: plan === "PRO_LIFETIME" ? "payment" : "subscription",
-      customer,
-      client_reference_id: userId,
-      line_items: [{ price: prices[plan], quantity: 1 }],
-      metadata: { userId, plan },
-      ...(plan === "PRO_LIFETIME"
-        ? { payment_intent_data: { metadata: { userId, plan } } }
-        : { subscription_data: { metadata: { userId } } }),
-      success_url: new URL(
-        "/pro/success?session_id={CHECKOUT_SESSION_ID}",
-        getSiteUrl()
-      ).toString(),
-      cancel_url: new URL("/pro", getSiteUrl()).toString(),
-    });
+    const session = await stripe.checkout.sessions.create(
+      buildStripeCheckoutSessionParameters({
+        plan,
+        userId,
+        customerId: customer,
+        priceId: prices[plan],
+        siteUrl,
+      })
+    );
 
     stage = "checkout_url_validation";
     if (!session.url) throw new Error("Stripe Checkout did not return a URL.");
@@ -143,6 +147,8 @@ export async function POST(request: Request) {
       plan,
       billingInterval: getBillingInterval(plan),
       hasStripeCustomerId,
+      checkoutOrigin: new URL(siteUrl).origin,
+      ...getSafeStripeEnvironmentDiagnostics(),
       httpStatus: 200,
     });
     return NextResponse.json({ url: session.url });
@@ -156,11 +162,13 @@ export async function POST(request: Request) {
       hasStripeSecret: Boolean(process.env.STRIPE_SECRET_KEY?.trim()),
       hasPriceId: hasConfiguredPrice(plan),
       hasStripeCustomerId,
+      ...getSafeStripeEnvironmentDiagnostics(),
       ...getSafeStripeErrorDiagnostics(error),
       httpStatus: 500,
     });
+    const code = getCheckoutFailureCode(stage, error);
     return NextResponse.json(
-      { code: "CHECKOUT_UNAVAILABLE", error: "Checkout is unavailable right now." },
+      { code, error: "Checkout is unavailable right now." },
       { status: 500 }
     );
   }

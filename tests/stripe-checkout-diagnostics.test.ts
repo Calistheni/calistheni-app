@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { getSafeStripeErrorDiagnostics } from "../lib/stripe-diagnostics.ts";
+import {
+  getCheckoutFailureCode,
+  getSafeStripeErrorDiagnostics,
+} from "../lib/stripe-diagnostics.ts";
 
 const root = new URL("../", import.meta.url);
 
@@ -47,13 +50,38 @@ test("checkout route records safe stage diagnostics and keeps the public error g
   );
 
   assert.match(route, /event: "request_received"/);
-  assert.match(route, /stage = "price_validation"/);
+  assert.match(route, /stage = "stripe_config"/);
+  assert.match(route, /stage = "price_retrieval"/);
+  assert.match(route, /stage = "origin_resolution"/);
   assert.match(route, /stage = "customer_resolution"/);
   assert.match(route, /stage = "checkout_session_creation"/);
   assert.match(route, /getSafeStripeErrorDiagnostics\(error\)/);
   assert.match(route, /hasStripeSecret/);
   assert.match(route, /hasPriceId/);
   assert.match(route, /hasStripeCustomerId/);
-  assert.match(route, /code: "CHECKOUT_UNAVAILABLE"/);
+  assert.match(route, /getCheckoutFailureCode\(stage, error\)/);
   assert.doesNotMatch(route, /console\.(?:info|error)\([^)]*session\.url/);
+  assert.doesNotMatch(route, /STRIPE_SECRET_KEY\s*[,}]/);
+  assert.ok(
+    route.indexOf("getAuthenticatedUserId()") < route.indexOf("request.json()")
+  );
+});
+
+test("checkout failures return safe stage-specific machine codes", () => {
+  assert.equal(
+    getCheckoutFailureCode("stripe_config", new Error()),
+    "CHECKOUT_CONFIGURATION_ERROR"
+  );
+  assert.equal(
+    getCheckoutFailureCode("price_retrieval", new Error()),
+    "CHECKOUT_PRICE_INVALID"
+  );
+  assert.equal(
+    getCheckoutFailureCode("customer_resolution", new Error()),
+    "CHECKOUT_CUSTOMER_ERROR"
+  );
+  assert.equal(
+    getCheckoutFailureCode("checkout_session_creation", new Error()),
+    "STRIPE_SESSION_CREATION_FAILED"
+  );
 });

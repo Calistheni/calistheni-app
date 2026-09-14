@@ -30,8 +30,9 @@ NEXT_PUBLIC_SITE_URL=https://calistheni.app
 
 `VERCEL_ENV` is supplied by Vercel and must not be created manually. The Stripe
 publishable key is not required by the current server-created Checkout flow. If
-`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` remains configured, it must be a live key in
-Production; the runtime rejects a mismatched optional publishable key.
+`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` remains configured for some separate client
+integration, that integration must validate it independently; server Checkout
+does not read or require it.
 After changing any variable, redeploy Production so serverless functions receive
 the new configuration.
 
@@ -46,6 +47,9 @@ The live setup script has three independent guards:
 1. A live-only server key supplied as `STRIPE_LIVE_SECRET_KEY`.
 2. A confirmed Calistheni `acct_...` ID supplied as `STRIPE_LIVE_ACCOUNT_ID`.
 3. Both an exact confirmation environment value and command-line flag.
+
+`STRIPE_LIVE_SECRET_KEY` is a local, setup-script input only. Do not store it in
+Vercel; the deployed application uses `STRIPE_SECRET_KEY`.
 
 Supply the key without echoing it, verify the account ID in the Stripe Dashboard,
 then run:

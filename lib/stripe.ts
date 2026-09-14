@@ -1,15 +1,18 @@
 import "server-only";
 
 import Stripe from "stripe";
+import {
+  StripeConfigurationError,
+  type StripeMode,
+  getStripeModeFromEnvironment,
+  getStripePriceIdsFromEnvironment,
+  getStripeSecretFromEnvironment,
+  requiredStripeEnvironmentValue,
+  validateStripeCatalog,
+} from "@/lib/stripe-config";
 
-export type StripeMode = "test" | "live";
-
-export class StripeConfigurationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "StripeConfigurationError";
-  }
-}
+export { StripeConfigurationError } from "@/lib/stripe-config";
+export type { StripeMode } from "@/lib/stripe-config";
 
 let stripeClient: Stripe | null = null;
 let validatedPricesPromise:
@@ -17,72 +20,16 @@ let validatedPricesPromise:
   | null = null;
 
 function requiredServerEnv(name: string) {
-  const value = process.env[name]?.trim();
-
-  if (!value) {
-    throw new StripeConfigurationError(
-      `Missing required server environment variable: ${name}`
-    );
-  }
-
-  return value;
+  return requiredStripeEnvironmentValue(process.env, name);
 }
 
 export function getStripeMode(): StripeMode {
-  const mode = requiredServerEnv("STRIPE_MODE");
-  if (mode !== "test" && mode !== "live") {
-    throw new StripeConfigurationError(
-      "STRIPE_MODE must be exactly 'test' or 'live'."
-    );
-  }
-
-  const vercelEnvironment = process.env.VERCEL_ENV;
-  if (vercelEnvironment === "production" && mode !== "live") {
-    throw new StripeConfigurationError(
-      "Vercel Production requires STRIPE_MODE=live."
-    );
-  }
-  if (mode === "live" && vercelEnvironment !== "production") {
-    throw new StripeConfigurationError(
-      "Live Stripe runtime access is allowed only in Vercel Production."
-    );
-  }
-
-  const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim();
-  if (publishableKey) {
-    const publishableMode = /^pk_(test|live)_/.exec(publishableKey)?.[1];
-    if (!publishableMode || publishableMode !== mode) {
-      throw new StripeConfigurationError(
-        `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY mode does not match STRIPE_MODE=${mode}.`
-      );
-    }
-  }
-
-  return mode;
-}
-
-function getSecretKeyMode(secretKey: string): StripeMode | null {
-  const match = /^(?:sk|rk)_(test|live)_/.exec(secretKey);
-  return match?.[1] === "test" || match?.[1] === "live"
-    ? match[1]
-    : null;
+  return getStripeModeFromEnvironment(process.env);
 }
 
 export function getStripe() {
   const expectedMode = getStripeMode();
-  const secretKey = requiredServerEnv("STRIPE_SECRET_KEY");
-  const keyMode = getSecretKeyMode(secretKey);
-
-  if (!keyMode) {
-    throw new StripeConfigurationError(
-      "STRIPE_SECRET_KEY is not a recognized Stripe test or live server key."
-    );
-  }
-  if (keyMode !== expectedMode) {
-    throw new StripeConfigurationError(
-      `STRIPE_SECRET_KEY mode does not match STRIPE_MODE=${expectedMode}.`
-    );
-  }
+  const secretKey = getStripeSecretFromEnvironment(process.env, expectedMode);
 
   stripeClient ??= new Stripe(secretKey, {
     apiVersion: "2026-06-24.dahlia",
@@ -101,27 +48,7 @@ export function getStripeWebhookSecret() {
 }
 
 export function getStripeProPriceIds() {
-  const priceIds = {
-    PRO_MONTHLY: requiredServerEnv("STRIPE_PRO_MONTHLY_PRICE_ID"),
-    PRO_YEARLY: requiredServerEnv("STRIPE_PRO_YEARLY_PRICE_ID"),
-    PRO_LIFETIME: requiredServerEnv("STRIPE_PRO_LIFETIME_PRICE_ID"),
-  } as const;
-
-  for (const [name, value] of Object.entries(priceIds)) {
-    if (!/^price_[A-Za-z0-9]+$/.test(value)) {
-      throw new StripeConfigurationError(
-        `${name} is not a valid Stripe Price ID.`
-      );
-    }
-  }
-
-  if (new Set(Object.values(priceIds)).size !== 3) {
-    throw new StripeConfigurationError(
-      "Monthly, Yearly, and Lifetime Stripe Price IDs must be distinct."
-    );
-  }
-
-  return priceIds;
+  return getStripePriceIdsFromEnvironment(process.env);
 }
 
 function getStripeAccountId() {
@@ -137,7 +64,6 @@ function getStripeAccountId() {
 async function validateStripePrices() {
   const stripe = getStripe();
   const mode = getStripeMode();
-  const expectedLiveMode = mode === "live";
   const priceIds = getStripeProPriceIds();
   const [account, monthly, yearly, lifetime] = await Promise.all([
     stripe.accounts.retrieveCurrent(),
@@ -146,75 +72,40 @@ async function validateStripePrices() {
     stripe.prices.retrieve(priceIds.PRO_LIFETIME),
   ]);
 
-  if (account.id !== getStripeAccountId()) {
-    throw new StripeConfigurationError(
-      "STRIPE_SECRET_KEY belongs to a different Stripe account than STRIPE_ACCOUNT_ID."
-    );
-  }
-
   const configuredPrices = [monthly, yearly, lifetime];
-  if (configuredPrices.some((price) => price.livemode !== expectedLiveMode)) {
-    throw new StripeConfigurationError(
-      `Configured Stripe Price mode does not match STRIPE_MODE=${mode}.`
-    );
-  }
-  if (configuredPrices.some((price) => !price.active)) {
-    throw new StripeConfigurationError("All configured Stripe Prices must be active.");
-  }
-
   const productIds = configuredPrices.map((price) =>
     typeof price.product === "string" ? price.product : price.product.id
   );
-  if (new Set(productIds).size !== 1) {
-    throw new StripeConfigurationError(
-      "All configured Stripe Prices must belong to the same product."
-    );
-  }
-
   const product = await stripe.products.retrieve(productIds[0]);
-  if (
-    product.livemode !== expectedLiveMode ||
-    !product.active ||
-    product.name !== "Calistheni Pro"
-  ) {
-    throw new StripeConfigurationError(
-      "Configured Stripe Prices must belong to the active Calistheni Pro product in the selected mode."
-    );
-  }
-
-  if (
-    monthly.currency !== "eur" ||
-    monthly.unit_amount !== 499 ||
-    monthly.type !== "recurring" ||
-    monthly.recurring?.interval !== "month" ||
-    monthly.recurring.interval_count !== 1
-  ) {
-    throw new StripeConfigurationError(
-      "STRIPE_PRO_MONTHLY_PRICE_ID must be €4.99 EUR recurring monthly."
-    );
-  }
-  if (
-    yearly.currency !== "eur" ||
-    yearly.unit_amount !== 3999 ||
-    yearly.type !== "recurring" ||
-    yearly.recurring?.interval !== "year" ||
-    yearly.recurring.interval_count !== 1
-  ) {
-    throw new StripeConfigurationError(
-      "STRIPE_PRO_YEARLY_PRICE_ID must be €39.99 EUR recurring yearly."
-    );
-  }
-  if (
-    lifetime.currency !== "eur" ||
-    lifetime.unit_amount !== 7999 ||
-    lifetime.type !== "one_time"
-  ) {
-    throw new StripeConfigurationError(
-      "STRIPE_PRO_LIFETIME_PRICE_ID must be a €79.99 EUR one-time Price."
-    );
-  }
+  validateStripeCatalog({
+    mode,
+    accountId: account.id,
+    configuredAccountId: getStripeAccountId(),
+    monthly: toPriceSnapshot(monthly),
+    yearly: toPriceSnapshot(yearly),
+    lifetime: toPriceSnapshot(lifetime),
+    product: {
+      livemode: product.livemode,
+      active: product.active,
+      name: product.name,
+    },
+  });
 
   return priceIds;
+}
+
+function toPriceSnapshot(price: Stripe.Price) {
+  return {
+    livemode: price.livemode,
+    active: price.active,
+    currency: price.currency,
+    unitAmount: price.unit_amount,
+    type: price.type,
+    recurringInterval: price.recurring?.interval ?? null,
+    recurringIntervalCount: price.recurring?.interval_count ?? null,
+    productId:
+      typeof price.product === "string" ? price.product : price.product.id,
+  };
 }
 
 export async function getValidatedStripeProPriceIds() {
