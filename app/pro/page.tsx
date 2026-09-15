@@ -12,8 +12,8 @@ import {
   X,
 } from "lucide-react";
 import { auth } from "@/auth";
-import { CheckoutButtons } from "@/components/billing/CheckoutButtons";
-import { ManageSubscriptionButton } from "@/components/billing/ManageSubscriptionButton";
+import { BillingOptions } from "@/components/billing/BillingOptions";
+import { ProviderManagementAction } from "@/components/billing/ProviderManagementAction";
 import {
   PremiumEyebrow,
   PremiumSectionHeading,
@@ -33,6 +33,7 @@ import {
   getUserEntitlements,
   hasOngoingRecurringSubscription,
 } from "@/lib/entitlements";
+import type { BillingGrantSummary } from "@/lib/billing-provider";
 
 export const metadata: Metadata = {
   title: "Calistheni Pro",
@@ -72,7 +73,7 @@ const faqs = [
   {
     question: "Can I cancel monthly or yearly Pro?",
     answer:
-      "Yes. Recurring Pro subscriptions can be managed through the Stripe billing portal.",
+      "Yes. Recurring Pro subscriptions can be managed through the billing provider used for the purchase.",
   },
   {
     question: "What happens after cancellation?",
@@ -98,11 +99,41 @@ export default async function ProPage() {
     : null;
   const subscription = result?.subscription ?? null;
   const isPro = result?.entitlements.isPro ?? false;
-  const currentPlan =
-    isPro && subscription && subscription.plan !== "FREE"
-      ? subscription.plan
-      : null;
   const hasRecurringSubscription = hasOngoingRecurringSubscription(subscription);
+  const grantSummaries: BillingGrantSummary[] = (result?.grants ?? []).map(
+    (grant) =>
+      grant.provider === "STRIPE"
+        ? {
+            provider: grant.provider,
+            kind: grant.kind,
+            plan: grant.plan,
+            expiresAt: grant.expiresAt?.toISOString() ?? null,
+          }
+        : {
+            provider: grant.provider,
+            kind: grant.kind,
+            productId: grant.productId,
+            expiresAt: grant.expiresAt?.toISOString() ?? null,
+          }
+  );
+  const stripeGrant = grantSummaries.find((grant) => grant.provider === "STRIPE");
+  const appleGrant = grantSummaries.find((grant) => grant.provider === "APPLE");
+  const currentPlan = stripeGrant?.plan ?? null;
+  const activeProviders = new Set(
+    grantSummaries.map((grant) => grant.provider)
+  );
+  const proStatusLabel =
+    activeProviders.size > 1
+      ? "Pro active through multiple purchases"
+      : appleGrant?.kind === "LIFETIME"
+        ? "Lifetime Pro · Apple"
+        : appleGrant
+          ? "Apple Pro active"
+          : subscription?.lifetimePurchasedAt
+            ? "Lifetime Pro · Paid once — no renewal"
+            : stripeGrant
+              ? `${getFriendlySubscriptionPlan(stripeGrant.plan)} active`
+              : "Calistheni Pro active";
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8 lg:py-16">
@@ -122,9 +153,7 @@ export default async function ProPage() {
           <div className="mt-7 flex justify-center">
             <Badge className="gap-2 px-3 py-1.5">
               <Crown className="size-3.5" aria-hidden="true" />
-              {subscription?.lifetimePurchasedAt
-                ? "Lifetime Pro · Paid once — no renewal"
-                : `${getFriendlySubscriptionPlan(subscription?.plan ?? "FREE")} active`}
+              {proStatusLabel}
             </Badge>
           </div>
         ) : null}
@@ -136,12 +165,13 @@ export default async function ProPage() {
             id="pricing-options-heading"
             eyebrow="Choose your access"
             title="Pricing options"
-            description="Three ways to unlock the same Pro access. Recurring plans are managed securely through Stripe."
+            description="Three ways to unlock the same Pro access. Billing is handled securely by the purchase provider for this platform."
           />
-          <CheckoutButtons
+          <BillingOptions
             isPro={isPro}
             currentPlan={currentPlan}
             hasRecurringSubscription={hasRecurringSubscription}
+            userKey={session?.user?.id ?? null}
           />
         </section>
 
@@ -179,46 +209,74 @@ export default async function ProPage() {
           />
           <Card className="rounded-2xl border-border/80 bg-card/75 shadow-none">
             <CardContent className="flex flex-col gap-6 p-6 sm:p-7 lg:flex-row lg:items-center lg:justify-between">
-              {isPro && subscription ? (
+              {isPro ? (
                 <>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge>Pro</Badge>
-                      <Badge variant="outline">
-                        {getFriendlySubscriptionPlan(subscription.plan)}
-                      </Badge>
-                      <Badge variant="outline">
-                        {getFriendlySubscriptionStatus(subscription.status)}
-                      </Badge>
+                      {stripeGrant ? (
+                        <Badge variant="outline">
+                          {getFriendlySubscriptionPlan(stripeGrant.plan)} · Stripe
+                        </Badge>
+                      ) : null}
+                      {appleGrant ? (
+                        <Badge variant="outline">
+                          {appleGrant.kind === "LIFETIME"
+                            ? "Lifetime Pro · Apple"
+                            : "Recurring Pro · Apple"}
+                        </Badge>
+                      ) : null}
+                      {stripeGrant && subscription ? (
+                        <Badge variant="outline">
+                          {getFriendlySubscriptionStatus(subscription.status)}
+                        </Badge>
+                      ) : null}
                     </div>
                     <h3 className="mt-5 text-2xl font-bold">
-                      {subscription.lifetimePurchasedAt
-                        ? "Lifetime Pro · Paid once — no renewal"
-                        : "Your Pro access is active"}
+                      {activeProviders.size > 1
+                        ? "Your Pro access has multiple active grants"
+                        : appleGrant?.kind === "LIFETIME" ||
+                            subscription?.lifetimePurchasedAt
+                          ? "Lifetime Pro · Paid once — no renewal"
+                          : "Your Pro access is active"}
                     </h3>
-                    {subscription.lifetimePurchasedAt ? (
+                    {appleGrant?.kind === "SUBSCRIPTION" && appleGrant.expiresAt ? (
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        Current Apple period ends{" "}
+                        {new Date(appleGrant.expiresAt).toLocaleDateString("en-GB")}.
+                      </p>
+                    ) : subscription?.lifetimePurchasedAt ||
+                      appleGrant?.kind === "LIFETIME" ? (
                       <p className="mt-2 text-sm text-muted-foreground">
                         There is no recurring subscription or renewal date.
                       </p>
-                    ) : subscription.currentPeriodEnd ? (
+                    ) : subscription?.currentPeriodEnd ? (
                       <p className="mt-2 text-sm text-muted-foreground">
                         {subscription.cancelAtPeriodEnd
                           ? `Access remains active until ${subscription.currentPeriodEnd.toLocaleDateString("en-GB")}.`
                           : `Current period ends ${subscription.currentPeriodEnd.toLocaleDateString("en-GB")}.`}
                       </p>
                     ) : null}
-                    {!subscription.lifetimePurchasedAt && subscription.cancelAtPeriodEnd ? (
+                    {subscription &&
+                    !subscription.lifetimePurchasedAt &&
+                    subscription.cancelAtPeriodEnd ? (
                       <p className="mt-3 text-sm text-amber-600 dark:text-amber-400">
                         Cancellation is scheduled for the end of the current period.
                       </p>
                     ) : null}
+                    {activeProviders.size > 1 ? (
+                      <p className="mt-3 text-sm text-muted-foreground">
+                        Managing one purchase does not remove access provided by
+                        another active purchase.
+                      </p>
+                    ) : null}
                   </div>
-                  {subscription.lifetimePurchasedAt ? (
+                  {grantSummaries.every((grant) => grant.kind === "LIFETIME") ? (
                     <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                       <InfinityIcon className="size-6" aria-hidden="true" />
                     </span>
                   ) : (
-                    <ManageSubscriptionButton variant="outline" />
+                    <ProviderManagementAction grants={grantSummaries} />
                   )}
                 </>
               ) : (

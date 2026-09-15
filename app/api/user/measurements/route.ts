@@ -9,7 +9,7 @@ import {
   getAuthenticatedUserId,
 } from "@/lib/user-auth";
 import { FREE_MEASUREMENT_HISTORY_LIMIT } from "@/lib/anthropometry";
-import { getUserSubscription, hasProAccess } from "@/lib/entitlements";
+import { getUserEntitlements } from "@/lib/entitlements";
 import { prisma } from "@/lib/prisma";
 import {
   mergeMeasurementSnapshot,
@@ -67,7 +67,8 @@ export async function GET() {
       where: { userId },
       orderBy: [{ measuredAt: "desc" }, { createdAt: "desc" }],
     });
-    const isPro = hasProAccess(await getUserSubscription(userId));
+    const { entitlements } = await getUserEntitlements(userId);
+    const isPro = entitlements.isPro;
     const visibleEntries = isPro
       ? entries
       : entries.map((entry) =>
@@ -119,7 +120,8 @@ export async function POST(request: Request) {
   } & MeasurementSnapshotValues;
   const hasSubmittedNote =
     typeof body === "object" && body !== null && Object.hasOwn(body, "note");
-  const isPro = hasProAccess(await getUserSubscription(userId));
+  const { entitlements } = await getUserEntitlements(userId);
+  const isPro = entitlements.isPro;
   const capabilityValidation = validateStoredMeasurementCapabilities(
     submitted,
     isPro

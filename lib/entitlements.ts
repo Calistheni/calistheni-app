@@ -6,6 +6,10 @@ import type {
   SubscriptionStatus,
 } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import {
+  resolveProEntitlementGrants,
+  type ProEntitlementGrant,
+} from "@/lib/entitlement-resolution";
 
 export const FREE_ROUTINE_LIMIT = 4;
 export const FREE_CUSTOM_EXERCISE_LIMIT = 7;
@@ -16,6 +20,11 @@ export type UserEntitlements = {
   customExerciseLimit: number | null;
   canEarnRewardPoints: boolean;
   hasFullProgressHistory: boolean;
+};
+
+export type UserProEntitlement = {
+  isPro: boolean;
+  grants: ProEntitlementGrant[];
 };
 
 /**
@@ -84,11 +93,31 @@ export async function getUserSubscription(userId: string) {
 }
 
 export async function getUserEntitlements(userId: string) {
-  const subscription = await getUserSubscription(userId);
-  const isPro = hasProAccess(subscription);
+  const [subscription, applePurchases] = await Promise.all([
+    getUserSubscription(userId),
+    prisma.applePurchase.findMany({
+      where: { userId, environment: "PRODUCTION" },
+      select: {
+        environment: true,
+        productId: true,
+        productKind: true,
+        state: true,
+        expiresAt: true,
+        gracePeriodExpiresAt: true,
+        revokedAt: true,
+      },
+    }),
+  ]);
+  const proEntitlement = resolveProEntitlementGrants({
+    subscription,
+    applePurchases,
+  });
+  const isPro = proEntitlement.isPro;
 
   return {
     subscription,
+    applePurchases,
+    grants: proEntitlement.grants,
     entitlements: {
       isPro,
       routineLimit: isPro ? null : FREE_ROUTINE_LIMIT,

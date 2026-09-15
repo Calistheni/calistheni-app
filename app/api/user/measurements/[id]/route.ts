@@ -8,7 +8,7 @@ import {
   createUserUnauthorizedResponse,
   getAuthenticatedUserId,
 } from "@/lib/user-auth";
-import { getUserSubscription, hasProAccess } from "@/lib/entitlements";
+import { getUserEntitlements } from "@/lib/entitlements";
 import { latestMeasurementSnapshot } from "@/lib/latest-body-measurements";
 import { prisma } from "@/lib/prisma";
 import {
@@ -61,7 +61,8 @@ export async function PATCH(
   void healthExportKinds;
   const hasSubmittedNote =
     typeof body === "object" && body !== null && Object.hasOwn(body, "note");
-  const isPro = hasProAccess(await getUserSubscription(userId));
+  const { entitlements } = await getUserEntitlements(userId);
+  const isPro = entitlements.isPro;
   const capabilityValidation = validateStoredMeasurementCapabilities(
     submitted,
     isPro

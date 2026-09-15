@@ -9,6 +9,12 @@ export async function GET() {
   const userId = await getAuthenticatedUserId();
   if (!userId) return createUserUnauthorizedResponse();
 
-  const { entitlements } = await getUserEntitlements(userId);
-  return NextResponse.json({ isPro: entitlements.isPro });
+  const { entitlements, grants } = await getUserEntitlements(userId);
+  return NextResponse.json({
+    isPro: entitlements.isPro,
+    grants: grants.map((grant) => ({
+      ...grant,
+      expiresAt: grant.expiresAt?.toISOString() ?? null,
+    })),
+  });
 }

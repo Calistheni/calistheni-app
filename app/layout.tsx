@@ -266,7 +266,7 @@ html[data-theme-preference="system"] {
           initialTheme={theme}
           initialResolvedTheme={serverResolvedTheme}
         >
-          <NativeShell />
+          <NativeShell userId={session?.user?.id ?? null} />
 
           {session?.user?.id ? <UserActivityHeartbeat /> : null}
 

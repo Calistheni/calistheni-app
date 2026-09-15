@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Capacitor } from "@capacitor/core";
 import { Keyboard, KeyboardResize, KeyboardStyle } from "@capacitor/keyboard";
 import { App } from "@capacitor/app";
@@ -15,6 +16,11 @@ import {
 } from "@/lib/native/supplement-reminders";
 import { dismissActiveTextInput } from "@/lib/mobile-keyboard";
 import { useNativeKeyboardVisibility } from "@/lib/native/keyboard-visibility";
+import {
+  clearAppleTransactionAccount,
+  initializeAppleTransactionLifecycle,
+  synchronizeCurrentAppleTransactions,
+} from "@/lib/native/apple-storekit";
 
 const isDevelopment = process.env.NODE_ENV === "development";
 let iOSKeyboardResizeSetup: Promise<void> | null = null;
@@ -55,9 +61,47 @@ function logNativeSplash(event: string, detail?: unknown) {
 }
 
 /** Native-only presentation and keyboard behavior shared by every route. */
-export function NativeShell() {
+export function NativeShell({ userId }: { userId: string | null }) {
   const { resolvedTheme } = useTheme();
+  const router = useRouter();
   useNativeKeyboardVisibility();
+
+  useEffect(() => {
+    if (!isNativeApp() || Capacitor.getPlatform() !== "ios" || !userId) {
+      clearAppleTransactionAccount();
+      return;
+    }
+
+    let lastForegroundSync = 0;
+    let disposed = false;
+    let appListener: { remove: () => Promise<void> } | undefined;
+    const cleanup = initializeAppleTransactionLifecycle({
+      userKey: userId,
+      onEntitlementChanged: () => router.refresh(),
+    });
+    void App.addListener("appStateChange", ({ isActive }) => {
+      if (!isActive || Date.now() - lastForegroundSync < 10_000) return;
+      lastForegroundSync = Date.now();
+      void synchronizeCurrentAppleTransactions(userId).catch(
+        (error: unknown) => {
+          if (isDevelopment) {
+            console.warn("[apple-iap] foreground sync deferred", {
+              errorType: error instanceof Error ? error.name : "UnknownError",
+            });
+          }
+        }
+      );
+    }).then((listener) => {
+      if (disposed) void listener.remove();
+      else appListener = listener;
+    });
+
+    return () => {
+      disposed = true;
+      cleanup();
+      void appListener?.remove();
+    };
+  }, [router, userId]);
 
   useEffect(() => {
     logNativeSplash("NativeShell mounted");

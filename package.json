@@ -37,6 +37,7 @@
     "stripe:setup:live": "node scripts/setup-stripe-pro-live.mjs --confirm-create-live-calistheni-prices"
   },
   "dependencies": {
+    "@apple/app-store-server-library": "~3.1.0",
     "@auth/prisma-adapter": "~2.11.2",
     "@aws-sdk/client-s3": "~3.1078.0",
     "@capacitor-mlkit/barcode-scanning": "~8.1.0",

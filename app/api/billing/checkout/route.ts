@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { getOrCreateStripeCustomer } from "@/lib/billing";
 import { buildStripeCheckoutSessionParameters } from "@/lib/stripe-checkout-request";
 import {
-  getUserSubscription,
-  hasProAccess,
+  getUserEntitlements,
   hasOngoingRecurringSubscription,
   hasRecurringProAccess,
 } from "@/lib/entitlements";
@@ -84,7 +83,7 @@ export async function POST(request: Request) {
   });
 
   try {
-    const subscription = await getUserSubscription(userId);
+    const { subscription, entitlements } = await getUserEntitlements(userId);
     hasStripeCustomerId = Boolean(subscription?.stripeCustomerId);
     if (subscription?.lifetimePurchasedAt) {
       return NextResponse.json(
@@ -112,7 +111,7 @@ export async function POST(request: Request) {
         { status: 409 }
       );
     }
-    if (hasProAccess(subscription)) {
+    if (entitlements.isPro) {
       return NextResponse.json(
         { code: "ALREADY_PRO", error: "You already have Pro access." },
         { status: 409 }
