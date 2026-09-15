@@ -15,6 +15,7 @@ import { isAdminAuthenticated } from "@/lib/admin-auth";
 import { getAnalyticsPeriods } from "@/lib/analytics-dates";
 import { publicParkWhere } from "@/lib/parks";
 import { prisma } from "@/lib/prisma";
+import { euroCentsToNumber, PRO_PRICE_EUR_CENTS } from "@/lib/pro-pricing";
 
 export const metadata: Metadata = {
   title: "Admin Analytics",
@@ -273,8 +274,11 @@ export default async function AdminAnalyticsPage() {
   const freeUsers = totalUsers - totalProUsers;
   const freeToProConversion =
     totalUsers > 0 ? (totalProUsers / totalUsers) * 100 : 0;
-  const estimatedMrr = monthlyProUsers * 4.99 + yearlyProUsers * (39.99 / 12);
-  const estimatedLifetimeGrossSales = lifetimeProUsers * 79.99;
+  const estimatedMrr =
+    monthlyProUsers * euroCentsToNumber(PRO_PRICE_EUR_CENTS.monthly) +
+    yearlyProUsers * (euroCentsToNumber(PRO_PRICE_EUR_CENTS.yearly) / 12);
+  const estimatedLifetimeGrossSales =
+    lifetimeProUsers * euroCentsToNumber(PRO_PRICE_EUR_CENTS.lifetime);
 
   return (
     <main className="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">
@@ -322,24 +326,24 @@ export default async function AdminAnalyticsPage() {
             value={formatNumber(lifetimeProUsers)}
           />
           <MetricCard
-            label="Estimated lifetime gross sales"
+            label="Lifetime list-price equivalent"
             value={new Intl.NumberFormat("en", {
               style: "currency",
               currency: "EUR",
             }).format(estimatedLifetimeGrossSales)}
-            description="Locally synchronized successful purchases × €79.99. Excluded from MRR."
+            description="Lifetime users × current €119.99 list price. Grandfathered purchase amounts may differ; excluded from MRR."
           />
           <MetricCard
             label="Cancel at period end"
             value={formatNumber(cancelAtPeriodEndCount)}
           />
           <MetricCard
-            label="Estimated MRR"
+            label="Current list-price MRR equivalent"
             value={new Intl.NumberFormat("en", {
               style: "currency",
               currency: "EUR",
             }).format(estimatedMrr)}
-            description="€4.99 monthly + €39.99 / 12 yearly; active/trialing only."
+            description="€7.99 monthly + €59.99 / 12 yearly; active/trialing only. Grandfathered subscription amounts may differ."
           />
         </div>
       </section>

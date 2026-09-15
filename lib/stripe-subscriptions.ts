@@ -7,6 +7,7 @@ import type {
 } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getStripeProPriceIds } from "@/lib/stripe";
+import { resolveStripeRecurringPlan } from "@/lib/stripe-subscription-plan";
 
 const STATUS_MAP: Record<Stripe.Subscription.Status, SubscriptionStatus> = {
   active: "ACTIVE",
@@ -25,14 +26,24 @@ function getCustomerId(subscription: Stripe.Subscription) {
     : subscription.customer.id;
 }
 
-function getKnownPlan(subscription: Stripe.Subscription) {
+function getKnownPlan(
+  subscription: Stripe.Subscription,
+  existing: {
+    plan: SubscriptionPlan;
+    stripePriceId: string | null;
+  } | null
+) {
   const priceIds = getStripeProPriceIds();
-  const item = subscription.items.data.find(
-    ({ price }) =>
-      price.id === priceIds.PRO_MONTHLY || price.id === priceIds.PRO_YEARLY
-  );
+  const resolved = resolveStripeRecurringPlan({
+    items: subscription.items.data.map((item) => ({
+      priceId: item.price.id,
+      currentPeriodEnd: item.current_period_end,
+    })),
+    configuredPriceIds: priceIds,
+    storedSubscription: existing,
+  });
 
-  if (!item) {
+  if (!resolved) {
     return {
       plan: "FREE" as SubscriptionPlan,
       priceId: subscription.items.data[0]?.price.id ?? null,
@@ -41,12 +52,10 @@ function getKnownPlan(subscription: Stripe.Subscription) {
   }
 
   return {
-    plan: (item.price.id === priceIds.PRO_MONTHLY
-      ? "PRO_MONTHLY"
-      : "PRO_YEARLY") as SubscriptionPlan,
-    priceId: item.price.id,
+    plan: resolved.plan as SubscriptionPlan,
+    priceId: resolved.priceId,
     // Stripe SDK 22 / API 2026-06-24 moves the billing period onto the item.
-    currentPeriodEnd: new Date(item.current_period_end * 1000),
+    currentPeriodEnd: new Date(resolved.currentPeriodEnd * 1000),
   };
 }
 
@@ -62,7 +71,12 @@ export async function syncStripeSubscription(
         { stripeCustomerId },
       ],
     },
-    select: { userId: true, lifetimePurchasedAt: true },
+    select: {
+      userId: true,
+      lifetimePurchasedAt: true,
+      plan: true,
+      stripePriceId: true,
+    },
   });
   const candidateUserId =
     existing?.userId || stripeSubscription.metadata.userId || fallbackUserId;
@@ -80,13 +94,16 @@ export async function syncStripeSubscription(
     throw new Error("Mapped Stripe subscription user does not exist.");
   }
 
-  const { plan, priceId, currentPeriodEnd } = getKnownPlan(stripeSubscription);
+  const { plan, priceId, currentPeriodEnd } = getKnownPlan(
+    stripeSubscription,
+    existing
+  );
   const hasLifetime = Boolean(existing?.lifetimePurchasedAt);
   const data = {
     stripeCustomerId,
     stripeSubscriptionId: stripeSubscription.id,
     stripePriceId: hasLifetime
-      ? getStripeProPriceIds().PRO_LIFETIME
+      ? existing?.stripePriceId ?? getStripeProPriceIds().PRO_LIFETIME
       : priceId,
     plan: hasLifetime ? ("PRO_LIFETIME" as const) : plan,
     status: hasLifetime

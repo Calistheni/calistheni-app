@@ -24,8 +24,8 @@ The runtime retrieves and validates all configured Prices before billing. A
 test key, test Prices, and test webhook event are required when
 `STRIPE_MODE=test`; mixed test/live configuration fails closed.
 
-The configured Calistheni Pro prices are €4.99 EUR monthly, €39.99 EUR yearly,
-and a €79.99 EUR one-time Founding Lifetime Pro purchase. Lifetime access is
+The configured Calistheni Pro prices are €7.99 EUR monthly, €59.99 EUR yearly,
+and a €119.99 EUR one-time Lifetime Pro purchase. Lifetime access is
 granted only by a verified, paid Checkout webhook whose sole line item matches
 the configured one-time Lifetime Price ID.
 

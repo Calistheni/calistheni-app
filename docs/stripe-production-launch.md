@@ -3,9 +3,9 @@
 Calistheni billing supports three fixed live offers on one active product named
 `Calistheni Pro`:
 
-- €4.99 EUR recurring monthly
-- €39.99 EUR recurring yearly
-- €79.99 EUR one-time Founding Lifetime Pro
+- €7.99 EUR recurring monthly
+- €59.99 EUR recurring yearly
+- €119.99 EUR one-time Lifetime Pro
 
 The application validates the declared mode, server key, all three Prices,
 their shared Product, and every signed webhook Event before processing billing.
@@ -65,6 +65,12 @@ unset STRIPE_LIVE_SECRET_KEY CONFIRM_STRIPE_LIVE_SETUP
 
 The script searches the authenticated live account first and reuses exact active
 objects. It creates no Customer, Checkout Session, PaymentIntent, or charge.
+Creating the new Prices does not update or archive the previous Prices. Existing
+subscriptions remain attached to their original Price IDs, while the three
+Production checkout variables should be updated to the newly returned Price IDs.
+Webhook synchronization preserves a matched subscriber's stored recurring plan
+and legacy Price ID, so rotating checkout Price IDs does not remove Pro access.
+Existing Lifetime records likewise retain their original purchase Price ID.
 
 ## Production webhook
 

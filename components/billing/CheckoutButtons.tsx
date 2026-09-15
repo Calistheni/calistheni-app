@@ -6,6 +6,11 @@ import { Check, Crown, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  PRO_PRICE_LABELS,
+  PRO_YEARLY_SAVINGS_EUR_CENTS,
+  PRO_YEARLY_SAVINGS_PERCENT,
+} from "@/lib/pro-pricing";
 
 type ProPlan = "PRO_MONTHLY" | "PRO_YEARLY" | "PRO_LIFETIME";
 
@@ -21,7 +26,7 @@ const plans: Array<{
   {
     id: "PRO_MONTHLY",
     name: "Monthly Pro",
-    price: "€4.99",
+    price: PRO_PRICE_LABELS.monthly,
     cadence: "/ month",
     note: "Flexible recurring access.",
     features: ["Unlimited routines", "Unlimited custom exercises"],
@@ -30,16 +35,16 @@ const plans: Array<{
   {
     id: "PRO_YEARLY",
     name: "Yearly Pro",
-    price: "€39.99",
+    price: PRO_PRICE_LABELS.yearly,
     cadence: "/ year",
-    note: "Save €19.89 per year (about 33%) compared with monthly.",
+    note: `Save €${(PRO_YEARLY_SAVINGS_EUR_CENTS / 100).toFixed(2)} per year (about ${PRO_YEARLY_SAVINGS_PERCENT}%) compared with monthly.`,
     features: ["Everything in Pro", "One annual payment"],
     icon: Sparkles,
   },
   {
     id: "PRO_LIFETIME",
-    name: "Founding Lifetime Pro",
-    price: "€79.99",
+    name: "Lifetime Pro",
+    price: PRO_PRICE_LABELS.lifetime,
     cadence: "once",
     note: "Paid once — no renewal.",
     features: ["Lifetime Pro access", "No recurring subscription"],

@@ -80,12 +80,12 @@ export async function ensureStripeProPrices({
     });
   }
 
-  const monthly = await findOrCreateRecurringPrice(499, "month");
-  const yearly = await findOrCreateRecurringPrice(3999, "year");
+  const monthly = await findOrCreateRecurringPrice(799, "month");
+  const yearly = await findOrCreateRecurringPrice(5999, "year");
   const existingLifetime = prices.find(
     (price) =>
       price.currency === "eur" &&
-      price.unit_amount === 7999 &&
+      price.unit_amount === 11999 &&
       price.type === "one_time"
   );
   const lifetime = existingLifetime
@@ -95,8 +95,8 @@ export async function ensureStripeProPrices({
     : await stripe.prices.create({
         product: product.id,
         currency: "eur",
-        unit_amount: 7999,
-        nickname: "Founding Lifetime Pro",
+        unit_amount: 11999,
+        nickname: "Lifetime Pro",
       });
 
   return {

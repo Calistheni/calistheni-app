@@ -2,6 +2,7 @@ import "server-only";
 
 import type Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
+import { PRO_PRICE_EUR_CENTS } from "@/lib/pro-pricing";
 import { getStripe, getStripeProPriceIds } from "@/lib/stripe";
 
 function getSessionCustomerId(session: Stripe.Checkout.Session) {
@@ -29,6 +30,16 @@ export async function syncStripeLifetimeCheckout(
     throw new Error("Lifetime Checkout user metadata is missing or inconsistent.");
   }
 
+  const alreadyProcessed = await prisma.subscription.findUnique({
+    where: { stripeLifetimeCheckoutSessionId: session.id },
+  });
+  if (alreadyProcessed) {
+    if (alreadyProcessed.userId !== metadataUserId) {
+      throw new Error("Lifetime Checkout is already mapped to another user.");
+    }
+    return alreadyProcessed;
+  }
+
   const lineItems = await getStripe().checkout.sessions.listLineItems(session.id, {
     limit: 10,
   });
@@ -43,7 +54,7 @@ export async function syncStripeLifetimeCheckout(
     price.id !== lifetimePriceId ||
     price.type !== "one_time" ||
     price.currency !== "eur" ||
-    price.unit_amount !== 7999 ||
+    price.unit_amount !== PRO_PRICE_EUR_CENTS.lifetime ||
     lineItem.quantity !== 1
   ) {
     throw new Error("Lifetime Checkout line item does not match the configured offer.");

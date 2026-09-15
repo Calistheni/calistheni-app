@@ -1,3 +1,5 @@
+import { PRO_PRICE_EUR_CENTS } from "@/lib/pro-pricing";
+
 export type StripeMode = "test" | "live";
 
 export type StripeEnvironment = Record<string, string | undefined>;
@@ -167,33 +169,33 @@ export function validateStripeCatalog({
 
   if (
     monthly.currency !== "eur" ||
-    monthly.unitAmount !== 499 ||
+    monthly.unitAmount !== PRO_PRICE_EUR_CENTS.monthly ||
     monthly.type !== "recurring" ||
     monthly.recurringInterval !== "month" ||
     monthly.recurringIntervalCount !== 1
   ) {
     throw new StripeConfigurationError(
-      "STRIPE_PRO_MONTHLY_PRICE_ID must be €4.99 EUR recurring monthly."
+      "STRIPE_PRO_MONTHLY_PRICE_ID must be €7.99 EUR recurring monthly."
     );
   }
   if (
     yearly.currency !== "eur" ||
-    yearly.unitAmount !== 3999 ||
+    yearly.unitAmount !== PRO_PRICE_EUR_CENTS.yearly ||
     yearly.type !== "recurring" ||
     yearly.recurringInterval !== "year" ||
     yearly.recurringIntervalCount !== 1
   ) {
     throw new StripeConfigurationError(
-      "STRIPE_PRO_YEARLY_PRICE_ID must be €39.99 EUR recurring yearly."
+      "STRIPE_PRO_YEARLY_PRICE_ID must be €59.99 EUR recurring yearly."
     );
   }
   if (
     lifetime.currency !== "eur" ||
-    lifetime.unitAmount !== 7999 ||
+    lifetime.unitAmount !== PRO_PRICE_EUR_CENTS.lifetime ||
     lifetime.type !== "one_time"
   ) {
     throw new StripeConfigurationError(
-      "STRIPE_PRO_LIFETIME_PRICE_ID must be a €79.99 EUR one-time Price."
+      "STRIPE_PRO_LIFETIME_PRICE_ID must be a €119.99 EUR one-time Price."
     );
   }
 }

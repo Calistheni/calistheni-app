@@ -26,7 +26,7 @@ const validCatalog = {
     livemode: true,
     active: true,
     currency: "eur",
-    unitAmount: 499,
+    unitAmount: 799,
     type: "recurring" as const,
     recurringInterval: "month",
     recurringIntervalCount: 1,
@@ -36,7 +36,7 @@ const validCatalog = {
     livemode: true,
     active: true,
     currency: "eur",
-    unitAmount: 3999,
+    unitAmount: 5999,
     type: "recurring" as const,
     recurringInterval: "year",
     recurringIntervalCount: 1,
@@ -46,7 +46,7 @@ const validCatalog = {
     livemode: true,
     active: true,
     currency: "eur",
-    unitAmount: 7999,
+    unitAmount: 11999,
     type: "one_time" as const,
     recurringInterval: null,
     recurringIntervalCount: null,
@@ -136,5 +136,32 @@ test("test-mode and inactive prices are rejected by live catalog validation", ()
         yearly: { ...validCatalog.yearly, active: false },
       }),
     /Prices must be active/
+  );
+});
+
+test("old public prices cannot be selected for new Checkout Sessions", () => {
+  assert.throws(
+    () =>
+      validateStripeCatalog({
+        ...validCatalog,
+        monthly: { ...validCatalog.monthly, unitAmount: 499 },
+      }),
+    /€7\.99 EUR recurring monthly/
+  );
+  assert.throws(
+    () =>
+      validateStripeCatalog({
+        ...validCatalog,
+        yearly: { ...validCatalog.yearly, unitAmount: 3999 },
+      }),
+    /€59\.99 EUR recurring yearly/
+  );
+  assert.throws(
+    () =>
+      validateStripeCatalog({
+        ...validCatalog,
+        lifetime: { ...validCatalog.lifetime, unitAmount: 7999 },
+      }),
+    /€119\.99 EUR one-time Price/
   );
 });
