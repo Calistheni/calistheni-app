@@ -109,7 +109,6 @@ export function AppShell({ children, user }: AppShellProps) {
   const isFullBleed = isFullBleedAppRoute(pathname);
   const usesFocusedWorkoutMode = pathname === "/workouts/new";
   const locksViewport = isFullBleed || usesFocusedWorkoutMode;
-  const keepsMobileHeader = pathname === "/pro";
   const handlePrimaryNavigationClick = (
     event: React.MouseEvent<HTMLAnchorElement>,
     href: string
@@ -143,12 +142,7 @@ export function AppShell({ children, user }: AppShellProps) {
           locksViewport && "h-dvh overflow-hidden"
         )}
       >
-        <header
-          className={cn(
-            "sticky top-0 z-40 h-14 shrink-0 border-b bg-background",
-            !keepsMobileHeader && "hidden md:block"
-          )}
-        >
+        <header className="sticky top-0 z-40 hidden h-14 shrink-0 border-b bg-background md:block">
           <div className="mx-auto flex h-full max-w-7xl items-center gap-4 px-3 sm:px-6">
             <Link
               href="/home"
