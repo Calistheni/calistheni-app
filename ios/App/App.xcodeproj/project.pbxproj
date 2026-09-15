@@ -7,7 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0138C4058A28E375CD0BD0ED /* WorkoutLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD7CDA30B800AC22AC9DB1AD /* WorkoutLiveActivity.swift */; };
+		0138C4058A28E375CD0BD0ED /* App/CalistheniWorkoutWidget/WorkoutLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD7CDA30B800AC22AC9DB1AD /* App/CalistheniWorkoutWidget/WorkoutLiveActivity.swift */; };
+		01DF53FD3059D2D20067EB63 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 01DF53FC3059D2D10067EB63 /* StoreKit.framework */; };
 		1EA3AC6BCE6E73F0398716AD /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D9BE3352E63969D9297A7617 /* Foundation.framework */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D22ABE82AF431CB00220026 /* CapApp-SPM */; };
@@ -19,11 +20,11 @@
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		9614346C6E5D4EA12C0BD6EE /* CalistheniWorkoutWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 99342EE113E6CB72682BBC4C /* CalistheniWorkoutWidget.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		9A31CB7814E397F6BD948295 /* WorkoutLiveActivityPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB38ABD0699A3E0BB6115EE6 /* WorkoutLiveActivityPlugin.swift */; };
-		AF1452008C4D2A14E7240001 /* CalistheniHealthPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF1452008C4D2A14E7240002 /* CalistheniHealthPlugin.swift */; };
-		B20000000000000000000001 /* CalistheniStoreKitPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000002 /* CalistheniStoreKitPlugin.swift */; };
 		A10000000000000000000001 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* MainViewController.swift */; };
 		A10000000000000000000003 /* NutritionBarcodeScannerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000004 /* NutritionBarcodeScannerPlugin.swift */; };
 		A10000000000000000000006 /* BarcodeScannerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000007 /* BarcodeScannerViewController.swift */; };
+		AF1452008C4D2A14E7240001 /* CalistheniHealthPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF1452008C4D2A14E7240002 /* CalistheniHealthPlugin.swift */; };
+		B20000000000000000000001 /* CalistheniStoreKitPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000002 /* CalistheniStoreKitPlugin.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -51,6 +52,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		01DF53FC3059D2D10067EB63 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -62,16 +64,16 @@
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		99342EE113E6CB72682BBC4C /* CalistheniWorkoutWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CalistheniWorkoutWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		9B9F826D83C47430A49F3585 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = App/CalistheniWorkoutWidget/Info.plist; sourceTree = SOURCE_ROOT; };
+		9B9F826D83C47430A49F3585 /* App/CalistheniWorkoutWidget/Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = App/CalistheniWorkoutWidget/Info.plist; sourceTree = SOURCE_ROOT; };
 		A10000000000000000000002 /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
 		A10000000000000000000004 /* NutritionBarcodeScannerPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NutritionBarcodeScannerPlugin.swift; sourceTree = "<group>"; };
 		A10000000000000000000007 /* BarcodeScannerViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarcodeScannerViewController.swift; sourceTree = "<group>"; };
-		CD7CDA30B800AC22AC9DB1AD /* WorkoutLiveActivity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = App/CalistheniWorkoutWidget/WorkoutLiveActivity.swift; sourceTree = SOURCE_ROOT; };
-		D9BE3352E63969D9297A7617 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
-		EB38ABD0699A3E0BB6115EE6 /* WorkoutLiveActivityPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WorkoutLiveActivityPlugin.swift; sourceTree = "<group>"; };
 		AF1452008C4D2A14E7240002 /* CalistheniHealthPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CalistheniHealthPlugin.swift; sourceTree = "<group>"; };
 		B20000000000000000000002 /* CalistheniStoreKitPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CalistheniStoreKitPlugin.swift; sourceTree = "<group>"; };
 		B20000000000000000000003 /* Calistheni.storekit */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = Calistheni.storekit; sourceTree = "<group>"; };
+		CD7CDA30B800AC22AC9DB1AD /* App/CalistheniWorkoutWidget/WorkoutLiveActivity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = App/CalistheniWorkoutWidget/WorkoutLiveActivity.swift; sourceTree = SOURCE_ROOT; };
+		D9BE3352E63969D9297A7617 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		EB38ABD0699A3E0BB6115EE6 /* WorkoutLiveActivityPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WorkoutLiveActivityPlugin.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -80,6 +82,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */,
+				01DF53FD3059D2D20067EB63 /* StoreKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -97,6 +100,7 @@
 		0F70D616FF14A04F78E360BA /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				01DF53FC3059D2D10067EB63 /* StoreKit.framework */,
 				DF7006FA846392568C323305 /* iOS */,
 			);
 			name = Frameworks;
@@ -105,8 +109,8 @@
 		1BDFEA3E6F522CB80347C044 /* CalistheniWorkoutWidget */ = {
 			isa = PBXGroup;
 			children = (
-				CD7CDA30B800AC22AC9DB1AD /* WorkoutLiveActivity.swift */,
-				9B9F826D83C47430A49F3585 /* Info.plist */,
+				CD7CDA30B800AC22AC9DB1AD /* App/CalistheniWorkoutWidget/WorkoutLiveActivity.swift */,
+				9B9F826D83C47430A49F3585 /* App/CalistheniWorkoutWidget/Info.plist */,
 			);
 			name = CalistheniWorkoutWidget;
 			sourceTree = "<group>";
@@ -287,7 +291,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				0138C4058A28E375CD0BD0ED /* WorkoutLiveActivity.swift in Sources */,
+				0138C4058A28E375CD0BD0ED /* App/CalistheniWorkoutWidget/WorkoutLiveActivity.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -346,8 +350,8 @@
 				INFOPLIST_FILE = App/CalistheniWorkoutWidget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_NAME = "$(TARGET_NAME)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.petershikrenov.calistheni.workout;
+				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.0;
@@ -471,7 +475,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 89RH6XL9R6;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -495,7 +499,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 89RH6XL9R6;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -522,8 +526,8 @@
 				INFOPLIST_FILE = App/CalistheniWorkoutWidget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_NAME = "$(TARGET_NAME)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.petershikrenov.calistheni.workout;
+				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.0;
