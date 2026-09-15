@@ -98,11 +98,15 @@ test("map layers separate actual parks from clusters and require cluster counts 
   );
   assert.match(
     map,
-    /id: "clusters"[\s\S]{0,300}\[">=", \["get", "point_count"\], 2\]/
+    /id: "clusters"[\s\S]{0,200}minzoom: detailedParkLayerMinZoom[\s\S]{0,300}\[">=", \["get", "point_count"\], 2\]/
   );
   assert.match(
     map,
-    /id: "unclustered-point"[\s\S]{0,400}\["==", \["get", "featureKind"\], "park"\]/
+    /id: "unclustered-point"[\s\S]{0,500}minzoom: detailedParkLayerMinZoom[\s\S]{0,400}\["==", \["get", "featureKind"\], "park"\]/
+  );
+  assert.match(
+    map,
+    /const detailedParkLayerMinZoom =\s*mode === "public" \? PLACEHOLDER_MAX_ZOOM : 0/
   );
 });
 
@@ -124,7 +128,8 @@ test("terminal same-coordinate clusters expose a real leaf park", async () => {
   const map = await readFile(new URL("components/ParksMap.tsx", root), "utf8");
 
   assert.match(map, /const openFirstClusterPark = \(\) =>/);
-  assert.match(map, /source\.getClusterLeaves/);
+  assert.match(map, /source\.getClusterLeaves\(\s*clusterId,\s*pointCount/);
+  assert.match(map, /hasCompleteMembership/);
   assert.match(
     map,
     /zoom <= map\.getZoom\(\) \|\| map\.getZoom\(\) >= map\.getMaxZoom\(\)/

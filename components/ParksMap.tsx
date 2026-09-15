@@ -18,6 +18,10 @@ import { Button } from "@/components/ui/button";
 import { AdminMapParkPopup } from "@/components/admin/AdminMapParkPopup";
 import { useMapUserFocus } from "@/components/parks/useMapUserFocus";
 import { buildParkOverviewGeoJson } from "@/lib/park-map-overview";
+import {
+  dedupeParksById,
+  getClusterLeafParkIds,
+} from "@/lib/park-map-clusters";
 import { isParkArchivedForAdminMap } from "@/lib/park-map-query";
 import type {
   AdminParkDetail,
@@ -426,7 +430,7 @@ async function getResponseErrorMessage(
 function buildGeoJson(parks: ParkSummary[]): GeoJSON.FeatureCollection {
   return {
     type: "FeatureCollection",
-    features: parks.map((park) => ({
+    features: dedupeParksById(parks).map((park) => ({
       type: "Feature",
       properties: {
         id: park.id,
@@ -780,6 +784,16 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     clusterNavigationPendingRef.current = true;
     beginAwayFromUser();
   }, [beginAwayFromUser]);
+  const cancelViewportLoadForClusterNavigation = useCallback(() => {
+    const activeRequest = viewportRequestRef.current;
+    viewportLoadIdRef.current += 1;
+    activeRequest?.controller.abort();
+    viewportRequestRef.current = null;
+    if (activeRequest) {
+      setIsViewportLoading(false);
+      onViewportLoadingChange?.(false);
+    }
+  }, [onViewportLoadingChange]);
   const markManualCameraInteraction = useCallback(() => {
     areaSearchPendingRef.current = true;
     if (recenterInProgressRef.current) {
@@ -2086,12 +2100,11 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       }
 
       if (clusterNavigationPendingRef.current) {
-        // Cluster navigation is the one exception to normal manual-map
-        // exploration: read the final camera bounds only after Mapbox has
-        // settled, then reuse the normal viewport loader for that area.
+        // Keep the GeoJSON generation that produced the clicked cluster stable
+        // throughout its expansion. Loading the new camera bounds here would
+        // rebuild the source and change cluster membership between clicks.
         clusterNavigationPendingRef.current = false;
         areaSearchPendingRef.current = false;
-        void requestViewportParksRef.current();
         return;
       }
 
@@ -2118,6 +2131,8 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
 
     const handleMapLoad = async () => {
       mapLoadedRef.current = true;
+      const detailedParkLayerMinZoom =
+        mode === "public" ? PLACEHOLDER_MAX_ZOOM : 0;
       if (!storedUserLocationRef.current) {
         const center = map.getCenter();
         setSearchProximity({ lng: center.lng, lat: center.lat });
@@ -2261,6 +2276,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         id: "clusters",
         type: "circle",
         source: "parks",
+        minzoom: detailedParkLayerMinZoom,
         filter: [
           "all",
           ["has", "point_count"],
@@ -2308,6 +2324,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         id: "cluster-count",
         type: "symbol",
         source: "parks",
+        minzoom: detailedParkLayerMinZoom,
         filter: [
           "all",
           ["has", "point_count"],
@@ -2335,7 +2352,10 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         id: "unclustered-point",
         type: "circle",
         source: "parks",
-        minzoom: 12,
+        // Detailed parks start loading at this zoom. Showing their singleton
+        // children at the same threshold keeps every cluster decomposition
+        // visible (for example 4 -> cluster 3 + one park).
+        minzoom: detailedParkLayerMinZoom,
         filter: [
           "all",
           ["!", ["has", "point_count"]],
@@ -2400,6 +2420,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         const resolutionId = ++placeholderResolutionIdRef.current;
         const clusterId = feature.properties?.cluster_id;
         if (clusterId !== undefined) {
+          cancelViewportLoadForClusterNavigation();
           if (process.env.NODE_ENV !== "production") {
             console.debug("[Parks map] overview cluster click", {
               source: "park-placeholders",
@@ -2559,24 +2580,31 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         }
 
         const source = map.getSource("parks") as mapboxgl.GeoJSONSource;
+        cancelViewportLoadForClusterNavigation();
         const coordinates = (feature.geometry as GeoJSON.Point)
           .coordinates as [number, number];
         const openFirstClusterPark = () => {
           source.getClusterLeaves(
             clusterId,
-            Math.min(pointCount, 100),
+            pointCount,
             0,
             (error, leaves) => {
               if (
                 clusterInteractionId !== placeholderResolutionIdRef.current
               )
                 return;
-              const memberIds = (leaves ?? [])
-                .map((leaf) => Number(leaf.properties?.parkId))
-                .filter((parkId) => Number.isInteger(parkId));
-              const parkPreview = memberIds
-                .map((parkId) => parksRef.current.find((park) => park.id === parkId))
-                .find((park) => park !== undefined);
+              const memberIds = getClusterLeafParkIds(leaves ?? []);
+              const parksById = new Map(
+                parksRef.current.map((park) => [park.id, park])
+              );
+              const memberParks = memberIds
+                .map((parkId) => parksById.get(parkId))
+                .filter((park): park is MapParkSummary => park !== undefined);
+              const hasCompleteMembership =
+                !error &&
+                leaves?.length === pointCount &&
+                memberIds.length === pointCount &&
+                memberParks.length === pointCount;
 
               if (process.env.NODE_ENV !== "production") {
                 console.debug("[Parks map] terminal cluster resolution", {
@@ -2585,10 +2613,12 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
                   displayedCount: pointCount,
                   leafCount: leaves?.length ?? 0,
                   memberIds,
+                  resolvedMemberCount: memberParks.length,
                   error: error?.message,
                 });
               }
-              if (!error && parkPreview) {
+              if (hasCompleteMembership) {
+                const parkPreview = memberParks[0];
                 openParkPopupRef.current(
                   map,
                   parkPreview.id,
@@ -2925,6 +2955,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     beginAwayFromUser,
     beginTrackingMove,
     beginUserMove,
+    cancelViewportLoadForClusterNavigation,
     finishCameraMove,
     isFocusedRef,
     markManualCameraInteraction,
