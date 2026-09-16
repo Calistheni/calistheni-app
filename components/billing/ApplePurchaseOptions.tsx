@@ -69,7 +69,18 @@ export function ApplePurchaseOptions({
     try {
       if (!(await isAppleStoreKitAvailable())) throw new Error("unavailable");
       setProducts(await loadAppleStoreKitProducts());
-    } catch {
+    } catch (error) {
+      console.warn("[apple-iap] Pro product load failed", {
+        stage: "pro_page_retry",
+        errorName: error instanceof Error ? error.name : "UnknownError",
+        errorCode:
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          typeof error.code === "string"
+            ? error.code
+            : null,
+      });
       setProducts([]);
       setLoadError(true);
     } finally {
@@ -84,8 +95,21 @@ export function ApplePurchaseOptions({
         if (!(await isAppleStoreKitAvailable())) throw new Error("unavailable");
         const loadedProducts = await loadAppleStoreKitProducts();
         if (!disposed) setProducts(loadedProducts);
-      } catch {
-        if (!disposed) setLoadError(true);
+      } catch (error) {
+        if (!disposed) {
+          console.warn("[apple-iap] Pro product load failed", {
+            stage: "pro_page_initial",
+            errorName: error instanceof Error ? error.name : "UnknownError",
+            errorCode:
+              typeof error === "object" &&
+              error !== null &&
+              "code" in error &&
+              typeof error.code === "string"
+                ? error.code
+                : null,
+          });
+          setLoadError(true);
+        }
       } finally {
         if (!disposed) setLoadingProducts(false);
       }

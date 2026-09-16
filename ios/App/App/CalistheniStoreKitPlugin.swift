@@ -34,24 +34,54 @@ public class CalistheniStoreKitPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func isAvailable(_ call: CAPPluginCall) {
+        Self.log("availability checked bundle=\(Bundle.main.bundleIdentifier ?? "unknown") available=true")
         call.resolve(["available": true])
     }
 
     @objc func loadProducts(_ call: CAPPluginCall) {
+        let requestedProductIds = Self.productIds
+        Self.log(
+            "product load started bundle=\(Bundle.main.bundleIdentifier ?? "unknown") " +
+            "requestedIds=\(requestedProductIds.joined(separator: ","))"
+        )
         Task { [weak self] in
             guard let self else {
+                Self.log("product load failed code=STOREKIT_UNAVAILABLE")
                 call.reject("StoreKit is unavailable.", "STOREKIT_UNAVAILABLE")
                 return
             }
             do {
-                let products = try await Product.products(for: Self.productIds)
+                let products = try await Product.products(for: requestedProductIds)
                     .filter { Self.productIdSet.contains($0.id) }
                 self.productsById = Dictionary(uniqueKeysWithValues: products.map { ($0.id, $0) })
-                let ordered = Self.productIds.compactMap { productId in
+                let ordered = requestedProductIds.compactMap { productId in
                     products.first(where: { $0.id == productId }).map(self.productPayload)
                 }
-                call.resolve(["products": ordered])
+                let returnedProductIds = ordered.compactMap { $0["productId"] as? String }
+                let returnedProductIdSet = Set(returnedProductIds)
+                let missingProductIds = requestedProductIds.filter {
+                    !returnedProductIdSet.contains($0)
+                }
+                Self.log(
+                    "product load completed rawCount=\(products.count) " +
+                    "returnedIds=\(returnedProductIds.joined(separator: ",")) " +
+                    "missingIds=\(missingProductIds.joined(separator: ","))"
+                )
+                call.resolve([
+                    "products": ordered,
+                    "diagnostics": [
+                        "requestedProductIds": requestedProductIds,
+                        "returnedProductIds": returnedProductIds,
+                        "missingProductIds": missingProductIds,
+                        "storeKitProductCount": products.count
+                    ]
+                ])
             } catch {
+                let storeKitError = error as NSError
+                Self.log(
+                    "product load failed code=STOREKIT_PRODUCT_LOAD_FAILED " +
+                    "errorDomain=\(storeKitError.domain) errorCode=\(storeKitError.code)"
+                )
                 call.reject("Unable to load App Store products.", "STOREKIT_PRODUCT_LOAD_FAILED")
             }
         }
@@ -293,5 +323,9 @@ public class CalistheniStoreKitPlugin: CAPPlugin, CAPBridgedPlugin {
             "environment": environment,
             "signedTransaction": signedTransaction
         ]
+    }
+
+    private static func log(_ message: String) {
+        print("[AppleIAP] \(message)")
     }
 }

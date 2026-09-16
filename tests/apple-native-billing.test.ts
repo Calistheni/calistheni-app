@@ -158,6 +158,25 @@ test("native prices come from StoreKit metadata and never from Stripe constants"
   assert.match(billing, /<ApplePurchaseOptions/);
 });
 
+test("StoreKit product loading preserves safe stage diagnostics", () => {
+  const swift = read("ios/App/App/CalistheniStoreKitPlugin.swift");
+  const bridge = read("lib/native/apple-storekit.ts");
+  const options = read("components/billing/ApplePurchaseOptions.tsx");
+
+  assert.match(swift, /product load started/);
+  assert.match(swift, /storeKitProductCount/);
+  assert.match(swift, /missingProductIds/);
+  assert.match(swift, /errorDomain=.*errorCode=/);
+  assert.match(bridge, /nativeProductCount/);
+  assert.match(bridge, /acceptedProductCount/);
+  assert.match(bridge, /rejectedProducts/);
+  assert.match(bridge, /stage: "config_fetch"/);
+  assert.match(bridge, /stage: "config_validation"/);
+  assert.match(options, /stage: "pro_page_initial"/);
+  assert.doesNotMatch(swift, /appAccountToken.*product load/);
+  assert.doesNotMatch(bridge, /signedTransaction.*StoreKit product load/);
+});
+
 test("native purchase UI handles cancellation, pending, unavailable products, and duplicate taps", () => {
   const options = read("components/billing/ApplePurchaseOptions.tsx");
   assert.match(options, /outcome === "userCancelled"/);

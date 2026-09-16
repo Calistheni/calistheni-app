@@ -27,6 +27,13 @@ export type AppleStoreKitProduct = {
   subscriptionPeriod: AppleSubscriptionPeriod | null;
 };
 
+type AppleStoreKitProductLoadDiagnostics = {
+  requestedProductIds: string[];
+  returnedProductIds: string[];
+  missingProductIds: string[];
+  storeKitProductCount: number;
+};
+
 export type AppleStoreKitTransaction = {
   transactionId: string;
   originalTransactionId: string;
@@ -52,7 +59,10 @@ type AppleTransactionCollection = {
 
 type CalistheniStoreKitPlugin = {
   isAvailable(): Promise<{ available: boolean }>;
-  loadProducts(): Promise<{ products: AppleStoreKitProduct[] }>;
+  loadProducts(): Promise<{
+    products: AppleStoreKitProduct[];
+    diagnostics?: AppleStoreKitProductLoadDiagnostics;
+  }>;
   purchase(options: {
     productId: string;
     appAccountToken: string;
@@ -99,10 +109,27 @@ export function canUseAppleStoreKit() {
 }
 
 export async function isAppleStoreKitAvailable() {
-  if (!canUseAppleStoreKit()) return false;
+  if (!canUseAppleStoreKit()) {
+    console.info("[apple-iap] StoreKit availability", {
+      stage: "plugin_detection",
+      available: false,
+      ...getAppleStoreKitAvailability(),
+    });
+    return false;
+  }
   try {
-    return (await StoreKit.isAvailable()).available;
-  } catch {
+    const available = (await StoreKit.isAvailable()).available;
+    console.info("[apple-iap] StoreKit availability", {
+      stage: "native_check",
+      available,
+    });
+    return available;
+  } catch (error) {
+    console.warn("[apple-iap] StoreKit availability check failed", {
+      stage: "native_check",
+      errorName: error instanceof Error ? error.name : "UnknownError",
+      errorCode: getSafePluginErrorCode(error),
+    });
     return false;
   }
 }
@@ -119,14 +146,62 @@ function requireAppleStoreKit() {
 export async function loadAppleStoreKitProducts() {
   requireAppleStoreKit();
   const result = await StoreKit.loadProducts();
+  if (!Array.isArray(result.products)) {
+    console.warn("[apple-iap] StoreKit returned an invalid product payload", {
+      stage: "bridge_response",
+      errorCode: "STOREKIT_PRODUCT_PAYLOAD_INVALID",
+    });
+    throw new AppleStoreKitError(
+      "The App Store returned an invalid product response.",
+      "STOREKIT_PRODUCT_PAYLOAD_INVALID"
+    );
+  }
   const expectedTypes = new Map<string, AppleStoreKitProduct["type"]>([
     [APPLE_PRO_PRODUCT_IDS.monthly, "subscription"],
     [APPLE_PRO_PRODUCT_IDS.yearly, "subscription"],
     [APPLE_PRO_PRODUCT_IDS.lifetime, "lifetime"],
   ]);
-  return result.products.filter(
+  const acceptedProducts = result.products.filter(
     (product) => expectedTypes.get(product.productId) === product.type
   );
+  const acceptedProductIds = new Set(
+    acceptedProducts.map((product) => product.productId)
+  );
+  const missingProductIds = [...expectedTypes.keys()].filter(
+    (productId) => !acceptedProductIds.has(productId)
+  );
+  const rejectedProducts = result.products
+    .filter((product) => !acceptedProductIds.has(product.productId))
+    .map((product) => ({
+      productId: product.productId,
+      type: product.type,
+      expectedType: expectedTypes.get(product.productId) ?? null,
+    }));
+
+  console.info("[apple-iap] StoreKit product load", {
+    stage: "bridge_validation",
+    requestedProductIds: [...expectedTypes.keys()],
+    nativeProductCount: result.products.length,
+    acceptedProductCount: acceptedProducts.length,
+    acceptedProductIds: [...acceptedProductIds],
+    missingProductIds,
+    rejectedProducts,
+    nativeDiagnostics: result.diagnostics ?? null,
+  });
+
+  return acceptedProducts;
+}
+
+function getSafePluginErrorCode(error: unknown) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string"
+  ) {
+    return error.code;
+  }
+  return null;
 }
 
 type AppleBillingConfig = {
@@ -156,13 +231,37 @@ async function getAppleBillingConfig(userKey: string) {
   if (cachedBillingConfig?.userKey === userKey) {
     return cachedBillingConfig.value;
   }
-  const response = await fetch("/api/billing/apple/config", {
-    cache: "no-store",
-  });
-  const payload = (await response.json()) as Partial<AppleBillingConfig> & {
+  let response: Response;
+  try {
+    response = await fetch("/api/billing/apple/config", {
+      cache: "no-store",
+    });
+  } catch (error) {
+    console.warn("[apple-iap] Apple billing config request failed", {
+      stage: "config_fetch",
+      errorName: error instanceof Error ? error.name : "UnknownError",
+    });
+    throw error;
+  }
+
+  let payload: Partial<AppleBillingConfig> & {
     code?: string;
     error?: string;
   };
+  try {
+    payload = (await response.json()) as typeof payload;
+  } catch (error) {
+    console.warn("[apple-iap] Apple billing config response was invalid", {
+      stage: "config_parse",
+      status: response.status,
+      errorName: error instanceof Error ? error.name : "UnknownError",
+    });
+    throw new AppleStoreKitError(
+      "Apple purchase configuration is unavailable right now.",
+      "APPLE_CONFIG_INVALID_RESPONSE",
+      response.status
+    );
+  }
   if (
     !response.ok ||
     !payload.appAccountToken ||
@@ -171,6 +270,13 @@ async function getAppleBillingConfig(userKey: string) {
     payload.productIds.yearly !== APPLE_PRO_PRODUCT_IDS.yearly ||
     payload.productIds.lifetime !== APPLE_PRO_PRODUCT_IDS.lifetime
   ) {
+    console.warn("[apple-iap] Apple billing config validation failed", {
+      stage: "config_validation",
+      status: response.status,
+      responseCode: payload.code ?? null,
+      hasAppAccountToken: Boolean(payload.appAccountToken),
+      receivedProductIds: payload.productIds ?? null,
+    });
     throw new AppleStoreKitError(
       payload.error ?? "Apple purchase configuration is unavailable right now.",
       payload.code ?? "APPLE_CONFIG_UNAVAILABLE",
@@ -181,6 +287,10 @@ async function getAppleBillingConfig(userKey: string) {
     appAccountToken: payload.appAccountToken,
     productIds: payload.productIds,
   } as AppleBillingConfig;
+  console.info("[apple-iap] Apple billing config loaded", {
+    stage: "config_ready",
+    productIds: value.productIds,
+  });
   if (activeUserKey === userKey) cachedBillingConfig = { userKey, value };
   return value;
 }
