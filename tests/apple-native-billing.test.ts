@@ -172,9 +172,48 @@ test("StoreKit product loading preserves safe stage diagnostics", () => {
   assert.match(bridge, /rejectedProducts/);
   assert.match(bridge, /stage: "config_fetch"/);
   assert.match(bridge, /stage: "config_validation"/);
-  assert.match(options, /stage: "pro_page_initial"/);
+  assert.match(options, /Pro product refresh succeeded/);
+  assert.match(options, /displayPriceChanged/);
+  assert.match(options, /refreshProducts\("initial"\)/);
+  assert.match(options, /refreshProducts\("foreground"\)/);
+  assert.match(options, /refreshProducts\("pre_purchase"\)/);
   assert.doesNotMatch(swift, /appAccountToken.*product load/);
   assert.doesNotMatch(bridge, /signedTransaction.*StoreKit product load/);
+});
+
+test("native product refresh lifecycle is single-listener and cleanup safe", () => {
+  const options = read("components/billing/ApplePurchaseOptions.tsx");
+  assert.equal(
+    [...options.matchAll(/App\.addListener\("appStateChange"/g)].length,
+    1
+  );
+  assert.match(options, /if \(!isActive\) return/);
+  assert.match(options, /void appStateListener\?\.remove\(\)/);
+  assert.match(options, /coordinator\.dispose\(\)/);
+  assert.match(options, /productsRef\.current = nextProducts/);
+  assert.doesNotMatch(
+    options,
+    /refreshProducts\("foreground"\)[\s\S]{0,300}setLoadingProducts\(true\)/
+  );
+});
+
+test("pre-purchase refresh updates metadata before purchasing the approved product ID", () => {
+  const options = read("components/billing/ApplePurchaseOptions.tsx");
+  assert.match(
+    options,
+    /await refreshProducts\("pre_purchase"\)[\s\S]*await purchaseAppleProduct\(\{ userKey, productId \}\)/
+  );
+  assert.match(options, /onClick=\{\(\) => void purchase\(plan\.productId\)\}/);
+  assert.match(options, /refreshed\?\.products \?\? productsRef\.current/);
+});
+
+test("StoreKit refresh replaces the native Product cache with a fresh query", () => {
+  const swift = read("ios/App/App/CalistheniStoreKitPlugin.swift");
+  assert.match(
+    swift,
+    /let products = try await Product\.products\(for: requestedProductIds\)[\s\S]*self\.productsById = Dictionary\(uniqueKeysWithValues: products\.map/
+  );
+  assert.match(swift, /if let cached = self\.productsById\[productId\]/);
 });
 
 test("native purchase UI handles cancellation, pending, unavailable products, and duplicate taps", () => {

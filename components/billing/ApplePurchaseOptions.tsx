@@ -1,13 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { App } from "@capacitor/app";
 import { Check, Crown, RefreshCw, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { APPLE_PRO_PRODUCT_IDS } from "@/lib/apple-iap/products";
+import {
+  createProductRefreshCoordinator,
+  type ProductRefreshCoordinator,
+} from "@/lib/apple-product-refresh";
 import {
   isAppleStoreKitAvailable,
   loadAppleStoreKitProducts,
@@ -44,6 +49,19 @@ const applePlans = [
 ] as const;
 
 type BusyAction = string | "restore" | null;
+type ProductRefreshStage = "initial" | "foreground" | "pre_purchase" | "retry";
+
+function displayPricesChanged(
+  previous: AppleStoreKitProduct[],
+  next: AppleStoreKitProduct[]
+) {
+  const previousPrices = new Map(
+    previous.map((product) => [product.productId, product.displayPrice])
+  );
+  return next.some(
+    (product) => previousPrices.get(product.productId) !== product.displayPrice
+  );
+}
 
 export function ApplePurchaseOptions({
   isPro,
@@ -57,21 +75,49 @@ export function ApplePurchaseOptions({
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [busyAction, setBusyAction] = useState<BusyAction>(null);
+  const mountedRef = useRef(false);
+  const productsRef = useRef<AppleStoreKitProduct[]>([]);
+  const refreshCoordinatorRef =
+    useRef<ProductRefreshCoordinator<AppleStoreKitProduct> | null>(null);
 
   const productsById = useMemo(
     () => new Map(products.map((product) => [product.productId, product])),
     [products]
   );
 
-  const loadProducts = useCallback(async () => {
-    setLoadingProducts(true);
-    setLoadError(false);
+  const refreshProducts = useCallback(async (stage: ProductRefreshStage) => {
+    const showLoading = stage === "initial" || stage === "retry";
+    const coordinator = refreshCoordinatorRef.current;
+    if (showLoading && mountedRef.current) {
+      setLoadingProducts(true);
+      setLoadError(false);
+    }
+
     try {
-      if (!(await isAppleStoreKitAvailable())) throw new Error("unavailable");
-      setProducts(await loadAppleStoreKitProducts());
+      const previousProducts = productsRef.current;
+      const result = await coordinator?.refresh();
+      if (!result) throw new Error("StoreKit product refresh is unavailable.");
+      if (
+        !result.applied ||
+        !mountedRef.current ||
+        refreshCoordinatorRef.current !== coordinator
+      ) {
+        return null;
+      }
+      const priceChanged = displayPricesChanged(
+        previousProducts,
+        result.products
+      );
+      console.info("[apple-iap] Pro product refresh succeeded", {
+        stage,
+        productCount: result.products.length,
+        displayPriceChanged: priceChanged,
+      });
+      setLoadError(false);
+      return { ...result, displayPriceChanged: priceChanged };
     } catch (error) {
-      console.warn("[apple-iap] Pro product load failed", {
-        stage: "pro_page_retry",
+      console.warn("[apple-iap] Pro product refresh failed", {
+        stage,
         errorName: error instanceof Error ? error.name : "UnknownError",
         errorCode:
           typeof error === "object" &&
@@ -81,43 +127,68 @@ export function ApplePurchaseOptions({
             ? error.code
             : null,
       });
-      setProducts([]);
-      setLoadError(true);
+      if (
+        showLoading &&
+        mountedRef.current &&
+        refreshCoordinatorRef.current === coordinator
+      ) {
+        setLoadError(true);
+      }
+      return null;
     } finally {
-      setLoadingProducts(false);
+      if (
+        showLoading &&
+        mountedRef.current &&
+        refreshCoordinatorRef.current === coordinator
+      ) {
+        setLoadingProducts(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    let disposed = false;
-    void (async () => {
-      try {
+    mountedRef.current = true;
+    const coordinator = createProductRefreshCoordinator({
+      loadProducts: async () => {
         if (!(await isAppleStoreKitAvailable())) throw new Error("unavailable");
-        const loadedProducts = await loadAppleStoreKitProducts();
-        if (!disposed) setProducts(loadedProducts);
-      } catch (error) {
-        if (!disposed) {
-          console.warn("[apple-iap] Pro product load failed", {
-            stage: "pro_page_initial",
-            errorName: error instanceof Error ? error.name : "UnknownError",
-            errorCode:
-              typeof error === "object" &&
-              error !== null &&
-              "code" in error &&
-              typeof error.code === "string"
-                ? error.code
-                : null,
-          });
-          setLoadError(true);
-        }
-      } finally {
-        if (!disposed) setLoadingProducts(false);
+        return loadAppleStoreKitProducts();
+      },
+      replaceProducts: (nextProducts) => {
+        productsRef.current = nextProducts;
+        setProducts(nextProducts);
+      },
+    });
+    refreshCoordinatorRef.current = coordinator;
+    const initialRefreshTimer = window.setTimeout(() => {
+      void refreshProducts("initial");
+    }, 0);
+
+    return () => {
+      mountedRef.current = false;
+      window.clearTimeout(initialRefreshTimer);
+      coordinator.dispose();
+      if (refreshCoordinatorRef.current === coordinator) {
+        refreshCoordinatorRef.current = null;
       }
-    })();
+    };
+  }, [refreshProducts]);
+
+  useEffect(() => {
+    let disposed = false;
+    let appStateListener: { remove: () => Promise<void> } | undefined;
+    void App.addListener("appStateChange", ({ isActive }) => {
+      if (!isActive) return;
+      void refreshProducts("foreground");
+    }).then((listener) => {
+      if (disposed) void listener.remove();
+      else appStateListener = listener;
+    });
+
     return () => {
       disposed = true;
+      void appStateListener?.remove();
     };
-  }, []);
+  }, [refreshProducts]);
 
   async function purchase(productId: string) {
     if (busyAction || isPro) return;
@@ -134,6 +205,15 @@ export function ApplePurchaseOptions({
 
     setBusyAction(productId);
     try {
+      const refreshed = await refreshProducts("pre_purchase");
+      const availableProducts = refreshed?.products ?? productsRef.current;
+      if (!availableProducts.some((product) => product.productId === productId)) {
+        toast.error("This App Store product is unavailable right now.");
+        return;
+      }
+      if (refreshed?.displayPriceChanged) {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      }
       const result = await purchaseAppleProduct({ userKey, productId });
       if (result.outcome === "userCancelled") return;
       if (result.outcome === "pending") {
@@ -208,7 +288,10 @@ export function ApplePurchaseOptions({
             Some App Store products are unavailable right now. No web checkout
             fallback is used inside the iOS app.
           </p>
-          <Button variant="outline" onClick={() => void loadProducts()}>
+          <Button
+            variant="outline"
+            onClick={() => void refreshProducts("retry")}
+          >
             <RefreshCw className="size-4" aria-hidden="true" /> Retry
           </Button>
         </div>
