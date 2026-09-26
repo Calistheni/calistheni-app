@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils";
 import { AccountMenu } from "./AccountMenu";
 import {
   AppShellUserProvider,
+  PrimaryTabNavigationTargetProvider,
   type AppShellUser,
 } from "./AppShellContext";
 
@@ -100,40 +101,50 @@ export function AppShell({ children, user }: AppShellProps) {
 
   useEffect(() => {
     const pendingNavigation = navigationStart.current;
-    if (
-      process.env.NODE_ENV === "production" ||
-      !pendingNavigation ||
-      getActivePrimaryNavigation(pathname) !==
-        getActivePrimaryNavigation(pendingNavigation.href)
-    ) {
-      return;
-    }
+    if (process.env.NODE_ENV === "production" || !pendingNavigation) return;
 
-    navigationStart.current = null;
     const frame = window.requestAnimationFrame(() => {
+      const surface = document.querySelector<HTMLElement>(
+        `[data-primary-tab-surface="${pendingNavigation.href}"]`
+      );
+      if (!surface || surface.offsetParent === null) return;
+
+      navigationStart.current = null;
       const elapsed = performance.now() - pendingNavigation.startedAt;
       console.info(
-        `[NavigationTiming] ${pendingNavigation.href} shell visible in ${elapsed.toFixed(1)}ms`
+        `[NavigationTiming] ${pendingNavigation.href} real shell visible in ${elapsed.toFixed(1)}ms`
       );
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [pathname]);
+  }, [pendingHref]);
 
   useEffect(() => {
     if (!pendingHref) return;
-    const timeout = window.setTimeout(() => setPendingHref(null), 2_500);
+    if (
+      getActivePrimaryNavigation(pathname) ===
+      getActivePrimaryNavigation(pendingHref)
+    ) {
+      const frame = window.requestAnimationFrame(() => setPendingHref(null));
+      return () => window.cancelAnimationFrame(frame);
+    }
+
+    const timeout = window.setTimeout(() => setPendingHref(null), 8_000);
     return () => window.clearTimeout(timeout);
-  }, [pendingHref]);
+  }, [pathname, pendingHref]);
 
   if (!user || !isAppShellRoute) {
     return (
-      <AppShellUserProvider value={user}>{children}</AppShellUserProvider>
+      <AppShellUserProvider value={user}>
+        <PrimaryTabNavigationTargetProvider value={pendingHref}>
+          {children}
+        </PrimaryTabNavigationTargetProvider>
+      </AppShellUserProvider>
     );
   }
 
   const activeKey = getActivePrimaryNavigation(pendingHref ?? pathname);
-  const isFullBleed = isFullBleedAppRoute(pathname);
+  const isFullBleed = isFullBleedAppRoute(pendingHref ?? pathname);
   const usesFocusedWorkoutMode = pathname === "/workouts/new";
   const locksViewport = isFullBleed || usesFocusedWorkoutMode;
   const handlePrimaryNavigationClick = (
@@ -175,7 +186,16 @@ export function AppShell({ children, user }: AppShellProps) {
     href: string,
     active: boolean
   ) => {
-    if (event.button !== 0 || active) return;
+    if (
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey ||
+      active
+    ) {
+      return;
+    }
 
     setPendingHref(href);
     router.prefetch(href);
@@ -189,13 +209,14 @@ export function AppShell({ children, user }: AppShellProps) {
 
   return (
     <AppShellUserProvider value={user}>
-      <ActiveWorkoutProvider>
-        <div
-          className={cn(
-            "app-shell flex min-h-dvh flex-col bg-background",
-            locksViewport && "h-dvh overflow-hidden"
-          )}
-        >
+      <PrimaryTabNavigationTargetProvider value={pendingHref}>
+        <ActiveWorkoutProvider>
+          <div
+            className={cn(
+              "app-shell flex min-h-dvh flex-col bg-background",
+              locksViewport && "h-dvh overflow-hidden"
+            )}
+          >
         <header className="sticky top-0 z-40 hidden h-14 shrink-0 border-b bg-background md:block">
           <div className="mx-auto flex h-full max-w-7xl items-center gap-4 px-3 sm:px-6">
             <Link
@@ -225,6 +246,9 @@ export function AppShell({ children, user }: AppShellProps) {
                   <Link
                     key={item.key}
                     href={item.href}
+                    scroll={
+                      !primaryTabHrefs.some((href) => href === item.href)
+                    }
                     onClick={(event) =>
                       handlePrimaryNavigationClick(event, item.href)
                     }
@@ -300,6 +324,9 @@ export function AppShell({ children, user }: AppShellProps) {
                   <Link
                     key={item.key}
                     href={item.href}
+                    scroll={
+                      !primaryTabHrefs.some((href) => href === item.href)
+                    }
                     onClick={(event) =>
                       handlePrimaryNavigationClick(event, item.href)
                     }
@@ -338,8 +365,9 @@ export function AppShell({ children, user }: AppShellProps) {
             </div>
           </nav>
         )}
-        </div>
-      </ActiveWorkoutProvider>
+          </div>
+        </ActiveWorkoutProvider>
+      </PrimaryTabNavigationTargetProvider>
     </AppShellUserProvider>
   );
 }

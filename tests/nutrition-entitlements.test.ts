@@ -61,7 +61,7 @@ test("Free users see locked discovery actions while Describe and ordinary food f
   const [quickActions, tracker, page] = await Promise.all([
     source("components/nutrition/NutritionQuickActions.tsx"),
     source("components/nutrition/NutritionTracker.tsx"),
-    source("app/nutrition/page.tsx"),
+    source("app/(primary)/@nutrition/nutrition/page.tsx"),
   ]);
 
   assert.match(page, /getUserEntitlements\(session\.user\.id\)/);

@@ -5,7 +5,7 @@ import test from "node:test";
 const root = new URL("../", import.meta.url);
 
 test("home reuses its calendar workout payload for the weekly report", async () => {
-  const source = await readFile(new URL("app/home/page.tsx", root), "utf8");
+  const source = await readFile(new URL("app/(primary)/@home/home/page.tsx", root), "utf8");
   const querySection = source.slice(
     source.indexOf("const ["),
     source.indexOf('if (!profile) redirect("/login")')

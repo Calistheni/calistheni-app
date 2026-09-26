@@ -9,9 +9,16 @@ export type AppShellUser = {
 };
 
 const AppShellUserContext = createContext<AppShellUser | null>(null);
+const PrimaryTabNavigationTargetContext = createContext<string | null>(null);
 
 export const AppShellUserProvider = AppShellUserContext.Provider;
+export const PrimaryTabNavigationTargetProvider =
+  PrimaryTabNavigationTargetContext.Provider;
 
 export function useAppShellUser() {
   return useContext(AppShellUserContext);
+}
+
+export function usePrimaryTabNavigationTarget() {
+  return useContext(PrimaryTabNavigationTargetContext);
 }

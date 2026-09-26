@@ -55,7 +55,7 @@ test("training calendar exposes private daily details through blue filter contro
   const [source, service, homePage, presentation] = await Promise.all([
     fs.readFile(new URL("../components/home/TrainingActivityCalendar.tsx", import.meta.url), "utf8"),
     fs.readFile(new URL("../lib/supplement-service.ts", import.meta.url), "utf8"),
-    fs.readFile(new URL("../app/home/page.tsx", import.meta.url), "utf8"),
+    fs.readFile(new URL("../app/(primary)/@home/home/page.tsx", import.meta.url), "utf8"),
     fs.readFile(new URL("../lib/training-activity-calendar.ts", import.meta.url), "utf8"),
   ]);
   assert.match(source, /useState<TrainingActivityFilter>\("all"\)/);

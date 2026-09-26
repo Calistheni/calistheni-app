@@ -188,6 +188,7 @@ export function NutritionTracker() {
   );
   const [pickerKey, setPickerKey] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadedDate, setLoadedDate] = useState<string | null>(null);
   const activeRequest = useRef(0);
   const savedFoodsLoaded = useRef(false);
   const selectedDateRef = useRef(date);
@@ -217,6 +218,7 @@ export function NutritionTracker() {
       setEntries(data.entries as Entry[]);
       const resolvedGoal = toGoal(data.goal ?? data.targets);
       setGoal(resolvedGoal);
+      setLoadedDate(dateKey);
       if (dateKey === localNutritionDateKey()) setCurrentGoal(resolvedGoal);
     } catch (error) {
       if (requestId === activeRequest.current) {
@@ -299,6 +301,7 @@ export function NutritionTracker() {
   }, [reconcileForReturn]);
 
   const total = useMemo(() => nutritionTotals(entries), [entries]);
+  const showInitialLoading = loadedDate !== date;
   const progress = useMemo<NutritionGoalProgress | null>(
     () => (goal ? calculateNutritionGoalProgress(total, goal) : null),
     [goal, total]
@@ -440,7 +443,7 @@ export function NutritionTracker() {
         goal={goal}
         progress={progress}
         mode={mode}
-        loading={loading}
+        loading={showInitialLoading}
         setMode={setMode}
         onBreakdown={() => setBreakdown(true)}
       />
@@ -453,7 +456,7 @@ export function NutritionTracker() {
       ) : null}
 
       <div className="space-y-3" aria-busy={loading}>
-        {loading
+        {showInitialLoading
           ? meals.map(([id]) => <NutritionSectionSkeleton key={id} />)
           : meals.map(([id, label]) => (
               <MealSection
@@ -486,7 +489,7 @@ export function NutritionTracker() {
         setOpen={setBreakdown}
         total={total}
         goal={goal}
-        loading={loading}
+        loading={showInitialLoading}
       />
       {meal ? (
         <FoodPicker

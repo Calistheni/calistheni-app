@@ -16,6 +16,7 @@ import {
   PremiumEyebrow,
   PremiumSectionHeading,
 } from "@/components/layout/PremiumPage";
+import { PrimaryTabRevalidator } from "@/components/primary-tabs/PrimaryTabRevalidator";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -100,6 +101,7 @@ export default async function RewardsPage() {
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8 lg:py-16">
+      <PrimaryTabRevalidator />
       <section className="relative isolate pb-16 sm:pb-20 lg:pb-24">
         <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(22rem,0.72fr)] lg:gap-20">
           <div>

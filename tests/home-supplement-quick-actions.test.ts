@@ -129,7 +129,7 @@ test("Home quick actions reuse tracking and reminder paths without replacing the
     "utf8"
   );
   const home = readFileSync(
-    new URL("../app/home/page.tsx", import.meta.url),
+    new URL("../app/(primary)/@home/home/page.tsx", import.meta.url),
     "utf8"
   );
 

@@ -12,14 +12,23 @@ export const mobilePrimaryNavigation = desktopPrimaryNavigation.filter(
   ({ key }) => key !== "pricing"
 );
 
-export const primaryTabNavigation = desktopPrimaryNavigation.filter(
-  ({ key }) =>
-    key === "home" ||
-    key === "nutrition" ||
-    key === "parks" ||
-    key === "community" ||
-    key === "rewards"
-);
+export const primaryTabNavigation = [
+  desktopPrimaryNavigation[0],
+  desktopPrimaryNavigation[1],
+  desktopPrimaryNavigation[2],
+  desktopPrimaryNavigation[3],
+  desktopPrimaryNavigation[4],
+] as const;
+
+export type PrimaryTabHref = (typeof primaryTabNavigation)[number]["href"];
+
+export function getPrimaryTabHref(pathname: string): PrimaryTabHref | null {
+  const tab = primaryTabNavigation.find(
+    ({ href }) => pathname === href || pathname.startsWith(`${href}/`)
+  );
+
+  return tab?.href ?? null;
+}
 
 export type PrimaryNavigationKey =
   (typeof desktopPrimaryNavigation)[number]["key"];

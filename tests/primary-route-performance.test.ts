@@ -4,7 +4,7 @@ import test from "node:test";
 
 test("Home streams optional report generation instead of awaiting it before dashboard queries", async () => {
   const [home, announcement] = await Promise.all([
-    readFile(new URL("../app/home/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/(primary)/@home/home/page.tsx", import.meta.url), "utf8"),
     readFile(
       new URL(
         "../components/home/HomeWeeklyReportAnnouncement.tsx",
@@ -35,21 +35,63 @@ test("Nutrition only fetches saved foods after an action menu opens and mounts t
     source,
     /useEffect\(\(\) => \{\s*void fetch\("\/api\/nutrition\/saved-foods"/
   );
+  assert.match(source, /setLoadedDate\(dateKey\)/);
+  assert.match(source, /const showInitialLoading = loadedDate !== date/);
+  assert.match(source, /loading=\{showInitialLoading\}/);
 });
 
-test("every primary route has immediate, layout-matched feedback", async () => {
-  const [home, nutrition, parks, community, rewards] = await Promise.all([
-    readFile(new URL("../app/home/loading.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/nutrition/loading.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/parks/loading.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/feed/loading.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/rewards/loading.tsx", import.meta.url), "utf8"),
+test("primary route boundaries render real standby shells instead of skeletons", async () => {
+  const loadingFiles = await Promise.all([
+    readFile(new URL("../app/(primary)/@home/home/loading.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/(primary)/@nutrition/nutrition/loading.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/(primary)/@parks/parks/loading.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/(primary)/@community/feed/loading.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/(primary)/@rewards/rewards/loading.tsx", import.meta.url), "utf8"),
   ]);
-  assert.match(home, /Loading home/);
-  assert.match(nutrition, /Loading nutrition/);
-  assert.match(parks, /Loading parks/);
-  assert.match(community, /Loading community/);
-  assert.match(rewards, /Loading rewards/);
+  for (const loading of loadingFiles) {
+    assert.match(loading, /PrimaryTabStandby/);
+    assert.doesNotMatch(loading, /Skeleton|animate-pulse/);
+  }
+});
+
+test("parallel primary slots retain visited tabs and reveal intent immediately", async () => {
+  const [layout, slots, context, standby] = await Promise.all([
+    readFile(new URL("../app/(primary)/layout.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/primary-tabs/PrimaryTabSlots.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/navigation/AppShellContext.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/primary-tabs/PrimaryTabStandby.tsx", import.meta.url), "utf8"),
+  ]);
+
+  for (const slot of ["home", "nutrition", "parks", "community", "rewards"]) {
+    assert.match(layout, new RegExp(`${slot}: React\\.ReactNode`));
+    assert.match(standby, new RegExp(`data-primary-tab-shell="${slot}"`));
+  }
+  assert.match(slots, /import \{ Activity/);
+  assert.match(slots, /mode=\{activeHref === href \? "visible" : "hidden"\}/);
+  assert.match(slots, /usePrimaryTabNavigationTarget\(\)/);
+  assert.match(context, /PrimaryTabNavigationTargetProvider/);
+});
+
+test("retained primary tabs refresh stale server data only after becoming visible", async () => {
+  const [revalidator, home, feed, rewards] = await Promise.all([
+    readFile(
+      new URL(
+        "../components/primary-tabs/PrimaryTabRevalidator.tsx",
+        import.meta.url
+      ),
+      "utf8"
+    ),
+    readFile(new URL("../app/(primary)/@home/home/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/(primary)/@community/feed/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/(primary)/@rewards/rewards/page.tsx", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(revalidator, /staleAfterMs = 60_000/);
+  assert.match(revalidator, /requestIdleCallback/);
+  assert.match(revalidator, /startTransition\(\(\) => router\.refresh\(\)\)/);
+  for (const route of [home, feed, rewards]) {
+    assert.match(route, /<PrimaryTabRevalidator \/>/);
+  }
 });
 
 test("primary navigation warms all five tab routes exactly once after paint", async () => {
@@ -86,7 +128,7 @@ test("primary tab intent gets immediate feedback and development timing", async 
 
 test("Parks renders its shell without a duplicate session gate and restores map viewport", async () => {
   const [page, map] = await Promise.all([
-    readFile(new URL("../app/parks/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/(primary)/@parks/parks/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/ParksMap.tsx", import.meta.url), "utf8"),
   ]);
 
@@ -99,7 +141,7 @@ test("Parks renders its shell without a duplicate session gate and restores map 
 
 test("Community streams feed data behind its visible route shell", async () => {
   const feed = await readFile(
-    new URL("../app/feed/page.tsx", import.meta.url),
+    new URL("../app/(primary)/@community/feed/page.tsx", import.meta.url),
     "utf8"
   );
 
@@ -111,10 +153,11 @@ test("Community streams feed data behind its visible route shell", async () => {
 test("primary server routes reuse one request-scoped session lookup", async () => {
   const [sessionHelper, ...routes] = await Promise.all([
     readFile(new URL("../lib/server-session.ts", import.meta.url), "utf8"),
-    ...["layout", "home/page", "nutrition/page", "feed/page", "rewards/page"].map(
-      (route) =>
-        readFile(new URL(`../app/${route}.tsx`, import.meta.url), "utf8")
-    ),
+    readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/(primary)/@home/home/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/(primary)/@nutrition/nutrition/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/(primary)/@community/feed/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/(primary)/@rewards/rewards/page.tsx", import.meta.url), "utf8"),
   ]);
 
   assert.match(sessionHelper, /cache\(\(\) => auth\(\)\)/);
