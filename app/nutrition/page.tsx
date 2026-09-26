@@ -1,12 +1,12 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
 import { NutritionTracker } from "@/components/nutrition/NutritionTracker";
+import { getServerSession } from "@/lib/server-session";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function NutritionPage() {
-  const session = await auth();
+  const session = await getServerSession();
   if (!session?.user?.id) redirect("/login");
 
   return (

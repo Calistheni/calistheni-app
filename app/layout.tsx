@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Space_Grotesk } from "next/font/google";
 import { cookies } from "next/headers";
 import "./globals.css";
-import { auth } from "@/auth";
 import { AppShell } from "@/components/navigation/AppShell";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { NativeShell } from "@/components/native/NativeShell";
@@ -10,6 +9,7 @@ import { UserActivityHeartbeat } from "@/components/user/UserActivityHeartbeat";
 import { Toaster } from "@/components/ui/sonner";
 import { getSiteUrl } from "@/lib/site-url";
 import { prisma } from "@/lib/prisma";
+import { getServerSession } from "@/lib/server-session";
 import { parseTheme, THEME_COOKIE_NAME, type Theme } from "@/lib/theme";
 
 const spaceGrotesk = Space_Grotesk({
@@ -117,7 +117,7 @@ export default async function RootLayout({
   const theme = parseTheme(rawThemeCookie);
   const serverResolvedTheme = getServerResolvedTheme(theme);
 
-  const session = await auth();
+  const session = await getServerSession();
 
   const unreadCommunityActivity = session?.user?.id
     ? await prisma.workoutNotification.count({

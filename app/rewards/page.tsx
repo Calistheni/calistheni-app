@@ -12,7 +12,6 @@ import {
   Sparkles,
   Store,
 } from "lucide-react";
-import { auth } from "@/auth";
 import {
   PremiumEyebrow,
   PremiumSectionHeading,
@@ -22,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getUserEntitlements } from "@/lib/entitlements";
 import { prisma } from "@/lib/prisma";
+import { getServerSession } from "@/lib/server-session";
 
 export const metadata: Metadata = {
   title: "Rewards",
@@ -72,7 +72,7 @@ const proBenefits = [
 ];
 
 export default async function RewardsPage() {
-  const session = await auth();
+  const session = await getServerSession();
   const [user, rewards, entitlementResult] = await Promise.all([
     session?.user?.id
       ? prisma.user.findUnique({

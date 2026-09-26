@@ -14,7 +14,6 @@ import {
   Trophy,
   UsersRound,
 } from "lucide-react";
-import { auth } from "@/auth";
 import {
   HomeContinueJourney,
   HomeWorkoutActions,
@@ -42,6 +41,7 @@ import {
   type PersonalRecordType,
 } from "@/lib/personal-records";
 import { prisma } from "@/lib/prisma";
+import { getServerSession } from "@/lib/server-session";
 import { getDailySupplementCalendarAdherence } from "@/lib/supplement-service";
 import { getPersistedVolumeSetCompletion } from "@/lib/workout-volume";
 import { mapWorkoutSummary } from "@/lib/workouts";
@@ -166,7 +166,7 @@ function SectionHeading({
 }
 
 export default async function HomePage() {
-  const session = await auth();
+  const session = await getServerSession();
   if (!session?.user) redirect("/");
 
   await redirectIfOnboardingRequired(session.user.id);

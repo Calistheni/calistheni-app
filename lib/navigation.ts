@@ -12,6 +12,15 @@ export const mobilePrimaryNavigation = desktopPrimaryNavigation.filter(
   ({ key }) => key !== "pricing"
 );
 
+export const primaryTabNavigation = desktopPrimaryNavigation.filter(
+  ({ key }) =>
+    key === "home" ||
+    key === "nutrition" ||
+    key === "parks" ||
+    key === "community" ||
+    key === "rewards"
+);
+
 export type PrimaryNavigationKey =
   (typeof desktopPrimaryNavigation)[number]["key"];
 

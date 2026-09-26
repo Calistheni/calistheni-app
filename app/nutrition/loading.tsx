@@ -6,8 +6,8 @@ export default function NutritionLoading() {
       aria-label="Loading nutrition"
     >
       <header>
-        <div className="h-9 w-32 animate-pulse rounded bg-muted" />
-        <div className="mt-2 h-4 w-28 animate-pulse rounded bg-muted" />
+        <h1 className="text-3xl font-bold">Nutrition</h1>
+        <p className="text-sm text-muted-foreground">Your daily food log</p>
       </header>
       <section className="space-y-3 rounded-xl border p-4">
         <div className="h-5 w-36 animate-pulse rounded bg-muted" />

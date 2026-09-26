@@ -212,6 +212,47 @@ function readStoredUserLocation(): [number, number] | null {
   }
 }
 
+const PARKS_VIEWPORT_STORAGE_KEY = "calistheni-parks-viewport-v1";
+
+type StoredParksViewport = {
+  center: [number, number];
+  zoom: number;
+  pitch: number;
+  bearing: number;
+};
+
+function readStoredParksViewport(): StoredParksViewport | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = sessionStorage.getItem(PARKS_VIEWPORT_STORAGE_KEY);
+    if (!raw) return null;
+    const value = JSON.parse(raw) as Partial<StoredParksViewport>;
+    if (
+      !Array.isArray(value.center) ||
+      value.center.length !== 2 ||
+      !value.center.every(Number.isFinite) ||
+      !Number.isFinite(value.zoom) ||
+      !Number.isFinite(value.pitch) ||
+      !Number.isFinite(value.bearing)
+    ) {
+      return null;
+    }
+
+    return value as StoredParksViewport;
+  } catch {
+    return null;
+  }
+}
+
+function storeParksViewport(viewport: StoredParksViewport) {
+  try {
+    sessionStorage.setItem(PARKS_VIEWPORT_STORAGE_KEY, JSON.stringify(viewport));
+  } catch {
+    // Storage can be unavailable in private/restricted WebViews.
+  }
+}
+
 function normalizeLongitude(longitude: number) {
   return ((((longitude + 180) % 360) + 360) % 360) - 180;
 }
@@ -2007,10 +2048,13 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     }
 
     const storedLocation = readStoredUserLocation();
+    const storedViewport = mode === "public" ? readStoredParksViewport() : null;
     storedUserLocationRef.current = storedLocation;
     userLocationRef.current = storedLocation;
 
-    if (storedLocation) {
+    if (storedViewport) {
+      initialCenterRef.current = storedViewport.center;
+    } else if (storedLocation) {
       initialCenterRef.current = storedLocation;
     }
 
@@ -2046,13 +2090,16 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         },
       },
       center: initialCenterRef.current,
-      zoom: storedUserLocationRef.current
+      zoom: storedViewport
+        ? storedViewport.zoom
+        : storedUserLocationRef.current
         ? userLocationZoom
         : mode === "admin"
         ? 10
         : 2,
-      pitch: 0,
-      bearing: storedUserLocationRef.current ? 0 : -20,
+      pitch: storedViewport?.pitch ?? 0,
+      bearing:
+        storedViewport?.bearing ?? (storedUserLocationRef.current ? 0 : -20),
       attributionControl: false,
     });
 
@@ -2073,6 +2120,15 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       }
 
       const center = map.getCenter();
+
+      if (mode === "public") {
+        storeParksViewport({
+          center: [center.lng, center.lat],
+          zoom: map.getZoom(),
+          pitch: map.getPitch(),
+          bearing: map.getBearing(),
+        });
+      }
 
       const focusResult = finishCameraMove({
         center: [center.lng, center.lat],

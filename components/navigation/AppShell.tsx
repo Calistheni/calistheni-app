@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   BadgeEuro,
   Gift,
@@ -21,6 +21,7 @@ import {
   desktopPrimaryNavigation,
   isFullBleedAppRoute,
   mobilePrimaryNavigation,
+  primaryTabNavigation,
   type PrimaryNavigationKey,
   usesSignedInAppShell,
 } from "@/lib/navigation";
@@ -30,14 +31,14 @@ import {
 } from "@/lib/navigation-scroll";
 import { cn } from "@/lib/utils";
 import { AccountMenu } from "./AccountMenu";
+import {
+  AppShellUserProvider,
+  type AppShellUser,
+} from "./AppShellContext";
 
 type AppShellProps = {
   children: React.ReactNode;
-  user: {
-    name?: string | null;
-    email?: string | null;
-    unreadCommunityActivity?: number;
-  } | null;
+  user: AppShellUser | null;
 };
 
 const navigationIcons: Record<PrimaryNavigationKey, LucideIcon> = {
@@ -50,41 +51,35 @@ const navigationIcons: Record<PrimaryNavigationKey, LucideIcon> = {
   profile: UserRound,
 };
 
-const routeWarmupTargets = {
-  "/home": ["/workouts", "/nutrition", "/parks", "/feed"],
-  "/workouts": ["/routines", "/home", "/profile"],
-  "/routines": ["/workouts", "/home"],
-  "/nutrition": ["/home", "/workouts", "/profile"],
-  "/parks": ["/home", "/profile", "/my-parks"],
-  "/feed": ["/home", "/profile"],
-  "/profile": ["/home", "/workouts", "/nutrition"],
-} as const;
-
-function getRouteWarmupTargets(pathname: string) {
-  const matchingRoute = Object.keys(routeWarmupTargets).find(
-    (route) => pathname === route || pathname.startsWith(`${route}/`)
-  ) as keyof typeof routeWarmupTargets | undefined;
-
-  return matchingRoute ? routeWarmupTargets[matchingRoute] : [];
-}
+const primaryTabHrefs = primaryTabNavigation.map(({ href }) => href);
 
 export function AppShell({ children, user }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const isSignedIn = Boolean(user);
+  const isAppShellRoute = usesSignedInAppShell(pathname);
+  const prefetchedPrimaryTabs = useRef(false);
+  const navigationStart = useRef<{ href: string; startedAt: number } | null>(
+    null
+  );
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isSignedIn || !usesSignedInAppShell(pathname)) return;
+    if (!isSignedIn || !isAppShellRoute || prefetchedPrimaryTabs.current) {
+      return;
+    }
 
-    // Let the current route paint first. This complements Link's viewport
-    // prefetching on WKWebView without boot-prefetching every destination or
-    // executing any route-local client feature (maps, scanners, charts, etc.).
+    // Let the current route paint first, then warm every primary tab's route
+    // payload. Prefetching the route does not mount route-local features such
+    // as Mapbox, scanners, or charts.
     let idleId: number | null = null;
     let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
     const frameId = window.requestAnimationFrame(() => {
       const warmRoutes = () => {
         idleId = null;
-        for (const href of getRouteWarmupTargets(pathname)) {
+        prefetchedPrimaryTabs.current = true;
+        for (const href of primaryTabHrefs) {
+          if (href === pathname) continue;
           router.prefetch(href);
         }
       };
@@ -101,11 +96,43 @@ export function AppShell({ children, user }: AppShellProps) {
       if (idleId !== null) window.cancelIdleCallback(idleId);
       if (fallbackTimer !== null) clearTimeout(fallbackTimer);
     };
-  }, [isSignedIn, pathname, router]);
+  }, [isAppShellRoute, isSignedIn, pathname, router]);
 
-  if (!user || !usesSignedInAppShell(pathname)) return children;
+  useEffect(() => {
+    const pendingNavigation = navigationStart.current;
+    if (
+      process.env.NODE_ENV === "production" ||
+      !pendingNavigation ||
+      getActivePrimaryNavigation(pathname) !==
+        getActivePrimaryNavigation(pendingNavigation.href)
+    ) {
+      return;
+    }
 
-  const activeKey = getActivePrimaryNavigation(pathname);
+    navigationStart.current = null;
+    const frame = window.requestAnimationFrame(() => {
+      const elapsed = performance.now() - pendingNavigation.startedAt;
+      console.info(
+        `[NavigationTiming] ${pendingNavigation.href} shell visible in ${elapsed.toFixed(1)}ms`
+      );
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!pendingHref) return;
+    const timeout = window.setTimeout(() => setPendingHref(null), 2_500);
+    return () => window.clearTimeout(timeout);
+  }, [pendingHref]);
+
+  if (!user || !isAppShellRoute) {
+    return (
+      <AppShellUserProvider value={user}>{children}</AppShellUserProvider>
+    );
+  }
+
+  const activeKey = getActivePrimaryNavigation(pendingHref ?? pathname);
   const isFullBleed = isFullBleedAppRoute(pathname);
   const usesFocusedWorkoutMode = pathname === "/workouts/new";
   const locksViewport = isFullBleed || usesFocusedWorkoutMode;
@@ -128,20 +155,47 @@ export function AppShell({ children, user }: AppShellProps) {
       href,
       isFullBleedAppRoute(pathname)
     );
-    if (action === "navigate") return;
+    if (action === "navigate") {
+      setPendingHref(href);
+      if (
+        process.env.NODE_ENV !== "production" &&
+        primaryTabHrefs.some((primaryHref) => primaryHref === href) &&
+        navigationStart.current?.href !== href
+      ) {
+        navigationStart.current = { href, startedAt: event.timeStamp };
+      }
+      return;
+    }
 
     event.preventDefault();
     if (action === "scroll") scrollPrimaryRouteToTop();
   };
+  const handlePrimaryNavigationPointerDown = (
+    event: React.PointerEvent<HTMLAnchorElement>,
+    href: string,
+    active: boolean
+  ) => {
+    if (event.button !== 0 || active) return;
+
+    setPendingHref(href);
+    router.prefetch(href);
+    if (
+      process.env.NODE_ENV !== "production" &&
+      primaryTabHrefs.some((primaryHref) => primaryHref === href)
+    ) {
+      navigationStart.current = { href, startedAt: event.timeStamp };
+    }
+  };
 
   return (
-    <ActiveWorkoutProvider>
-      <div
-        className={cn(
-          "app-shell flex min-h-dvh flex-col bg-background",
-          locksViewport && "h-dvh overflow-hidden"
-        )}
-      >
+    <AppShellUserProvider value={user}>
+      <ActiveWorkoutProvider>
+        <div
+          className={cn(
+            "app-shell flex min-h-dvh flex-col bg-background",
+            locksViewport && "h-dvh overflow-hidden"
+          )}
+        >
         <header className="sticky top-0 z-40 hidden h-14 shrink-0 border-b bg-background md:block">
           <div className="mx-auto flex h-full max-w-7xl items-center gap-4 px-3 sm:px-6">
             <Link
@@ -174,12 +228,16 @@ export function AppShell({ children, user }: AppShellProps) {
                     onClick={(event) =>
                       handlePrimaryNavigationClick(event, item.href)
                     }
-                    onPointerDown={() => {
-                      if (!active) router.prefetch(item.href);
-                    }}
+                    onPointerDown={(event) =>
+                      handlePrimaryNavigationPointerDown(
+                        event,
+                        item.href,
+                        active
+                      )
+                    }
                     aria-current={active ? "page" : undefined}
                     className={cn(
-                      "flex h-9 items-center gap-2 rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground xl:px-3",
+                      "flex h-9 items-center gap-2 rounded-md px-2 text-sm font-medium text-muted-foreground transition-[color,background-color,transform] hover:bg-accent hover:text-accent-foreground active:scale-[0.97] active:bg-accent xl:px-3",
                       active &&
                         "border border-primary/30 bg-primary/10 text-primary"
                     )}
@@ -245,12 +303,16 @@ export function AppShell({ children, user }: AppShellProps) {
                     onClick={(event) =>
                       handlePrimaryNavigationClick(event, item.href)
                     }
-                    onPointerDown={() => {
-                      if (!active) router.prefetch(item.href);
-                    }}
+                    onPointerDown={(event) =>
+                      handlePrimaryNavigationPointerDown(
+                        event,
+                        item.href,
+                        active
+                      )
+                    }
                     aria-current={active ? "page" : undefined}
                     className={cn(
-                      "relative flex min-h-11 min-w-0 flex-1 basis-0 touch-manipulation flex-col items-center justify-center gap-0.5 overflow-hidden px-0.5 text-[10px] font-medium whitespace-nowrap text-muted-foreground transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      "relative flex min-h-11 min-w-0 flex-1 basis-0 touch-manipulation flex-col items-center justify-center gap-0.5 overflow-hidden px-0.5 text-[10px] font-medium whitespace-nowrap text-muted-foreground transition-[color,transform] active:scale-[0.96] focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       active && "text-primary"
                     )}
                   >
@@ -276,7 +338,8 @@ export function AppShell({ children, user }: AppShellProps) {
             </div>
           </nav>
         )}
-      </div>
-    </ActiveWorkoutProvider>
+        </div>
+      </ActiveWorkoutProvider>
+    </AppShellUserProvider>
   );
 }

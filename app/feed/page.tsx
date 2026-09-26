@@ -2,13 +2,15 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { Suspense } from "react";
 import { CommunityTabs } from "@/components/community/CommunityTabs";
 import { BackButton } from "@/components/navigation/BackButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { prisma } from "@/lib/prisma";
+import { getServerSession } from "@/lib/server-session";
 import { mapWorkoutSummary } from "@/lib/workouts";
 import { displayUsername } from "@/lib/community";
 import { LocalWorkoutRelativeTime } from "@/components/workouts/LocalWorkoutDateTime";
@@ -24,16 +26,10 @@ export const metadata: Metadata = {
 };
 export const dynamic = "force-dynamic";
 
-export default async function FeedPage() {
-  const session = await auth();
-
-  if (!session?.user) {
-    redirect("/login");
-  }
-
+async function FeedItems({ userId }: { userId: string }) {
   const following = await prisma.userFollow.findMany({
     where: {
-      followerId: session.user.id,
+      followerId: userId,
     },
     select: {
       followingId: true,
@@ -91,7 +87,7 @@ export default async function FeedPage() {
               },
             },
           },
-          likes: { where: { userId: session.user.id }, select: { userId: true } },
+          likes: { where: { userId }, select: { userId: true } },
           photos: { orderBy: { createdAt: "asc" }, take: 4, select: { id: true, width: true, height: true } },
           _count: { select: { likes: true, comments: true, photos: true } },
         },
@@ -100,21 +96,7 @@ export default async function FeedPage() {
   const summaries = workouts.map(mapWorkoutSummary);
 
   return (
-    <main className="mx-auto w-full max-w-4xl p-4 sm:p-6 lg:p-8">
-      <BackButton fallbackHref="/home" />
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Workout Feed</h1>
-          <p className="text-sm text-muted-foreground">
-            Completed public workouts from people you follow.
-          </p>
-        </div>
-        <Button asChild variant="outline">
-          <Link href="/workouts/new">Start Workout</Link>
-        </Button>
-      </div>
-      <CommunityTabs active="feed" />
-
+    <>
       {summaries.length === 0 ? (
         <Card>
           <CardContent className="space-y-3 p-6">
@@ -194,13 +176,65 @@ export default async function FeedPage() {
                       .join(", ")}
                   </p>
                   {workoutRecord.photos.length === 1 ? <div className="w-full overflow-hidden rounded-xl bg-muted"><Image src={`/api/workouts/${workout.id}/photos/${workoutRecord.photos[0].id}`} alt={`Workout photo from ${workout.title ?? "workout"}`} width={Math.max(1, workoutRecord.photos[0].width)} height={Math.max(1, workoutRecord.photos[0].height)} sizes="(max-width:768px) calc(100vw - 2rem), 672px" unoptimized loading="lazy" className="block h-auto w-full" /></div> : workoutRecord.photos.length ? <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{workoutRecord.photos.map((photo, photoIndex) => <div key={photo.id} className="relative aspect-square overflow-hidden rounded-lg bg-muted"><Image src={`/api/workouts/${workout.id}/photos/${photo.id}`} alt={`Workout photo ${photoIndex + 1}`} fill sizes="180px" unoptimized loading="lazy" className="object-cover" />{photoIndex === 3 && workoutRecord._count.photos > 4 ? <span className="absolute inset-0 grid place-items-center bg-black/50 text-lg font-semibold text-white">+{workoutRecord._count.photos - 4}</span> : null}</div>)}</div> : null}
-                  <WorkoutSocialActions workoutId={workout.id} initialLikeCount={workoutRecord._count.likes} initialLiked={workoutRecord.likes.length > 0} canCopy={workoutRecord.userId !== session.user.id} />
+                  <WorkoutSocialActions workoutId={workout.id} initialLikeCount={workoutRecord._count.likes} initialLiked={workoutRecord.likes.length > 0} canCopy={workoutRecord.userId !== userId} />
                 </CardContent>
               </Card></ClickableWorkoutCard>
             );
           })}
         </div>
       )}
+    </>
+  );
+}
+
+function FeedItemsLoading() {
+  return (
+    <div className="space-y-4" aria-busy="true" aria-label="Loading feed">
+      {Array.from({ length: 3 }).map((_, index) => (
+        <Card key={index}>
+          <CardHeader className="space-y-3">
+            <div className="flex items-center gap-3">
+              <Skeleton className="size-12 rounded-full" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-36" />
+                <Skeleton className="h-3 w-24" />
+              </div>
+            </div>
+            <Skeleton className="h-6 w-2/3" />
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-10 w-44" />
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+export default async function FeedPage() {
+  const session = await getServerSession();
+
+  if (!session?.user) redirect("/login");
+
+  return (
+    <main className="mx-auto w-full max-w-4xl p-4 sm:p-6 lg:p-8">
+      <BackButton fallbackHref="/home" />
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Workout Feed</h1>
+          <p className="text-sm text-muted-foreground">
+            Completed public workouts from people you follow.
+          </p>
+        </div>
+        <Button asChild variant="outline">
+          <Link href="/workouts/new">Start Workout</Link>
+        </Button>
+      </div>
+      <CommunityTabs active="feed" />
+      <Suspense fallback={<FeedItemsLoading />}>
+        <FeedItems userId={session.user.id} />
+      </Suspense>
     </main>
   );
 }

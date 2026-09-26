@@ -8,6 +8,7 @@ import type { MapTheme } from "@/components/ParksMap";
 import { getInitialLightPreset } from "@/lib/map-light-preset";
 import { GuestParksOnboarding } from "@/components/parks/GuestParksOnboarding";
 import { UserMenu } from "@/components/UserMenu";
+import { useAppShellUser } from "@/components/navigation/AppShellContext";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -36,11 +37,17 @@ type HomePageProps = {
   user: {
     name?: string | null;
     email?: string | null;
-  } | null;
+  } | null | undefined;
   inAppShell?: boolean;
 };
 
-export default function HomePage({ user, inAppShell = false }: HomePageProps) {
+export default function HomePage({
+  user: userOverride,
+  inAppShell: inAppShellOverride,
+}: HomePageProps) {
+  const shellUser = useAppShellUser();
+  const user = userOverride === undefined ? shellUser : userOverride;
+  const inAppShell = inAppShellOverride ?? Boolean(shellUser);
   const [parks, setParks] = useState<ParkSummary[]>([]);
   const [lightPreset, setLightPreset] = useState(getInitialLightPreset);
   const [theme, setTheme] = useState<MapTheme>("default");
