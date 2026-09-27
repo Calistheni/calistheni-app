@@ -1,15 +1,15 @@
 "use client";
 
 import { assetUrl } from "@native/lib/api";
-import { usePrimarySnapshot } from "@native/lib/primary-data";
+import { requirePrimarySnapshot, usePrimarySnapshot } from "@native/lib/primary-data";
 import { useNativeAuth } from "./NativeAuthProvider";
 
 export function NativeProfileSurface({ active }: { active: boolean }) {
   const { state, logout } = useNativeAuth();
   const userId = state.status === "authenticated" ? state.bootstrap.user.id : "";
   const query = usePrimarySnapshot(userId, "profile", active);
-  if (state.status !== "authenticated" || !query.data) return null;
-  const data = query.data;
+  if (state.status !== "authenticated") return null;
+  const data = requirePrimarySnapshot("profile", query.data);
   const bodyweight = data.body.bodyweightKg === null
     ? "Not recorded"
     : data.body.measurementSystem === "IMPERIAL"

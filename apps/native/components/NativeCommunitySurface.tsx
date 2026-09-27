@@ -1,14 +1,14 @@
 "use client";
 
-import { usePrimarySnapshot } from "@native/lib/primary-data";
+import { requirePrimarySnapshot, usePrimarySnapshot } from "@native/lib/primary-data";
 import { useNativeAuth } from "./NativeAuthProvider";
 
 export function NativeCommunitySurface({ active }: { active: boolean }) {
   const { state } = useNativeAuth();
   const userId = state.status === "authenticated" ? state.bootstrap.user.id : "";
   const query = usePrimarySnapshot(userId, "community", active);
-  if (state.status !== "authenticated" || !query.data) return null;
-  const data = query.data;
+  if (state.status !== "authenticated") return null;
+  const data = requirePrimarySnapshot("community", query.data);
 
   return (
     <div className="native-primary-data-screen">

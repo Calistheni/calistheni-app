@@ -19,56 +19,43 @@ import { NativeParksSurface } from "./NativeParksSurface";
 import { NativeProfileSurface } from "./NativeProfileSurface";
 import { useNativeAuth } from "./NativeAuthProvider";
 
-const surfaceCopy: Record<
-  NativePrimaryHref,
-  { eyebrow: string; title: string; description: string }
-> = {
-  "/home": {
-    eyebrow: "Local application shell",
-    title: "Bundled native Home",
-    description: "This Home surface is rendered from files inside the iOS application.",
-  },
-  "/nutrition": {
-    eyebrow: "Local application shell",
-    title: "Bundled native Nutrition",
-    description: "Nutrition exists locally before any future data request begins.",
-  },
-  "/parks": {
-    eyebrow: "Local application shell",
-    title: "Bundled native Parks",
-    description: "The Parks shell does not wait for Mapbox or a remote server.",
-  },
-  "/feed": {
-    eyebrow: "Local application shell",
-    title: "Bundled native Community",
-    description: "The Community surface is available without a feed response.",
-  },
-  "/rewards": {
-    eyebrow: "Local application shell",
-    title: "Bundled native Rewards",
-    description: "The Rewards structure is part of the local application bundle.",
-  },
-  "/profile": {
-    eyebrow: "Your account",
-    title: "Profile",
-    description: "Your profile is part of the local application bundle.",
-  },
-};
+function NativePersistentSurface({ href, active }: { href: NativePrimaryHref; active: boolean }) {
+  if (href === "/home") return <NativeHomeSurface active={active} />;
+  if (href === "/nutrition") return <NativeNutritionSurface active={active} />;
+  if (href === "/parks") return <NativeParksSurface active={active} />;
+  if (href === "/feed") return <NativeCommunitySurface active={active} />;
+  if (href === "/rewards") return <NativeRewardsSurface active={active} />;
+  return <NativeProfileSurface active={active} />;
+}
 
 export function NativePrimaryTabHost() {
   const { state } = useNativeAuth();
   const pathname = usePathname();
   const generationRef = useRef(0);
-  const pointerIntentRef = useRef<NativePrimaryHref | null>(null);
+  const intentRef = useRef<NativeNavigationIntent | null>(null);
   const [intent, setIntent] = useState<NativeNavigationIntent | null>(null);
   const committedHref = getNativePrimaryHref(pathname);
   const activeHref = intent?.href ?? committedHref;
 
   function beginIntent(href: NativePrimaryHref) {
-    if (intent?.href === href) return;
+    if (intentRef.current?.href === href) return;
     const next = beginNativeNavigationIntent(generationRef.current, href);
     generationRef.current = next.generation;
+    intentRef.current = next;
     setIntent(next);
+  }
+
+  function activateDestination(
+    event: React.MouseEvent<HTMLAnchorElement>,
+    href: NativePrimaryHref,
+    active: boolean
+  ) {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (active) {
+      event.preventDefault();
+      return;
+    }
+    beginIntent(href);
   }
 
   useEffect(() => {
@@ -76,7 +63,7 @@ export function NativePrimaryTabHost() {
     const settledGeneration = intent.generation;
     const frame = window.requestAnimationFrame(() => {
       setIntent((current) =>
-        current?.generation === settledGeneration ? null : current
+        current?.generation === settledGeneration ? (intentRef.current = null) : current
       );
     });
     return () => window.cancelAnimationFrame(frame);
@@ -85,7 +72,7 @@ export function NativePrimaryTabHost() {
   useEffect(() => {
     const handleHistoryTraversal = () => {
       generationRef.current += 1;
-      pointerIntentRef.current = null;
+      intentRef.current = null;
       setIntent(null);
     };
 
@@ -96,9 +83,8 @@ export function NativePrimaryTabHost() {
   return (
     <>
       <main className="native-surface-viewport" data-native-primary-tab-host>
-        {nativePersistentDestinations.map(({ href, label }) => {
+        {nativePersistentDestinations.map(({ href }) => {
           const active = activeHref === href;
-          const copy = surfaceCopy[href];
           return (
             <section
               key={href}
@@ -107,18 +93,7 @@ export function NativePrimaryTabHost() {
               hidden={!active}
               aria-hidden={!active || undefined}
             >
-              {href === "/home" ? <NativeHomeSurface active={active} /> : href === "/nutrition" ? <NativeNutritionSurface active={active} /> : href === "/parks" ? <NativeParksSurface active={active} /> : href === "/feed" ? <NativeCommunitySurface active={active} /> : href === "/rewards" ? <NativeRewardsSurface active={active} /> : href === "/profile" ? <NativeProfileSurface active={active} /> : <div className="native-surface-card">
-                <p className="native-eyebrow">{copy.eyebrow}</p>
-                <h1>{copy.title}</h1>
-                <p className="native-description">{copy.description}</p>
-                <div className="native-proof" role="status">
-                  <span aria-hidden="true" />
-                  <div>
-                    <strong>{label} is local</strong>
-                    <p>No authentication, API, RSC network response, or loading UI is required.</p>
-                  </div>
-                </div>
-              </div>}
+              <NativePersistentSurface href={href} active={active} />
             </section>
           );
         })}
@@ -130,23 +105,7 @@ export function NativePrimaryTabHost() {
           scroll={false}
           className="native-profile-link"
           aria-label="Open profile"
-          onPointerDown={(event) => {
-            if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-            pointerIntentRef.current = "/profile";
-            beginIntent("/profile");
-          }}
-          onPointerCancel={() => {
-            if (pointerIntentRef.current !== "/profile") return;
-            generationRef.current += 1;
-            pointerIntentRef.current = null;
-            setIntent(null);
-          }}
-          onClick={(event) => {
-            if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-            const beganOnPointerDown = pointerIntentRef.current === "/profile";
-            pointerIntentRef.current = null;
-            if (!beganOnPointerDown) beginIntent("/profile");
-          }}
+          onClick={(event) => activateDestination(event, "/profile", false)}
         >
           {state.bootstrap.user.image ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -166,45 +125,7 @@ export function NativePrimaryTabHost() {
               aria-current={active ? "page" : undefined}
               className="native-tab"
               data-active={active || undefined}
-              onPointerDown={(event) => {
-                if (
-                  active ||
-                  event.button !== 0 ||
-                  event.metaKey ||
-                  event.ctrlKey ||
-                  event.shiftKey ||
-                  event.altKey
-                ) {
-                  return;
-                }
-                pointerIntentRef.current = href;
-                beginIntent(href);
-              }}
-              onPointerCancel={() => {
-                if (pointerIntentRef.current !== href) return;
-                generationRef.current += 1;
-                pointerIntentRef.current = null;
-                setIntent(null);
-              }}
-              onClick={(event) => {
-                if (
-                  event.button !== 0 ||
-                  event.metaKey ||
-                  event.ctrlKey ||
-                  event.shiftKey ||
-                  event.altKey
-                ) {
-                  return;
-                }
-
-                const beganOnPointerDown = pointerIntentRef.current === href;
-                pointerIntentRef.current = null;
-                if (active && !beganOnPointerDown) {
-                  event.preventDefault();
-                  return;
-                }
-                if (!beganOnPointerDown) beginIntent(href);
-              }}
+              onClick={(event) => activateDestination(event, href, active)}
             >
               <span className="native-tab-symbol" aria-hidden="true">{symbol}</span>
               <span>{label}</span>

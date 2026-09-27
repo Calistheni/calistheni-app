@@ -30,6 +30,7 @@ export async function verifyNativeOutput(outputDirectory = defaultOutput) {
   const missing = [];
   const expectedFiles = [
     path.join(outputDirectory, "index.html"),
+    path.join(outputDirectory, "native-runtime.json"),
     ...requiredRoutes.map((route) =>
       path.join(outputDirectory, route, "index.html")
     ),
@@ -54,13 +55,22 @@ export async function verifyNativeOutput(outputDirectory = defaultOutput) {
       path.join(outputDirectory, "home/index.html"),
       "utf8"
     );
-    if (!home.includes('data-native-bundled-shell="true"') || !home.includes("Local Calistheni")) {
+    if (!home.includes('data-native-bundled-shell="true"') || !home.includes('data-native-runtime="bundled"') || !home.includes("Local Calistheni")) {
       missing.push("Home export does not contain the bundled-native application shell");
+    }
+    const manifest = JSON.parse(await readFile(path.join(outputDirectory, "native-runtime.json"), "utf8"));
+    if (manifest.runtime !== "bundled-native" || typeof manifest.buildId !== "string" || typeof manifest.builtAt !== "string") {
+      missing.push("native-runtime.json is not a valid bundled build marker");
     }
     for (const file of await filesBelow(outputDirectory)) {
       if (!/\.(?:html|js|txt)$/.test(file)) continue;
-      if (forbiddenSecretNames.test(await readFile(file, "utf8"))) {
+      const source = await readFile(file, "utf8");
+      if (forbiddenSecretNames.test(source)) {
         missing.push(`export references a server secret identifier in ${path.relative(outputDirectory, file)}`);
+        break;
+      }
+      if (/Initial synchronization|Partner rewards are preparing|PageSkeleton/.test(source)) {
+        missing.push(`export contains remote loading UI in ${path.relative(outputDirectory, file)}`);
         break;
       }
     }

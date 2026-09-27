@@ -289,6 +289,27 @@ export function missingPrimaryQueries(
   );
 }
 
+export function assertPrimaryQueriesReady(
+  queryClient: QueryClient,
+  userId: string,
+  nutritionDate = currentNutritionDate()
+) {
+  const missing = missingPrimaryQueries(queryClient, userId, nutritionDate);
+  if (missing.length) {
+    throw new Error(`PRIMARY_READY invariant failed: missing ${missing.join(", ")}.`);
+  }
+}
+
+export function requirePrimarySnapshot<Name extends NativePrimaryQueryName>(
+  name: Name,
+  value: NativePrimaryDataMap[Name] | undefined
+) {
+  if (value === undefined) {
+    throw new Error(`PRIMARY_READY invariant failed inside ${name} surface.`);
+  }
+  return value;
+}
+
 export async function ensurePrimaryQueriesReady(
   queryClient: QueryClient,
   userId: string,
@@ -308,6 +329,7 @@ export async function ensurePrimaryQueriesReady(
       })
     )
   );
+  assertPrimaryQueriesReady(queryClient, userId, nutritionDate);
 }
 
 export async function revalidatePrimaryQueries(

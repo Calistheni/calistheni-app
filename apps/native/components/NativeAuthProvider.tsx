@@ -18,6 +18,7 @@ import {
   ensurePrimaryQueriesReady,
   forgetPrimarySnapshots,
   hydratePrimarySnapshots,
+  missingPrimaryQueries,
   primaryKeys,
   revalidatePrimaryQueries,
 } from "@native/lib/primary-data";
@@ -217,7 +218,18 @@ export function useNativeAuth() {
 
 export function NativeAuthGate({ children }: { children: ReactNode }) {
   const { state, signIn, retry } = useNativeAuth();
-  if (state.status === "authenticated") return children;
+  if (state.status === "authenticated") {
+    const missing = missingPrimaryQueries(getNativeQueryClient(), state.bootstrap.user.id);
+    if (!missing.length) return children;
+    return (
+      <main className="native-auth-gate" data-primary-ready-invariant="failed">
+        <p className="native-eyebrow">Local Calistheni</p>
+        <h1>App data unavailable</h1>
+        <p>Calistheni could not prepare the required data: {missing.join(", ")}.</p>
+        <button onClick={() => void retry()}>Try again</button>
+      </main>
+    );
+  }
   return (
     <main className="native-auth-gate">
       <p className="native-eyebrow">Local Calistheni</p>

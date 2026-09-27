@@ -1,15 +1,15 @@
 "use client";
 
 import { assetUrl } from "@native/lib/api";
-import { usePrimarySnapshot } from "@native/lib/primary-data";
+import { requirePrimarySnapshot, usePrimarySnapshot } from "@native/lib/primary-data";
 import { useNativeAuth } from "./NativeAuthProvider";
 
 export function NativeRewardsSurface({ active }: { active: boolean }) {
   const { state } = useNativeAuth();
   const userId = state.status === "authenticated" ? state.bootstrap.user.id : "";
   const query = usePrimarySnapshot(userId, "rewards", active);
-  if (state.status !== "authenticated" || !query.data) return null;
-  const data = query.data;
+  if (state.status !== "authenticated") return null;
+  const data = requirePrimarySnapshot("rewards", query.data);
   return (
     <div className="native-rewards-screen">
       <header>

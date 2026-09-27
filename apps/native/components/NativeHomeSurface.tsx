@@ -1,6 +1,6 @@
 "use client";
 
-import { usePrimarySnapshot } from "@native/lib/primary-data";
+import { requirePrimarySnapshot, usePrimarySnapshot } from "@native/lib/primary-data";
 import { useNativeAuth } from "./NativeAuthProvider";
 
 function formatDuration(seconds: number) {
@@ -19,8 +19,8 @@ export function NativeHomeSurface({ active }: { active: boolean }) {
   const { state } = useNativeAuth();
   const userId = state.status === "authenticated" ? state.bootstrap.user.id : "";
   const query = usePrimarySnapshot(userId, "home", active);
-  if (state.status !== "authenticated" || !query.data) return null;
-  const data = query.data;
+  if (state.status !== "authenticated") return null;
+  const data = requirePrimarySnapshot("home", query.data);
   const metrics = [
     { label: "Workouts", value: data.week.workouts },
     { label: "Completed sets", value: data.week.completedSets },

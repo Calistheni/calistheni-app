@@ -2,6 +2,7 @@
 
 import {
   currentNutritionDate,
+  requirePrimarySnapshot,
   usePrimarySnapshot,
 } from "@native/lib/primary-data";
 import { useNativeAuth } from "./NativeAuthProvider";
@@ -16,8 +17,8 @@ export function NativeNutritionSurface({ active }: { active: boolean }) {
   const userId = state.status === "authenticated" ? state.bootstrap.user.id : "";
   const date = currentNutritionDate();
   const query = usePrimarySnapshot(userId, "nutrition", active, date);
-  if (state.status !== "authenticated" || !query.data) return null;
-  const data = query.data;
+  if (state.status !== "authenticated") return null;
+  const data = requirePrimarySnapshot("nutrition", query.data);
   const calories = numeric(data.totals.caloriesKcal);
   const protein = numeric(data.totals.proteinGrams);
   const carbohydrate = numeric(data.totals.carbohydrateGrams);

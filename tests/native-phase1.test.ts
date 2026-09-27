@@ -79,12 +79,21 @@ test("native host owns local surfaces without loading or skeleton UI", () => {
   for (const route of ["/home", "/nutrition", "/parks", "/feed", "/rewards", "/profile"]) {
     assert.match(navigation, new RegExp(`href: "${route}"`));
   }
-  for (const surface of ["Home", "Nutrition", "Parks", "Community", "Rewards"]) {
-    assert.match(host, new RegExp(`Bundled native ${surface}`));
+  for (const surface of ["Home", "Nutrition", "Parks", "Community", "Rewards", "Profile"]) {
+    assert.match(host, new RegExp(`Native${surface}Surface`));
   }
   assert.match(host, /intent\?\.href \?\? committedHref/);
   assert.match(host, /window\.addEventListener\("popstate"/);
   assert.doesNotMatch(host, /Skeleton|Suspense|setTimeout|fetch\(/);
+});
+
+test("bundled build, sync, and open scripts verify the exact copied runtime", () => {
+  const packageJson = JSON.parse(read("package.json")) as { scripts: Record<string, string> };
+  assert.match(packageJson.scripts["build:native"], /stamp-native-output/);
+  assert.match(packageJson.scripts["build:native"], /verify-native-output/);
+  assert.match(packageJson.scripts["mobile:sync:ios:bundled"], /verify-bundled-ios/);
+  assert.match(packageJson.scripts["mobile:open:ios:bundled"], /^node scripts\/verify-bundled-ios\.mjs/);
+  assert.match(packageJson.scripts["mobile:ios:bundled"], /build:native[\s\S]*sync:ios:bundled[\s\S]*open:ios:bundled/);
 });
 
 test("native source passes the server-only import and secret environment guard", () => {

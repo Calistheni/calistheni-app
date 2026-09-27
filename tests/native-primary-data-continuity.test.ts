@@ -3,11 +3,13 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import {
+  assertPrimaryQueriesReady,
   ensurePrimaryQueriesReady,
   missingPrimaryQueries,
   nativePrimaryQueryNames,
   primaryQueryKey,
   revalidatePrimaryQueries,
+  requirePrimarySnapshot,
   seedHydratedPrimarySnapshot,
   validatePrimaryData,
   type NativePrimaryDataMap,
@@ -56,7 +58,7 @@ test("tab navigation never resets primary query data", () => {
   const home = read("apps/native/components/NativeHomeSurface.tsx");
   assert.match(host, /<NativeHomeSurface active=\{active\}/);
   assert.doesNotMatch(host + home, /removeQueries|resetQueries|setQueryData\([^,]+,\s*undefined/);
-  assert.match(home, /const data = query\.data/);
+  assert.match(home, /requirePrimarySnapshot\("home", query\.data\)/);
   assert.match(home, /query\.isFetching/);
   assert.doesNotMatch(home, /data\?\.[^\n]+\?\? ["']—["']/);
 });
@@ -124,6 +126,38 @@ test("fresh authenticated startup seeds all six exact screen query keys before f
     assert.deepEqual(client.getQueryData(primaryQueryKey("user-1", name, "2026-09-27")), primaryFixtures[name]);
   }
   assert.deepEqual(missingPrimaryQueries(client, "user-1", "2026-09-27"), []);
+});
+
+test("PRIMARY_READY cannot be asserted without Rewards and Profile", () => {
+  const client = new QueryClient();
+  for (const name of nativePrimaryQueryNames) {
+    if (name === "rewards" || name === "profile") continue;
+    client.setQueryData(primaryQueryKey("user-1", name, "2026-09-27"), primaryFixtures[name]);
+  }
+  assert.throws(
+    () => assertPrimaryQueriesReady(client, "user-1", "2026-09-27"),
+    /missing rewards, profile/
+  );
+  assert.throws(() => requirePrimarySnapshot("rewards", undefined), /PRIMARY_READY invariant/);
+  assert.throws(() => requirePrimarySnapshot("profile", undefined), /PRIMARY_READY invariant/);
+});
+
+test("first-ever Rewards and Profile activation after readiness already has meaningful data", async () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  await ensurePrimaryQueriesReady(client, "user-1", "2026-09-27", fixtureFetcher([]));
+  assertPrimaryQueriesReady(client, "user-1", "2026-09-27");
+  const rewards = requirePrimarySnapshot(
+    "rewards",
+    client.getQueryData(primaryQueryKey("user-1", "rewards", "2026-09-27"))
+  );
+  const profile = requirePrimarySnapshot(
+    "profile",
+    client.getQueryData(primaryQueryKey("user-1", "profile", "2026-09-27"))
+  );
+  assert.equal(rewards.balance, 0);
+  assert.equal(rewards.entitlement.isPro, true);
+  assert.equal(profile.user.name, "Peter");
+  assert.equal(profile.stats.workouts, 0);
 });
 
 test("returning-user snapshots satisfy readiness without a required network response", async () => {
@@ -217,13 +251,17 @@ test("the native QueryClient is one stable application-lifetime instance", () =>
   assert.doesNotMatch(provider, /new QueryClient|key=\{pathname\}|key=\{userId/);
 });
 
-test("Profile has one local optimistic navigation owner and no skeleton route", () => {
+test("one Profile click uses the same local activation owner and always has a surface", () => {
   const host = read("apps/native/components/NativePrimaryTabHost.tsx");
   const profile = read("apps/native/components/NativeProfileSurface.tsx");
-  assert.match(host, /href="\/profile"[\s\S]*onPointerDown=[\s\S]*beginIntent\("\/profile"\)/);
+  assert.match(host, /href="\/profile"[\s\S]*onClick=\{\(event\) => activateDestination\(event, "\/profile", false\)\}/);
   assert.equal((host.match(/href="\/profile"/g) ?? []).length, 1);
+  assert.match(host, /function NativePersistentSurface[\s\S]*return <NativeProfileSurface active=\{active\}/);
+  assert.match(host, /<NativePersistentSurface href=\{href\} active=\{active\}/);
+  assert.doesNotMatch(host, /onPointerDown|onPointerCancel|pointerIntentRef/);
   assert.doesNotMatch(host + profile, /router\.push|router\.replace|Skeleton|Suspense/);
   assert.match(profile, /usePrimarySnapshot\(userId, "profile", active\)/);
+  assert.match(profile, /requirePrimarySnapshot\("profile", query\.data\)/);
 });
 
 test("rapid Home to Profile to Nutrition keeps the latest native intent", async () => {
@@ -242,6 +280,12 @@ test("known zero values remain real zeroes and no primary statistic uses a dash 
   }
   assert.equal(primaryFixtures.home.week.workouts, 0);
   assert.equal(primaryFixtures.rewards.balance, 0);
+});
+
+test("bundled Rewards never contains the remote standby screenshot copy", () => {
+  const rewards = read("apps/native/components/NativeRewardsSurface.tsx");
+  assert.doesNotMatch(rewards, /Initial synchronization|Partner rewards are preparing/);
+  assert.match(rewards, /data\.balance\.toLocaleString\(\)/);
 });
 
 test("logout and confirmed unauthorized state clear user-scoped primary snapshots", () => {
