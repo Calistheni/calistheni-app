@@ -21,6 +21,8 @@ import {
   desktopPrimaryNavigation,
   isFullBleedAppRoute,
   mobilePrimaryNavigation,
+  getPrimaryTabCookieValue,
+  PRIMARY_TAB_COOKIE_NAME,
   primaryTabNavigation,
   type PrimaryNavigationKey,
   usesSignedInAppShell,
@@ -63,7 +65,18 @@ export function AppShell({ children, user }: AppShellProps) {
   const navigationStart = useRef<{ href: string; startedAt: number } | null>(
     null
   );
+  const pendingOriginPathname = useRef<string | null>(null);
   const [pendingHref, setPendingHref] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isSignedIn) return;
+    const primaryRoute = getPrimaryTabCookieValue(pathname);
+    if (!primaryRoute) return;
+
+    document.cookie = `${PRIMARY_TAB_COOKIE_NAME}=${primaryRoute}; Path=/; Max-Age=31536000; SameSite=Lax${
+      document.documentURI.startsWith("https:") ? "; Secure" : ""
+    }`;
+  }, [isSignedIn, pathname]);
 
   useEffect(() => {
     if (!isSignedIn || !isAppShellRoute || prefetchedPrimaryTabs.current) {
@@ -129,7 +142,15 @@ export function AppShell({ children, user }: AppShellProps) {
       return () => window.cancelAnimationFrame(frame);
     }
 
-    const timeout = window.setTimeout(() => setPendingHref(null), 8_000);
+    if (
+      pendingOriginPathname.current !== null &&
+      pathname !== pendingOriginPathname.current
+    ) {
+      setPendingHref(null);
+      return;
+    }
+
+    const timeout = window.setTimeout(() => setPendingHref(null), 2_000);
     return () => window.clearTimeout(timeout);
   }, [pathname, pendingHref]);
 
@@ -167,6 +188,7 @@ export function AppShell({ children, user }: AppShellProps) {
       isFullBleedAppRoute(pathname)
     );
     if (action === "navigate") {
+      pendingOriginPathname.current = pathname;
       setPendingHref(href);
       if (
         process.env.NODE_ENV !== "production" &&
@@ -197,6 +219,7 @@ export function AppShell({ children, user }: AppShellProps) {
       return;
     }
 
+    pendingOriginPathname.current = pathname;
     setPendingHref(href);
     router.prefetch(href);
     if (

@@ -72,26 +72,26 @@ test("parallel primary slots retain visited tabs and reveal intent immediately",
   assert.match(context, /PrimaryTabNavigationTargetProvider/);
 });
 
-test("retained primary tabs refresh stale server data only after becoming visible", async () => {
-  const [revalidator, home, feed, rewards] = await Promise.all([
+test("idle and lifecycle refreshes cannot choose a primary route", async () => {
+  const [shell, nativeShell, entry, navigation] = await Promise.all([
     readFile(
-      new URL(
-        "../components/primary-tabs/PrimaryTabRevalidator.tsx",
-        import.meta.url
-      ),
+      new URL("../components/navigation/AppShell.tsx", import.meta.url),
       "utf8"
     ),
-    readFile(new URL("../app/(primary)/@home/home/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/(primary)/@community/feed/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/(primary)/@rewards/rewards/page.tsx", import.meta.url), "utf8"),
+    readFile(
+      new URL("../components/native/NativeShell.tsx", import.meta.url),
+      "utf8"
+    ),
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/navigation.ts", import.meta.url), "utf8"),
   ]);
 
-  assert.match(revalidator, /staleAfterMs = 60_000/);
-  assert.match(revalidator, /requestIdleCallback/);
-  assert.match(revalidator, /startTransition\(\(\) => router\.refresh\(\)\)/);
-  for (const route of [home, feed, rewards]) {
-    assert.match(route, /<PrimaryTabRevalidator \/>/);
-  }
+  assert.match(shell, /getPrimaryTabCookieValue\(pathname\)/);
+  assert.match(entry, /getPrimaryTabHrefFromCookie/);
+  assert.match(navigation, /PRIMARY_TAB_COOKIE_NAME/);
+  assert.doesNotMatch(nativeShell, /router\.(push|replace|refresh)/);
+  assert.doesNotMatch(shell, /router\.(push|replace)\("\/home"\)/);
+  assert.doesNotMatch(shell, /setTimeout\([^)]*router\.refresh/);
 });
 
 test("primary navigation warms all five tab routes exactly once after paint", async () => {

@@ -22,7 +22,6 @@ import { HomeWeeklyReportAnnouncement } from "@/components/home/HomeWeeklyReport
 import { HomeSupplementQuickActions } from "@/components/home/HomeSupplementQuickActions";
 import { TrainingActivityCalendar } from "@/components/home/TrainingActivityCalendar";
 import { WeeklyGoalEditor } from "@/components/home/WeeklyGoalEditor";
-import { PrimaryTabRevalidator } from "@/components/primary-tabs/PrimaryTabRevalidator";
 import { LocalWorkoutDateTime } from "@/components/workouts/LocalWorkoutDateTime";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -321,7 +320,6 @@ export default async function HomePage() {
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8 lg:py-16">
-      <PrimaryTabRevalidator />
       <header className="max-w-4xl pb-16 sm:pb-20 lg:pb-24">
         <p className="text-xs font-semibold tracking-[0.18em] text-muted-foreground uppercase">
           {formatHeroDate(now)}

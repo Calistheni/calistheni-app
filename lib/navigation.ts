@@ -22,12 +22,27 @@ export const primaryTabNavigation = [
 
 export type PrimaryTabHref = (typeof primaryTabNavigation)[number]["href"];
 
+export const PRIMARY_TAB_COOKIE_NAME = "calistheni-primary-route";
+
 export function getPrimaryTabHref(pathname: string): PrimaryTabHref | null {
   const tab = primaryTabNavigation.find(
     ({ href }) => pathname === href || pathname.startsWith(`${href}/`)
   );
 
   return tab?.href ?? null;
+}
+
+export function getPrimaryTabCookieValue(pathname: string) {
+  return getPrimaryTabHref(pathname)?.slice(1) ?? null;
+}
+
+export function getPrimaryTabHrefFromCookie(
+  value: string | undefined
+): PrimaryTabHref | null {
+  return (
+    primaryTabNavigation.find(({ href }) => href.slice(1) === value)?.href ??
+    null
+  );
 }
 
 export type PrimaryNavigationKey =

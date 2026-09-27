@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { Capacitor } from "@capacitor/core";
 import { Keyboard, KeyboardResize, KeyboardStyle } from "@capacitor/keyboard";
 import { App } from "@capacitor/app";
@@ -63,7 +62,6 @@ function logNativeSplash(event: string, detail?: unknown) {
 /** Native-only presentation and keyboard behavior shared by every route. */
 export function NativeShell({ userId }: { userId: string | null }) {
   const { resolvedTheme } = useTheme();
-  const router = useRouter();
   useNativeKeyboardVisibility();
 
   useEffect(() => {
@@ -77,7 +75,9 @@ export function NativeShell({ userId }: { userId: string | null }) {
     let appListener: { remove: () => Promise<void> } | undefined;
     const cleanup = initializeAppleTransactionLifecycle({
       userKey: userId,
-      onEntitlementChanged: () => router.refresh(),
+      onEntitlementChanged: () => {
+        window.dispatchEvent(new Event("calistheni:entitlements-changed"));
+      },
     });
     void App.addListener("appStateChange", ({ isActive }) => {
       if (!isActive || Date.now() - lastForegroundSync < 10_000) return;
@@ -101,7 +101,7 @@ export function NativeShell({ userId }: { userId: string | null }) {
       cleanup();
       void appListener?.remove();
     };
-  }, [router, userId]);
+  }, [userId]);
 
   useEffect(() => {
     logNativeSplash("NativeShell mounted");
