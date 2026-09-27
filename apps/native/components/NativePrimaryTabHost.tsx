@@ -11,6 +11,10 @@ import {
   type NativePrimaryHref,
 } from "@native/lib/navigation";
 import { NativeRewardsSurface } from "./NativeRewardsSurface";
+import { NativeHomeSurface } from "./NativeHomeSurface";
+import { NativeNutritionSurface } from "./NativeNutritionSurface";
+import { NativeCommunitySurface } from "./NativeCommunitySurface";
+import { NativeParksSurface } from "./NativeParksSurface";
 import { useNativeAuth } from "./NativeAuthProvider";
 
 const surfaceCopy: Record<
@@ -96,7 +100,7 @@ export function NativePrimaryTabHost() {
               hidden={!active}
               aria-hidden={!active || undefined}
             >
-              {href === "/rewards" ? <NativeRewardsSurface active={active} /> : <div className="native-surface-card">
+              {href === "/home" ? <NativeHomeSurface active={active} /> : href === "/nutrition" ? <NativeNutritionSurface active={active} /> : href === "/parks" ? <NativeParksSurface active={active} /> : href === "/feed" ? <NativeCommunitySurface active={active} /> : href === "/rewards" ? <NativeRewardsSurface active={active} /> : <div className="native-surface-card">
                 <p className="native-eyebrow">{copy.eyebrow}</p>
                 <h1>{copy.title}</h1>
                 <p className="native-description">{copy.description}</p>

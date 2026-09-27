@@ -79,6 +79,10 @@ test("native CORS accepts only the exact Capacitor origin and never wildcard", (
     "app/api/native/v1/auth/exchange/route.ts",
     "app/api/native/v1/bootstrap/route.ts",
     "app/api/native/v1/logout/route.ts",
+    "app/api/native/v1/home/route.ts",
+    "app/api/native/v1/nutrition/route.ts",
+    "app/api/native/v1/community/route.ts",
+    "app/api/native/v1/parks/route.ts",
     "app/api/native/v1/rewards/route.ts",
   ]) {
     assert.match(read(route), /rejectDisallowedNativeOrigin\(request\)/);
@@ -136,8 +140,8 @@ test("local Rewards structure and stale-while-revalidate cache are data-independ
   assert.match(surface, /Current balance/);
   assert.match(surface, /Available rewards/);
   assert.match(surface, /useQuery/);
-  assert.match(surface, /writeUserCache\(userId, "rewards", value\)/);
-  assert.match(provider, /queryClient\.setQueryData\(\["native", "rewards", value\.user\.id\], rewards\)/);
+  assert.match(surface, /fetchPrimarySnapshot\(userId, "rewards", undefined, signal\)/);
+  assert.match(provider, /hydratePrimarySnapshots\(queryClient, value\.user\.id\)/);
   assert.doesNotMatch(surface, /Skeleton|Suspense/);
 });
 

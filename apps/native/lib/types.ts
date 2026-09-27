@@ -13,3 +13,48 @@ export type NativeRewards = {
   entitlement: { isPro: boolean; canEarnRewardPoints: boolean };
   updatedAt: string;
 };
+
+export type NativeHome = {
+  greetingName: string;
+  asOf: string;
+  streakDays: number;
+  week: {
+    startsAt: string;
+    workouts: number;
+    completedSets: number;
+    totalVolumeKg: number | null;
+    activeDays: number;
+    totalReps: number;
+    durationSeconds: number;
+    personalRecords: number;
+    workoutGoal: number;
+  };
+  recentWorkout: { id: number; title: string; completedAt: string | null } | null;
+};
+
+export type NativeNutrition = {
+  date: string;
+  totals: Record<string, number | null | undefined>;
+  goal: Record<string, number | string> | null;
+  entryCount: number;
+  updatedAt: string;
+};
+
+export type NativeCommunity = {
+  items: Array<{
+    id: number;
+    title: string;
+    completedAt: string | null;
+    exerciseCount: number;
+    setCount: number;
+    totalVolume: number | null;
+    athlete: { id: string; name: string | null; image: string | null };
+  }>;
+  updatedAt: string;
+};
+
+export type NativeParks = {
+  publicParkCount: number;
+  version: string | null;
+  updatedAt: string;
+};

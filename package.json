@@ -12,7 +12,7 @@
     "build:native": "node scripts/verify-native-source.mjs && next build apps/native",
     "start": "next start",
     "lint": "eslint",
-    "lint:native": "eslint apps/native scripts/verify-native-source.mjs scripts/verify-native-output.mjs lib/capacitor-runtime-mode.ts lib/auth/native-session-core.ts lib/native-api-cors-core.ts tests/native-phase1.test.ts tests/native-bundled-auth.test.ts",
+    "lint:native": "eslint apps/native scripts/verify-native-source.mjs scripts/verify-native-output.mjs lib/capacitor-runtime-mode.ts lib/auth/native-session-core.ts lib/native-api-cors-core.ts tests/native-phase1.test.ts tests/native-bundled-auth.test.ts tests/native-primary-data-continuity.test.ts",
     "test": "node --test lib/*.test.mjs && tsx --test tests/*.test.ts",
     "db:migrate:deploy": "prisma migrate deploy",
     "mobile:assets": "capacitor-assets generate --ios --android --assetPath resources --iconBackgroundColor '#2563eb' --iconBackgroundColorDark '#09090b' --splashBackgroundColor '#09090b' --splashBackgroundColorDark '#09090b' --logoSplashScale 0.24",

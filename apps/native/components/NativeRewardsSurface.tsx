@@ -1,23 +1,21 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { apiFetch, assetUrl } from "@native/lib/api";
-import { writeUserCache } from "@native/lib/cache";
-import type { NativeRewards } from "@native/lib/types";
+import { assetUrl } from "@native/lib/api";
+import {
+  fetchPrimarySnapshot,
+  primaryQueryKey,
+} from "@native/lib/primary-data";
 import { useNativeAuth } from "./NativeAuthProvider";
 
 export function NativeRewardsSurface({ active }: { active: boolean }) {
   const { state } = useNativeAuth();
   const userId = state.status === "authenticated" ? state.bootstrap.user.id : "";
   const query = useQuery({
-    queryKey: ["native", "rewards", userId],
+    queryKey: primaryQueryKey(userId, "rewards"),
     enabled: active && Boolean(userId),
     staleTime: 60_000,
-    queryFn: async () => {
-      const value = await apiFetch<NativeRewards>("/api/native/v1/rewards");
-      await writeUserCache(userId, "rewards", value);
-      return value;
-    },
+    queryFn: ({ signal }) => fetchPrimarySnapshot(userId, "rewards", undefined, signal),
   });
   if (state.status !== "authenticated") return null;
   const data = query.data;

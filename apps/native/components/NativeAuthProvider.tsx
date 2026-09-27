@@ -15,11 +15,16 @@ import {
 import { apiFetch, NativeApiError } from "@native/lib/api";
 import { clearUserCache, readUserCache, writeUserCache } from "@native/lib/cache";
 import {
+  hydratePrimarySnapshots,
+  warmPrimaryQueries,
+} from "@native/lib/primary-data";
+import { getNativePrimaryHref } from "@native/lib/navigation";
+import {
   clearNativeSessionToken,
   getNativeSessionToken,
   setNativeSessionToken,
 } from "@native/lib/secure-session";
-import type { NativeBootstrap, NativeRewards } from "@native/lib/types";
+import type { NativeBootstrap } from "@native/lib/types";
 
 type AuthState =
   | { status: "initializing" }
@@ -51,23 +56,30 @@ function nativeCode(value: string) {
 export function NativeAuthProvider({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient({ defaultOptions: { queries: { staleTime: 60_000, retry: 1, refetchOnWindowFocus: false } } }));
   const [state, setState] = useState<AuthState>({ status: "initializing" });
+  const authenticatedUserId = state.status === "authenticated" ? state.bootstrap.user.id : null;
 
   const bootstrap = useCallback(async () => {
     const token = await getNativeSessionToken();
     if (!token) { setState({ status: "signed-out" }); return; }
     const cached = await readUserCache<NativeBootstrap>("current", bootstrapCacheKey);
-    if (cached) setState({ status: "authenticated", bootstrap: cached, offline: true });
+    if (cached) {
+      await hydratePrimarySnapshots(queryClient, cached.user.id);
+      setState({ status: "authenticated", bootstrap: cached, offline: true });
+    }
     try {
       const value = await apiFetch<NativeBootstrap>("/api/native/v1/bootstrap");
       const previousId = cached?.user.id;
-      if (previousId && previousId !== value.user.id) await clearUserCache(previousId);
+      if (previousId && previousId !== value.user.id) {
+        await clearUserCache(previousId);
+        queryClient.removeQueries({ queryKey: ["native", "primary", previousId] });
+      }
       await writeUserCache("current", bootstrapCacheKey, value);
-      const rewards = await readUserCache<NativeRewards>(value.user.id, "rewards");
-      if (rewards) queryClient.setQueryData(["native", "rewards", value.user.id], rewards);
+      await hydratePrimarySnapshots(queryClient, value.user.id);
       setState({ status: "authenticated", bootstrap: value, offline: false });
     } catch (error) {
       if (error instanceof NativeApiError && error.status === 401) {
         await clearNativeSessionToken();
+        if (cached) await queryClient.cancelQueries({ queryKey: ["native", "primary", cached.user.id] });
         if (cached) await clearUserCache(cached.user.id);
         await clearUserCache("current");
         queryClient.clear();
@@ -102,15 +114,17 @@ export function NativeAuthProvider({ children }: { children: ReactNode }) {
   }, [bootstrap]);
   useEffect(() => {
     const unauthorized = () => {
-      void clearNativeSessionToken().finally(() => {
+      void clearNativeSessionToken().finally(async () => {
         const userId = state.status === "authenticated" ? state.bootstrap.user.id : null;
-        void Promise.all([
+        if (userId) {
+          await queryClient.cancelQueries({ queryKey: ["native", "primary", userId] });
+        }
+        await Promise.all([
           clearUserCache("current"),
           ...(userId ? [clearUserCache(userId)] : []),
-        ]).finally(() => {
-          queryClient.clear();
-          setState({ status: "signed-out", message: "Your session expired. Please sign in again." });
-        });
+        ]);
+        queryClient.clear();
+        setState({ status: "signed-out", message: "Your session expired. Please sign in again." });
       });
     };
     window.addEventListener("calistheni:native-session-unauthorized", unauthorized);
@@ -123,6 +137,32 @@ export function NativeAuthProvider({ children }: { children: ReactNode }) {
     void App.addListener("appUrlOpen", ({ url }) => { if (active) void exchange(url); }).then((handle) => { listener = handle; });
     return () => { active = false; void listener?.remove(); };
   }, [exchange]);
+  useEffect(() => {
+    if (!authenticatedUserId) return;
+    const run = () => {
+      void warmPrimaryQueries(
+        queryClient,
+        authenticatedUserId,
+        getNativePrimaryHref(window.location.pathname)
+      );
+    };
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+    if (idleWindow.requestIdleCallback) {
+      const idleId = idleWindow.requestIdleCallback(run, { timeout: 4_000 });
+      return () => {
+        idleWindow.cancelIdleCallback?.(idleId);
+        void queryClient.cancelQueries({ queryKey: ["native", "primary", authenticatedUserId] });
+      };
+    }
+    const timeoutId = setTimeout(run, 500);
+    return () => {
+      clearTimeout(timeoutId);
+      void queryClient.cancelQueries({ queryKey: ["native", "primary", authenticatedUserId] });
+    };
+  }, [authenticatedUserId, queryClient]);
 
   const value = useMemo<NativeAuthContextValue>(() => ({
     state,
@@ -138,6 +178,7 @@ export function NativeAuthProvider({ children }: { children: ReactNode }) {
       const userId = state.status === "authenticated" ? state.bootstrap.user.id : null;
       try { await apiFetch("/api/native/v1/logout", { method: "POST" }); } catch { /* Local logout always wins. */ }
       await clearNativeSessionToken();
+      if (userId) await queryClient.cancelQueries({ queryKey: ["native", "primary", userId] });
       if (userId) await clearUserCache(userId);
       await clearUserCache("current");
       queryClient.clear();
