@@ -93,7 +93,7 @@ test("scroll-to-top uses a real internal owner and otherwise the window", () => 
   assert.deepEqual(windowCalls, [{ top: 0, left: 0, behavior: "smooth" }]);
 });
 
-test("mobile and desktop navigation share the same same-route click handler", () => {
+test("mobile, desktop, and logo navigation share the same intent owner", () => {
   const shell = readFileSync(
     new URL("../components/navigation/AppShell.tsx", import.meta.url),
     "utf8"
@@ -101,6 +101,11 @@ test("mobile and desktop navigation share the same same-route click handler", ()
   assert.equal(
     shell.match(/handlePrimaryNavigationClick\(event, item\.href\)/g)?.length,
     2
+  );
+  assert.match(shell, /handlePrimaryNavigationClick\(event, "\/home"\)/);
+  assert.equal(
+    shell.match(/handlePrimaryNavigationPointerCancel\(/g)?.length,
+    3
   );
   assert.match(shell, /event\.preventDefault\(\)/);
   assert.doesNotMatch(shell, /window\.location|location\.reload/);

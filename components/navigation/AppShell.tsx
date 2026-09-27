@@ -31,6 +31,11 @@ import {
   getPrimaryNavigationTapAction,
   scrollPrimaryRouteToTop,
 } from "@/lib/navigation-scroll";
+import {
+  beginPrimaryNavigationIntent,
+  settlePrimaryNavigationIntent,
+  type PrimaryNavigationIntent,
+} from "@/lib/primary-navigation-intent";
 import { cn } from "@/lib/utils";
 import { AccountMenu } from "./AccountMenu";
 import {
@@ -65,8 +70,24 @@ export function AppShell({ children, user }: AppShellProps) {
   const navigationStart = useRef<{ href: string; startedAt: number } | null>(
     null
   );
-  const pendingOriginPathname = useRef<string | null>(null);
-  const [pendingHref, setPendingHref] = useState<string | null>(null);
+  const navigationGeneration = useRef(0);
+  const navigationIntentRef = useRef<PrimaryNavigationIntent | null>(null);
+  const pointerIntentHref = useRef<string | null>(null);
+  const [navigationIntent, setNavigationIntent] =
+    useState<PrimaryNavigationIntent | null>(null);
+  const pendingHref = navigationIntent?.href ?? null;
+
+  const beginNavigationIntent = (href: string) => {
+    if (navigationIntentRef.current?.href === href) return;
+
+    const intent = beginPrimaryNavigationIntent(
+      navigationGeneration.current,
+      href
+    );
+    navigationGeneration.current = intent.generation;
+    navigationIntentRef.current = intent;
+    setNavigationIntent(intent);
+  };
 
   useEffect(() => {
     if (!isSignedIn) return;
@@ -133,26 +154,42 @@ export function AppShell({ children, user }: AppShellProps) {
   }, [pendingHref]);
 
   useEffect(() => {
-    if (!pendingHref) return;
+    if (!navigationIntent) return;
     if (
       getActivePrimaryNavigation(pathname) ===
-      getActivePrimaryNavigation(pendingHref)
+      getActivePrimaryNavigation(navigationIntent.href)
     ) {
-      const frame = window.requestAnimationFrame(() => setPendingHref(null));
+      const settledGeneration = navigationIntent.generation;
+      const frame = window.requestAnimationFrame(() => {
+        setNavigationIntent((current) => {
+          const next = settlePrimaryNavigationIntent(
+            current,
+            settledGeneration,
+            pathname
+          );
+          navigationIntentRef.current = next;
+          return next;
+        });
+      });
       return () => window.cancelAnimationFrame(frame);
     }
+  }, [navigationIntent, pathname]);
 
-    if (
-      pendingOriginPathname.current !== null &&
-      pathname !== pendingOriginPathname.current
-    ) {
-      setPendingHref(null);
-      return;
-    }
+  useEffect(() => {
+    const cancelPendingIntentForHistoryTraversal = () => {
+      navigationGeneration.current += 1;
+      navigationIntentRef.current = null;
+      pointerIntentHref.current = null;
+      setNavigationIntent(null);
+    };
 
-    const timeout = window.setTimeout(() => setPendingHref(null), 2_000);
-    return () => window.clearTimeout(timeout);
-  }, [pathname, pendingHref]);
+    window.addEventListener("popstate", cancelPendingIntentForHistoryTraversal);
+    return () =>
+      window.removeEventListener(
+        "popstate",
+        cancelPendingIntentForHistoryTraversal
+      );
+  }, []);
 
   if (!user || !isAppShellRoute) {
     return (
@@ -182,14 +219,21 @@ export function AppShell({ children, user }: AppShellProps) {
       return;
     }
 
+    const beganOnPointerDown = pointerIntentHref.current === href;
+    pointerIntentHref.current = null;
+
+    if (navigationIntentRef.current?.href === href && !beganOnPointerDown) {
+      event.preventDefault();
+      return;
+    }
+
     const action = getPrimaryNavigationTapAction(
       pathname,
       href,
       isFullBleedAppRoute(pathname)
     );
     if (action === "navigate") {
-      pendingOriginPathname.current = pathname;
-      setPendingHref(href);
+      beginNavigationIntent(href);
       if (
         process.env.NODE_ENV !== "production" &&
         primaryTabHrefs.some((primaryHref) => primaryHref === href) &&
@@ -219,8 +263,8 @@ export function AppShell({ children, user }: AppShellProps) {
       return;
     }
 
-    pendingOriginPathname.current = pathname;
-    setPendingHref(href);
+    pointerIntentHref.current = href;
+    beginNavigationIntent(href);
     router.prefetch(href);
     if (
       process.env.NODE_ENV !== "production" &&
@@ -228,6 +272,14 @@ export function AppShell({ children, user }: AppShellProps) {
     ) {
       navigationStart.current = { href, startedAt: event.timeStamp };
     }
+  };
+  const handlePrimaryNavigationPointerCancel = (href: string) => {
+    if (pointerIntentHref.current !== href) return;
+
+    navigationGeneration.current += 1;
+    navigationIntentRef.current = null;
+    pointerIntentHref.current = null;
+    setNavigationIntent(null);
   };
 
   return (
@@ -244,6 +296,20 @@ export function AppShell({ children, user }: AppShellProps) {
           <div className="mx-auto flex h-full max-w-7xl items-center gap-4 px-3 sm:px-6">
             <Link
               href="/home"
+              scroll={false}
+              onClick={(event) =>
+                handlePrimaryNavigationClick(event, "/home")
+              }
+              onPointerDown={(event) =>
+                handlePrimaryNavigationPointerDown(
+                  event,
+                  "/home",
+                  activeKey === "home"
+                )
+              }
+              onPointerCancel={() =>
+                handlePrimaryNavigationPointerCancel("/home")
+              }
               aria-label="Calistheni home"
               className="flex shrink-0 items-center gap-2 font-semibold tracking-tight"
             >
@@ -281,6 +347,9 @@ export function AppShell({ children, user }: AppShellProps) {
                         item.href,
                         active
                       )
+                    }
+                    onPointerCancel={() =>
+                      handlePrimaryNavigationPointerCancel(item.href)
                     }
                     aria-current={active ? "page" : undefined}
                     className={cn(
@@ -359,6 +428,9 @@ export function AppShell({ children, user }: AppShellProps) {
                         item.href,
                         active
                       )
+                    }
+                    onPointerCancel={() =>
+                      handlePrimaryNavigationPointerCancel(item.href)
                     }
                     aria-current={active ? "page" : undefined}
                     className={cn(

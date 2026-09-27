@@ -119,7 +119,8 @@ test("primary tab intent gets immediate feedback and development timing", async 
     "utf8"
   );
 
-  assert.match(shell, /setPendingHref\(href\)/);
+  assert.match(shell, /beginNavigationIntent\(href\)/);
+  assert.match(shell, /settlePrimaryNavigationIntent\(/);
   assert.match(shell, /active:scale-\[0\.96\]/);
   assert.match(shell, /\[NavigationTiming\]/);
   assert.match(shell, /process\.env\.NODE_ENV === "production"/);
