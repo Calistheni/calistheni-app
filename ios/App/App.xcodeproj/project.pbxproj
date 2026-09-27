@@ -25,6 +25,7 @@
 		A10000000000000000000006 /* BarcodeScannerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000007 /* BarcodeScannerViewController.swift */; };
 		AF1452008C4D2A14E7240001 /* CalistheniHealthPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF1452008C4D2A14E7240002 /* CalistheniHealthPlugin.swift */; };
 		B20000000000000000000001 /* CalistheniStoreKitPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000002 /* CalistheniStoreKitPlugin.swift */; };
+		C30000000000000000000001 /* CalistheniSecureSessionPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = C30000000000000000000002 /* CalistheniSecureSessionPlugin.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -71,6 +72,7 @@
 		AF1452008C4D2A14E7240002 /* CalistheniHealthPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CalistheniHealthPlugin.swift; sourceTree = "<group>"; };
 		B20000000000000000000002 /* CalistheniStoreKitPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CalistheniStoreKitPlugin.swift; sourceTree = "<group>"; };
 		B20000000000000000000003 /* Calistheni.storekit */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = Calistheni.storekit; sourceTree = "<group>"; };
+		C30000000000000000000002 /* CalistheniSecureSessionPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CalistheniSecureSessionPlugin.swift; sourceTree = "<group>"; };
 		CD7CDA30B800AC22AC9DB1AD /* App/CalistheniWorkoutWidget/WorkoutLiveActivity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = App/CalistheniWorkoutWidget/WorkoutLiveActivity.swift; sourceTree = SOURCE_ROOT; };
 		D9BE3352E63969D9297A7617 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		EB38ABD0699A3E0BB6115EE6 /* WorkoutLiveActivityPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WorkoutLiveActivityPlugin.swift; sourceTree = "<group>"; };
@@ -153,6 +155,7 @@
 				AF1452008C4D2A14E7240002 /* CalistheniHealthPlugin.swift */,
 				B20000000000000000000002 /* CalistheniStoreKitPlugin.swift */,
 				B20000000000000000000003 /* Calistheni.storekit */,
+				C30000000000000000000002 /* CalistheniSecureSessionPlugin.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -282,7 +285,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "CONFIG=\"$SRCROOT/App/capacitor.config.json\"\nif ! /usr/bin/grep -q '\"NutritionBarcodeScannerPlugin\"' \"$CONFIG\"; then\n  /usr/bin/plutil -insert packageClassList.8 -string NutritionBarcodeScannerPlugin \"$CONFIG\"\nfi\nif ! /usr/bin/grep -q '\"WorkoutLiveActivityPlugin\"' \"$CONFIG\"; then\n  /usr/bin/plutil -insert packageClassList.9 -string WorkoutLiveActivityPlugin \"$CONFIG\"\nfi\nif ! /usr/bin/grep -q '\"CalistheniHealthPlugin\"' \"$CONFIG\"; then\n  /usr/bin/plutil -insert packageClassList.10 -string CalistheniHealthPlugin \"$CONFIG\"\nfi\nif ! /usr/bin/grep -q '\"CalistheniStoreKitPlugin\"' \"$CONFIG\"; then\n  /usr/bin/plutil -insert packageClassList.11 -string CalistheniStoreKitPlugin \"$CONFIG\"\nfi\n";
+			shellScript = "CONFIG=\"$SRCROOT/App/capacitor.config.json\"\nif ! /usr/bin/grep -q '\"NutritionBarcodeScannerPlugin\"' \"$CONFIG\"; then\n  /usr/bin/plutil -insert packageClassList.8 -string NutritionBarcodeScannerPlugin \"$CONFIG\"\nfi\nif ! /usr/bin/grep -q '\"WorkoutLiveActivityPlugin\"' \"$CONFIG\"; then\n  /usr/bin/plutil -insert packageClassList.9 -string WorkoutLiveActivityPlugin \"$CONFIG\"\nfi\nif ! /usr/bin/grep -q '\"CalistheniHealthPlugin\"' \"$CONFIG\"; then\n  /usr/bin/plutil -insert packageClassList.10 -string CalistheniHealthPlugin \"$CONFIG\"\nfi\nif ! /usr/bin/grep -q '\"CalistheniStoreKitPlugin\"' \"$CONFIG\"; then\n  /usr/bin/plutil -insert packageClassList.11 -string CalistheniStoreKitPlugin \"$CONFIG\"\nfi\nif ! /usr/bin/grep -q '\"CalistheniSecureSessionPlugin\"' \"$CONFIG\"; then\n  /usr/bin/plutil -insert packageClassList.12 -string CalistheniSecureSessionPlugin \"$CONFIG\"\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -306,6 +309,7 @@
 				9A31CB7814E397F6BD948295 /* WorkoutLiveActivityPlugin.swift in Sources */,
 				AF1452008C4D2A14E7240001 /* CalistheniHealthPlugin.swift in Sources */,
 				B20000000000000000000001 /* CalistheniStoreKitPlugin.swift in Sources */,
+				C30000000000000000000001 /* CalistheniSecureSessionPlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

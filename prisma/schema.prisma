@@ -278,6 +278,7 @@ model User {
 
   accounts           Account[]
   sessions           Session[]
+  nativeSessions     NativeSession[]
   nativeAuthAttempts NativeAuthAttempt[]
 
   submittedParks                Park[]                          @relation("ParkSubmitter")
@@ -612,6 +613,25 @@ model Session {
   expires      DateTime
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Revocable bearer session for the locally bundled first-party application.
+/// Only a SHA-256 token digest is persisted; the raw credential is returned once.
+model NativeSession {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  platform   NativeAuthPlatform
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+  lastUsedAt DateTime  @default(now())
+  revokedAt  DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
+  @@index([revokedAt])
 }
 
 /// A short-lived bridge between the external OAuth browser session and the

@@ -1,26 +1,40 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 import { KeyboardResize } from "@capacitor/keyboard";
+import { resolveCapacitorRuntimeMode } from "./lib/capacitor-runtime-mode";
 
-const serverUrl = process.env.CAPACITOR_SERVER_URL ?? "https://calistheni.app";
+const runtime = resolveCapacitorRuntimeMode(process.env);
 
 const isLocalDevelopmentServer =
-  /^http:\/\/(localhost|127\.0\.0\.1|10\.|192\.168\.)/.test(serverUrl);
+  runtime.serverUrl !== undefined &&
+  /^http:\/\/(localhost|127\.0\.0\.1|10\.|192\.168\.)/.test(
+    runtime.serverUrl
+  );
+
+console.info(
+  runtime.kind === "bundled"
+    ? `[Capacitor] Bundled native mode: ${runtime.webDir} (server.url omitted)`
+    : `[Capacitor] Remote runtime mode: ${runtime.serverUrl}`
+);
 
 const config: CapacitorConfig = {
   appId: "com.petershikrenov.calistheni",
   appName: "Calistheni",
-  webDir: "mobile-web",
+  webDir: runtime.webDir,
 
   backgroundColor: "#09090b",
   loggingBehavior:
     process.env.NODE_ENV === "production" ? "production" : "debug",
 
-  server: {
-    url: serverUrl,
-    cleartext: isLocalDevelopmentServer,
-    allowNavigation: ["calistheni.app", "*.calistheni.app"],
-    errorPath: "error.html",
-  },
+  ...(runtime.kind === "remote"
+    ? {
+        server: {
+          url: runtime.serverUrl,
+          cleartext: isLocalDevelopmentServer,
+          allowNavigation: ["calistheni.app", "*.calistheni.app"],
+          errorPath: "error.html",
+        },
+      }
+    : {}),
 
   plugins: {
     StatusBar: {

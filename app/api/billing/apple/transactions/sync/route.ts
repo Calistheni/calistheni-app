@@ -11,12 +11,14 @@ import {
   createUserUnauthorizedResponse,
   getAuthenticatedUserId,
 } from "@/lib/user-auth";
+import { nativeCorsPreflight, withNativeCors } from "@/lib/native-api-cors";
 
 export const runtime = "nodejs";
+export function OPTIONS(request: Request) { return nativeCorsPreflight(request); }
 
 export async function POST(request: Request) {
-  const userId = await getAuthenticatedUserId();
-  if (!userId) return createUserUnauthorizedResponse();
+  const userId = await getAuthenticatedUserId(request);
+  if (!userId) return withNativeCors(request, createUserUnauthorizedResponse());
 
   try {
     const body = await request.json();
@@ -39,10 +41,10 @@ export async function POST(request: Request) {
       ],
       isPro: entitlements.isPro,
     });
-    return NextResponse.json({
+    return withNativeCors(request, NextResponse.json({
       accepted: synchronized.transactions.length,
       isPro: entitlements.isPro,
-    });
+    }));
   } catch (error) {
     const inputError =
       error instanceof SyntaxError ||
@@ -53,7 +55,7 @@ export async function POST(request: Request) {
       userId,
       errorType: error instanceof Error ? error.name : "UnknownError",
     });
-    return NextResponse.json(
+    return withNativeCors(request, NextResponse.json(
       {
         code: inputError
           ? "APPLE_SYNC_INVALID_REQUEST"
@@ -78,6 +80,6 @@ export async function POST(request: Request) {
               ? 400
               : 500,
       }
-    );
+    ));
   }
 }

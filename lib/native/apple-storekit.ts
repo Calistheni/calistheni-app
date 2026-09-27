@@ -12,6 +12,7 @@ import {
   isNativeApp,
   isNativePluginAvailable,
 } from "@/lib/native/platform";
+import { nativeAuthenticatedFetch } from "@/lib/native/authenticated-fetch";
 
 export type AppleSubscriptionPeriod = {
   value: number;
@@ -233,7 +234,7 @@ async function getAppleBillingConfig(userKey: string) {
   }
   let response: Response;
   try {
-    response = await fetch("/api/billing/apple/config", {
+    response = await nativeAuthenticatedFetch("/api/billing/apple/config", {
       cache: "no-store",
     });
   } catch (error) {
@@ -296,7 +297,7 @@ async function getAppleBillingConfig(userKey: string) {
 }
 
 async function synchronizeSignedTransaction(signedTransaction: string) {
-  const response = await fetch("/api/billing/apple/transactions/sync", {
+  const response = await nativeAuthenticatedFetch("/api/billing/apple/transactions/sync", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ signedTransactions: [signedTransaction] }),
