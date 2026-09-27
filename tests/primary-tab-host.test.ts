@@ -1,17 +1,39 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { createElement } from "react";
+import {
+  isPendingPrimarySurface,
+  retainLastResolvedPrimarySurface,
+} from "@/lib/primary-surface-retention";
 
 const read = (path: string) =>
   readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("primary screen activation is owned by intent and pathname, never data readiness", async () => {
+test("a pending parallel-route payload cannot replace a resolved primary surface", () => {
+  const resolved = createElement("main", { "data-primary-tab-data": "ready" }, "Workouts 4");
+  const pending = createElement("main", { "data-primary-tab-data": "pending" }, "—");
+  assert.equal(isPendingPrimarySurface(pending), true);
+  assert.equal(retainLastResolvedPrimarySurface(resolved, pending), resolved);
+  const updated = createElement("main", { "data-primary-tab-data": "ready" }, "Workouts 5");
+  assert.equal(retainLastResolvedPrimarySurface(resolved, updated), updated);
+});
+
+test("cold primary standbys use an explicit synchronization state, never fake dash values", async () => {
+  const standby = await read("components/primary-tabs/PrimaryTabStandby.tsx");
+  assert.doesNotMatch(standby, />—</);
+  assert.doesNotMatch(standby, /— kcal|P —|C —|F —/);
+  assert.match(standby, /Initial synchronization/);
+});
+
+test("primary screen activation never replaces known content with a pending standby", async () => {
   const host = await read("components/primary-tabs/PrimaryTabHost.tsx");
 
   assert.match(host, /const activeHref = optimisticHref \?\? committedHref/);
+  assert.match(host, /retainLastResolvedPrimarySurface\(lastResolved, candidate\)/);
   assert.match(host, /data-primary-tab-host/);
   assert.match(host, /mode=\{activeHref === href \? "visible" : "hidden"\}/);
-  assert.doesNotMatch(host, /loading|ready|dataAvailable|Suspense/);
+  assert.doesNotMatch(host, /Skeleton|Suspense/);
 });
 
 test("all cold primary tabs expose complete real screen structures", async () => {
@@ -60,7 +82,7 @@ test("successful primary screens and client state survive tab switches", async (
   ]);
 
   assert.match(host, /<Activity key=\{key\}/);
-  assert.match(host, /\{surfaces\[key\]\}/);
+  assert.match(host, /<RetainedPrimarySurface candidate=\{surfaces\[key\]\}/);
   assert.doesNotMatch(host, /key=\{activeHref\}/);
   assert.match(nutrition, /dayCache = useRef\(new Map/);
   assert.match(nutrition, /const cached = dayCache\.current\.get\(dateKey\)/);

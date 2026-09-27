@@ -1,9 +1,13 @@
 "use client";
 
-import { Activity, useLayoutEffect, useRef } from "react";
+import { Activity, useLayoutEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { usePrimaryTabNavigationTarget } from "@/components/navigation/AppShellContext";
 import { getPrimaryTabHref, primaryTabNavigation } from "@/lib/navigation";
+import {
+  isPendingPrimarySurface,
+  retainLastResolvedPrimarySurface,
+} from "@/lib/primary-surface-retention";
 
 type PrimaryTabHostProps = {
   children: React.ReactNode;
@@ -13,6 +17,25 @@ type PrimaryTabHostProps = {
   community: React.ReactNode;
   rewards: React.ReactNode;
 };
+
+function RetainedPrimarySurface({ candidate }: { candidate: React.ReactNode }) {
+  const pending = isPendingPrimarySurface(candidate);
+  const [retention, setRetention] = useState<{
+    seen: React.ReactNode;
+    resolved: React.ReactNode;
+  }>(() => ({ seen: candidate, resolved: pending ? undefined : candidate }));
+  let lastResolved = retention.resolved;
+
+  // React's supported "store information from previous renders" pattern lets
+  // the current render use a newly resolved surface immediately, while a later
+  // pending parallel-route payload keeps the prior resolved node.
+  if (retention.seen !== candidate) {
+    lastResolved = pending ? retention.resolved : candidate;
+    setRetention({ seen: candidate, resolved: lastResolved });
+  }
+
+  return retainLastResolvedPrimarySurface(lastResolved, candidate);
+}
 
 /**
  * Persistent presentation owner for the five primary application screens.
@@ -34,8 +57,8 @@ export function PrimaryTabHost({
   const navigationTarget = usePrimaryTabNavigationTarget();
   const committedHref = getPrimaryTabHref(pathname);
   const optimisticHref = getPrimaryTabHref(navigationTarget ?? "");
-  const activeHref = optimisticHref ?? committedHref;
   const surfaces = { home, nutrition, parks, community, rewards };
+  const activeHref = optimisticHref ?? committedHref;
   const previousHref = useRef(activeHref);
   const scrollPositions = useRef(new Map<string, number>());
 
@@ -63,7 +86,7 @@ export function PrimaryTabHost({
             data-primary-tab-surface={href}
             className={key === "parks" ? "h-full min-h-0" : undefined}
           >
-            {surfaces[key]}
+            <RetainedPrimarySurface candidate={surfaces[key]} />
           </div>
         </Activity>
       ))}

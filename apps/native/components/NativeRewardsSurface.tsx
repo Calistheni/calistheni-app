@@ -1,23 +1,14 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { assetUrl } from "@native/lib/api";
-import {
-  fetchPrimarySnapshot,
-  primaryQueryKey,
-} from "@native/lib/primary-data";
+import { usePrimarySnapshot } from "@native/lib/primary-data";
 import { useNativeAuth } from "./NativeAuthProvider";
 
 export function NativeRewardsSurface({ active }: { active: boolean }) {
   const { state } = useNativeAuth();
   const userId = state.status === "authenticated" ? state.bootstrap.user.id : "";
-  const query = useQuery({
-    queryKey: primaryQueryKey(userId, "rewards"),
-    enabled: active && Boolean(userId),
-    staleTime: 60_000,
-    queryFn: ({ signal }) => fetchPrimarySnapshot(userId, "rewards", undefined, signal),
-  });
-  if (state.status !== "authenticated") return null;
+  const query = usePrimarySnapshot(userId, "rewards", active);
+  if (state.status !== "authenticated" || !query.data) return null;
   const data = query.data;
   return (
     <div className="native-rewards-screen">
@@ -28,14 +19,14 @@ export function NativeRewardsSurface({ active }: { active: boolean }) {
       </header>
       <section className="native-balance-card">
         <p>Current balance</p>
-        <strong>{data ? data.balance.toLocaleString() : "—"}</strong>
+        <strong>{data.balance.toLocaleString()}</strong>
         <span>Calis Points</span>
-        <em>{data ? (data.entitlement.isPro ? "Pro active" : "Free membership") : "Checking membership…"}</em>
+        <em>{data.entitlement.isPro ? "Pro active" : "Free membership"}</em>
       </section>
       <section>
         <h2>Available rewards</h2>
         <div className="native-reward-grid">
-          {data?.rewards.length ? data.rewards.map((reward) => (
+          {data.rewards.length ? data.rewards.map((reward) => (
             <article key={reward.id}>
               {/* Public partner media is intentionally rendered directly; protected media is not supported here. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -45,10 +36,11 @@ export function NativeRewardsSurface({ active }: { active: boolean }) {
               <p>{reward.description}</p>
               <strong>{reward.pointsCost.toLocaleString()} points</strong>
             </article>
-          )) : [0, 1, 2].map((item) => <article key={item} className="native-reward-placeholder"><div className="native-reward-image" /><h3>Reward preview</h3><p>{query.isError ? "Unable to refresh. Cached rewards remain available when present." : "Reward details will appear here."}</p></article>)}
+          )) : <article><h3>No rewards available</h3><p>New partner rewards will appear here when they become available.</p></article>}
         </div>
       </section>
-      {query.isFetching && data ? <p className="native-refresh-note">Refreshing in the background…</p> : null}
+      {query.isFetching ? <p className="native-refresh-note">Refreshing in the background…</p> : null}
+      {query.isError ? <p className="native-refresh-note">Showing saved rewards while offline.</p> : null}
     </div>
   );
 }

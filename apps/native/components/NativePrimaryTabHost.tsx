@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   beginNativeNavigationIntent,
   getNativePrimaryHref,
+  nativePersistentDestinations,
   nativePrimaryTabs,
   type NativeNavigationIntent,
   type NativePrimaryHref,
@@ -15,6 +16,7 @@ import { NativeHomeSurface } from "./NativeHomeSurface";
 import { NativeNutritionSurface } from "./NativeNutritionSurface";
 import { NativeCommunitySurface } from "./NativeCommunitySurface";
 import { NativeParksSurface } from "./NativeParksSurface";
+import { NativeProfileSurface } from "./NativeProfileSurface";
 import { useNativeAuth } from "./NativeAuthProvider";
 
 const surfaceCopy: Record<
@@ -46,10 +48,15 @@ const surfaceCopy: Record<
     title: "Bundled native Rewards",
     description: "The Rewards structure is part of the local application bundle.",
   },
+  "/profile": {
+    eyebrow: "Your account",
+    title: "Profile",
+    description: "Your profile is part of the local application bundle.",
+  },
 };
 
 export function NativePrimaryTabHost() {
-  const { state, logout } = useNativeAuth();
+  const { state } = useNativeAuth();
   const pathname = usePathname();
   const generationRef = useRef(0);
   const pointerIntentRef = useRef<NativePrimaryHref | null>(null);
@@ -89,7 +96,7 @@ export function NativePrimaryTabHost() {
   return (
     <>
       <main className="native-surface-viewport" data-native-primary-tab-host>
-        {nativePrimaryTabs.map(({ href, label }) => {
+        {nativePersistentDestinations.map(({ href, label }) => {
           const active = activeHref === href;
           const copy = surfaceCopy[href];
           return (
@@ -100,7 +107,7 @@ export function NativePrimaryTabHost() {
               hidden={!active}
               aria-hidden={!active || undefined}
             >
-              {href === "/home" ? <NativeHomeSurface active={active} /> : href === "/nutrition" ? <NativeNutritionSurface active={active} /> : href === "/parks" ? <NativeParksSurface active={active} /> : href === "/feed" ? <NativeCommunitySurface active={active} /> : href === "/rewards" ? <NativeRewardsSurface active={active} /> : <div className="native-surface-card">
+              {href === "/home" ? <NativeHomeSurface active={active} /> : href === "/nutrition" ? <NativeNutritionSurface active={active} /> : href === "/parks" ? <NativeParksSurface active={active} /> : href === "/feed" ? <NativeCommunitySurface active={active} /> : href === "/rewards" ? <NativeRewardsSurface active={active} /> : href === "/profile" ? <NativeProfileSurface active={active} /> : <div className="native-surface-card">
                 <p className="native-eyebrow">{copy.eyebrow}</p>
                 <h1>{copy.title}</h1>
                 <p className="native-description">{copy.description}</p>
@@ -116,6 +123,37 @@ export function NativePrimaryTabHost() {
           );
         })}
       </main>
+
+      {state.status === "authenticated" && activeHref !== "/profile" ? (
+        <Link
+          href="/profile"
+          scroll={false}
+          className="native-profile-link"
+          aria-label="Open profile"
+          onPointerDown={(event) => {
+            if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+            pointerIntentRef.current = "/profile";
+            beginIntent("/profile");
+          }}
+          onPointerCancel={() => {
+            if (pointerIntentRef.current !== "/profile") return;
+            generationRef.current += 1;
+            pointerIntentRef.current = null;
+            setIntent(null);
+          }}
+          onClick={(event) => {
+            if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+            const beganOnPointerDown = pointerIntentRef.current === "/profile";
+            pointerIntentRef.current = null;
+            if (!beganOnPointerDown) beginIntent("/profile");
+          }}
+        >
+          {state.bootstrap.user.image ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={state.bootstrap.user.image} alt="" />
+          ) : (state.bootstrap.user.name ?? "U").slice(0, 1)}
+        </Link>
+      ) : null}
 
       <nav className="native-bottom-navigation" aria-label="Primary navigation">
         {nativePrimaryTabs.map(({ href, label, symbol }) => {
@@ -174,7 +212,6 @@ export function NativePrimaryTabHost() {
           );
         })}
       </nav>
-      {state.status === "authenticated" ? <button className="native-logout" onClick={() => void logout()} aria-label="Sign out">Sign out</button> : null}
     </>
   );
 }

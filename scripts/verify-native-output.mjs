@@ -7,7 +7,7 @@ const repositoryRoot = path.resolve(
   ".."
 );
 const defaultOutput = path.join(repositoryRoot, "apps/native/out");
-const requiredRoutes = ["home", "nutrition", "parks", "feed", "rewards"];
+const requiredRoutes = ["home", "nutrition", "parks", "feed", "rewards", "profile"];
 const forbiddenSecretNames = /\b(?:DATABASE_URL|AUTH_SECRET|NEXTAUTH_SECRET|GOOGLE_CLIENT_SECRET|AUTH_GOOGLE_SECRET|STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET|APPLE_IAP_PRIVATE_KEY|R2_SECRET_ACCESS_KEY|OPENAI_API_KEY)\b/;
 
 async function filesBelow(directory) {
@@ -86,7 +86,7 @@ if (isDirectExecution) {
   )
     .then(() => {
       console.info(
-        "[native-build] Static output verified for /home, /nutrition, /parks, /feed, and /rewards."
+        "[native-build] Static output verified for /home, /nutrition, /parks, /feed, /rewards, and /profile."
       );
     })
     .catch((error) => {

@@ -74,7 +74,7 @@ function HomeStandby() {
               {["Workouts", "Completed sets", "Volume", "Active days"].map((label) => (
                 <div key={label} className="min-h-28 border p-5 lg:min-h-32 lg:p-8">
                   <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{label}</p>
-                  <p className="mt-3 text-3xl font-bold tabular-nums">—</p>
+                  <p className="mt-3 text-sm font-medium text-muted-foreground">Initial synchronization</p>
                 </div>
               ))}
             </CardContent>
@@ -122,7 +122,7 @@ function HomeStandby() {
               <Card key={index} className="min-h-40 rounded-2xl shadow-none">
                 <CardContent className="p-5">
                   <Icon className="size-5 text-primary" aria-hidden="true" />
-                  <p className="mt-8 text-2xl font-bold">—</p>
+                  <p className="mt-8 text-sm font-medium text-muted-foreground">Initial synchronization</p>
                   <p className="mt-2 text-sm text-muted-foreground">Training metric</p>
                 </CardContent>
               </Card>
@@ -169,13 +169,13 @@ function NutritionStandby() {
         <CardContent className="p-4">
           <div className="flex items-center justify-between"><p className="font-semibold">Consumed</p><Utensils className="size-5 text-primary" aria-hidden="true" /></div>
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {["Calories", "Protein", "Carbs", "Fat"].map((label) => <div key={label}><p className="text-xs text-muted-foreground">{label}</p><p className="font-bold">—</p></div>)}
+            {["Calories", "Protein", "Carbs", "Fat"].map((label) => <div key={label}><p className="text-xs text-muted-foreground">{label}</p><p className="text-sm font-medium text-muted-foreground">Initial synchronization</p></div>)}
           </div>
         </CardContent>
       </Card>
       <div className="space-y-3">
         {["Breakfast", "Lunch", "Dinner", "Snacks"].map((meal) => (
-          <Card key={meal}><CardContent className="flex min-h-24 items-center justify-between p-4"><div><p className="font-semibold">{meal}</p><p className="text-sm text-muted-foreground">— kcal · P — · C — · F —</p></div><Button size="icon-sm" disabled aria-label={`Add food to ${meal}`}>+</Button></CardContent></Card>
+          <Card key={meal}><CardContent className="flex min-h-24 items-center justify-between p-4"><div><p className="font-semibold">{meal}</p><p className="text-sm text-muted-foreground">Waiting for the initial nutrition sync.</p></div><Button size="icon-sm" disabled aria-label={`Add food to ${meal}`}>+</Button></CardContent></Card>
         ))}
       </div>
     </main>
@@ -206,9 +206,9 @@ function CommunityStandby() {
 function RewardsStandby() {
   return (
     <main data-primary-tab-shell="rewards" data-primary-tab-data="pending" className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8 lg:py-16">
-      <section className="grid items-center gap-12 pb-16 lg:grid-cols-[minmax(0,1fr)_minmax(22rem,0.72fr)]"><div><p className="text-xs font-semibold tracking-[0.16em] text-primary uppercase">Calis Points</p><h1 className="mt-5 text-5xl leading-[0.98] font-bold tracking-[-0.045em] sm:text-6xl lg:text-7xl">Train. Earn.<span className="block text-primary">Unlock.</span></h1><p className="mt-6 max-w-2xl text-base text-muted-foreground">Your rewards and membership details appear here.</p></div><Card className="mx-auto w-full max-w-md rounded-3xl"><CardContent className="p-7"><p className="text-sm text-muted-foreground">Current balance</p><div className="mt-3 flex items-center gap-2"><Coins className="size-6 text-primary" aria-hidden="true" /><span className="text-4xl font-bold tabular-nums">—</span></div><div className="mt-7 min-h-28 rounded-2xl border bg-muted/20 p-4"><p className="font-semibold">Reward preview</p><p className="mt-2 text-sm text-muted-foreground">Partner rewards are preparing.</p></div></CardContent></Card></section>
+      <section className="grid items-center gap-12 pb-16 lg:grid-cols-[minmax(0,1fr)_minmax(22rem,0.72fr)]"><div><p className="text-xs font-semibold tracking-[0.16em] text-primary uppercase">Calis Points</p><h1 className="mt-5 text-5xl leading-[0.98] font-bold tracking-[-0.045em] sm:text-6xl lg:text-7xl">Train. Earn.<span className="block text-primary">Unlock.</span></h1><p className="mt-6 max-w-2xl text-base text-muted-foreground">Your rewards and membership details appear here.</p></div><Card className="mx-auto w-full max-w-md rounded-3xl"><CardContent className="p-7"><p className="text-sm text-muted-foreground">Current balance</p><div className="mt-3 flex items-center gap-2"><Coins className="size-6 text-primary" aria-hidden="true" /><span className="text-sm font-medium text-muted-foreground">Initial synchronization</span></div><div className="mt-7 min-h-28 rounded-2xl border bg-muted/20 p-4"><p className="font-semibold">Reward preview</p><p className="mt-2 text-sm text-muted-foreground">Partner rewards are preparing.</p></div></CardContent></Card></section>
       <div className="space-y-16 sm:space-y-20 lg:space-y-24">
-        {["Points overview", "Reward previews", "How rewards will work", "Pro reward benefits"].map((title) => <section key={title}><h2 className="mb-6 text-2xl font-bold sm:text-3xl">{title}</h2><div className="grid gap-4 md:grid-cols-3">{[0, 1, 2].map((index) => <Card key={index} className="min-h-36 rounded-2xl shadow-none"><CardContent className="p-6"><Gift className="size-5 text-primary" aria-hidden="true" /><p className="mt-5 font-semibold">—</p><p className="mt-2 text-sm text-muted-foreground">Details will appear here.</p></CardContent></Card>)}</div></section>)}
+        {["Points overview", "Reward previews", "How rewards will work", "Pro reward benefits"].map((title) => <section key={title}><h2 className="mb-6 text-2xl font-bold sm:text-3xl">{title}</h2><div className="grid gap-4 md:grid-cols-3">{[0, 1, 2].map((index) => <Card key={index} className="min-h-36 rounded-2xl shadow-none"><CardContent className="p-6"><Gift className="size-5 text-primary" aria-hidden="true" /><p className="mt-5 font-semibold">Initial synchronization</p><p className="mt-2 text-sm text-muted-foreground">Details will appear here.</p></CardContent></Card>)}</div></section>)}
         <section className="rounded-3xl border border-primary/20 bg-primary/5 p-6 sm:p-8"><h2 className="text-2xl font-bold">Partner with Calistheni</h2><Button asChild className="mt-6"><Link href="/partners">Become a partner <ArrowRight /></Link></Button></section>
       </div>
     </main>

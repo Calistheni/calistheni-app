@@ -58,3 +58,28 @@ export type NativeParks = {
   version: string | null;
   updatedAt: string;
 };
+
+export type NativeProfile = {
+  user: {
+    id: string;
+    name: string | null;
+    username: string | null;
+    image: string | null;
+  };
+  stats: {
+    workouts: number;
+    completedSets: number;
+    submittedParks: number;
+    approvedEdits: number;
+    approvedPhotos: number;
+    rewardPoints: number;
+    followers: number;
+    following: number;
+  };
+  body: {
+    bodyweightKg: number | null;
+    measurementSystem: "METRIC" | "IMPERIAL";
+  };
+  entitlement: { isPro: boolean };
+  updatedAt: string;
+};

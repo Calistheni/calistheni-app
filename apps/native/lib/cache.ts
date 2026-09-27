@@ -6,13 +6,35 @@ const DATABASE = "calistheni-native-presentation-v1";
 const STORE = "user-data";
 export const PRIMARY_SNAPSHOT_VERSION = 1;
 
-type PersistedPrimarySnapshot<T> = {
+export type PersistedPrimarySnapshot<T> = {
   version: typeof PRIMARY_SNAPSHOT_VERSION;
   userId: string;
   key: string;
   savedAt: string;
   data: T;
 };
+
+export function createPrimarySnapshotRecord<T>(userId: string, key: string, data: T) {
+  if (data === undefined || data === null) {
+    throw new Error("A primary snapshot must contain validated data.");
+  }
+  return {
+    version: PRIMARY_SNAPSHOT_VERSION,
+    userId,
+    key,
+    savedAt: new Date().toISOString(),
+    data,
+  } satisfies PersistedPrimarySnapshot<T>;
+}
+
+export function decodePrimarySnapshotRecord<T>(value: unknown, userId: string, key: string) {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Partial<PersistedPrimarySnapshot<T>>;
+  if (record.version !== PRIMARY_SNAPSHOT_VERSION || record.userId !== userId || record.key !== key || record.data === undefined || record.data === null) {
+    return undefined;
+  }
+  return record.data;
+}
 
 async function database() {
   return openDB(DATABASE, 1, {
@@ -43,15 +65,7 @@ export async function readPrimarySnapshot<T>(userId: string, key: string) {
     userId,
     `primary:v${PRIMARY_SNAPSHOT_VERSION}:${key}`
   );
-  if (
-    !value ||
-    value.version !== PRIMARY_SNAPSHOT_VERSION ||
-    value.userId !== userId ||
-    value.key !== key
-  ) {
-    return undefined;
-  }
-  return value.data;
+  return decodePrimarySnapshotRecord<T>(value, userId, key);
 }
 
 export async function writePrimarySnapshot<T>(
@@ -59,13 +73,7 @@ export async function writePrimarySnapshot<T>(
   key: string,
   data: T
 ) {
-  const value: PersistedPrimarySnapshot<T> = {
-    version: PRIMARY_SNAPSHOT_VERSION,
-    userId,
-    key,
-    savedAt: new Date().toISOString(),
-    data,
-  };
+  const value = createPrimarySnapshotRecord(userId, key, data);
   await writeUserCache(
     userId,
     `primary:v${PRIMARY_SNAPSHOT_VERSION}:${key}`,

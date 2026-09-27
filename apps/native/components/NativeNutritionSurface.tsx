@@ -1,12 +1,9 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import {
   currentNutritionDate,
-  fetchPrimarySnapshot,
-  primaryQueryKey,
+  usePrimarySnapshot,
 } from "@native/lib/primary-data";
-import type { NativeNutrition } from "@native/lib/types";
 import { useNativeAuth } from "./NativeAuthProvider";
 
 function numeric(value: unknown) {
@@ -18,18 +15,13 @@ export function NativeNutritionSurface({ active }: { active: boolean }) {
   const { state } = useNativeAuth();
   const userId = state.status === "authenticated" ? state.bootstrap.user.id : "";
   const date = currentNutritionDate();
-  const query = useQuery<NativeNutrition>({
-    queryKey: primaryQueryKey(userId, "nutrition", date),
-    enabled: active && Boolean(userId),
-    staleTime: 60_000,
-    queryFn: ({ signal }) => fetchPrimarySnapshot(userId, "nutrition", date, signal),
-  });
-  if (state.status !== "authenticated") return null;
+  const query = usePrimarySnapshot(userId, "nutrition", active, date);
+  if (state.status !== "authenticated" || !query.data) return null;
   const data = query.data;
-  const calories = numeric(data?.totals.caloriesKcal);
-  const protein = numeric(data?.totals.proteinGrams);
-  const carbohydrate = numeric(data?.totals.carbohydrateGrams);
-  const fat = numeric(data?.totals.fatGrams);
+  const calories = numeric(data.totals.caloriesKcal);
+  const protein = numeric(data.totals.proteinGrams);
+  const carbohydrate = numeric(data.totals.carbohydrateGrams);
+  const fat = numeric(data.totals.fatGrams);
 
   return (
     <div className="native-primary-data-screen">
@@ -47,16 +39,16 @@ export function NativeNutritionSurface({ active }: { active: boolean }) {
         ].map(([label, value]) => (
           <article key={label}>
             <span>{label}</span>
-            <strong>{data ? value ?? "Not recorded" : "Pending first sync"}</strong>
+            <strong>{value ?? "Not recorded"}</strong>
           </article>
         ))}
       </section>
       <section className="native-primary-list-card">
         <h2>Today’s meals</h2>
-        <p>{data ? `${data.entryCount} logged ${data.entryCount === 1 ? "item" : "items"}` : "Your current-day log will appear after the first sync."}</p>
+        <p>{data.entryCount} logged {data.entryCount === 1 ? "item" : "items"}</p>
       </section>
-      {query.isFetching && data ? <p className="native-refresh-note">Refreshing in the background…</p> : null}
-      {query.isError && data ? <p className="native-refresh-note">Showing saved nutrition data while offline.</p> : null}
+      {query.isFetching ? <p className="native-refresh-note">Refreshing in the background…</p> : null}
+      {query.isError ? <p className="native-refresh-note">Showing saved nutrition data while offline.</p> : null}
     </div>
   );
 }

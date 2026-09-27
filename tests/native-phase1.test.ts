@@ -62,8 +62,8 @@ test("explicit bundled mode selects native output and has no server URL", () => 
   );
 });
 
-test("all five canonical primary route entries exist", () => {
-  for (const route of ["home", "nutrition", "parks", "feed", "rewards"]) {
+test("all six persistent destination route entries exist", () => {
+  for (const route of ["home", "nutrition", "parks", "feed", "rewards", "profile"]) {
     assert.equal(
       existsSync(new URL(`apps/native/app/${route}/page.tsx`, root)),
       true,
@@ -76,7 +76,7 @@ test("native host owns local surfaces without loading or skeleton UI", () => {
   const host = read("apps/native/components/NativePrimaryTabHost.tsx");
   const navigation = read("apps/native/lib/navigation.ts");
 
-  for (const route of ["/home", "/nutrition", "/parks", "/feed", "/rewards"]) {
+  for (const route of ["/home", "/nutrition", "/parks", "/feed", "/rewards", "/profile"]) {
     assert.match(navigation, new RegExp(`href: "${route}"`));
   }
   for (const surface of ["Home", "Nutrition", "Parks", "Community", "Rewards"]) {

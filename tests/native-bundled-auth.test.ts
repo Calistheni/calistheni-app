@@ -84,20 +84,26 @@ test("native CORS accepts only the exact Capacitor origin and never wildcard", (
     "app/api/native/v1/community/route.ts",
     "app/api/native/v1/parks/route.ts",
     "app/api/native/v1/rewards/route.ts",
+    "app/api/native/v1/profile/route.ts",
   ]) {
     assert.match(read(route), /rejectDisallowedNativeOrigin\(request\)/);
   }
 });
 
-test("bootstrap and Rewards require request-aware auth and expose bounded DTOs", () => {
+test("bootstrap, Rewards, and Profile require request-aware auth and expose bounded DTOs", () => {
   const bootstrap = read("app/api/native/v1/bootstrap/route.ts");
   const rewards = read("app/api/native/v1/rewards/route.ts");
+  const profile = read("app/api/native/v1/profile/route.ts");
   assert.match(bootstrap, /getAuthenticatedUserId\(request\)/);
   assert.match(rewards, /getAuthenticatedUserId\(request\)/);
   assert.match(bootstrap, /select: \{ id: true, name: true, username: true, image: true, onboardingCompleted: true \}/);
   assert.doesNotMatch(bootstrap, /email|password|sessionToken|tokenHash/);
   assert.match(rewards, /where: \{ userId \}/);
   assert.match(rewards, /getUserEntitlements\(userId\)/);
+  assert.match(profile, /getAuthenticatedUserId\(request\)/);
+  assert.match(profile, /where: \{ id: userId \}/);
+  assert.match(profile, /getUserEntitlements\(userId\)/);
+  assert.doesNotMatch(profile, /password|sessionToken|tokenHash|stripeCustomerId/);
 });
 
 test("canonical Stripe entitlement remains Pro for native bootstrap and Rewards", () => {
@@ -139,8 +145,7 @@ test("local Rewards structure and stale-while-revalidate cache are data-independ
   const provider = read("apps/native/components/NativeAuthProvider.tsx");
   assert.match(surface, /Current balance/);
   assert.match(surface, /Available rewards/);
-  assert.match(surface, /useQuery/);
-  assert.match(surface, /fetchPrimarySnapshot\(userId, "rewards", undefined, signal\)/);
+  assert.match(surface, /usePrimarySnapshot\(userId, "rewards", active\)/);
   assert.match(provider, /hydratePrimarySnapshots\(queryClient, value\.user\.id\)/);
   assert.doesNotMatch(surface, /Skeleton|Suspense/);
 });

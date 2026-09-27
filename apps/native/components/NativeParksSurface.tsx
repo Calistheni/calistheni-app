@@ -1,20 +1,13 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { fetchPrimarySnapshot, primaryQueryKey } from "@native/lib/primary-data";
-import type { NativeParks } from "@native/lib/types";
+import { usePrimarySnapshot } from "@native/lib/primary-data";
 import { useNativeAuth } from "./NativeAuthProvider";
 
 export function NativeParksSurface({ active }: { active: boolean }) {
   const { state } = useNativeAuth();
   const userId = state.status === "authenticated" ? state.bootstrap.user.id : "";
-  const query = useQuery<NativeParks>({
-    queryKey: primaryQueryKey(userId, "parks"),
-    enabled: active && Boolean(userId),
-    staleTime: 5 * 60_000,
-    queryFn: ({ signal }) => fetchPrimarySnapshot(userId, "parks", undefined, signal),
-  });
-  if (state.status !== "authenticated") return null;
+  const query = usePrimarySnapshot(userId, "parks", active);
+  if (state.status !== "authenticated" || !query.data) return null;
   const data = query.data;
 
   return (
@@ -30,10 +23,10 @@ export function NativeParksSurface({ active }: { active: boolean }) {
       </section>
       <section className="native-primary-list-card">
         <h2>Available parks</h2>
-        <p>{data ? `${data.publicParkCount.toLocaleString()} public parks in the current catalogue` : "Park catalogue metadata will appear after the first sync."}</p>
+        <p>{data.publicParkCount.toLocaleString()} public parks in the current catalogue</p>
       </section>
-      {query.isFetching && data ? <p className="native-refresh-note">Refreshing park metadata in the background…</p> : null}
-      {query.isError && data ? <p className="native-refresh-note">Showing saved park metadata while offline.</p> : null}
+      {query.isFetching ? <p className="native-refresh-note">Refreshing park metadata in the background…</p> : null}
+      {query.isError ? <p className="native-refresh-note">Showing saved park metadata while offline.</p> : null}
     </div>
   );
 }

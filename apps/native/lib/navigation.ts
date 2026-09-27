@@ -6,7 +6,12 @@ export const nativePrimaryTabs = [
   { key: "rewards", label: "Rewards", href: "/rewards", symbol: "R" },
 ] as const;
 
-export type NativePrimaryHref = (typeof nativePrimaryTabs)[number]["href"];
+export const nativePersistentDestinations = [
+  ...nativePrimaryTabs,
+  { key: "profile", label: "Profile", href: "/profile", symbol: "U" },
+] as const;
+
+export type NativePrimaryHref = (typeof nativePersistentDestinations)[number]["href"];
 
 export type NativeNavigationIntent = {
   generation: number;
@@ -15,7 +20,7 @@ export type NativeNavigationIntent = {
 
 export function getNativePrimaryHref(pathname: string): NativePrimaryHref {
   return (
-    nativePrimaryTabs.find(
+    nativePersistentDestinations.find(
       ({ href }) => pathname === href || pathname.startsWith(`${href}/`)
     )?.href ?? "/home"
   );
