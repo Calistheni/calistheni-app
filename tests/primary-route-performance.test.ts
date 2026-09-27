@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("Home streams optional report generation instead of awaiting it before dashboard queries", async () => {
+test("Home holds its complete route behind one coherent standby screen", async () => {
   const [home, announcement] = await Promise.all([
     readFile(new URL("../app/(primary)/@home/home/page.tsx", import.meta.url), "utf8"),
     readFile(
@@ -13,11 +13,11 @@ test("Home streams optional report generation instead of awaiting it before dash
       "utf8"
     ),
   ]);
-  assert.match(home, /<Suspense fallback=\{null\}>/);
   assert.match(
     home,
     /<HomeWeeklyReportAnnouncement userId=\{session\.user\.id\} \/>/
   );
+  assert.doesNotMatch(home, /<Suspense/);
   assert.doesNotMatch(home, /await generatePreviousWeeklyReport/);
   assert.match(announcement, /await generatePreviousWeeklyReport\(userId\)/);
 });
@@ -36,8 +36,9 @@ test("Nutrition only fetches saved foods after an action menu opens and mounts t
     /useEffect\(\(\) => \{\s*void fetch\("\/api\/nutrition\/saved-foods"/
   );
   assert.match(source, /setLoadedDate\(dateKey\)/);
-  assert.match(source, /const showInitialLoading = loadedDate !== date/);
-  assert.match(source, /loading=\{showInitialLoading\}/);
+  assert.match(source, /dayCache\.current\.set\(dateKey/);
+  assert.match(source, /const hasSelectedDateData = loadedDate === date/);
+  assert.doesNotMatch(source, /NutritionSectionSkeleton/);
 });
 
 test("primary route boundaries render real standby shells instead of skeletons", async () => {
@@ -57,7 +58,7 @@ test("primary route boundaries render real standby shells instead of skeletons",
 test("parallel primary slots retain visited tabs and reveal intent immediately", async () => {
   const [layout, slots, context, standby] = await Promise.all([
     readFile(new URL("../app/(primary)/layout.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../components/primary-tabs/PrimaryTabSlots.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/primary-tabs/PrimaryTabHost.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/navigation/AppShellContext.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/primary-tabs/PrimaryTabStandby.tsx", import.meta.url), "utf8"),
   ]);
@@ -66,6 +67,7 @@ test("parallel primary slots retain visited tabs and reveal intent immediately",
     assert.match(layout, new RegExp(`${slot}: React\\.ReactNode`));
     assert.match(standby, new RegExp(`data-primary-tab-shell="${slot}"`));
   }
+  assert.match(slots, /data-primary-tab-host/);
   assert.match(slots, /import \{ Activity/);
   assert.match(slots, /mode=\{activeHref === href \? "visible" : "hidden"\}/);
   assert.match(slots, /usePrimaryTabNavigationTarget\(\)/);
@@ -140,15 +142,15 @@ test("Parks renders its shell without a duplicate session gate and restores map 
   assert.match(map, /storeParksViewport\(\{/);
 });
 
-test("Community streams feed data behind its visible route shell", async () => {
+test("Community keeps the standby screen until the complete feed is ready", async () => {
   const feed = await readFile(
     new URL("../app/(primary)/@community/feed/page.tsx", import.meta.url),
     "utf8"
   );
 
   assert.match(feed, /<CommunityTabs active="feed" \/>/);
-  assert.match(feed, /<Suspense fallback=\{<FeedItemsLoading \/>\}>/);
   assert.match(feed, /<FeedItems userId=\{session\.user\.id\} \/>/);
+  assert.doesNotMatch(feed, /Suspense|FeedItemsLoading|<Skeleton/);
 });
 
 test("primary server routes reuse one request-scoped session lookup", async () => {

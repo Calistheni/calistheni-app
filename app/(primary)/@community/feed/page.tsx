@@ -2,13 +2,10 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Suspense } from "react";
 import { CommunityTabs } from "@/components/community/CommunityTabs";
-import { BackButton } from "@/components/navigation/BackButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "@/lib/server-session";
 import { mapWorkoutSummary } from "@/lib/workouts";
@@ -187,39 +184,17 @@ async function FeedItems({ userId }: { userId: string }) {
   );
 }
 
-function FeedItemsLoading() {
-  return (
-    <div className="space-y-4" aria-busy="true" aria-label="Loading feed">
-      {Array.from({ length: 3 }).map((_, index) => (
-        <Card key={index}>
-          <CardHeader className="space-y-3">
-            <div className="flex items-center gap-3">
-              <Skeleton className="size-12 rounded-full" />
-              <div className="flex-1 space-y-2">
-                <Skeleton className="h-4 w-36" />
-                <Skeleton className="h-3 w-24" />
-              </div>
-            </div>
-            <Skeleton className="h-6 w-2/3" />
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-10 w-44" />
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  );
-}
-
 export default async function FeedPage() {
   const session = await getServerSession();
 
   if (!session?.user) redirect("/login");
 
   return (
-    <main className="mx-auto w-full max-w-4xl p-4 sm:p-6 lg:p-8">
-      <BackButton fallbackHref="/home" />
+    <main
+      data-primary-tab-shell="community"
+      data-primary-tab-data="ready"
+      className="mx-auto w-full max-w-4xl p-4 sm:p-6 lg:p-8"
+    >
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold">Workout Feed</h1>
@@ -232,9 +207,7 @@ export default async function FeedPage() {
         </Button>
       </div>
       <CommunityTabs active="feed" />
-      <Suspense fallback={<FeedItemsLoading />}>
-        <FeedItems userId={session.user.id} />
-      </Suspense>
+      <FeedItems userId={session.user.id} />
     </main>
   );
 }

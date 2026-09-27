@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Suspense } from "react";
 import {
   ArrowRight,
   Dumbbell,
@@ -319,7 +318,11 @@ export default async function HomePage() {
   ];
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8 lg:py-16">
+    <main
+      data-primary-tab-shell="home"
+      data-primary-tab-data="ready"
+      className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8 lg:py-16"
+    >
       <header className="max-w-4xl pb-16 sm:pb-20 lg:pb-24">
         <p className="text-xs font-semibold tracking-[0.18em] text-muted-foreground uppercase">
           {formatHeroDate(now)}
@@ -344,9 +347,7 @@ export default async function HomePage() {
       </header>
 
       <div className="space-y-16 sm:space-y-20 lg:space-y-24">
-        <Suspense fallback={null}>
-          <HomeWeeklyReportAnnouncement userId={session.user.id} />
-        </Suspense>
+        <HomeWeeklyReportAnnouncement userId={session.user.id} />
         <section aria-labelledby="week-heading">
           <SectionHeading
             id="week-heading"

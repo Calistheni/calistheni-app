@@ -1,4 +1,4 @@
-import { PrimaryTabSlots } from "@/components/primary-tabs/PrimaryTabSlots";
+import { PrimaryTabHost } from "@/components/primary-tabs/PrimaryTabHost";
 
 export default function PrimaryLayout({
   children,
@@ -16,7 +16,7 @@ export default function PrimaryLayout({
   rewards: React.ReactNode;
 }) {
   return (
-    <PrimaryTabSlots
+    <PrimaryTabHost
       home={home}
       nutrition={nutrition}
       parks={parks}
@@ -24,6 +24,6 @@ export default function PrimaryLayout({
       rewards={rewards}
     >
       {children}
-    </PrimaryTabSlots>
+    </PrimaryTabHost>
   );
 }

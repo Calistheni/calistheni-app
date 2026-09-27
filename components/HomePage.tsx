@@ -86,6 +86,8 @@ export default function HomePage({
   return (
     <main
       data-parks-page
+      data-primary-tab-shell="parks"
+      data-primary-tab-data="ready"
       className={
         inAppShell
           ? "relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-background"

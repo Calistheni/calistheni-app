@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { usePrimaryTabNavigationTarget } from "@/components/navigation/AppShellContext";
 import { getPrimaryTabHref, primaryTabNavigation } from "@/lib/navigation";
 
-type PrimaryTabSlotsProps = {
+type PrimaryTabHostProps = {
   children: React.ReactNode;
   home: React.ReactNode;
   nutrition: React.ReactNode;
@@ -14,20 +14,28 @@ type PrimaryTabSlotsProps = {
   rewards: React.ReactNode;
 };
 
-export function PrimaryTabSlots({
+/**
+ * Persistent presentation owner for the five primary application screens.
+ *
+ * Next.js still owns the URL and supplies each parallel route. Activity keeps
+ * visited screens and their client state available while pausing hidden
+ * effects. The latest navigation intent only selects which retained surface is
+ * visible; destination data never controls screen visibility.
+ */
+export function PrimaryTabHost({
   children,
   home,
   nutrition,
   parks,
   community,
   rewards,
-}: PrimaryTabSlotsProps) {
+}: PrimaryTabHostProps) {
   const pathname = usePathname();
   const navigationTarget = usePrimaryTabNavigationTarget();
   const committedHref = getPrimaryTabHref(pathname);
   const optimisticHref = getPrimaryTabHref(navigationTarget ?? "");
   const activeHref = optimisticHref ?? committedHref;
-  const slots = { home, nutrition, parks, community, rewards };
+  const surfaces = { home, nutrition, parks, community, rewards };
   const previousHref = useRef(activeHref);
   const scrollPositions = useRef(new Map<string, number>());
 
@@ -45,18 +53,21 @@ export function PrimaryTabSlots({
   }, [activeHref]);
 
   return (
-    <>
+    <div
+      data-primary-tab-host
+      className={activeHref === "/parks" ? "h-full min-h-0" : undefined}
+    >
       {primaryTabNavigation.map(({ key, href }) => (
         <Activity key={key} mode={activeHref === href ? "visible" : "hidden"}>
           <div
             data-primary-tab-surface={href}
             className={key === "parks" ? "h-full min-h-0" : undefined}
           >
-            {slots[key]}
+            {surfaces[key]}
           </div>
         </Activity>
       ))}
       {children}
-    </>
+    </div>
   );
 }

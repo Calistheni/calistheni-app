@@ -34,12 +34,14 @@ export function NutritionGoalCard({
   currentGoal,
   isHistoricalDate,
   progress,
+  dataAvailable,
   onSaved,
 }: {
   goal: Goal | null;
   currentGoal: Goal | null;
   isHistoricalDate: boolean;
   progress: NutritionGoalProgress | null;
+  dataAvailable: boolean;
   onSaved: (goal: Goal) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -125,7 +127,11 @@ export function NutritionGoalCard({
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="font-semibold">Nutrition goal</p>
-              {goal ? (
+              {!dataAvailable ? (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Daily targets will appear here.
+                </p>
+              ) : goal ? (
                 <p className="mt-1 text-sm text-muted-foreground">
                   {format(goal.caloriesKcal, 0)} kcal · P{" "}
                   {format(goal.proteinGrams)} · C{" "}
@@ -145,6 +151,7 @@ export function NutritionGoalCard({
               type="button"
               variant="outline"
               size="sm"
+              disabled={!dataAvailable}
               onClick={openEditor}
             >
               {currentGoal ?? goal ? <Pencil /> : null}

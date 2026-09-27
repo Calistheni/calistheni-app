@@ -92,6 +92,10 @@ type Entry = {
 };
 
 type NutritionGoal = NutritionGoalValues & { effectiveFrom?: string };
+type NutritionDaySnapshot = {
+  entries: Entry[];
+  goal: NutritionGoal | null;
+};
 
 const meals: Array<[Meal, string]> = [
   ["BREAKFAST", "Breakfast"],
@@ -131,18 +135,6 @@ function toGoal(
   ].every((number) => Number.isFinite(number) && number > 0)
     ? goal
     : null;
-}
-
-function NutritionSectionSkeleton() {
-  return (
-    <Card>
-      <CardContent className="space-y-3 p-4">
-        <Skeleton className="h-5 w-28" />
-        <Skeleton className="h-4 w-48" />
-        <Skeleton className="h-14 w-full" />
-      </CardContent>
-    </Card>
-  );
 }
 
 function FoodPickerLoading() {
@@ -187,9 +179,9 @@ export function NutritionTracker() {
     () => new Set()
   );
   const [pickerKey, setPickerKey] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [loadedDate, setLoadedDate] = useState<string | null>(null);
   const activeRequest = useRef(0);
+  const dayCache = useRef(new Map<string, NutritionDaySnapshot>());
   const savedFoodsLoaded = useRef(false);
   const selectedDateRef = useRef(date);
   const lastKnownTodayRef = useRef(initialToday);
@@ -204,7 +196,6 @@ export function NutritionTracker() {
 
   const refreshNutritionDay = useCallback(async (dateKey: string) => {
     const requestId = ++activeRequest.current;
-    setLoading(true);
 
     try {
       const response = await fetch(
@@ -217,6 +208,10 @@ export function NutritionTracker() {
       if (requestId !== activeRequest.current) return;
       setEntries(data.entries as Entry[]);
       const resolvedGoal = toGoal(data.goal ?? data.targets);
+      dayCache.current.set(dateKey, {
+        entries: data.entries as Entry[],
+        goal: resolvedGoal,
+      });
       setGoal(resolvedGoal);
       setLoadedDate(dateKey);
       if (dateKey === localNutritionDateKey()) setCurrentGoal(resolvedGoal);
@@ -226,17 +221,26 @@ export function NutritionTracker() {
           error instanceof Error ? error.message : "Unable to load nutrition."
         );
       }
-    } finally {
-      if (requestId === activeRequest.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void refreshNutritionDay(date);
-    }, 0);
-    return () => window.clearTimeout(timer);
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) void refreshNutritionDay(date);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [date, refreshNutritionDay]);
+
+  const selectNutritionDate = useCallback((dateKey: string) => {
+    const cached = dayCache.current.get(dateKey);
+    setDate(dateKey);
+    setEntries(cached?.entries ?? []);
+    setGoal(cached?.goal ?? null);
+    setLoadedDate(cached ? dateKey : null);
+  }, []);
   const ensureSavedFoodIds = useCallback(async () => {
     if (savedFoodsLoaded.current) return;
     const response = await fetch("/api/nutrition/saved-foods", {
@@ -301,7 +305,7 @@ export function NutritionTracker() {
   }, [reconcileForReturn]);
 
   const total = useMemo(() => nutritionTotals(entries), [entries]);
-  const showInitialLoading = loadedDate !== date;
+  const hasSelectedDateData = loadedDate === date;
   const progress = useMemo<NutritionGoalProgress | null>(
     () => (goal ? calculateNutritionGoalProgress(total, goal) : null),
     [goal, total]
@@ -420,7 +424,7 @@ export function NutritionTracker() {
 
       <NutritionDateNavigator
         selectedDate={date}
-        onSelectDate={setDate}
+        onSelectDate={selectNutritionDate}
         refreshToken={calendarRefreshToken}
       />
 
@@ -429,6 +433,7 @@ export function NutritionTracker() {
         currentGoal={currentGoal}
         isHistoricalDate={date < today}
         progress={progress}
+        dataAvailable={hasSelectedDateData}
         onSaved={(nextGoal) => {
           setCurrentGoal(nextGoal);
           if (selectedDateRef.current === localNutritionDateKey())
@@ -443,7 +448,7 @@ export function NutritionTracker() {
         goal={goal}
         progress={progress}
         mode={mode}
-        loading={showInitialLoading}
+        dataAvailable={hasSelectedDateData}
         setMode={setMode}
         onBreakdown={() => setBreakdown(true)}
       />
@@ -455,33 +460,32 @@ export function NutritionTracker() {
         </p>
       ) : null}
 
-      <div className="space-y-3" aria-busy={loading}>
-        {showInitialLoading
-          ? meals.map(([id]) => <NutritionSectionSkeleton key={id} />)
-          : meals.map(([id, label]) => (
-              <MealSection
-                key={id}
-                label={label}
-                entries={entries.filter((entry) => entry.mealCategory === id)}
-                disabled={isFuture}
-                onAdd={() => {
-                  setPickerKey((value) => value + 1);
-                  setMeal(id);
-                }}
-                onEdit={setEditing}
-                onDelete={deleteEntry}
-                onInspectFood={setInspectingEntry}
-                isHistorical={date < today}
-                onUse={(entry) => {
-                  setReuseMeal(entry.mealCategory);
-                  setReusingEntry(entry);
-                }}
-                onSave={saveFood}
-                savedFoodIds={savedFoodIds}
-                savingSavedFoodIds={savingSavedFoodIds}
-                onActionMenuOpen={ensureSavedFoodIds}
-              />
-            ))}
+      <div className="space-y-3" aria-busy={!hasSelectedDateData}>
+        {meals.map(([id, label]) => (
+          <MealSection
+            key={id}
+            label={label}
+            entries={entries.filter((entry) => entry.mealCategory === id)}
+            disabled={isFuture}
+            onAdd={() => {
+              setPickerKey((value) => value + 1);
+              setMeal(id);
+            }}
+            onEdit={setEditing}
+            onDelete={deleteEntry}
+            onInspectFood={setInspectingEntry}
+            isHistorical={date < today}
+            onUse={(entry) => {
+              setReuseMeal(entry.mealCategory);
+              setReusingEntry(entry);
+            }}
+            onSave={saveFood}
+            savedFoodIds={savedFoodIds}
+            savingSavedFoodIds={savingSavedFoodIds}
+            onActionMenuOpen={ensureSavedFoodIds}
+            dataAvailable={hasSelectedDateData}
+          />
+        ))}
       </div>
 
       <Breakdown
@@ -489,7 +493,7 @@ export function NutritionTracker() {
         setOpen={setBreakdown}
         total={total}
         goal={goal}
-        loading={showInitialLoading}
+        loading={!hasSelectedDateData}
       />
       {meal ? (
         <FoodPicker
@@ -574,7 +578,7 @@ function Summary({
   goal,
   progress,
   mode,
-  loading,
+  dataAvailable,
   setMode,
   onBreakdown,
 }: {
@@ -582,7 +586,7 @@ function Summary({
   goal: NutritionGoal | null;
   progress: NutritionGoalProgress | null;
   mode: "consumed" | "remaining";
-  loading: boolean;
+  dataAvailable: boolean;
   setMode: (value: "consumed" | "remaining") => void;
   onBreakdown: () => void;
 }) {
@@ -613,17 +617,14 @@ function Summary({
           <Button
             variant="outline"
             size="sm"
-            disabled={loading}
+            disabled={!dataAvailable}
             onClick={onBreakdown}
           >
             Breakdown
           </Button>
         </div>
-        {loading ? (
-          <Skeleton className="mt-4 h-20 w-full" />
-        ) : (
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {nutritionFields.map(([label, key, unit]) => {
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {nutritionFields.map(([label, key, unit]) => {
               const target = goal?.[key];
               const consumed = total[key] ?? 0;
               const over =
@@ -642,7 +643,11 @@ function Summary({
                       over ? "font-bold text-destructive" : "font-bold"
                     }
                   >
-                    {value == null ? "Set target" : `${format(value)} ${unit}`}
+                    {!dataAvailable
+                      ? "—"
+                      : value == null
+                        ? "Set target"
+                        : `${format(value)} ${unit}`}
                   </p>
                   {over ? (
                     <p className="text-xs text-destructive">
@@ -651,10 +656,9 @@ function Summary({
                   ) : null}
                 </div>
               );
-            })}
-          </div>
-        )}
-        {goal && progress && !loading ? (
+          })}
+        </div>
+        {goal && progress && dataAvailable ? (
           <div className="mt-4 space-y-3 border-t pt-4">
             <div className="flex items-center justify-between">
               <p className="font-medium">Daily goal</p>
@@ -688,7 +692,7 @@ function Summary({
             ) : null}
           </div>
         ) : null}
-        {mode === "remaining" && !goal && !loading ? (
+        {mode === "remaining" && !goal && dataAvailable ? (
           <p className="mt-3 text-sm text-muted-foreground">
             Set a nutrition goal to track daily progress.
           </p>
@@ -712,6 +716,7 @@ function MealSection({
   savedFoodIds,
   savingSavedFoodIds,
   onActionMenuOpen,
+  dataAvailable,
 }: {
   label: string;
   entries: Entry[];
@@ -726,6 +731,7 @@ function MealSection({
   savedFoodIds: Set<string>;
   savingSavedFoodIds: Set<string>;
   onActionMenuOpen: () => Promise<void>;
+  dataAvailable: boolean;
 }) {
   const total = nutritionTotals(entries);
   return (
@@ -735,10 +741,13 @@ function MealSection({
           <div className="flex-1">
             <h2 className="font-semibold">{label}</h2>
             <p className="text-sm text-muted-foreground">
-              {format(total.caloriesKcal ?? 0, 0)} kcal · P{" "}
-              {format(total.proteinGrams ?? 0)} · C{" "}
-              {format(total.carbohydrateGrams ?? 0)} · F{" "}
-              {format(total.fatGrams ?? 0)}
+              {dataAvailable
+                ? `${format(total.caloriesKcal ?? 0, 0)} kcal · P ${format(
+                    total.proteinGrams ?? 0
+                  )} · C ${format(total.carbohydrateGrams ?? 0)} · F ${format(
+                    total.fatGrams ?? 0
+                  )}`
+                : "— kcal · P — · C — · F —"}
             </p>
           </div>
           <Button
@@ -749,7 +758,7 @@ function MealSection({
                 ? "Food logging is unavailable for future dates"
                 : undefined
             }
-            disabled={disabled}
+            disabled={disabled || !dataAvailable}
             onClick={onAdd}
           >
             <Plus />
