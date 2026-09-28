@@ -11,7 +11,7 @@ export function NativeParksSurface({ active }: { active: boolean }) {
   const data = requirePrimarySnapshot("parks", query.data);
 
   return (
-    <div className="native-primary-data-screen native-parks-screen">
+    <div className="native-primary-data-screen native-parks-screen" data-native-component="NativeParksSurface">
       <header>
         <p className="native-eyebrow">Explore</p>
         <h1>Workout parks</h1>

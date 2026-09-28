@@ -11,7 +11,7 @@ export function NativeRewardsSurface({ active }: { active: boolean }) {
   if (state.status !== "authenticated") return null;
   const data = requirePrimarySnapshot("rewards", query.data);
   return (
-    <div className="native-rewards-screen">
+    <div className="native-rewards-screen" data-native-component="NativeRewardsSurface">
       <header>
         <p className="native-eyebrow">Calis Points</p>
         <h1>Train. Earn. <span>Unlock.</span></h1>

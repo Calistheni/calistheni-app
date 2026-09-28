@@ -4,6 +4,10 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: "export",
   trailingSlash: true,
+  env: {
+    NEXT_PUBLIC_CALISTHENI_NATIVE_DIAGNOSTICS:
+      process.env.CALISTHENI_NATIVE_DIAGNOSTICS === "1" ? "1" : "0",
+  },
   images: {
     unoptimized: true,
   },

@@ -11,7 +11,7 @@ export function NativeCommunitySurface({ active }: { active: boolean }) {
   const data = requirePrimarySnapshot("community", query.data);
 
   return (
-    <div className="native-primary-data-screen">
+    <div className="native-primary-data-screen" data-native-component="NativeCommunitySurface">
       <header>
         <p className="native-eyebrow">Community</p>
         <h1>Workout feed</h1>

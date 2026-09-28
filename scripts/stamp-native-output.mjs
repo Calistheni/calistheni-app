@@ -9,6 +9,7 @@ const manifest = {
   runtime: "bundled-native",
   buildId: randomUUID(),
   builtAt: new Date().toISOString(),
+  diagnostics: process.argv.includes("diagnostics"),
 };
 
 await writeFile(output, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");

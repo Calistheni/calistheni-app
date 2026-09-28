@@ -3,6 +3,7 @@
 import { QueryClient } from "@tanstack/react-query";
 
 let nativeQueryClient: QueryClient | undefined;
+const nativeQueryClientDebugId = "native-query-client-1";
 
 export function getNativeQueryClient() {
   if (!nativeQueryClient) {
@@ -18,4 +19,8 @@ export function getNativeQueryClient() {
     });
   }
   return nativeQueryClient;
+}
+
+export function getNativeQueryClientDebugId() {
+  return nativeQueryClientDebugId;
 }

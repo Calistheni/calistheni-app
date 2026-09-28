@@ -23,7 +23,7 @@ export function NativeProfileSurface({ active }: { active: boolean }) {
   ] as const;
 
   return (
-    <div className="native-profile-screen">
+    <div className="native-profile-screen" data-native-component="NativeProfileSurface">
       <header className="native-profile-header">
         {assetUrl(data.user.image) ? (
           // eslint-disable-next-line @next/next/no-img-element

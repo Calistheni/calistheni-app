@@ -9,6 +9,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -29,6 +30,7 @@ import {
 } from "@native/lib/secure-session";
 import type { NativeBootstrap } from "@native/lib/types";
 import { getNativeQueryClient } from "@native/lib/query-client";
+import { recordNativeAuth } from "@native/lib/runtime-diagnostics";
 
 type AuthState =
   | { status: "initializing" }
@@ -38,6 +40,8 @@ type AuthState =
 
 type NativeAuthContextValue = {
   state: AuthState;
+  authStage: string;
+  authFailure: string | null;
   signIn(): Promise<void>;
   logout(): Promise<void>;
   retry(): Promise<void>;
@@ -60,16 +64,45 @@ function nativeCode(value: string) {
 export function NativeAuthProvider({ children }: { children: ReactNode }) {
   const queryClient = getNativeQueryClient();
   const [state, setState] = useState<AuthState>({ status: "initializing" });
+  const [authStage, setAuthStage] = useState("initializing");
+  const [authFailure, setAuthFailure] = useState<string | null>(null);
+  const exchangingCodesRef = useRef(new Set<string>());
+  const consumedCodesRef = useRef(new Set<string>());
   const authenticatedUserId = state.status === "authenticated" ? state.bootstrap.user.id : null;
 
+  const updateAuthStage = useCallback((stage: string, detail?: string) => {
+    setAuthStage(stage);
+    if (stage !== "failed") setAuthFailure(null);
+    recordNativeAuth(stage, detail);
+  }, []);
+
+  const failAuth = useCallback((category: string) => {
+    setAuthStage("failed");
+    setAuthFailure(category);
+    recordNativeAuth("failed", category);
+  }, []);
+
   const bootstrap = useCallback(async () => {
-    const token = await getNativeSessionToken();
-    if (!token) { setState({ status: "signed-out" }); return; }
+    updateAuthStage("keychain-read");
+    let token: string | null;
+    try {
+      token = await getNativeSessionToken();
+    } catch {
+      failAuth("keychain-read");
+      setState({ status: "signed-out", message: "Secure session storage is unavailable. Please try again." });
+      return;
+    }
+    if (!token) {
+      updateAuthStage("signed-out");
+      setState({ status: "signed-out" });
+      return;
+    }
     const cached = await readUserCache<NativeBootstrap>("current", bootstrapCacheKey);
     let cachedIsReady = false;
     if (cached) {
       try {
         await hydratePrimarySnapshots(queryClient, cached.user.id);
+        updateAuthStage("primary-cache-hydrated");
         await ensurePrimaryQueriesReady(queryClient, cached.user.id);
         cachedIsReady = true;
         setState({ status: "authenticated", bootstrap: cached, offline: true });
@@ -79,6 +112,7 @@ export function NativeAuthProvider({ children }: { children: ReactNode }) {
       }
     }
     try {
+      updateAuthStage("bootstrap-request");
       const value = await apiFetch<NativeBootstrap>("/api/native/v1/bootstrap");
       const previousId = cached?.user.id;
       if (previousId && previousId !== value.user.id) {
@@ -88,9 +122,11 @@ export function NativeAuthProvider({ children }: { children: ReactNode }) {
       }
       await writeUserCache("current", bootstrapCacheKey, value);
       if (!cachedIsReady || previousId !== value.user.id) {
+        updateAuthStage("primary-sync");
         await hydratePrimarySnapshots(queryClient, value.user.id);
         await ensurePrimaryQueriesReady(queryClient, value.user.id);
       }
+      updateAuthStage("authenticated");
       setState({ status: "authenticated", bootstrap: value, offline: false });
     } catch (error) {
       if (error instanceof NativeApiError && error.status === 401) {
@@ -100,18 +136,27 @@ export function NativeAuthProvider({ children }: { children: ReactNode }) {
         if (cached) forgetPrimarySnapshots(cached.user.id);
         await clearUserCache("current");
         queryClient.clear();
+        failAuth("bootstrap-unauthorized");
         setState({ status: "signed-out", message: "Your session expired. Please sign in again." });
       } else if (!cachedIsReady) {
+        failAuth(error instanceof NativeApiError ? `bootstrap-http-${error.status}` : "bootstrap-network");
         setState({ status: "recoverable", message: "Calistheni could not synchronize the initial app data. Connect to the internet and try again." });
       }
     }
-  }, [queryClient]);
+  }, [failAuth, queryClient, updateAuthStage]);
 
   const exchange = useCallback(async (rawUrl: string) => {
     const code = nativeCode(rawUrl);
     if (!code) return;
+    if (consumedCodesRef.current.has(code) || exchangingCodesRef.current.has(code)) {
+      recordNativeAuth("callback-duplicate-ignored");
+      return;
+    }
+    exchangingCodesRef.current.add(code);
+    updateAuthStage("callback-received", rawUrl.startsWith("calistheni:") ? "custom-scheme" : "universal-link");
     await Browser.close().catch(() => undefined);
     try {
+      updateAuthStage("exchange-request");
       const result = await apiFetch<{ token: string }>("/api/native/v1/auth/exchange", {
         method: "POST",
         authenticated: false,
@@ -122,13 +167,19 @@ export function NativeAuthProvider({ children }: { children: ReactNode }) {
       if (previous) forgetPrimarySnapshots(previous.user.id);
       await clearUserCache("current");
       queryClient.clear();
+      updateAuthStage("keychain-write");
       await setNativeSessionToken(result.token);
+      consumedCodesRef.current.add(code);
+      updateAuthStage("keychain-write-success");
       setState({ status: "initializing" });
       await bootstrap();
     } catch (error) {
+      failAuth(error instanceof NativeApiError ? `exchange-http-${error.status}:${error.code ?? "unknown"}` : "exchange-or-keychain");
       setState({ status: "signed-out", message: error instanceof Error ? error.message : "Sign-in failed." });
+    } finally {
+      exchangingCodesRef.current.delete(code);
     }
-  }, [bootstrap, queryClient]);
+  }, [bootstrap, failAuth, queryClient, updateAuthStage]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => { void bootstrap(); });
@@ -156,10 +207,14 @@ export function NativeAuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true;
     let listener: Awaited<ReturnType<typeof App.addListener>> | undefined;
-    void App.getLaunchUrl().then((launch) => { if (active && launch?.url) void exchange(launch.url); });
-    void App.addListener("appUrlOpen", ({ url }) => { if (active) void exchange(url); }).then((handle) => { listener = handle; });
+    void App.getLaunchUrl()
+      .then((launch) => { if (active && launch?.url) void exchange(launch.url); })
+      .catch(() => failAuth("launch-url-read"));
+    void App.addListener("appUrlOpen", ({ url }) => { if (active) void exchange(url); })
+      .then((handle) => { listener = handle; })
+      .catch(() => failAuth("app-url-listener"));
     return () => { active = false; void listener?.remove(); };
-  }, [exchange]);
+  }, [exchange, failAuth]);
   useEffect(() => {
     if (!authenticatedUserId) return;
     const run = () => {
@@ -185,13 +240,27 @@ export function NativeAuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<NativeAuthContextValue>(() => ({
     state,
+    authStage,
+    authFailure,
     async signIn() {
-      const result = await apiFetch<{ externalAuthUrl: string }>("/api/native/v1/auth/attempt", {
-        method: "POST",
-        authenticated: false,
-        body: JSON.stringify({ platform: "IOS", redirectTo: "/rewards" }),
-      });
-      await Browser.open({ url: result.externalAuthUrl, presentationStyle: "fullscreen" });
+      try {
+        updateAuthStage("attempt-request");
+        const result = await apiFetch<{ externalAuthUrl: string }>("/api/native/v1/auth/attempt", {
+          method: "POST",
+          authenticated: false,
+          body: JSON.stringify({ platform: "IOS", redirectTo: "/home" }),
+        });
+        const external = new URL(result.externalAuthUrl);
+        if (external.protocol !== "https:" || external.origin !== "https://calistheni.app") {
+          throw new Error("Native authentication returned an unexpected browser origin.");
+        }
+        updateAuthStage("attempt-created");
+        await Browser.open({ url: external.toString(), presentationStyle: "fullscreen" });
+        updateAuthStage("browser-open");
+      } catch (error) {
+        failAuth(error instanceof NativeApiError ? `attempt-http-${error.status}:${error.code ?? "unknown"}` : "browser-open");
+        setState({ status: "signed-out", message: error instanceof Error ? error.message : "Unable to start sign-in." });
+      }
     },
     async logout() {
       const userId = state.status === "authenticated" ? state.bootstrap.user.id : null;
@@ -202,10 +271,11 @@ export function NativeAuthProvider({ children }: { children: ReactNode }) {
       if (userId) forgetPrimarySnapshots(userId);
       await clearUserCache("current");
       queryClient.clear();
+      updateAuthStage("signed-out");
       setState({ status: "signed-out" });
     },
     async retry() { setState({ status: "initializing" }); await bootstrap(); },
-  }), [bootstrap, queryClient, state]);
+  }), [authFailure, authStage, bootstrap, failAuth, queryClient, state, updateAuthStage]);
 
   return <QueryClientProvider client={queryClient}><NativeAuthContext.Provider value={value}>{children}</NativeAuthContext.Provider></QueryClientProvider>;
 }

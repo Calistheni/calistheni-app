@@ -25,7 +25,7 @@ export function NativeNutritionSurface({ active }: { active: boolean }) {
   const fat = numeric(data.totals.fatGrams);
 
   return (
-    <div className="native-primary-data-screen">
+    <div className="native-primary-data-screen" data-native-component="NativeNutritionSurface">
       <header>
         <p className="native-eyebrow">Today</p>
         <h1>Nutrition</h1>

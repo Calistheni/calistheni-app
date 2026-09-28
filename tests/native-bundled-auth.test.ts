@@ -120,7 +120,41 @@ test("native API client preserves caller options and never patches global fetch"
   assert.match(source, /new Headers\(inputHeaders\)/);
   assert.match(source, /fetch\(apiUrl\(path\), \{ \.\.\.init, headers \}\)/);
   assert.match(source, /Authorization.*Bearer/);
+  assert.match(source, /authenticated && response\.status === 401/);
   assert.doesNotMatch(source, /globalThis\.fetch|window\.fetch\s*=/);
+});
+
+test("bundled login starts the production HTTPS browser flow without navigating the WebView", () => {
+  const provider = read("apps/native/components/NativeAuthProvider.tsx");
+  assert.match(provider, /apiFetch<\{ externalAuthUrl: string \}>\("\/api\/native\/v1\/auth\/attempt"/);
+  assert.match(provider, /external\.protocol !== "https:" \|\| external\.origin !== "https:\/\/calistheni\.app"/);
+  assert.match(provider, /Browser\.open\(\{ url: external\.toString\(\), presentationStyle: "fullscreen" \}\)/);
+  assert.doesNotMatch(provider, /window\.location\.(?:assign|replace)|window\.location\.href\s*=/);
+});
+
+test("warm and cold native callbacks share one replay-safe exchange owner", () => {
+  const provider = read("apps/native/components/NativeAuthProvider.tsx");
+  assert.match(provider, /App\.getLaunchUrl\(\)/);
+  assert.match(provider, /App\.addListener\("appUrlOpen"/);
+  assert.match(provider, /exchangingCodesRef = useRef\(new Set<string>\(\)\)/);
+  assert.match(provider, /consumedCodesRef = useRef\(new Set<string>\(\)\)/);
+  assert.match(provider, /consumedCodesRef\.current\.has\(code\) \|\| exchangingCodesRef\.current\.has\(code\)/);
+  assert.match(provider, /callback-duplicate-ignored/);
+  assert.match(provider, /setNativeSessionToken\(result\.token\)/);
+  assert.ok(provider.indexOf("setNativeSessionToken(result.token)") < provider.indexOf("await bootstrap()"));
+});
+
+test("auth diagnostics are available before login and never include credentials", () => {
+  const shell = read("apps/native/components/NativeAppShell.tsx");
+  const provider = read("apps/native/components/NativeAuthProvider.tsx");
+  const diagnostics = read("apps/native/components/NativeRuntimeDiagnostics.tsx");
+  assert.match(shell, /<NativeAuthGate><NativePrimaryTabHost \/><\/NativeAuthGate>[\s\S]*<NativeRuntimeDiagnostics \/>/);
+  for (const stage of ["attempt-request", "browser-open", "callback-received", "exchange-request", "keychain-write-success", "bootstrap-request", "authenticated"]) {
+    assert.match(provider, new RegExp(stage));
+  }
+  assert.match(diagnostics, /authStage/);
+  assert.match(diagnostics, /authFailure/);
+  assert.doesNotMatch(diagnostics, /result\.token|handoffCode|authorization/i);
 });
 
 test("Keychain is the only native credential persistence", () => {

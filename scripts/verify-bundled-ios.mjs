@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -17,10 +17,19 @@ async function optionalJson(file) {
   }
 }
 
+async function filesBelow(directory) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  return (await Promise.all(entries.map((entry) => {
+    const item = path.join(directory, entry.name);
+    return entry.isDirectory() ? filesBelow(item) : [item];
+  }))).flat();
+}
+
 export async function verifyBundledIos(root = repositoryRoot) {
   const outputRoot = path.join(root, "apps/native/out");
   const publicRoot = path.join(root, "ios/App/App/public");
   const config = await optionalJson(path.join(root, "ios/App/App/capacitor.config.json"));
+  const xcodeProject = await readFile(path.join(root, "ios/App/App.xcodeproj/project.pbxproj"), "utf8").catch(() => "");
   const outputManifest = await optionalJson(path.join(outputRoot, "native-runtime.json"));
   const copiedManifest = await optionalJson(path.join(publicRoot, "native-runtime.json"));
   const errors = [];
@@ -29,7 +38,12 @@ export async function verifyBundledIos(root = repositoryRoot) {
   if (config?.server?.url) errors.push(`server.url is still ${config.server.url}`);
   if (outputManifest?.runtime !== "bundled-native") errors.push("native output has no bundled runtime marker; run npm run build:native");
   if (copiedManifest?.runtime !== "bundled-native") errors.push("iOS public assets have no bundled runtime marker");
+  if (copiedManifest?.diagnostics !== true) errors.push("iOS bundled development diagnostics are not enabled");
   if (outputManifest && copiedManifest && copiedManifest.buildId !== outputManifest.buildId) errors.push("iOS public assets do not match the latest native build ID");
+  if (!xcodeProject.includes("CalistheniSecureSessionPlugin.swift in Sources") ||
+      !xcodeProject.includes("packageClassList.12 -string CalistheniSecureSessionPlugin")) {
+    errors.push("Xcode is missing the durable CalistheniSecureSession registration hook");
+  }
 
   for (const route of requiredRoutes) {
     const relative = path.join(route, "index.html");
@@ -43,6 +57,17 @@ export async function verifyBundledIos(root = repositoryRoot) {
   const copiedHome = await readFile(path.join(publicRoot, "home/index.html"), "utf8").catch(() => "");
   if (!copiedHome.includes('data-native-runtime="bundled"')) {
     errors.push("iOS Home is not the bundled NativeAppShell");
+  }
+  const copiedSources = (await Promise.all(
+    (await filesBelow(publicRoot))
+      .filter((file) => /\.(?:html|js|txt)$/.test(file))
+      .map((file) => readFile(file, "utf8"))
+  )).join("\n");
+  for (const marker of ["NativeRewardsSurface", "NativeProfileSurface", "data-native-primary-tab-host"]) {
+    if (!copiedSources.includes(marker)) errors.push(`iOS assets are missing runtime marker ${marker}`);
+  }
+  if (/Initial synchronization|Partner rewards are preparing|PrimaryTabStandby|PageSkeleton/.test(copiedSources)) {
+    errors.push("iOS assets contain web-only primary loading UI");
   }
 
   if (errors.length) {

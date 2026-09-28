@@ -62,6 +62,14 @@ export async function verifyNativeOutput(outputDirectory = defaultOutput) {
     if (manifest.runtime !== "bundled-native" || typeof manifest.buildId !== "string" || typeof manifest.builtAt !== "string") {
       missing.push("native-runtime.json is not a valid bundled build marker");
     }
+    const generatedSources = (await Promise.all(
+      (await filesBelow(outputDirectory))
+        .filter((file) => /\.(?:html|js|txt)$/.test(file))
+        .map((file) => readFile(file, "utf8"))
+    )).join("\n");
+    for (const marker of ["NativeRewardsSurface", "NativeProfileSurface", "data-native-primary-tab-host"]) {
+      if (!generatedSources.includes(marker)) missing.push(`export is missing runtime marker ${marker}`);
+    }
     for (const file of await filesBelow(outputDirectory)) {
       if (!/\.(?:html|js|txt)$/.test(file)) continue;
       const source = await readFile(file, "utf8");

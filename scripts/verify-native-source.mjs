@@ -9,6 +9,7 @@ const repositoryRoot = path.resolve(
 const nativeRoot = path.join(repositoryRoot, "apps/native");
 const sourceExtensions = new Set([".js", ".jsx", ".mjs", ".ts", ".tsx"]);
 const forbiddenImports = [
+  /^@\//,
   /^server-only$/,
   /^next-auth(?:\/|$)/,
   /^stripe(?:\/|$)/,
@@ -23,9 +24,12 @@ const forbiddenImports = [
   /(?:^|\/)lib\/[^/]*email/,
   /(?:^|\/)lib\/admin-/,
   /(?:^|\/)lib\/nutrition\/providers\//,
+  /^(?:\.\.\/){3,}/,
 ];
 const allowedEnvironmentVariables = new Set([
   "NEXT_PUBLIC_CALISTHENI_API_ORIGIN",
+  "NEXT_PUBLIC_CALISTHENI_NATIVE_DIAGNOSTICS",
+  "CALISTHENI_NATIVE_DIAGNOSTICS",
 ]);
 const forbiddenSecretNames = /\b(?:DATABASE_URL|AUTH_SECRET|NEXTAUTH_SECRET|GOOGLE_CLIENT_SECRET|AUTH_GOOGLE_SECRET|STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET|APPLE_IAP_PRIVATE_KEY|R2_SECRET_ACCESS_KEY|OPENAI_API_KEY)\b/g;
 

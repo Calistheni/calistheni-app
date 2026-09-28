@@ -34,7 +34,7 @@ export function NativeHomeSurface({ active }: { active: boolean }) {
   ];
 
   return (
-    <div className="native-home-screen" data-home-snapshot="ready">
+    <div className="native-home-screen" data-home-snapshot="ready" data-native-component="NativeHomeSurface">
       <header>
         <p className="native-eyebrow">Your training</p>
         <h1>Welcome back, {data.greetingName}.</h1>

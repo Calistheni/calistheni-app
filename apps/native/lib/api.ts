@@ -39,7 +39,9 @@ export async function apiFetch<T>(
   const response = await fetch(apiUrl(path), { ...init, headers });
   const payload = await response.json().catch(() => null) as T & { error?: string; code?: string } | null;
   if (!response.ok) {
-    if (response.status === 401 && typeof window !== "undefined") {
+    // A rejected unauthenticated handoff is not evidence that an existing
+    // bearer session is invalid. Only protected requests may revoke local auth.
+    if (authenticated && response.status === 401 && typeof window !== "undefined") {
       window.dispatchEvent(new Event("calistheni:native-session-unauthorized"));
     }
     throw new NativeApiError(

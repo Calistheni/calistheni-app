@@ -254,14 +254,39 @@ test("the native QueryClient is one stable application-lifetime instance", () =>
 test("one Profile click uses the same local activation owner and always has a surface", () => {
   const host = read("apps/native/components/NativePrimaryTabHost.tsx");
   const profile = read("apps/native/components/NativeProfileSurface.tsx");
-  assert.match(host, /href="\/profile"[\s\S]*onClick=\{\(event\) => activateDestination\(event, "\/profile", false\)\}/);
-  assert.equal((host.match(/href="\/profile"/g) ?? []).length, 1);
+  assert.match(host, /onClick=\{\(\) => activateDestination\("\/profile", false\)\}/);
   assert.match(host, /function NativePersistentSurface[\s\S]*return <NativeProfileSurface active=\{active\}/);
   assert.match(host, /<NativePersistentSurface href=\{href\} active=\{active\}/);
   assert.doesNotMatch(host, /onPointerDown|onPointerCancel|pointerIntentRef/);
-  assert.doesNotMatch(host + profile, /router\.push|router\.replace|Skeleton|Suspense/);
+  assert.doesNotMatch(host + profile, /<Link|router\.push|router\.replace|Skeleton|Suspense/);
+  assert.match(host, /window\.history\.pushState/);
   assert.match(profile, /usePrimarySnapshot\(userId, "profile", active\)/);
   assert.match(profile, /requirePrimarySnapshot\("profile", query\.data\)/);
+  assert.match(profile, /data-native-component="NativeProfileSurface"/);
+});
+
+test("Rewards and Profile activate locally without router completion or web fallbacks", () => {
+  const host = read("apps/native/components/NativePrimaryTabHost.tsx");
+  const rewards = read("apps/native/components/NativeRewardsSurface.tsx");
+  const profile = read("apps/native/components/NativeProfileSurface.tsx");
+  assert.match(host, /nativePersistentDestinations\.map/);
+  assert.match(host, /onClick=\{\(\) => activateDestination\(href, active\)\}/);
+  assert.match(host, /setIntent\(next\)[\s\S]*window\.history\.pushState/);
+  assert.match(rewards, /data-native-component="NativeRewardsSurface"/);
+  assert.match(profile, /data-native-component="NativeProfileSurface"/);
+  assert.doesNotMatch(rewards, /PrimaryTabStandby|Initial synchronization|Partner rewards are preparing/);
+  assert.doesNotMatch(profile, /PageSkeleton|loading\.tsx/);
+});
+
+test("bundled runtime diagnostics expose origin, component state, and canonical snapshots without secrets", () => {
+  const diagnostics = read("apps/native/components/NativeRuntimeDiagnostics.tsx");
+  const swift = read("ios/App/App/MainViewController.swift");
+  for (const value of ["buildId", "window.location.href", "window.location.origin", "activeSurface", "queryClient", "primaryReady", "rewardsSnapshot", "profileSnapshot", "apiOrigin", "authStage", "authFailure"]) {
+    assert.match(diagnostics, new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+  assert.match(swift, /NATIVE DEV/);
+  assert.match(swift, /webView\?\.url\?\.absoluteString/);
+  assert.doesNotMatch(diagnostics + swift, /sessionToken|Authorization|Bearer/);
 });
 
 test("rapid Home to Profile to Nutrition keeps the latest native intent", async () => {

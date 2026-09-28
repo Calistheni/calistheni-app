@@ -84,6 +84,8 @@ test("native host owns local surfaces without loading or skeleton UI", () => {
   }
   assert.match(host, /intent\?\.href \?\? committedHref/);
   assert.match(host, /window\.addEventListener\("popstate"/);
+  assert.match(host, /window\.history\.pushState/);
+  assert.doesNotMatch(host, /next\/link|<Link/);
   assert.doesNotMatch(host, /Skeleton|Suspense|setTimeout|fetch\(/);
 });
 
@@ -92,8 +94,44 @@ test("bundled build, sync, and open scripts verify the exact copied runtime", ()
   assert.match(packageJson.scripts["build:native"], /stamp-native-output/);
   assert.match(packageJson.scripts["build:native"], /verify-native-output/);
   assert.match(packageJson.scripts["mobile:sync:ios:bundled"], /verify-bundled-ios/);
+  assert.match(packageJson.scripts["mobile:sync:ios:bundled"], /set-ios-runtime-expectation\.mjs bundled/);
+  assert.match(packageJson.scripts["mobile:sync:ios:bundled"], /verify-xcode-runtime-mode/);
   assert.match(packageJson.scripts["mobile:open:ios:bundled"], /^node scripts\/verify-bundled-ios\.mjs/);
   assert.match(packageJson.scripts["mobile:ios:bundled"], /build:native[\s\S]*sync:ios:bundled[\s\S]*open:ios:bundled/);
+  assert.match(read("scripts/verify-built-ios-app.mjs"), /CalistheniSecureSessionPlugin/);
+});
+
+test("Xcode build phase blocks runtime-mode drift before copying resources", () => {
+  const project = read("ios/App/App.xcodeproj/project.pbxproj");
+  const nodeResolver = read("scripts/run-with-node.sh");
+  const verifier = read("scripts/verify-xcode-runtime-mode.mjs");
+  const artifactVerifier = read("scripts/verify-built-ios-app.mjs");
+  assert.match(project, /verify-xcode-runtime-mode\.mjs/);
+  assert.match(project, /\/bin\/sh .*scripts\/run-with-node\.sh/);
+  assert.doesNotMatch(project, /\/usr\/bin\/env node/);
+  assert.match(nodeResolver, /\/opt\/homebrew\/bin\/node/);
+  assert.match(nodeResolver, /\/usr\/local\/bin\/node/);
+  assert.match(nodeResolver, /VOLTA_HOME/);
+  assert.match(nodeResolver, /FNM_MULTISHELL_PATH/);
+  assert.match(nodeResolver, /NVM_DIR/);
+  assert.match(nodeResolver, /Node\.js 22 or newer/);
+  assert.match(verifier, /Bundled Xcode build blocked/);
+  assert.match(artifactVerifier, /compiled server\.url/);
+  assert.match(artifactVerifier, /public\/(?:\$\{route\}|profile)/);
+});
+
+test("Xcode Node resolver works with an intentionally restricted PATH", () => {
+  const result = spawnSync("/bin/sh", ["scripts/run-with-node.sh", "-e", "process.stdout.write(process.execPath)"], {
+    cwd: new URL("../", import.meta.url),
+    encoding: "utf8",
+    env: {
+      HOME: process.env.HOME,
+      PATH: "/usr/bin:/bin",
+      CALISTHENI_NODE_BINARY: process.execPath,
+    },
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(result.stdout, process.execPath);
 });
 
 test("native source passes the server-only import and secret environment guard", () => {

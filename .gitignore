@@ -18,6 +18,7 @@
 /out/
 /apps/native/.next/
 /apps/native/out/
+/ios/App/.calistheni-runtime-mode
 
 # production
 /build
