@@ -1,4 +1,5 @@
 import { PrimaryTabHost } from "@/components/primary-tabs/PrimaryTabHost";
+import { PrimaryTabStandby } from "@/components/primary-tabs/PrimaryTabStandby";
 
 export default function PrimaryLayout({
   children,
@@ -22,6 +23,7 @@ export default function PrimaryLayout({
       parks={parks}
       community={community}
       rewards={rewards}
+      profile={<PrimaryTabStandby tab="profile" />}
     >
       {children}
     </PrimaryTabHost>

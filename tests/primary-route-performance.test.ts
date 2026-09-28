@@ -96,7 +96,7 @@ test("idle and lifecycle refreshes cannot choose a primary route", async () => {
   assert.doesNotMatch(shell, /setTimeout\([^)]*router\.refresh/);
 });
 
-test("primary navigation warms all five tab routes exactly once after paint", async () => {
+test("primary navigation warms all six destinations exactly once after paint", async () => {
   const [shell, navigation] = await Promise.all([
     readFile(
       new URL("../components/navigation/AppShell.tsx", import.meta.url),

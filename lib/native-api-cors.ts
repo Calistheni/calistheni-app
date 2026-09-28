@@ -9,6 +9,16 @@ function allowedOrigin(request: Request) {
   return isAllowedNativeOrigin(request.headers.get("origin"));
 }
 
+function isSameOriginRequest(request: Request) {
+  const origin = request.headers.get("origin");
+  if (origin) return origin === new URL(request.url).origin;
+
+  // Browsers may omit Origin on same-origin GET. Sec-Fetch-Site still lets us
+  // reject a cross-site browser request; non-browser callers remain subject to
+  // the endpoint's normal authentication and authorization checks.
+  return request.headers.get("sec-fetch-site") !== "cross-site";
+}
+
 export function withNativeCors(request: Request, response: NextResponse) {
   response.headers.append("Vary", "Origin");
   if (allowedOrigin(request)) {
@@ -39,7 +49,7 @@ export function nativeCorsPreflight(request: Request) {
 }
 
 export function rejectDisallowedNativeOrigin(request: Request) {
-  return allowedOrigin(request)
+  return allowedOrigin(request) || isSameOriginRequest(request)
     ? null
     : nativeCorsJson(
         request,

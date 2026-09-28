@@ -3,6 +3,7 @@
 import { createContext, useContext } from "react";
 
 export type AppShellUser = {
+  id: string;
   name?: string | null;
   email?: string | null;
   unreadCommunityActivity?: number;

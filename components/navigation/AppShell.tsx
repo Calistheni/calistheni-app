@@ -37,6 +37,7 @@ import {
   type PrimaryNavigationIntent,
 } from "@/lib/primary-navigation-intent";
 import { cn } from "@/lib/utils";
+import { PrimaryPresentationProvider } from "@/components/primary-tabs/PrimaryPresentationProvider";
 import { AccountMenu } from "./AccountMenu";
 import {
   AppShellUserProvider,
@@ -285,6 +286,7 @@ export function AppShell({ children, user }: AppShellProps) {
   return (
     <AppShellUserProvider value={user}>
       <PrimaryTabNavigationTargetProvider value={pendingHref}>
+        <PrimaryPresentationProvider key={user.id} userId={user.id}>
         <ActiveWorkoutProvider>
           <div
             className={cn(
@@ -462,6 +464,7 @@ export function AppShell({ children, user }: AppShellProps) {
         )}
           </div>
         </ActiveWorkoutProvider>
+        </PrimaryPresentationProvider>
       </PrimaryTabNavigationTargetProvider>
     </AppShellUserProvider>
   );

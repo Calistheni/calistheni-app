@@ -19,11 +19,12 @@ test("a pending parallel-route payload cannot replace a resolved primary surface
   assert.equal(retainLastResolvedPrimarySurface(resolved, updated), updated);
 });
 
-test("cold primary standbys use an explicit synchronization state, never fake dash values", async () => {
+test("cold primary standbys never fake dash values and returning snapshots use real data", async () => {
   const standby = await read("components/primary-tabs/PrimaryTabStandby.tsx");
   assert.doesNotMatch(standby, />—</);
   assert.doesNotMatch(standby, /— kcal|P —|C —|F —/);
-  assert.match(standby, /Initial synchronization/);
+  assert.doesNotMatch(standby, /Initial synchronization|Partner rewards are preparing/);
+  assert.match(standby, /usePrimaryPresentation\("rewards"\)/);
 });
 
 test("primary screen activation never replaces known content with a pending standby", async () => {
@@ -41,7 +42,7 @@ test("all cold primary tabs expose complete real screen structures", async () =>
     "components/primary-tabs/PrimaryTabStandby.tsx"
   );
 
-  for (const tab of ["home", "nutrition", "parks", "community", "rewards"]) {
+  for (const tab of ["home", "nutrition", "parks", "community", "rewards", "profile"]) {
     assert.match(standby, new RegExp(`data-primary-tab-shell="${tab}"`));
   }
   for (const homeSection of [
@@ -65,10 +66,9 @@ test("all cold primary tabs expose complete real screen structures", async () =>
     assert.match(standby, new RegExp(nutritionRegion));
   }
   for (const rewardsRegion of [
-    "Points overview",
-    "Reward previews",
-    "How rewards will work",
-    "Pro reward benefits",
+    "Current balance",
+    "Available rewards",
+    "Calis Points",
   ]) {
     assert.match(standby, new RegExp(rewardsRegion));
   }

@@ -16,6 +16,7 @@ type PrimaryTabHostProps = {
   parks: React.ReactNode;
   community: React.ReactNode;
   rewards: React.ReactNode;
+  profile: React.ReactNode;
 };
 
 function RetainedPrimarySurface({ candidate }: { candidate: React.ReactNode }) {
@@ -38,7 +39,7 @@ function RetainedPrimarySurface({ candidate }: { candidate: React.ReactNode }) {
 }
 
 /**
- * Persistent presentation owner for the five primary application screens.
+ * Persistent presentation owner for the six primary application screens.
  *
  * Next.js still owns the URL and supplies each parallel route. Activity keeps
  * visited screens and their client state available while pausing hidden
@@ -52,12 +53,13 @@ export function PrimaryTabHost({
   parks,
   community,
   rewards,
+  profile,
 }: PrimaryTabHostProps) {
   const pathname = usePathname();
   const navigationTarget = usePrimaryTabNavigationTarget();
   const committedHref = getPrimaryTabHref(pathname);
   const optimisticHref = getPrimaryTabHref(navigationTarget ?? "");
-  const surfaces = { home, nutrition, parks, community, rewards };
+  const surfaces = { home, nutrition, parks, community, rewards, profile };
   const activeHref = optimisticHref ?? committedHref;
   const previousHref = useRef(activeHref);
   const scrollPositions = useRef(new Map<string, number>());

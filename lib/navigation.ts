@@ -18,6 +18,7 @@ export const primaryTabNavigation = [
   desktopPrimaryNavigation[2],
   desktopPrimaryNavigation[3],
   desktopPrimaryNavigation[4],
+  desktopPrimaryNavigation[6],
 ] as const;
 
 export type PrimaryTabHref = (typeof primaryTabNavigation)[number]["href"];

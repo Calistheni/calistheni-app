@@ -1,5 +1,5 @@
-import { PageSkeleton } from "@/components/loading/PageSkeleton";
+import { PrimaryTabStandby } from "@/components/primary-tabs/PrimaryTabStandby";
 
 export default function ProfileLoading() {
-  return <PageSkeleton cards={4} />;
+  return <PrimaryTabStandby tab="profile" />;
 }

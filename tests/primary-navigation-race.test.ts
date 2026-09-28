@@ -69,6 +69,30 @@ test("only the current generation at its own committed route may settle", () => 
   );
 });
 
+test("a stale Nutrition completion cannot overwrite a newer one-tap Profile intent", () => {
+  const nutrition = navigate(null, "/nutrition");
+  const profile = navigate(nutrition, "/profile");
+  assert.deepEqual(settlePrimaryNavigationIntent(profile, nutrition.generation, "/nutrition"), profile);
+  assert.equal(profile.href, "/profile");
+  assert.equal(settlePrimaryNavigationIntent(profile, profile.generation, "/profile"), null);
+});
+
+test("one Profile activation wins from every primary destination", () => {
+  for (const href of ["/home", "/nutrition", "/parks", "/feed", "/rewards"]) {
+    const previous = navigate(null, href);
+    const profile = navigate(previous, "/profile");
+    assert.equal(profile.href, "/profile");
+    assert.equal(profile.generation, previous.generation + 1);
+  }
+});
+
+test("rapid navigation through all six destinations ends on Profile", () => {
+  let current: PrimaryNavigationIntent | null = null;
+  for (const href of ["/home", "/nutrition", "/parks", "/feed", "/rewards", "/profile"]) current = navigate(current, href);
+  assert.equal(current?.href, "/profile");
+  assert.equal(current?.generation, 6);
+});
+
 test("AppShell uses the generation guard and does not restore from timers or prefetch", async () => {
   const shell = await readFile(
     new URL("../components/navigation/AppShell.tsx", import.meta.url),
