@@ -12,6 +12,7 @@ import {
 import { calculateWeeklyReport } from "@/lib/weekly-report";
 import { mapWorkoutSummary } from "@/lib/workouts";
 import { getPersistedVolumeSetCompletion } from "@/lib/workout-volume";
+import { completePrimaryPresentation } from "@/lib/primary-presentation";
 
 export const runtime = "nodejs";
 
@@ -128,7 +129,7 @@ export async function GET(request: Request) {
 
   return nativeCorsJson(
     request,
-    {
+    completePrimaryPresentation({
       greetingName: profile.name?.trim().split(/\s+/)[0] || "athlete",
       asOf: now.toISOString(),
       streakDays: calculateCurrentWorkoutStreak(completedDates, now),
@@ -150,7 +151,7 @@ export async function GET(request: Request) {
             completedAt: recentWorkout.completedAt?.toISOString() ?? null,
           }
         : null,
-    },
+    }, now),
     { headers: { "Cache-Control": "private, no-store" } }
   );
 }

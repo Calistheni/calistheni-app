@@ -12,6 +12,7 @@ import {
   nutritionTotals,
 } from "@/lib/nutrition/log";
 import { getNutritionGoalForDate } from "@/lib/nutrition/goal-service";
+import { completePrimaryPresentation } from "@/lib/primary-presentation";
 
 export const runtime = "nodejs";
 
@@ -48,7 +49,7 @@ export async function GET(request: Request) {
   const serialized = entries.map(serializeNutritionEntry);
   return nativeCorsJson(
     request,
-    { date: date.data, totals: nutritionTotals(serialized), goal, entryCount: serialized.length, updatedAt: new Date().toISOString() },
+    completePrimaryPresentation({ date: date.data, totals: nutritionTotals(serialized), goal, entryCount: serialized.length, updatedAt: new Date().toISOString() }),
     { headers: { "Cache-Control": "private, no-store" } }
   );
 }

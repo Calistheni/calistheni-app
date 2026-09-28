@@ -1,7 +1,7 @@
 import "server-only";
 
 import { NextResponse } from "next/server";
-import { isAllowedNativeOrigin, NATIVE_APP_ORIGIN } from "@/lib/native-api-cors-core";
+import { isAllowedAuthenticatedApiRequest, isAllowedNativeOrigin, NATIVE_APP_ORIGIN } from "@/lib/native-api-cors-core";
 
 export { NATIVE_APP_ORIGIN } from "@/lib/native-api-cors-core";
 
@@ -9,14 +9,12 @@ function allowedOrigin(request: Request) {
   return isAllowedNativeOrigin(request.headers.get("origin"));
 }
 
-function isSameOriginRequest(request: Request) {
-  const origin = request.headers.get("origin");
-  if (origin) return origin === new URL(request.url).origin;
-
-  // Browsers may omit Origin on same-origin GET. Sec-Fetch-Site still lets us
-  // reject a cross-site browser request; non-browser callers remain subject to
-  // the endpoint's normal authentication and authorization checks.
-  return request.headers.get("sec-fetch-site") !== "cross-site";
+function isAllowedAuthenticatedRequest(request: Request) {
+  return isAllowedAuthenticatedApiRequest({
+    requestUrl: request.url,
+    origin: request.headers.get("origin"),
+    fetchSite: request.headers.get("sec-fetch-site"),
+  });
 }
 
 export function withNativeCors(request: Request, response: NextResponse) {
@@ -49,7 +47,7 @@ export function nativeCorsPreflight(request: Request) {
 }
 
 export function rejectDisallowedNativeOrigin(request: Request) {
-  return allowedOrigin(request) || isSameOriginRequest(request)
+  return isAllowedAuthenticatedRequest(request)
     ? null
     : nativeCorsJson(
         request,

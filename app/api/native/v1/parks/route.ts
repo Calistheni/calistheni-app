@@ -6,6 +6,7 @@ import {
   nativeCorsPreflight,
   rejectDisallowedNativeOrigin,
 } from "@/lib/native-api-cors";
+import { completePrimaryPresentation } from "@/lib/primary-presentation";
 
 export const runtime = "nodejs";
 
@@ -24,7 +25,7 @@ export async function GET(request: Request) {
   ]);
   return nativeCorsJson(
     request,
-    { publicParkCount: count, version: latest?.updatedAt.toISOString() ?? null, updatedAt: new Date().toISOString() },
+    completePrimaryPresentation({ publicParkCount: count, version: latest?.updatedAt.toISOString() ?? null, updatedAt: new Date().toISOString() }),
     { headers: { "Cache-Control": "private, no-store" } }
   );
 }

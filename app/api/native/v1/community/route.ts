@@ -6,6 +6,7 @@ import {
   rejectDisallowedNativeOrigin,
 } from "@/lib/native-api-cors";
 import { mapWorkoutSummary } from "@/lib/workouts";
+import { completePrimaryPresentation } from "@/lib/primary-presentation";
 
 export const runtime = "nodejs";
 
@@ -52,7 +53,7 @@ export async function GET(request: Request) {
     : [];
   return nativeCorsJson(
     request,
-    {
+    completePrimaryPresentation({
       items: workouts.map((workout) => {
         const summary = mapWorkoutSummary(workout);
         return {
@@ -66,7 +67,7 @@ export async function GET(request: Request) {
         };
       }),
       updatedAt: new Date().toISOString(),
-    },
+    }),
     { headers: { "Cache-Control": "private, no-store" } }
   );
 }

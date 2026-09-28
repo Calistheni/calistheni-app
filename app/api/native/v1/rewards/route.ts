@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { getUserEntitlements } from "@/lib/entitlements";
 import { getAuthenticatedUserId } from "@/lib/user-auth";
 import { nativeCorsJson, nativeCorsPreflight, rejectDisallowedNativeOrigin } from "@/lib/native-api-cors";
+import { completePrimaryPresentation } from "@/lib/primary-presentation";
 
 export const runtime = "nodejs";
 export function OPTIONS(request: Request) { return nativeCorsPreflight(request); }
@@ -18,11 +19,11 @@ export async function GET(request: Request) {
     getUserEntitlements(userId),
   ]);
   if (!user) return nativeCorsJson(request, { error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
-  return nativeCorsJson(request, {
+  return nativeCorsJson(request, completePrimaryPresentation({
     balance: user.rewardPoints,
     rewards,
     redemptions: redemptions.map((item) => ({ ...item, createdAt: item.createdAt.toISOString() })),
     entitlement: { isPro: entitlement.entitlements.isPro, canEarnRewardPoints: entitlement.entitlements.canEarnRewardPoints },
     updatedAt: new Date().toISOString(),
-  }, { headers: { "Cache-Control": "private, no-store" } });
+  }), { headers: { "Cache-Control": "private, no-store" } });
 }

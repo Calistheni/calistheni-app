@@ -6,6 +6,7 @@ import {
   nativeCorsPreflight,
   rejectDisallowedNativeOrigin,
 } from "@/lib/native-api-cors";
+import { completePrimaryPresentation } from "@/lib/primary-presentation";
 
 export const runtime = "nodejs";
 
@@ -59,7 +60,7 @@ export async function GET(request: Request) {
     return nativeCorsJson(request, { error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
   }
 
-  return nativeCorsJson(request, {
+  return nativeCorsJson(request, completePrimaryPresentation({
     user: { id: user.id, name: user.name, username: user.username, image: user.image },
     stats: {
       workouts,
@@ -77,5 +78,5 @@ export async function GET(request: Request) {
     },
     entitlement: { isPro: entitlement.entitlements.isPro },
     updatedAt: new Date().toISOString(),
-  }, { headers: { "Cache-Control": "private, no-store" } });
+  }), { headers: { "Cache-Control": "private, no-store" } });
 }

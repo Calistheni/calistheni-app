@@ -5,14 +5,16 @@ import { createContext, useContext, useLayoutEffect, useMemo, useState } from "r
 import {
   createPrimaryPresentation,
   decodePrimaryPresentation,
+  PRIMARY_PRESENTATION_VERSION,
   primaryPresentationKeys,
   primaryPresentationNames,
   primarySchemas,
+  selectLastKnownGood,
   type PrimaryPresentationData,
   type PrimaryPresentationName,
 } from "@/lib/primary-presentation";
 
-const STORAGE_PREFIX = "calistheni:primary-presentation:v1";
+const STORAGE_PREFIX = `calistheni:primary-presentation:v${PRIMARY_PRESENTATION_VERSION}`;
 const PresentationContext = createContext<{ userId: string; hydrated: boolean } | null>(null);
 
 export function primaryPresentationStorageKey(userId: string, name: PrimaryPresentationName) {
@@ -27,8 +29,11 @@ export function readPersistedPrimaryPresentation<Name extends PrimaryPresentatio
   } catch { return undefined; }
 }
 
-export function persistPrimaryPresentation<Name extends PrimaryPresentationName>(userId: string, name: Name, data: unknown) {
-  const record = createPrimaryPresentation(userId, name, data);
+export function persistPrimaryPresentation<Name extends PrimaryPresentationName>(userId: string, name: Name, data: unknown): PrimaryPresentationData[Name] {
+  const previous = readPersistedPrimaryPresentation(userId, name);
+  const selected = selectLastKnownGood(name, previous, data);
+  if (previous && selected === previous) return previous;
+  const record = createPrimaryPresentation(userId, name, selected);
   try {
     window.localStorage.setItem(primaryPresentationStorageKey(userId, name), JSON.stringify(record));
   } catch {
@@ -48,8 +53,7 @@ async function fetchPresentation<Name extends PrimaryPresentationName>(userId: s
   const response = await fetch(`/api/native/v1/${name}${suffix}`, { credentials: "same-origin", signal, headers: { Accept: "application/json" } });
   if (!response.ok) throw new Error(`Unable to refresh ${name} (${response.status}).`);
   const parsed = primarySchemas[name].parse(await response.json()) as PrimaryPresentationData[Name];
-  persistPrimaryPresentation(userId, name, parsed);
-  return parsed;
+  return persistPrimaryPresentation(userId, name, parsed);
 }
 
 function PrimaryPresentationWarmup({ userId, hydrated }: { userId: string; hydrated: boolean }) {
