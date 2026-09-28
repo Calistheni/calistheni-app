@@ -16,7 +16,7 @@
     "test": "node --test lib/*.test.mjs && tsx --test tests/*.test.ts",
     "db:migrate:deploy": "prisma migrate deploy",
     "mobile:assets": "capacitor-assets generate --ios --android --assetPath resources --iconBackgroundColor '#2563eb' --iconBackgroundColorDark '#09090b' --splashBackgroundColor '#09090b' --splashBackgroundColorDark '#09090b' --logoSplashScale 0.24",
-    "mobile:sync": "cap sync",
+    "mobile:sync": "CALISTHENI_BUNDLED_NATIVE=0 cap sync && node scripts/set-ios-runtime-expectation.mjs remote && node scripts/verify-xcode-runtime-mode.mjs",
     "mobile:sync:ios:bundled": "node scripts/verify-native-output.mjs && CALISTHENI_BUNDLED_NATIVE=1 cap sync ios && node scripts/set-ios-runtime-expectation.mjs bundled && node scripts/verify-bundled-ios.mjs && node scripts/verify-xcode-runtime-mode.mjs",
     "mobile:sync:ios:remote": "CALISTHENI_BUNDLED_NATIVE=0 cap sync ios && node scripts/set-ios-runtime-expectation.mjs remote && node scripts/verify-xcode-runtime-mode.mjs",
     "mobile:open:ios": "cap open ios",

@@ -75,4 +75,17 @@ MESSAGE
   exit 127
 fi
 
+# Some Node entry points launch executable JavaScript helpers whose shebang is
+# `#!/usr/bin/env node`. Xcode's GUI PATH does not include Homebrew, nvm, fnm,
+# or Volta by default, so make the directory we just resolved available to
+# those child processes as well as invoking the first process explicitly.
+case "$node_executable" in
+  */*) node_directory=${node_executable%/*} ;;
+  *) node_directory= ;;
+esac
+if [ -n "$node_directory" ]; then
+  PATH="$node_directory:${PATH:-/usr/bin:/bin}"
+  export PATH
+fi
+
 exec "$node_executable" "$@"

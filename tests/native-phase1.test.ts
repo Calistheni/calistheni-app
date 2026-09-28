@@ -96,42 +96,68 @@ test("bundled build, sync, and open scripts verify the exact copied runtime", ()
   assert.match(packageJson.scripts["mobile:sync:ios:bundled"], /verify-bundled-ios/);
   assert.match(packageJson.scripts["mobile:sync:ios:bundled"], /set-ios-runtime-expectation\.mjs bundled/);
   assert.match(packageJson.scripts["mobile:sync:ios:bundled"], /verify-xcode-runtime-mode/);
+  assert.match(packageJson.scripts["mobile:sync"], /CALISTHENI_BUNDLED_NATIVE=0/);
+  assert.match(packageJson.scripts["mobile:sync"], /set-ios-runtime-expectation\.mjs remote/);
   assert.match(packageJson.scripts["mobile:open:ios:bundled"], /^node scripts\/verify-bundled-ios\.mjs/);
   assert.match(packageJson.scripts["mobile:ios:bundled"], /build:native[\s\S]*sync:ios:bundled[\s\S]*open:ios:bundled/);
   assert.match(read("scripts/verify-built-ios-app.mjs"), /CalistheniSecureSessionPlugin/);
 });
 
-test("Xcode build phase blocks runtime-mode drift before copying resources", () => {
+test("Xcode plugin registration stays independent of Node and runtime-mode locks", () => {
   const project = read("ios/App/App.xcodeproj/project.pbxproj");
   const nodeResolver = read("scripts/run-with-node.sh");
   const verifier = read("scripts/verify-xcode-runtime-mode.mjs");
   const artifactVerifier = read("scripts/verify-built-ios-app.mjs");
-  assert.match(project, /verify-xcode-runtime-mode\.mjs/);
-  assert.match(project, /\/bin\/sh .*scripts\/run-with-node\.sh/);
+  assert.doesNotMatch(project, /verify-xcode-runtime-mode\.mjs/);
+  assert.doesNotMatch(project, /scripts\/run-with-node\.sh/);
   assert.doesNotMatch(project, /\/usr\/bin\/env node/);
+  for (const plugin of [
+    "NutritionBarcodeScannerPlugin",
+    "WorkoutLiveActivityPlugin",
+    "CalistheniHealthPlugin",
+    "CalistheniStoreKitPlugin",
+    "CalistheniSecureSessionPlugin",
+  ]) {
+    assert.match(project, new RegExp(plugin));
+  }
   assert.match(nodeResolver, /\/opt\/homebrew\/bin\/node/);
   assert.match(nodeResolver, /\/usr\/local\/bin\/node/);
   assert.match(nodeResolver, /VOLTA_HOME/);
   assert.match(nodeResolver, /FNM_MULTISHELL_PATH/);
   assert.match(nodeResolver, /NVM_DIR/);
   assert.match(nodeResolver, /Node\.js 22 or newer/);
+  assert.match(nodeResolver, /PATH="\$node_directory:/);
   assert.match(verifier, /Bundled Xcode build blocked/);
   assert.match(artifactVerifier, /compiled server\.url/);
   assert.match(artifactVerifier, /public\/(?:\$\{route\}|profile)/);
 });
 
 test("Xcode Node resolver works with an intentionally restricted PATH", () => {
-  const result = spawnSync("/bin/sh", ["scripts/run-with-node.sh", "-e", "process.stdout.write(process.execPath)"], {
+  const program = [
+    'const { spawnSync } = require("node:child_process");',
+    'const child = spawnSync("/usr/bin/env", ["node", "-p", "process.execPath"], { encoding: "utf8" });',
+    'if (child.status !== 0) { process.stderr.write(child.stderr); process.exit(child.status ?? 1); }',
+    'process.stdout.write(JSON.stringify({ execPath: process.execPath, childExecPath: child.stdout.trim(), path: process.env.PATH }));',
+  ].join("");
+  const result = spawnSync("/bin/sh", ["scripts/run-with-node.sh", "-e", program], {
     cwd: new URL("../", import.meta.url),
     encoding: "utf8",
     env: {
       HOME: process.env.HOME,
+      NODE_ENV: "test",
       PATH: "/usr/bin:/bin",
       CALISTHENI_NODE_BINARY: process.execPath,
     },
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
-  assert.equal(result.stdout, process.execPath);
+  const resolved = JSON.parse(result.stdout) as { childExecPath: string; execPath: string; path: string };
+  assert.equal(resolved.execPath, process.execPath);
+  assert.equal(resolved.childExecPath, process.execPath);
+  assert.deepEqual(resolved.path.split(":"), [
+    process.execPath.slice(0, process.execPath.lastIndexOf("/")),
+    "/usr/bin",
+    "/bin",
+  ]);
 });
 
 test("native source passes the server-only import and secret environment guard", () => {
