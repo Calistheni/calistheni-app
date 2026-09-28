@@ -1,5 +1,5 @@
 import { PrimaryRoutePending } from "@/components/primary-tabs/PrimaryRoutePending";
 
 export default function Default() {
-  return <PrimaryRoutePending destination="nutrition" />;
+  return <PrimaryRoutePending destination="profile" />;
 }

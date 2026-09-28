@@ -1,126 +1,124 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 import { createElement } from "react";
 import {
   isPendingPrimarySurface,
   retainLastResolvedPrimarySurface,
+  selectResolvedPrimaryHref,
 } from "@/lib/primary-surface-retention";
 
 const read = (path: string) =>
   readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("a pending parallel-route payload cannot replace a resolved primary surface", () => {
-  const resolved = createElement("main", { "data-primary-tab-data": "ready" }, "Workouts 4");
-  const pending = createElement("main", { "data-primary-tab-data": "pending" }, "—");
-  assert.equal(isPendingPrimarySurface(pending), true);
-  assert.equal(retainLastResolvedPrimarySurface(resolved, pending), resolved);
-  const updated = createElement("main", { "data-primary-tab-data": "ready" }, "Workouts 5");
-  assert.equal(retainLastResolvedPrimarySurface(resolved, updated), updated);
+const resolved = (label: string) =>
+  createElement("main", { "data-primary-tab-data": "ready" }, label);
+const pending = (destination: string) =>
+  createElement("template", {
+    "data-primary-tab-data": "pending",
+    "data-primary-tab-destination": destination,
+  });
+
+test("a pending route can neither replace a resolved surface nor become active", () => {
+  const home = resolved("real Home");
+  const rewardsPending = pending("rewards");
+  assert.equal(isPendingPrimarySurface(rewardsPending), true);
+  assert.equal(retainLastResolvedPrimarySurface(home, rewardsPending), home);
+  assert.equal(
+    selectResolvedPrimaryHref({
+      requestedHref: "/rewards",
+      previousHref: "/home",
+      requestedSurface: rewardsPending,
+    }),
+    "/home"
+  );
+  const rewards = resolved("real Rewards");
+  assert.equal(retainLastResolvedPrimarySurface(undefined, rewards), rewards);
+  assert.equal(
+    selectResolvedPrimaryHref({
+      requestedHref: "/rewards",
+      previousHref: "/home",
+      requestedSurface: rewards,
+    }),
+    "/rewards"
+  );
 });
 
-test("cold primary standbys never fake dash values and returning snapshots use real data", async () => {
-  const standby = await read("components/primary-tabs/PrimaryTabStandby.tsx");
-  assert.doesNotMatch(standby, />—</);
-  assert.doesNotMatch(standby, /— kcal|P —|C —|F —/);
-  assert.doesNotMatch(standby, /Initial synchronization|Partner rewards are preparing/);
-  assert.match(standby, /usePrimaryPresentation\("rewards"\)/);
+test("all six destinations use a non-visual unmatched-slot marker", async () => {
+  const marker = await read("components/primary-tabs/PrimaryRoutePending.tsx");
+  assert.match(marker, /<template/);
+  assert.match(marker, /data-primary-route-pending/);
+  assert.doesNotMatch(
+    marker,
+    /Weekly report|Nutrition goal|Workout Feed|Calis Points|Card|Skeleton/
+  );
+
+  for (const destination of [
+    "home",
+    "nutrition",
+    "parks",
+    "community",
+    "rewards",
+    "profile",
+  ]) {
+    const source = await read(`app/(primary)/@${destination}/default.tsx`);
+    assert.match(source, /PrimaryRoutePending/);
+    assert.match(source, new RegExp(`destination="${destination}"`));
+    assert.doesNotMatch(source, /PrimaryTabStandby/);
+  }
 });
 
-test("primary screen activation never replaces known content with a pending standby", async () => {
+test("duplicate primary standby implementations no longer exist", async () => {
+  for (const path of [
+    "components/primary-tabs/PrimaryTabStandby.tsx",
+    "components/primary-tabs/PrimaryPresentationProvider.tsx",
+  ]) {
+    await assert.rejects(access(new URL(`../${path}`, import.meta.url)));
+  }
+});
+
+test("primary route activation waits for the real candidate and retains visited surfaces", async () => {
   const host = await read("components/primary-tabs/PrimaryTabHost.tsx");
-
-  assert.match(host, /const activeHref = optimisticHref \?\? committedHref/);
-  assert.match(host, /retainLastResolvedPrimarySurface\(lastResolved, candidate\)/);
-  assert.match(host, /data-primary-tab-host/);
-  assert.match(host, /mode=\{activeHref === href \? "visible" : "hidden"\}/);
-  assert.doesNotMatch(host, /Skeleton|Suspense/);
-});
-
-test("all cold primary tabs expose complete real screen structures", async () => {
-  const standby = await read(
-    "components/primary-tabs/PrimaryTabStandby.tsx"
+  assert.match(host, /selectResolvedPrimaryHref\(\{/);
+  assert.match(
+    host,
+    /const requestedSurface = requestedEntry \? surfaces\[requestedEntry\.key\] : null/
   );
-
-  for (const tab of ["home", "nutrition", "parks", "community", "rewards", "profile"]) {
-    assert.match(standby, new RegExp(`data-primary-tab-shell="${tab}"`));
-  }
-  for (const homeSection of [
-    "Weekly report",
-    "Training activity",
-    "Routines",
-    "Recent Activity",
-    "Progress Snapshot",
-    "Explore",
-  ]) {
-    assert.match(standby, new RegExp(homeSection));
-  }
-  for (const nutritionRegion of [
-    "Nutrition date navigation",
-    "Nutrition goal",
-    "Breakfast",
-    "Lunch",
-    "Dinner",
-    "Snacks",
-  ]) {
-    assert.match(standby, new RegExp(nutritionRegion));
-  }
-  for (const rewardsRegion of [
-    "Current balance",
-    "Available rewards",
-    "Calis Points",
-  ]) {
-    assert.match(standby, new RegExp(rewardsRegion));
-  }
-  assert.doesNotMatch(standby, /Skeleton|animate-pulse/);
-});
-
-test("successful primary screens and client state survive tab switches", async () => {
-  const [host, nutrition] = await Promise.all([
-    read("components/primary-tabs/PrimaryTabHost.tsx"),
-    read("components/nutrition/NutritionTracker.tsx"),
-  ]);
-
+  assert.match(
+    host,
+    /retainLastResolvedPrimarySurface\(lastResolved, candidate\)/
+  );
   assert.match(host, /<Activity key=\{key\}/);
-  assert.match(host, /<RetainedPrimarySurface candidate=\{surfaces\[key\]\}/);
-  assert.doesNotMatch(host, /key=\{activeHref\}/);
-  assert.match(nutrition, /dayCache = useRef\(new Map/);
-  assert.match(nutrition, /const cached = dayCache\.current\.get\(dateKey\)/);
-  assert.match(nutrition, /setEntries\(cached\?\.entries \?\? \[\]\)/);
+  assert.match(host, /mode=\{activeHref === href \? "visible" : "hidden"\}/);
+  assert.doesNotMatch(host, /PrimaryTabStandby|Skeleton|Suspense/);
 });
 
-test("primary data revalidation preserves the screen instead of restoring loading UI", async () => {
-  const nutrition = await read("components/nutrition/NutritionTracker.tsx");
-
-  assert.match(nutrition, /dataAvailable=\{hasSelectedDateData\}/);
-  assert.doesNotMatch(nutrition, /setLoading\(|setEntries\(\[\]\)/);
-  assert.doesNotMatch(nutrition, /NutritionSectionSkeleton/);
-  assert.doesNotMatch(nutrition, /showInitialLoading/);
-});
-
-test("primary loading boundaries render application shells without page skeletons", async () => {
-  const loadingFiles = await Promise.all(
-    ["home/home", "nutrition/nutrition", "parks/parks", "community/feed", "rewards/rewards"].map(
-      (route) => read(`app/(primary)/@${route}/loading.tsx`)
-    )
-  );
-
-  for (const loading of loadingFiles) {
-    assert.match(loading, /PrimaryTabStandby/);
-    assert.doesNotMatch(loading, /Skeleton|spinner|animate-pulse/);
+test("primary loading replicas are absent", async () => {
+  for (const path of [
+    "app/(primary)/@home/home/loading.tsx",
+    "app/(primary)/@nutrition/nutrition/loading.tsx",
+    "app/(primary)/@parks/parks/loading.tsx",
+    "app/(primary)/@community/feed/loading.tsx",
+    "app/(primary)/@rewards/rewards/loading.tsx",
+    "app/profile/loading.tsx",
+  ]) {
+    await assert.rejects(access(new URL(`../${path}`, import.meta.url)));
   }
 });
 
-test("Home and Community do not progressively stream structural regions", async () => {
-  const [home, community] = await Promise.all([
-    read("app/(primary)/@home/home/page.tsx"),
-    read("app/(primary)/@community/feed/page.tsx"),
-  ]);
-
-  assert.match(home, /data-primary-tab-data="ready"/);
-  assert.match(community, /data-primary-tab-data="ready"/);
-  assert.doesNotMatch(home, /<Suspense/);
-  assert.doesNotMatch(community, /<Suspense|FeedItemsLoading|<Skeleton/);
+test("all six canonical route pages are real surfaces", async () => {
+  const files = {
+    home: "app/(primary)/@home/home/page.tsx",
+    nutrition: "app/(primary)/@nutrition/nutrition/page.tsx",
+    parks: "app/(primary)/@parks/parks/page.tsx",
+    community: "app/(primary)/@community/feed/page.tsx",
+    rewards: "app/(primary)/@rewards/rewards/page.tsx",
+    profile: "app/(primary)/@profile/profile/page.tsx",
+  } as const;
+  for (const path of Object.values(files)) {
+    const source = await read(path);
+    assert.doesNotMatch(source, /PrimaryTabStandby|PrimaryRoutePending/);
+  }
 });
 
 test("Parks remains isolated until selected and restores viewport when remounted", async () => {
@@ -129,7 +127,6 @@ test("Parks remains isolated until selected and restores viewport when remounted
     read("components/HomePage.tsx"),
     read("components/ParksMap.tsx"),
   ]);
-
   assert.match(host, /mode=\{activeHref === href \? "visible" : "hidden"\}/);
   assert.match(parks, /dynamic\(\(\) => import\("@\/components\/ParksMap"\)/);
   assert.match(map, /readStoredParksViewport\(\)/);

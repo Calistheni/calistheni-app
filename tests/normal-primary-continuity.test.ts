@@ -19,11 +19,12 @@ const snapshots = {
   profile: { snapshot, user: { id: "user-a", name: "Peter", username: "peter", image: null }, stats: { workouts: 4, completedSets: 26, submittedParks: 0, approvedEdits: 0, approvedPhotos: 0, rewardPoints: 250, followers: 0, following: 0 }, body: { bodyweightKg: null, measurementSystem: "METRIC" as const }, entitlement: { isPro: true }, updatedAt: new Date().toISOString() },
 };
 
-test("the canonical persistent host contains all six destinations including Profile", async () => {
+test("the canonical persistent host contains all six real destinations including Profile", async () => {
   assert.deepEqual(primaryTabNavigation.map(({ key }) => key), ["home", "nutrition", "parks", "community", "rewards", "profile"]);
   const [host, layout] = await Promise.all([read("components/primary-tabs/PrimaryTabHost.tsx"), read("app/(primary)/layout.tsx")]);
   assert.match(host, /home, nutrition, parks, community, rewards, profile/);
-  assert.match(layout, /profile=\{<PrimaryTabStandby tab="profile" \/>\}/);
+  assert.match(layout, /profile=\{profile\}/);
+  assert.doesNotMatch(layout, /PrimaryTabStandby/);
 });
 
 test("known Home and Rewards data survive a failed background refresh", async () => {
@@ -91,14 +92,9 @@ test("incompatible cache versions are rejected safely", () => {
   assert.equal(decodePrimaryPresentation({ ...record, version: 1 }, "user-a", "home"), undefined);
 });
 
-test("normal root provider has one stable QueryClient and persists only validated success", async () => {
-  const provider = await read("components/primary-tabs/PrimaryPresentationProvider.tsx");
-  assert.match(provider, /useState\(\(\) => new QueryClient/);
-  assert.doesNotMatch(provider, /key=\{pathname\}|removeQueries|resetQueries|queryClient\.clear/);
-  assert.match(provider, /primarySchemas\[name\]\.parse\(await response\.json\(\)\)/);
-  assert.match(provider, /if \(!response\.ok\) throw/);
-  assert.match(provider, /persistPrimaryPresentation\(userId, name, parsed\)/);
-  assert.ok(provider.indexOf("queryClient.setQueryData") < provider.indexOf("setHydrated(true)"));
+test("normal AppShell no longer mounts a second presentation/cache tree", async () => {
+  const shell = await read("components/navigation/AppShell.tsx");
+  assert.doesNotMatch(shell, /PrimaryPresentationProvider|QueryClientProvider|new QueryClient/);
 });
 
 test("all six compact endpoints certify completeness only after building their DTO", async () => {
@@ -108,25 +104,27 @@ test("all six compact endpoints certify completeness only after building their D
   }
 });
 
-test("returning Rewards/Profile render cached data even while fetching", async () => {
-  const standby = await read("components/primary-tabs/PrimaryTabStandby.tsx");
-  assert.doesNotMatch(standby, /isFetching\s*\?|isLoading\s*\?|Initial synchronization|Partner rewards are preparing|PageSkeleton/);
-  assert.match(standby, /if \(data\) return <main data-primary-tab-shell="rewards" data-primary-tab-data="ready"/);
-  assert.match(standby, /data-primary-tab-shell="profile" data-primary-tab-data="ready"/);
-  assert.match(standby, /data\.balance\.toLocaleString\(\)/);
+test("Rewards and Profile resolve through their actual route implementations", async () => {
+  const [rewardsRoute, profileRoute, shell] = await Promise.all([
+    read("app/(primary)/@rewards/rewards/page.tsx"),
+    read("app/(primary)/@profile/profile/page.tsx"),
+    read("components/navigation/AppShell.tsx"),
+  ]);
+  assert.doesNotMatch(rewardsRoute, /PrimaryTabStandby|Initial synchronization/);
+  assert.doesNotMatch(profileRoute, /PrimaryTabStandby|PageSkeleton/);
+  assert.doesNotMatch(shell, /PrimaryPresentationProvider/);
 });
 
 test("the normal Capacitor runtime remains remote and independent of apps/native", async () => {
   const config = JSON.parse(await read("ios/App/App/capacitor.config.json"));
   assert.equal(config.webDir, "mobile-web");
   assert.equal(config.server.url, "https://calistheni.app");
-  const provider = await read("components/primary-tabs/PrimaryPresentationProvider.tsx");
-  assert.doesNotMatch(provider, /apps\/native/);
+  const shell = await read("components/navigation/AppShell.tsx");
+  assert.doesNotMatch(shell, /apps\/native/);
 });
 
-test("normal presentation refreshes are same-origin cookie requests while native CORS stays exact", async () => {
-  const [provider, cors] = await Promise.all([read("components/primary-tabs/PrimaryPresentationProvider.tsx"), read("lib/native-api-cors.ts")]);
-  assert.match(provider, /credentials: "same-origin"/);
+test("native CORS remains exact after removing the duplicate presentation client", async () => {
+  const cors = await read("lib/native-api-cors.ts");
   assert.match(cors, /isAllowedAuthenticatedApiRequest/);
   assert.match(cors, /isAllowedNativeOrigin/);
   assert.doesNotMatch(cors, /Access-Control-Allow-Origin", "\*"/);

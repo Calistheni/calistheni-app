@@ -1,5 +1,5 @@
-import { PrimaryTabStandby } from "@/components/primary-tabs/PrimaryTabStandby";
+import { PrimaryRoutePending } from "@/components/primary-tabs/PrimaryRoutePending";
 
 export default function Default() {
-  return <PrimaryTabStandby tab="rewards" />;
+  return <PrimaryRoutePending destination="rewards" />;
 }

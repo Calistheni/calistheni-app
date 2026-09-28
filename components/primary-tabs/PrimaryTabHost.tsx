@@ -7,6 +7,7 @@ import { getPrimaryTabHref, primaryTabNavigation } from "@/lib/navigation";
 import {
   isPendingPrimarySurface,
   retainLastResolvedPrimarySurface,
+  selectResolvedPrimaryHref,
 } from "@/lib/primary-surface-retention";
 
 type PrimaryTabHostProps = {
@@ -60,7 +61,40 @@ export function PrimaryTabHost({
   const committedHref = getPrimaryTabHref(pathname);
   const optimisticHref = getPrimaryTabHref(navigationTarget ?? "");
   const surfaces = { home, nutrition, parks, community, rewards, profile };
-  const activeHref = optimisticHref ?? committedHref;
+  const requestedHref = optimisticHref ?? committedHref;
+  const requestedEntry = primaryTabNavigation.find(
+    ({ href }) => href === requestedHref
+  );
+  const requestedSurface = requestedEntry ? surfaces[requestedEntry.key] : null;
+  const [selection, setSelection] = useState<{
+    seenHref: string | null;
+    seenSurface: React.ReactNode;
+    activeHref: string | null;
+  }>(() => ({
+    seenHref: requestedHref,
+    seenSurface: requestedSurface,
+    activeHref: selectResolvedPrimaryHref({
+      requestedHref,
+      previousHref: null,
+      requestedSurface,
+    }),
+  }));
+  let activeHref = selection.activeHref;
+  if (
+    selection.seenHref !== requestedHref ||
+    selection.seenSurface !== requestedSurface
+  ) {
+    activeHref = selectResolvedPrimaryHref({
+      requestedHref,
+      previousHref: selection.activeHref,
+      requestedSurface,
+    });
+    setSelection({
+      seenHref: requestedHref,
+      seenSurface: requestedSurface,
+      activeHref,
+    });
+  }
   const previousHref = useRef(activeHref);
   const scrollPositions = useRef(new Map<string, number>());
 

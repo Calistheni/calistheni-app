@@ -1,5 +1,4 @@
 import { PrimaryTabHost } from "@/components/primary-tabs/PrimaryTabHost";
-import { PrimaryTabStandby } from "@/components/primary-tabs/PrimaryTabStandby";
 
 export default function PrimaryLayout({
   children,
@@ -8,6 +7,7 @@ export default function PrimaryLayout({
   parks,
   community,
   rewards,
+  profile,
 }: {
   children: React.ReactNode;
   home: React.ReactNode;
@@ -15,6 +15,7 @@ export default function PrimaryLayout({
   parks: React.ReactNode;
   community: React.ReactNode;
   rewards: React.ReactNode;
+  profile: React.ReactNode;
 }) {
   return (
     <PrimaryTabHost
@@ -23,7 +24,7 @@ export default function PrimaryLayout({
       parks={parks}
       community={community}
       rewards={rewards}
-      profile={<PrimaryTabStandby tab="profile" />}
+      profile={profile}
     >
       {children}
     </PrimaryTabHost>

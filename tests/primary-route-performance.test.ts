@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("Home holds its complete route behind one coherent standby screen", async () => {
+test("Home resolves as one complete canonical route", async () => {
   const [home, announcement] = await Promise.all([
     readFile(new URL("../app/(primary)/@home/home/page.tsx", import.meta.url), "utf8"),
     readFile(
@@ -41,37 +41,25 @@ test("Nutrition only fetches saved foods after an action menu opens and mounts t
   assert.doesNotMatch(source, /NutritionSectionSkeleton/);
 });
 
-test("primary route boundaries render real standby shells instead of skeletons", async () => {
-  const loadingFiles = await Promise.all([
-    readFile(new URL("../app/(primary)/@home/home/loading.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/(primary)/@nutrition/nutrition/loading.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/(primary)/@parks/parks/loading.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/(primary)/@community/feed/loading.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/(primary)/@rewards/rewards/loading.tsx", import.meta.url), "utf8"),
-  ]);
-  for (const loading of loadingFiles) {
-    assert.match(loading, /PrimaryTabStandby/);
-    assert.doesNotMatch(loading, /Skeleton|animate-pulse/);
-  }
-});
-
-test("parallel primary slots retain visited tabs and reveal intent immediately", async () => {
-  const [layout, slots, context, standby] = await Promise.all([
+test("parallel primary slots retain visited real pages and never reveal pending replicas", async () => {
+  const [layout, slots, context, pending] = await Promise.all([
     readFile(new URL("../app/(primary)/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/primary-tabs/PrimaryTabHost.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/navigation/AppShellContext.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../components/primary-tabs/PrimaryTabStandby.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/primary-tabs/PrimaryRoutePending.tsx", import.meta.url), "utf8"),
   ]);
 
-  for (const slot of ["home", "nutrition", "parks", "community", "rewards"]) {
+  for (const slot of ["home", "nutrition", "parks", "community", "rewards", "profile"]) {
     assert.match(layout, new RegExp(`${slot}: React\\.ReactNode`));
-    assert.match(standby, new RegExp(`data-primary-tab-shell="${slot}"`));
   }
   assert.match(slots, /data-primary-tab-host/);
   assert.match(slots, /import \{ Activity/);
+  assert.match(slots, /selectResolvedPrimaryHref/);
   assert.match(slots, /mode=\{activeHref === href \? "visible" : "hidden"\}/);
   assert.match(slots, /usePrimaryTabNavigationTarget\(\)/);
   assert.match(context, /PrimaryTabNavigationTargetProvider/);
+  assert.match(pending, /<template/);
+  assert.doesNotMatch(pending, /Card|Skeleton|HomeWorkoutActions/);
 });
 
 test("idle and lifecycle refreshes cannot choose a primary route", async () => {
@@ -142,7 +130,7 @@ test("Parks renders its shell without a duplicate session gate and restores map 
   assert.match(map, /storeParksViewport\(\{/);
 });
 
-test("Community keeps the standby screen until the complete feed is ready", async () => {
+test("Community resolves the complete feed before replacing the current real surface", async () => {
   const feed = await readFile(
     new URL("../app/(primary)/@community/feed/page.tsx", import.meta.url),
     "utf8"

@@ -14,3 +14,19 @@ export function retainLastResolvedPrimarySurface(
 ) {
   return isPendingPrimarySurface(candidate) ? previous ?? candidate : candidate;
 }
+
+export function selectResolvedPrimaryHref({
+  requestedHref,
+  previousHref,
+  requestedSurface,
+}: {
+  requestedHref: string | null;
+  previousHref: string | null;
+  requestedSurface: ReactNode;
+}) {
+  if (!requestedHref || isPendingPrimarySurface(requestedSurface)) {
+    return previousHref;
+  }
+
+  return requestedHref;
+}

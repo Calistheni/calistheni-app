@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
 import { BackButton } from "@/components/navigation/BackButton";
 import { BodyweightForm } from "@/components/profile/BodyweightForm";
 import { CardioGoalCard } from "@/components/profile/CardioGoalCard";
@@ -31,6 +30,7 @@ import {
   getFriendlySubscriptionPlan,
   getUserEntitlements,
 } from "@/lib/entitlements";
+import { getServerSession } from "@/lib/server-session";
 
 export const metadata: Metadata = {
   title: "Profile",
@@ -41,7 +41,7 @@ export const metadata: Metadata = {
 };
 
 export default async function ProfilePage() {
-  const session = await auth();
+  const session = await getServerSession();
 
   if (!session?.user) {
     redirect("/login");
@@ -188,7 +188,11 @@ export default async function ProfilePage() {
     .slice(0, 5);
 
   return (
-    <main className="mx-auto w-full max-w-4xl p-4 sm:p-6 lg:p-8">
+    <main
+      data-primary-tab-shell="profile"
+      data-primary-tab-data="ready"
+      className="mx-auto w-full max-w-4xl p-4 sm:p-6 lg:p-8"
+    >
       <BackButton fallbackHref="/home" />
       <Card className="mb-6">
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center">
