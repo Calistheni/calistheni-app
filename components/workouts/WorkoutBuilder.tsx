@@ -137,10 +137,13 @@ import {
   getExerciseThumbnailSrc,
   REST_SELECTOR_SECONDS,
 } from "@/lib/exercise-display";
+import { isWorkoutVolumeSetIncluded } from "@/lib/workout-volume";
 import {
-  calculateWorkoutVolumeKg,
-  isWorkoutVolumeSetIncluded,
-} from "@/lib/workout-volume";
+  attachActiveWorkoutTrackingMetadata,
+  calculateActiveWorkoutVolumeKg,
+  restoreActiveWorkoutTrackingMetadata,
+  type ActiveWorkoutTrackingMetadata,
+} from "@/lib/active-workout-volume";
 import {
   hasEnteredSetPerformance,
   isIncompleteEnteredSet,
@@ -228,10 +231,11 @@ type LocalWorkoutSet = WorkoutSetInput & {
   localId: string;
 };
 
-type LocalWorkoutExercise = Omit<WorkoutExerciseInput, "sets"> & {
-  localId: string;
-  sets: LocalWorkoutSet[];
-};
+type LocalWorkoutExercise = Omit<WorkoutExerciseInput, "sets"> &
+  ActiveWorkoutTrackingMetadata & {
+    localId: string;
+    sets: LocalWorkoutSet[];
+  };
 
 type SupersetResultDraft = Record<
   string,
@@ -648,7 +652,10 @@ function formatVolumeKg(volumeKg: number) {
   return `${Math.round(volumeKg).toLocaleString()} kg`;
 }
 
-function readActiveWorkoutDraft(sessionId: string) {
+function readActiveWorkoutDraft(
+  sessionId: string,
+  exerciseCatalog: readonly ExerciseListItem[]
+) {
   if (typeof window === "undefined") {
     return null;
   }
@@ -666,29 +673,38 @@ function readActiveWorkoutDraft(sessionId: string) {
       return null;
     }
 
-    const selectedExercises = parsed.selectedExercises.map((exercise) => ({
-      ...exercise,
-      supersetKey:
-        typeof exercise.supersetKey === "string" ? exercise.supersetKey : null,
-      supersetPosition:
-        typeof exercise.supersetPosition === "number"
-          ? exercise.supersetPosition
-          : null,
-      localId:
-        typeof exercise.localId === "string"
-          ? exercise.localId
-          : crypto.randomUUID(),
-      sets: Array.isArray(exercise.sets)
-        ? exercise.sets.map((set) =>
-            createLocalSet(
-              toWorkoutSetInput(set as LocalWorkoutSet),
-              typeof (set as Partial<LocalWorkoutSet>).localId === "string"
-                ? (set as LocalWorkoutSet).localId
-                : crypto.randomUUID()
-            )
-          )
-        : [],
-    }));
+    const selectedExercises = parsed.selectedExercises.flatMap((exercise) => {
+      const restored = restoreActiveWorkoutTrackingMetadata(
+        {
+          ...exercise,
+          supersetKey:
+            typeof exercise.supersetKey === "string"
+              ? exercise.supersetKey
+              : null,
+          supersetPosition:
+            typeof exercise.supersetPosition === "number"
+              ? exercise.supersetPosition
+              : null,
+          localId:
+            typeof exercise.localId === "string"
+              ? exercise.localId
+              : crypto.randomUUID(),
+          sets: Array.isArray(exercise.sets)
+            ? exercise.sets.map((set) =>
+                createLocalSet(
+                  toWorkoutSetInput(set as LocalWorkoutSet),
+                  typeof (set as Partial<LocalWorkoutSet>).localId === "string"
+                    ? (set as LocalWorkoutSet).localId
+                    : crypto.randomUUID()
+                )
+              )
+            : [],
+        },
+        exerciseCatalog
+      );
+
+      return restored ? [restored] : [];
+    });
 
     const supersets = Array.isArray(parsed.supersets)
       ? parsed.supersets.map((superset) => ({
@@ -792,32 +808,37 @@ function buildInitialExercises(
     return [];
   }
 
-  return initialWorkout.exercises.map((workoutExercise) => ({
-    localId: String(workoutExercise.id),
-    exerciseId: workoutExercise.exercise.id,
-    notes: workoutExercise.notes,
-    restSeconds: workoutExercise.restSeconds ?? DEFAULT_REST_SECONDS,
-    supersetKey: workoutExercise.supersetKey,
-    supersetPosition: workoutExercise.supersetPosition,
-    sets: workoutExercise.sets.map((set) =>
-      createLocalSet(
-        {
-          reps: set.reps,
-          weight: set.weight,
-          durationSeconds: set.durationSeconds,
-          distanceMeters: set.distanceMeters,
-          steps: set.steps,
-          floors: set.floors,
-          rpe: set.rpe,
-          notes: set.notes,
-          completed: set.completed,
-          supersetRoundIndex: set.supersetRoundIndex,
-          supersetRoundId: set.supersetRoundId,
-        },
-        `workout-set-${set.id}`
-      )
-    ),
-  }));
+  return initialWorkout.exercises.map((workoutExercise) =>
+    attachActiveWorkoutTrackingMetadata(
+      {
+        localId: String(workoutExercise.id),
+        exerciseId: workoutExercise.exercise.id,
+        notes: workoutExercise.notes,
+        restSeconds: workoutExercise.restSeconds ?? DEFAULT_REST_SECONDS,
+        supersetKey: workoutExercise.supersetKey,
+        supersetPosition: workoutExercise.supersetPosition,
+        sets: workoutExercise.sets.map((set) =>
+          createLocalSet(
+            {
+              reps: set.reps,
+              weight: set.weight,
+              durationSeconds: set.durationSeconds,
+              distanceMeters: set.distanceMeters,
+              steps: set.steps,
+              floors: set.floors,
+              rpe: set.rpe,
+              notes: set.notes,
+              completed: set.completed,
+              supersetRoundIndex: set.supersetRoundIndex,
+              supersetRoundId: set.supersetRoundId,
+            },
+            `workout-set-${set.id}`
+          )
+        ),
+      },
+      workoutExercise.exercise
+    )
+  );
 }
 
 function buildInitialSupersets(
@@ -1206,21 +1227,11 @@ export function WorkoutBuilder({
   );
   const liveVolumeKg = useMemo(
     () =>
-      calculateWorkoutVolumeKg({
-        exercises: selectedExercisesWithMetadata.map(
-          ({ selectedExercise, exercise }) => ({
-            trackingType: exercise.trackingType,
-            bodyweightLoadFactor: exercise.bodyweightLoadFactor,
-            sets: selectedExercise.sets.map((set) => ({
-              reps: set.reps,
-              weightKg: set.weight,
-              completed: set.completed,
-            })),
-          })
-        ),
+      calculateActiveWorkoutVolumeKg({
+        exercises: selectedExercises,
         userBodyweightKg: currentUserBodyweightKg,
       }),
-    [currentUserBodyweightKg, selectedExercisesWithMetadata]
+    [currentUserBodyweightKg, selectedExercises]
   );
   const needsBodyweightForVolume =
     currentUserBodyweightKg === null &&
@@ -1705,7 +1716,7 @@ export function WorkoutBuilder({
     queueMicrotask(() => {
       if (cancelled) return;
       const sessionId = getOrCreateActiveWorkoutSessionId();
-      const draft = readActiveWorkoutDraft(sessionId);
+      const draft = readActiveWorkoutDraft(sessionId, exercises);
 
       setActiveWorkoutSessionId(sessionId);
 
@@ -1758,7 +1769,7 @@ export function WorkoutBuilder({
     return () => {
       cancelled = true;
     };
-  }, [isEditing]);
+  }, [exercises, isEditing]);
 
   useEffect(() => {
     if (!isEditing) {
@@ -1810,20 +1821,23 @@ export function WorkoutBuilder({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWorkoutSessionId, completedSetCount, isActiveWorkoutSessionReady, isEditing, liveActivityExercise, restTimer.activeTimer, selectedExercises]);
 
-  function addExercise(exerciseId: string) {
+  function addExercise(exercise: ExerciseListItem) {
     const localId = crypto.randomUUID();
 
     setSelectedExercises((current) => [
       ...current,
-      {
-        localId,
-        exerciseId,
-        notes: null,
-        restSeconds: DEFAULT_REST_SECONDS,
-        supersetKey: null,
-        supersetPosition: null,
-        sets: [createLocalSet()],
-      },
+      attachActiveWorkoutTrackingMetadata(
+        {
+          localId,
+          exerciseId: exercise.id,
+          notes: null,
+          restSeconds: DEFAULT_REST_SECONDS,
+          supersetKey: null,
+          supersetPosition: null,
+          sets: [createLocalSet()],
+        },
+        exercise
+      ),
     ]);
     setOpenExerciseIds((current) =>
       current.includes(localId) ? current : [...current, localId]
@@ -2137,6 +2151,8 @@ export function WorkoutBuilder({
           ? {
               ...item,
               exerciseId: replacementExercise.id,
+              trackingType: replacementExercise.trackingType,
+              bodyweightLoadFactor: replacementExercise.bodyweightLoadFactor,
               sets: item.sets.map((set) =>
                 preserveSetData
                   ? preserveCompatibleSetFields(
@@ -2154,7 +2170,7 @@ export function WorkoutBuilder({
 
   function selectExercise(exercise: ExerciseListItem) {
     if (!exerciseToReplaceId) {
-      addExercise(exercise.id);
+      addExercise(exercise);
       handleExercisePickerOpenChange(false);
       return;
     }
@@ -2855,7 +2871,10 @@ export function WorkoutBuilder({
     setIsPreloadingPickerHistory(true);
     await preloadPerformanceReferences(pickerSelectedIds);
     setIsPreloadingPickerHistory(false);
-    pickerSelectedIds.forEach(addExercise);
+    pickerSelectedIds.forEach((exerciseId) => {
+      const exercise = byId.get(exerciseId);
+      if (exercise) addExercise(exercise);
+    });
     handleExercisePickerOpenChange(false);
   }
 

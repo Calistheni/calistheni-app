@@ -14,6 +14,7 @@ test("every product volume path uses the canonical workout-volume module", async
     recordMetrics,
     weeklyReports,
     adminInsights,
+    activeWorkoutVolume,
   ] = await Promise.all([
     read("components/workouts/WorkoutBuilder.tsx"),
     read("lib/workouts.ts"),
@@ -21,11 +22,13 @@ test("every product volume path uses the canonical workout-volume module", async
     read("lib/exercise-record-metrics.ts"),
     read("lib/weekly-progress-reports.ts"),
     read("lib/admin-user-insights.ts"),
+    read("lib/active-workout-volume.ts"),
   ]);
 
-  assert.match(builder, /calculateWorkoutVolumeKg/);
-  assert.match(builder, /weightKg: set\.weight/);
+  assert.match(builder, /calculateActiveWorkoutVolumeKg/);
   assert.match(builder, /userBodyweightKg: currentUserBodyweightKg/);
+  assert.match(activeWorkoutVolume, /calculateWorkoutVolumeKg/);
+  assert.match(activeWorkoutVolume, /weightKg: set\.weight/);
   assert.match(workouts, /calculateWorkoutVolumeKg/);
   assert.match(records, /calculateSetVolumeKg/);
   assert.match(recordMetrics, /calculateSetVolume/);
@@ -38,9 +41,12 @@ test("every product volume path uses the canonical workout-volume module", async
 });
 
 test("active workout keeps added weight separate while total volume uses bodyweight", async () => {
-  const builder = await read("components/workouts/WorkoutBuilder.tsx");
+  const [builder, activeWorkoutVolume] = await Promise.all([
+    read("components/workouts/WorkoutBuilder.tsx"),
+    read("lib/active-workout-volume.ts"),
+  ]);
 
-  assert.match(builder, /weightKg: set\.weight/);
+  assert.match(activeWorkoutVolume, /weightKg: set\.weight/);
   assert.match(builder, /trackingType === "WEIGHTED_BODYWEIGHT"/);
   assert.match(builder, /`Set \$\{setIndex \+ 1\} added weight`/);
   assert.match(builder, /formatVolumeKg\(liveVolumeKg\)/);
