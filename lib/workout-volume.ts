@@ -36,6 +36,46 @@ export function getPersistedVolumeSetCompletion({
     : completed;
 }
 
+/**
+ * Returns the canonical load moved for one repetition, in kilograms.
+ *
+ * `weightKg` is always the logged external load. It is deliberately not
+ * rewritten to include bodyweight, because the workout set must continue to
+ * display and persist the user's entered added weight.
+ */
+export function calculateEffectiveSetLoadKg({
+  trackingType,
+  weightKg,
+  userBodyweightKg,
+  bodyweightLoadFactor,
+}: {
+  trackingType: ExerciseTrackingType;
+  weightKg: number | null;
+  userBodyweightKg: number | null;
+  bodyweightLoadFactor: number | null;
+}) {
+  switch (trackingType) {
+    case "BODYWEIGHT_REPS":
+      return userBodyweightKg === null
+        ? null
+        : userBodyweightKg * (bodyweightLoadFactor ?? 1);
+    case "WEIGHTED_BODYWEIGHT":
+      return userBodyweightKg === null
+        ? null
+        : userBodyweightKg * (bodyweightLoadFactor ?? 1) + (weightKg ?? 0);
+    case "EXTERNAL_WEIGHT":
+      return weightKg ?? 0;
+    case "DURATION":
+    case "DISTANCE_DURATION":
+    case "STEPS_DISTANCE_DURATION":
+    case "FLOORS_DISTANCE_DURATION":
+    case "WEIGHT_DISTANCE_DURATION":
+      return 0;
+    case "NOT_SELECTED":
+      return null;
+  }
+}
+
 export function calculateSetVolumeKg({
   trackingType,
   reps,
@@ -55,28 +95,14 @@ export function calculateSetVolumeKg({
     return 0;
   }
 
-  switch (trackingType) {
-    case "BODYWEIGHT_REPS":
-      return userBodyweightKg === null
-        ? null
-        : userBodyweightKg * (bodyweightLoadFactor ?? 1) * safeReps;
-    case "WEIGHTED_BODYWEIGHT":
-      return userBodyweightKg === null
-        ? null
-        : (userBodyweightKg * (bodyweightLoadFactor ?? 1) +
-            (weightKg ?? 0)) *
-            safeReps;
-    case "EXTERNAL_WEIGHT":
-      return (weightKg ?? 0) * safeReps;
-    case "DURATION":
-    case "DISTANCE_DURATION":
-    case "STEPS_DISTANCE_DURATION":
-    case "FLOORS_DISTANCE_DURATION":
-    case "WEIGHT_DISTANCE_DURATION":
-      return 0;
-    case "NOT_SELECTED":
-      return null;
-  }
+  const effectiveLoadKg = calculateEffectiveSetLoadKg({
+    trackingType,
+    weightKg,
+    userBodyweightKg,
+    bodyweightLoadFactor,
+  });
+
+  return effectiveLoadKg === null ? null : effectiveLoadKg * safeReps;
 }
 
 export function calculateWorkoutVolumeKg({

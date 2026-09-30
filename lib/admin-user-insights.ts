@@ -1,7 +1,8 @@
 import "server-only";
 
-import { FoodContributionStatus, Prisma, SubscriptionPlan, SubscriptionStatus, UserActivityEventType } from "@/lib/generated/prisma/client";
+import { FoodContributionStatus, Prisma, SubscriptionPlan, SubscriptionStatus, UserActivityEventType, type ExerciseTrackingType } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { calculateWorkoutVolumeKg } from "@/lib/workout-volume";
 
 export const adminUserFilters = [
   "ALL",
@@ -107,8 +108,38 @@ export type AdminTimelineEvent = { id: string; type: string; title: string; deta
 
 function number(value: Prisma.Decimal | number | null | undefined) { return value == null ? 0 : Number(value); }
 
-function workoutVolume(exercises: Array<{ sets: Array<{ completed: boolean; reps: number | null; weight: number | null }> }>) {
-  return exercises.flatMap((exercise) => exercise.sets).filter((set) => set.completed).reduce((total, set) => total + (set.reps ?? 0) * (set.weight ?? 0), 0);
+function workoutVolume(
+  exercises: Array<{
+    exercise: {
+      trackingType: ExerciseTrackingType;
+      bodyweightLoadFactor: number | null;
+    };
+    sets: Array<{
+      completed: boolean;
+      reps: number | null;
+      weight: number | null;
+    }>;
+  }>,
+  userBodyweightKg: number | null
+) {
+  return calculateWorkoutVolumeKg({
+    exercises: exercises.map(({ exercise, sets }) => ({
+      trackingType: exercise.trackingType,
+      bodyweightLoadFactor: exercise.bodyweightLoadFactor,
+      sets: sets.map((set) => ({
+        completed: set.completed,
+        reps: set.reps,
+        weightKg: set.weight,
+      })),
+    })),
+    userBodyweightKg,
+  });
+}
+
+function formatWorkoutVolume(volumeKg: number | null) {
+  return volumeKg === null
+    ? "Volume unavailable"
+    : `${Math.round(volumeKg).toLocaleString()} kg volume`;
 }
 
 export async function getAdminUserInsight(userId: string) {
@@ -127,7 +158,7 @@ export async function getAdminUserInsight(userId: string) {
     prisma.nutritionEntrySnapshot.groupBy({ by: ["loggedFor"], where: { userId, loggedFor: { gte: since7 } } }),
     prisma.nutritionEntrySnapshot.groupBy({ by: ["loggedFor"], where: { userId, loggedFor: { gte: since30 } } }),
     prisma.nutritionAiUsage.aggregate({ where: { userId }, _sum: { aiScanCount: true, describeCount: true } }),
-    prisma.workout.findMany({ where: { userId }, orderBy: { startedAt: "desc" }, take: 30, include: { exercises: { include: { exercise: { select: { name: true } }, sets: { select: { completed: true, reps: true, weight: true } } } }, personalRecords: { select: { id: true } } } }),
+    prisma.workout.findMany({ where: { userId }, orderBy: { startedAt: "desc" }, take: 30, include: { exercises: { include: { exercise: { select: { name: true, trackingType: true, bodyweightLoadFactor: true } }, sets: { select: { completed: true, reps: true, weight: true } } } }, personalRecords: { select: { id: true } } } }),
     prisma.nutritionEntrySnapshot.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 50, select: { id: true, foodNameSnapshot: true, gramsConsumed: true, caloriesKcalSnapshot: true, proteinGramsSnapshot: true, carbohydrateGramsSnapshot: true, fatGramsSnapshot: true, mealCategory: true, sourceSnapshot: true, loggedFor: true, createdAt: true } }),
     prisma.userSupplementPlan.findMany({ where: { userId }, orderBy: { updatedAt: "desc" }, take: 30, include: { supplementDefinition: { select: { name: true } } } }),
     prisma.supplementLog.findMany({ where: { plan: { userId } }, orderBy: { completedAt: "desc" }, take: 20, select: { id: true, supplementNameSnapshot: true, completedAt: true } }),
@@ -141,7 +172,7 @@ export async function getAdminUserInsight(userId: string) {
   ]);
 
   const timeline: AdminTimelineEvent[] = [
-    ...recentWorkouts.filter((workout) => workout.completedAt).map((workout) => ({ id: `workout-${workout.id}`, type: "WORKOUT_COMPLETED", title: "Completed workout", detail: `${workout.title ?? "Workout"} · ${workout.exercises.reduce((sum, exercise) => sum + exercise.sets.filter((set) => set.completed).length, 0)} sets · ${Math.round(workoutVolume(workout.exercises)).toLocaleString()} kg volume`, createdAt: (workout.completedAt ?? workout.startedAt).toISOString() })),
+    ...recentWorkouts.filter((workout) => workout.completedAt).map((workout) => ({ id: `workout-${workout.id}`, type: "WORKOUT_COMPLETED", title: "Completed workout", detail: `${workout.title ?? "Workout"} · ${workout.exercises.reduce((sum, exercise) => sum + exercise.sets.filter((set) => set.completed).length, 0)} sets · ${formatWorkoutVolume(workoutVolume(workout.exercises, user.bodyweightKg))}`, createdAt: (workout.completedAt ?? workout.startedAt).toISOString() })),
     ...recentNutrition.map((entry) => ({ id: `nutrition-${entry.id}`, type: "NUTRITION_LOGGED", title: `Logged nutrition · ${entry.mealCategory.toLowerCase()}`, detail: `${entry.foodNameSnapshot} · ${number(entry.gramsConsumed)} g · ${Math.round(number(entry.caloriesKcalSnapshot))} kcal`, createdAt: entry.createdAt.toISOString() })),
     ...foods.flatMap((food) => [{ id: `food-submitted-${food.id}`, type: "FOOD_CONTRIBUTED", title: "Submitted food contribution", detail: food.name, createdAt: food.createdAt.toISOString() }, ...(food.reviewedAt ? [{ id: `food-reviewed-${food.id}`, type: "FOOD_REVIEWED", title: `Food contribution ${food.contributionStatus?.toLowerCase() ?? "reviewed"}`, detail: food.name, createdAt: food.reviewedAt.toISOString() }] : [])]),
     ...parks.flatMap((park) => [{ id: `park-submitted-${park.id}`, type: "PARK_SUBMITTED", title: "Submitted park", detail: park.name, createdAt: park.createdAt.toISOString() }, ...(park.reviewedAt ? [{ id: `park-reviewed-${park.id}`, type: "PARK_REVIEWED", title: `Park ${park.submissionStatus.toLowerCase()}`, detail: park.name, createdAt: park.reviewedAt.toISOString() }] : [])]),
@@ -156,7 +187,7 @@ export async function getAdminUserInsight(userId: string) {
     user: { ...serializeUser(user), subscription: user.subscription ? { plan: user.subscription.plan, status: user.subscription.status, currentPeriodEnd: user.subscription.currentPeriodEnd?.toISOString() ?? null, cancelAtPeriodEnd: user.subscription.cancelAtPeriodEnd, lifetimePurchasedAt: user.subscription.lifetimePurchasedAt?.toISOString() ?? null } : null },
     overview: { totalSets: setAggregate._count._all, totalReps: setAggregate._sum.reps ?? 0, nutritionDays7: nutritionDays7.length, nutritionDays30: nutritionDays30.length, averageCalories7: number(nutritionLast7._avg.caloriesKcalSnapshot), averageProtein7: number(nutritionLast7._avg.proteinGramsSnapshot), aiScans: aiAggregate._sum.aiScanCount ?? 0, describeUses: aiAggregate._sum.describeCount ?? 0, barcodeLookups: barcodeCount, supplementsTracked: user._count.supplementPlans, savedMeals: user._count.nutritionSavedMeals, followers: user._count.followers, following: user._count.following, records: user._count.personalRecords },
     timeline: timeline.slice(0, 50),
-    workouts: recentWorkouts.map((workout) => ({ id: workout.id, title: workout.title ?? "Workout", startedAt: workout.startedAt.toISOString(), completedAt: workout.completedAt?.toISOString() ?? null, visibility: workout.visibility, exerciseNames: workout.exercises.map((exercise) => exercise.exercise.name), sets: workout.exercises.reduce((sum, exercise) => sum + exercise.sets.filter((set) => set.completed).length, 0), volume: workoutVolume(workout.exercises), records: workout.personalRecords.length })),
+    workouts: recentWorkouts.map((workout) => ({ id: workout.id, title: workout.title ?? "Workout", startedAt: workout.startedAt.toISOString(), completedAt: workout.completedAt?.toISOString() ?? null, visibility: workout.visibility, exerciseNames: workout.exercises.map((exercise) => exercise.exercise.name), sets: workout.exercises.reduce((sum, exercise) => sum + exercise.sets.filter((set) => set.completed).length, 0), volume: workoutVolume(workout.exercises, user.bodyweightKg), records: workout.personalRecords.length })),
     nutrition: recentNutrition.map((entry) => ({ ...entry, gramsConsumed: number(entry.gramsConsumed), caloriesKcalSnapshot: number(entry.caloriesKcalSnapshot), proteinGramsSnapshot: number(entry.proteinGramsSnapshot), carbohydrateGramsSnapshot: number(entry.carbohydrateGramsSnapshot), fatGramsSnapshot: number(entry.fatGramsSnapshot), loggedFor: entry.loggedFor.toISOString(), createdAt: entry.createdAt.toISOString() })),
     aiUsage: aiDays.map((day) => ({ date: day.date.toISOString(), aiScanCount: day.aiScanCount, describeCount: day.describeCount, updatedAt: day.updatedAt.toISOString() })),
     supplements: { plans: supplements.map((plan) => ({ id: plan.id, name: plan.supplementDefinition?.name ?? plan.customName ?? "Supplement", isActive: plan.isActive, frequency: plan.frequency, preferredTime: plan.preferredTime, archivedAt: plan.archivedAt?.toISOString() ?? null })), logs: supplementLogs.map((log) => ({ id: log.id, name: log.supplementNameSnapshot, completedAt: log.completedAt.toISOString() })) },
