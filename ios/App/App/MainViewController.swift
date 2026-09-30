@@ -13,7 +13,12 @@ class MainViewController: CAPBridgeViewController {
         // bundled capacitor.config.json. The build phase adds
         // NutritionBarcodeScannerPlugin there before resources are copied.
 #if DEBUG
-        installRuntimeDiagnostics()
+        // Runtime diagnostics are intentionally opt-in even for Debug builds.
+        // Set CALISTHENI_RUNTIME_DIAGNOSTICS=1 in an Xcode scheme only while
+        // actively diagnosing the WebView. Release builds compile this out.
+        if ProcessInfo.processInfo.environment["CALISTHENI_RUNTIME_DIAGNOSTICS"] == "1" {
+            installRuntimeDiagnostics()
+        }
 #endif
     }
 

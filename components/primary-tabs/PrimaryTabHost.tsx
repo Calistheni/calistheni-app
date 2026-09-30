@@ -99,6 +99,9 @@ export function PrimaryTabHost({
   const scrollPositions = useRef(new Map<string, number>());
 
   useLayoutEffect(() => {
+    if (process.env.NODE_ENV !== "production" && activeHref) {
+      performance.mark(`calistheni:real-primary-visible:${activeHref}`);
+    }
     const previous = previousHref.current;
     if (!activeHref || previous === activeHref) return;
 

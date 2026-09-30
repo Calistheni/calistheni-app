@@ -51,6 +51,11 @@ import {
 } from "@/lib/nutrition/goals";
 import { isNativeApp } from "@/lib/native/platform";
 import { invalidateSavedFoodsCache } from "@/lib/nutrition/saved-foods-cache";
+import {
+  readNutritionDay,
+  refreshNutritionDay as refreshCachedNutritionDay,
+  type CachedNutritionEntry,
+} from "@/lib/nutrition/day-presentation-cache";
 
 const FoodPicker = dynamic(
   () =>
@@ -68,28 +73,7 @@ const FoodDetailsDialog = dynamic(
 
 type Meal = "BREAKFAST" | "LUNCH" | "DINNER" | "SNACKS";
 
-type Entry = {
-  id: string;
-  foodId: string;
-  mealCategory: Meal;
-  foodNameSnapshot: string;
-  brandNameSnapshot?: string | null;
-  gramsConsumed: string | number;
-  quantity: string | number;
-  unit: string;
-  caloriesKcalSnapshot?: string | number | null;
-  proteinGramsSnapshot?: string | number | null;
-  carbohydrateGramsSnapshot?: string | number | null;
-  fatGramsSnapshot?: string | number | null;
-  fiberGramsSnapshot?: string | number | null;
-  sugarGramsSnapshot?: string | number | null;
-  saturatedFatGramsSnapshot?: string | number | null;
-  sodiumMgSnapshot?: string | number | null;
-  foodVisual?: {
-    imageUrl?: string | null;
-    genericIcon?: { key?: string; url: string } | null;
-  };
-};
+type Entry = CachedNutritionEntry;
 
 type NutritionGoal = NutritionGoalValues & { effectiveFrom?: string };
 type NutritionDaySnapshot = {
@@ -158,12 +142,21 @@ function FoodPickerLoading() {
   );
 }
 
-export function NutritionTracker() {
+export function NutritionTracker({ userId }: { userId: string }) {
   const initialToday = localNutritionDateKey();
+  const [initialSnapshot] = useState(() =>
+    readNutritionDay(userId, initialToday)
+  );
   const [date, setDate] = useState(initialToday);
-  const [entries, setEntries] = useState<Entry[]>([]);
-  const [goal, setGoal] = useState<NutritionGoal | null>(null);
-  const [currentGoal, setCurrentGoal] = useState<NutritionGoal | null>(null);
+  const [entries, setEntries] = useState<Entry[]>(
+    () => initialSnapshot?.entries ?? []
+  );
+  const [goal, setGoal] = useState<NutritionGoal | null>(() =>
+    toGoal(initialSnapshot?.goal)
+  );
+  const [currentGoal, setCurrentGoal] = useState<NutritionGoal | null>(() =>
+    toGoal(initialSnapshot?.goal)
+  );
   const [calendarRefreshToken, setCalendarRefreshToken] = useState(0);
   const [mode, setMode] = useState<"consumed" | "remaining">("consumed");
   const [meal, setMeal] = useState<Meal | null>(null);
@@ -179,9 +172,17 @@ export function NutritionTracker() {
     () => new Set()
   );
   const [pickerKey, setPickerKey] = useState(0);
-  const [loadedDate, setLoadedDate] = useState<string | null>(null);
+  const [loadedDate, setLoadedDate] = useState<string | null>(() =>
+    initialSnapshot ? initialToday : null
+  );
   const activeRequest = useRef(0);
-  const dayCache = useRef(new Map<string, NutritionDaySnapshot>());
+  const dayCache = useRef(
+    new Map<string, NutritionDaySnapshot>(
+      initialSnapshot
+        ? [[initialToday, { entries: initialSnapshot.entries, goal: toGoal(initialSnapshot.goal) }]]
+        : []
+    )
+  );
   const savedFoodsLoaded = useRef(false);
   const selectedDateRef = useRef(date);
   const lastKnownTodayRef = useRef(initialToday);
@@ -198,18 +199,13 @@ export function NutritionTracker() {
     const requestId = ++activeRequest.current;
 
     try {
-      const response = await fetch(
-        `/api/user/nutrition?date=${encodeURIComponent(dateKey)}`,
-        { cache: "no-store" }
-      );
-      if (!response.ok) throw new Error("Unable to load nutrition.");
-      const data = await response.json();
+      const data = await refreshCachedNutritionDay(userId, dateKey);
 
       if (requestId !== activeRequest.current) return;
-      setEntries(data.entries as Entry[]);
-      const resolvedGoal = toGoal(data.goal ?? data.targets);
+      setEntries(data.entries);
+      const resolvedGoal = toGoal(data.goal);
       dayCache.current.set(dateKey, {
-        entries: data.entries as Entry[],
+        entries: data.entries,
         goal: resolvedGoal,
       });
       setGoal(resolvedGoal);
@@ -222,7 +218,7 @@ export function NutritionTracker() {
         );
       }
     }
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -235,12 +231,17 @@ export function NutritionTracker() {
   }, [date, refreshNutritionDay]);
 
   const selectNutritionDate = useCallback((dateKey: string) => {
-    const cached = dayCache.current.get(dateKey);
+    const persisted = readNutritionDay(userId, dateKey);
+    const cached = dayCache.current.get(dateKey) ??
+      (persisted
+        ? { entries: persisted.entries, goal: toGoal(persisted.goal) }
+        : undefined);
+    if (cached) dayCache.current.set(dateKey, cached);
     setDate(dateKey);
     setEntries(cached?.entries ?? []);
     setGoal(cached?.goal ?? null);
     setLoadedDate(cached ? dateKey : null);
-  }, []);
+  }, [userId]);
   const ensureSavedFoodIds = useCallback(async () => {
     if (savedFoodsLoaded.current) return;
     const response = await fetch("/api/nutrition/saved-foods", {

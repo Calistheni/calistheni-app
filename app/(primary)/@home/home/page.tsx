@@ -33,7 +33,6 @@ import {
   groupCompletedWorkoutActivity,
   toUtcDateKey,
 } from "@/lib/home-dashboard";
-import { redirectIfOnboardingRequired } from "@/lib/onboarding";
 import {
   formatPersonalRecordValue,
   PERSONAL_RECORD_LABELS,
@@ -168,7 +167,6 @@ export default async function HomePage() {
   const session = await getServerSession();
   if (!session?.user) redirect("/");
 
-  await redirectIfOnboardingRequired(session.user.id);
   const now = new Date();
   const weekStart = getUtcWeekStart(now);
   const previousWeekStart = new Date(weekStart);
@@ -193,6 +191,7 @@ export default async function HomePage() {
         rewardPoints: true,
         weeklyWorkoutGoal: true,
         createdAt: true,
+        onboardingCompleted: true,
       },
     }),
     prisma.workout.findMany({
@@ -244,6 +243,7 @@ export default async function HomePage() {
   ]);
 
   if (!profile) redirect("/login");
+  if (!profile.onboardingCompleted) redirect("/onboarding");
   // The 26-week calendar dataset already contains both weeks used by the
   // report. Reusing it avoids a second large workout/exercise/set query on the
   // most frequently entered native route.

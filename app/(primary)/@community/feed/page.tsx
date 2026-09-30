@@ -24,20 +24,12 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 async function FeedItems({ userId }: { userId: string }) {
-  const following = await prisma.userFollow.findMany({
-    where: {
-      followerId: userId,
-    },
-    select: {
-      followingId: true,
-    },
-  });
-  const followingIds = following.map((item) => item.followingId);
-  const workouts = followingIds.length
-    ? await prisma.workout.findMany({
+  const workouts = await prisma.workout.findMany({
         where: {
-          userId: {
-            in: followingIds,
+          user: {
+            followers: {
+              some: { followerId: userId },
+            },
           },
           visibility: "PUBLIC",
           completedAt: {
@@ -88,8 +80,7 @@ async function FeedItems({ userId }: { userId: string }) {
           photos: { orderBy: { createdAt: "asc" }, take: 4, select: { id: true, width: true, height: true } },
           _count: { select: { likes: true, comments: true, photos: true } },
         },
-      })
-    : [];
+      });
   const summaries = workouts.map(mapWorkoutSummary);
 
   return (

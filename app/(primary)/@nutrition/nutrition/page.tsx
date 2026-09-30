@@ -15,7 +15,7 @@ export default async function NutritionPage() {
       data-primary-tab-data="ready"
       className="mx-auto w-full max-w-3xl p-4 pb-24 sm:p-6"
     >
-      <NutritionTracker />
+      <NutritionTracker key={session.user.id} userId={session.user.id} />
     </main>
   );
 }

@@ -8,7 +8,6 @@ import { NativeShell } from "@/components/native/NativeShell";
 import { UserActivityHeartbeat } from "@/components/user/UserActivityHeartbeat";
 import { Toaster } from "@/components/ui/sonner";
 import { getSiteUrl } from "@/lib/site-url";
-import { prisma } from "@/lib/prisma";
 import { getServerSession } from "@/lib/server-session";
 import { parseTheme, THEME_COOKIE_NAME, type Theme } from "@/lib/theme";
 
@@ -111,22 +110,14 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const cookieStore = await cookies();
+  const [cookieStore, session] = await Promise.all([
+    cookies(),
+    getServerSession(),
+  ]);
   const rawThemeCookie = cookieStore.get(THEME_COOKIE_NAME)?.value;
   const hasThemeCookie = hasValidThemeCookie(rawThemeCookie);
   const theme = parseTheme(rawThemeCookie);
   const serverResolvedTheme = getServerResolvedTheme(theme);
-
-  const session = await getServerSession();
-
-  const unreadCommunityActivity = session?.user?.id
-    ? await prisma.workoutNotification.count({
-        where: {
-          userId: session.user.id,
-          readAt: null,
-        },
-      })
-    : 0;
 
   /*
    * This script is deliberately rendered directly inside <head>.
@@ -277,7 +268,6 @@ html[data-theme-preference="system"] {
                     id: session.user.id,
                     name: session.user.name,
                     email: session.user.email,
-                    unreadCommunityActivity,
                   }
                 : null
             }

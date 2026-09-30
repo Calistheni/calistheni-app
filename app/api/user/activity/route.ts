@@ -6,6 +6,18 @@ import { createUserUnauthorizedResponse, getAuthenticatedUserId } from "@/lib/us
 // the database write is throttled server-side to avoid click/request tracking.
 const HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000;
 
+export async function GET() {
+  const userId = await getAuthenticatedUserId();
+  if (!userId) return createUserUnauthorizedResponse();
+  const unreadCommunityActivity = await prisma.workoutNotification.count({
+    where: { userId, readAt: null },
+  });
+  return NextResponse.json(
+    { unreadCommunityActivity },
+    { headers: { "Cache-Control": "private, no-store, max-age=0" } }
+  );
+}
+
 export async function POST() {
   const userId = await getAuthenticatedUserId();
   if (!userId) return createUserUnauthorizedResponse();

@@ -105,6 +105,7 @@ export function NativeShell({ userId }: { userId: string | null }) {
 
   useEffect(() => {
     logNativeSplash("NativeShell mounted");
+    if (isDevelopment) performance.mark("calistheni:native-shell-mounted");
 
     const nativeApp = isNativeApp();
     logNativeSplash("Capacitor native platform detected", nativeApp);

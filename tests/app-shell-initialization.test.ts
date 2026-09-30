@@ -71,14 +71,15 @@ test("normal routes keep native page scrolling while only full-bleed routes lock
   assert.doesNotMatch(nativeShell, /touchmove[\s\S]{0,200}preventDefault/);
 });
 
-test("primary navigation stays client-side and warms all app tabs after paint", () => {
+test("primary navigation stays client-side and warms real app routes immediately after commit", () => {
   const shell = read("components/navigation/AppShell.tsx");
   const parks = read("components/HomePage.tsx");
   const nutrition = read("components/nutrition/NutritionTracker.tsx");
 
-  assert.match(shell, /window\.requestAnimationFrame/);
-  assert.match(shell, /requestIdleCallback/);
   assert.match(shell, /router\.prefetch\(href\)/);
+  assert.match(shell, /warmCurrentNutritionDay\(userId\)/);
+  assert.match(shell, /calistheni:primary-prefetch-start/);
+  assert.doesNotMatch(shell, /requestIdleCallback|fallbackTimer/);
   assert.match(shell, /handlePrimaryNavigationPointerDown/);
   assert.match(shell, /router\.prefetch\(href\)/);
   assert.doesNotMatch(shell, /window\.location|location\.href|<a\s/);

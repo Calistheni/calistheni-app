@@ -37,6 +37,7 @@ import {
   type PrimaryNavigationIntent,
 } from "@/lib/primary-navigation-intent";
 import { cn } from "@/lib/utils";
+import { warmCurrentNutritionDay } from "@/lib/nutrition/day-presentation-cache";
 import { AccountMenu } from "./AccountMenu";
 import {
   AppShellUserProvider,
@@ -65,6 +66,7 @@ export function AppShell({ children, user }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const isSignedIn = Boolean(user);
+  const userId = user?.id ?? null;
   const isAppShellRoute = usesSignedInAppShell(pathname);
   const prefetchedPrimaryTabs = useRef(false);
   const navigationStart = useRef<{ href: string; startedAt: number } | null>(
@@ -75,6 +77,12 @@ export function AppShell({ children, user }: AppShellProps) {
   const pointerIntentHref = useRef<string | null>(null);
   const [navigationIntent, setNavigationIntent] =
     useState<PrimaryNavigationIntent | null>(null);
+  const [unreadCommunityState, setUnreadCommunityState] = useState<{
+    userId: string | null;
+    count: number;
+  }>(() => ({ userId, count: 0 }));
+  const unreadCommunityActivity =
+    unreadCommunityState.userId === userId ? unreadCommunityState.count : 0;
   const pendingHref = navigationIntent?.href ?? null;
 
   const beginNavigationIntent = (href: string) => {
@@ -100,38 +108,68 @@ export function AppShell({ children, user }: AppShellProps) {
   }, [isSignedIn, pathname]);
 
   useEffect(() => {
-    if (!isSignedIn || !isAppShellRoute || prefetchedPrimaryTabs.current) {
+    if (!userId || !isAppShellRoute || prefetchedPrimaryTabs.current) {
       return;
     }
 
-    // Let the current route paint first, then warm every primary tab's route
-    // payload. Prefetching the route does not mount route-local features such
-    // as Mapbox, scanners, or charts.
-    let idleId: number | null = null;
-    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
-    const frameId = window.requestAnimationFrame(() => {
-      const warmRoutes = () => {
-        idleId = null;
-        prefetchedPrimaryTabs.current = true;
-        for (const href of primaryTabHrefs) {
-          if (href === pathname) continue;
-          router.prefetch(href);
+    // Passive effects run after the current real page commits. Start warming
+    // the other real RSC routes immediately; waiting for idle previously left
+    // a 300-1200 ms window in which a cold tab had no route payload.
+    prefetchedPrimaryTabs.current = true;
+    if (process.env.NODE_ENV !== "production") {
+      performance.mark("calistheni:primary-prefetch-start");
+    }
+    for (const href of primaryTabHrefs) {
+      if (href === pathname) continue;
+      router.prefetch(href);
+    }
+    void warmCurrentNutritionDay(userId);
+    if (process.env.NODE_ENV !== "production") {
+      performance.mark("calistheni:primary-prefetch-dispatched");
+    }
+  }, [isAppShellRoute, pathname, router, userId]);
+
+  useEffect(() => {
+    if (!isSignedIn) {
+      return;
+    }
+
+    const controller = new AbortController();
+    void fetch("/api/user/activity", {
+      cache: "no-store",
+      credentials: "same-origin",
+      signal: controller.signal,
+    })
+      .then(async (response) =>
+        response.ok
+          ? ((await response.json()) as { unreadCommunityActivity?: unknown })
+          : null
+      )
+      .then((result) => {
+        if (
+          result &&
+          typeof result.unreadCommunityActivity === "number" &&
+          Number.isSafeInteger(result.unreadCommunityActivity) &&
+          result.unreadCommunityActivity >= 0
+        ) {
+          setUnreadCommunityState({
+            userId,
+            count: result.unreadCommunityActivity,
+          });
         }
-      };
+      })
+      .catch(() => {
+        // The badge is noncritical and must never delay or disrupt the shell.
+      });
 
-      if ("requestIdleCallback" in window) {
-        idleId = window.requestIdleCallback(warmRoutes, { timeout: 1_200 });
-      } else {
-        fallbackTimer = setTimeout(warmRoutes, 300);
-      }
-    });
+    return () => controller.abort();
+  }, [isSignedIn, userId]);
 
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      if (idleId !== null) window.cancelIdleCallback(idleId);
-      if (fallbackTimer !== null) clearTimeout(fallbackTimer);
-    };
-  }, [isAppShellRoute, isSignedIn, pathname, router]);
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "production" && userId && isAppShellRoute) {
+      performance.mark("calistheni:authenticated-shell-mounted");
+    }
+  }, [isAppShellRoute, userId]);
 
   useEffect(() => {
     const pendingNavigation = navigationStart.current;
@@ -364,14 +402,14 @@ export function AppShell({ children, user }: AppShellProps) {
                     />
                     {item.label}
                     {item.key === "community" &&
-                    user.unreadCommunityActivity ? (
+                    unreadCommunityActivity ? (
                       <span
                         className="flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] leading-4 text-white"
-                        aria-label={`${user.unreadCommunityActivity} unread community activities`}
+                        aria-label={`${unreadCommunityActivity} unread community activities`}
                       >
-                        {user.unreadCommunityActivity > 9
+                        {unreadCommunityActivity > 9
                           ? "9+"
-                          : user.unreadCommunityActivity}
+                          : unreadCommunityActivity}
                       </span>
                     ) : null}
                   </Link>
@@ -447,10 +485,10 @@ export function AppShell({ children, user }: AppShellProps) {
                       <Icon className="size-[18px]" aria-hidden="true" />
                     </span>
                     {item.key === "community" &&
-                    user.unreadCommunityActivity ? (
+                    unreadCommunityActivity ? (
                       <span
                         className="absolute top-1 right-[calc(50%-14px)] size-2 rounded-full bg-red-500"
-                        aria-label={`${user.unreadCommunityActivity} unread community activities`}
+                        aria-label={`${unreadCommunityActivity} unread community activities`}
                       />
                     ) : null}
                     <span className="max-w-full truncate">{item.label}</span>
