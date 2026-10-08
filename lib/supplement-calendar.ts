@@ -8,6 +8,7 @@ export type DailySupplementCalendarState = {
   completed: number;
   status: "none" | "missed" | "partial" | "complete";
   completedSupplements: Array<{
+    planId: string;
     name: string;
     dosage: string | null;
     unit: string | null;
@@ -16,6 +17,7 @@ export type DailySupplementCalendarState = {
 };
 
 export type SupplementCalendarPlan = {
+  id: string;
   frequency: string;
   weekdays: number[];
   everyNDays: number | null;
@@ -39,12 +41,12 @@ export function toSupplementCalendarDateKey(value: Date) {
 }
 
 /** Uses the same UTC day boundary as supplement schedules and stored scheduledFor values. */
-export function isSupplementPlanActiveOn(plan: Omit<SupplementCalendarPlan, "logs">, day: Date) {
+export function isSupplementPlanActiveOn(plan: Omit<SupplementCalendarPlan, "id" | "logs">, day: Date) {
   return day >= utcDay(plan.createdAt)
     && (!plan.archivedAt || day < utcDay(plan.archivedAt))
 }
 
-export function isSupplementExpectedOn(plan: Omit<SupplementCalendarPlan, "logs">, day: Date) {
+export function isSupplementExpectedOn(plan: Omit<SupplementCalendarPlan, "id" | "logs">, day: Date) {
   return isSupplementPlanActiveOn(plan, day) && isPlanScheduledOn(plan, day);
 }
 
@@ -71,6 +73,7 @@ export function buildDailySupplementCalendarStates(
       if ((expected || plan.frequency === "AS_NEEDED") && completion) {
         completed += 1;
         completedSupplements.push({
+          planId: plan.id,
           name: completion.name ?? "Supplement",
           dosage: completion.dosage ?? null,
           unit: completion.unit ?? null,

@@ -132,15 +132,22 @@ test("Home quick actions reuse tracking and reminder paths without replacing the
     new URL("../app/(primary)/@home/home/page.tsx", import.meta.url),
     "utf8"
   );
+  const provider = readFileSync(
+    new URL("../components/home/HomeSupplementActivityProvider.tsx", import.meta.url),
+    "utf8"
+  );
 
-  assert.match(component, /createSupplementLogRequest\(planId, today\)/);
+  assert.match(component, /useHomeSupplementActivity\(\)/);
+  assert.match(provider, /executeHomeSupplementTake/);
   assert.match(tracker, /createSupplementLogRequest\(plan\.id, today\)/);
-  assert.match(component, /import\("@\/lib\/native\/supplement-reminders"\)/);
-  assert.match(component, /reconcileSupplementReminders\(\)/);
+  assert.match(tracker, /notifySupplementActivityChange/);
+  assert.match(tracker, /type: "removed"/);
+  assert.match(provider, /import\("@\/lib\/native\/supplement-reminders"\)/);
+  assert.match(provider, /reconcileSupplementReminders\(\)/);
   assert.match(component, /Taking…/);
-  assert.match(component, /toast\.error/);
+  assert.match(provider, /toast\.error/);
   assert.match(component, /aria-label=\{`Take \$\{action\.name\}`\}/);
   assert.match(component, /href="\/profile\/supplements"/);
   assert.match(home, /calendarSupplements\.quickActionPlans/);
-  assert.doesNotMatch(component, /window\.location|router\.refresh/);
+  assert.doesNotMatch(component + provider, /window\.location|router\.refresh/);
 });

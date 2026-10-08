@@ -18,6 +18,7 @@ import {
   HomeWorkoutActions,
 } from "@/components/home/HomeWorkoutOverview";
 import { HomeWeeklyReportAnnouncement } from "@/components/home/HomeWeeklyReportAnnouncement";
+import { HomeSupplementActivityProvider } from "@/components/home/HomeSupplementActivityProvider";
 import { HomeSupplementQuickActions } from "@/components/home/HomeSupplementQuickActions";
 import { TrainingActivityCalendar } from "@/components/home/TrainingActivityCalendar";
 import { WeeklyGoalEditor } from "@/components/home/WeeklyGoalEditor";
@@ -318,6 +319,10 @@ export default async function HomePage() {
   ];
 
   return (
+    <HomeSupplementActivityProvider
+      initialPlans={calendarSupplements.quickActionPlans}
+      initialSupplementStates={calendarSupplements.states}
+    >
     <main
       data-primary-tab-shell="home"
       data-primary-tab-data="ready"
@@ -340,9 +345,7 @@ export default async function HomePage() {
         </div>
         <div className="mt-8">
           <HomeWorkoutActions />
-          <HomeSupplementQuickActions
-            initialPlans={calendarSupplements.quickActionPlans}
-          />
+          <HomeSupplementQuickActions />
         </div>
       </header>
 
@@ -461,7 +464,6 @@ export default async function HomePage() {
           <TrainingActivityCalendar
             activities={calendarActivities}
             todayKey={toUtcDateKey(now)}
-            supplementStates={calendarSupplements.states}
             hasSupplementPlans={calendarSupplements.hasPlans}
           />
         </section>
@@ -726,6 +728,7 @@ export default async function HomePage() {
         </section>
       </div>
     </main>
+    </HomeSupplementActivityProvider>
   );
 }
 

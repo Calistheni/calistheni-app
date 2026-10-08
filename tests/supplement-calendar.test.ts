@@ -5,7 +5,7 @@ import { buildDailySupplementCalendarStates, toSupplementCalendarDateKey } from 
 const start = new Date("2026-08-03T00:00:00.000Z");
 const end = new Date("2026-08-10T00:00:00.000Z");
 const plan = (overrides: Partial<{ frequency: string; weekdays: number[]; everyNDays: number | null; createdAt: Date; archivedAt: Date | null; logs: Array<{ scheduledFor: Date; name?: string; dosage?: string | null; unit?: string | null; completedAt?: Date }> }> = {}) => ({
-  frequency: "DAILY", weekdays: [], everyNDays: null, createdAt: start, archivedAt: null, logs: [], ...overrides,
+  id: "plan-1", frequency: "DAILY", weekdays: [], everyNDays: null, createdAt: start, archivedAt: null, logs: [], ...overrides,
 });
 
 test("daily supplement calendar states distinguish none, missed, partial, and complete", () => {
@@ -14,7 +14,7 @@ test("daily supplement calendar states distinguish none, missed, partial, and co
     plan({ logs: [{ scheduledFor: new Date("2026-08-03T00:00:00.000Z") }] }),
     plan(),
   ], start, end);
-  assert.deepEqual(states[0], { date: "2026-08-03", scheduled: 2, completed: 1, status: "partial", completedSupplements: [{ name: "Supplement", dosage: null, unit: null, completedAt: null }] });
+  assert.deepEqual(states[0], { date: "2026-08-03", scheduled: 2, completed: 1, status: "partial", completedSupplements: [{ planId: "plan-1", name: "Supplement", dosage: null, unit: null, completedAt: null }] });
   assert.deepEqual(states[1], { date: "2026-08-04", scheduled: 2, completed: 0, status: "missed", completedSupplements: [] });
   assert.equal(buildDailySupplementCalendarStates([plan({ logs: [{ scheduledFor: start }] })], start, end)[0]?.status, "complete");
 });
@@ -46,7 +46,7 @@ test("an actually logged as-needed dose is calendar activity without a missed sc
     scheduled: 0,
     completed: 1,
     status: "complete",
-    completedSupplements: [{ name: "Magnesium", dosage: "200", unit: "mg", completedAt: "2026-08-03T21:00:00.000Z" }],
+    completedSupplements: [{ planId: "plan-1", name: "Magnesium", dosage: "200", unit: "mg", completedAt: "2026-08-03T21:00:00.000Z" }],
   });
 });
 

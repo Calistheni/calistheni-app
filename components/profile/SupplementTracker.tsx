@@ -11,7 +11,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getLocalSupplementDateKey } from "@/lib/supplement-log";
-import { createSupplementLogRequest } from "@/lib/supplement-log-client";
+import { createSupplementLogRequest, readSupplementLogMutationResponse } from "@/lib/supplement-log-client";
+import { notifySupplementActivityChange } from "@/lib/supplement-activity-events";
 import { isReminderPlanDueOn } from "@/lib/supplement-reminder-due";
 import { cancelAllSupplementReminders, checkSupplementReminderPermission, deviceTimeZone, reconcileSupplementReminders, requestSupplementReminderPermission, type ReminderPermission, type ReminderSettings } from "@/lib/native/supplement-reminders";
 
@@ -105,6 +106,22 @@ export function SupplementTracker() {
       setError(await responseError(response, completed ? "Unable to undo this supplement." : "Unable to take this supplement."));
       setTakingPlanId(null);
       return;
+    }
+
+    if (completed) {
+      notifySupplementActivityChange({
+        type: "removed",
+        planId: plan.id,
+        scheduledDate: today,
+      });
+    } else {
+      const result = await readSupplementLogMutationResponse(response);
+      if (result) {
+        notifySupplementActivityChange({
+          type: "completed",
+          completion: result.log,
+        });
+      }
     }
 
     setPlans((current) => current.map((currentPlan) => {

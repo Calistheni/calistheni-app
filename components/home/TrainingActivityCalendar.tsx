@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { CalendarDays, Dumbbell } from "lucide-react";
+import { useHomeSupplementActivity } from "@/components/home/HomeSupplementActivityProvider";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -113,7 +114,7 @@ function CalendarGrid({
             <PopoverContent className="max-h-72 w-64 overflow-y-auto p-3" sideOffset={8}>
               <p className="font-semibold">{formatCalendarDate(dateKey)}</p>
               {workoutCount ? <section className="mt-3"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Workout</p><p className="mt-1 text-sm">{workoutCount} completed session{workoutCount === 1 ? "" : "s"}</p><ul className="mt-1 space-y-1 text-sm text-muted-foreground">{activity?.workouts.map((workout) => <li key={workout.id}>{workout.name}</li>)}</ul>{activity ? <p className="mt-1 text-sm text-muted-foreground">{activity.completedSets} completed sets{activity.totalVolumeKg !== null ? ` · ${Math.round(activity.totalVolumeKg).toLocaleString()} kg` : ""}</p> : null}</section> : null}
-              {supplements?.scheduled || supplements?.completed ? <section className="mt-3"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Supplements</p>{supplements.completed ? <ul className="mt-1 space-y-1 text-sm text-muted-foreground">{supplements.completedSupplements.map((supplement, index) => <li key={`${supplement.name}-${index}`}>{supplement.name}{supplement.dosage ? ` — ${supplement.dosage}${supplement.unit ? ` ${supplement.unit}` : ""}` : ""}</li>)}</ul> : null}<p className="mt-1 text-sm">{supplements.scheduled ? `${supplements.completed} of ${supplements.scheduled} scheduled supplements taken` : `${supplements.completed} as-needed supplement${supplements.completed === 1 ? "" : "s"} taken`}</p></section> : null}
+              {supplements?.scheduled || supplements?.completed ? <section className="mt-3"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Supplements</p>{supplements.completed ? <ul className="mt-1 space-y-1 text-sm text-muted-foreground">{supplements.completedSupplements.map((supplement) => <li key={supplement.planId}>{supplement.name}{supplement.dosage ? ` — ${supplement.dosage}${supplement.unit ? ` ${supplement.unit}` : ""}` : ""}</li>)}</ul> : null}<p className="mt-1 text-sm">{supplements.scheduled ? `${supplements.completed} of ${supplements.scheduled} scheduled supplements taken` : `${supplements.completed} as-needed supplement${supplements.completed === 1 ? "" : "s"} taken`}</p></section> : null}
               {!workoutCount && !supplements?.scheduled && !supplements?.completed ? <p className="mt-2 text-sm text-muted-foreground">No activity recorded.</p> : null}
             </PopoverContent>
           </Popover>
@@ -126,14 +127,13 @@ function CalendarGrid({
 export function TrainingActivityCalendar({
   activities,
   todayKey,
-  supplementStates = [],
   hasSupplementPlans = false,
 }: {
   activities: DailyWorkoutActivity[];
   todayKey: string;
-  supplementStates?: DailySupplementCalendarState[];
   hasSupplementPlans?: boolean;
 }) {
+  const { supplementStates } = useHomeSupplementActivity();
   const [filter, setFilter] = useState<TrainingActivityFilter>("all");
   if (activities.length === 0 && !hasSupplementPlans) {
     return (

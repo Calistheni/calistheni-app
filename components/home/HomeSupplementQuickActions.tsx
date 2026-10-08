@@ -2,24 +2,15 @@
 
 import Link from "next/link";
 import { Check, LoaderCircle } from "lucide-react";
-import { useMemo, useState } from "react";
-import { toast } from "sonner";
+import { useMemo } from "react";
+import { useHomeSupplementActivity } from "@/components/home/HomeSupplementActivityProvider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  createSupplementLogRequest,
-  readSupplementRequestError,
-} from "@/lib/supplement-log-client";
 import { getLocalSupplementDateKey } from "@/lib/supplement-log";
 import {
   getHomeSupplementQuickActions,
   getVisibleHomeSupplementQuickActions,
-  type HomeSupplementQuickActionPlan,
 } from "@/lib/supplement-quick-actions";
-
-type HomeSupplementQuickActionsProps = {
-  initialPlans: HomeSupplementQuickActionPlan[];
-};
 
 function formatPreferredTime(value: string | null) {
   return value?.replaceAll("_", " ").toLowerCase() ?? "Any time";
@@ -29,17 +20,8 @@ function deviceTimeZone() {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 }
 
-function reconcileRemindersAfterTake() {
-  void import("@/lib/native/supplement-reminders").then(
-    ({ reconcileSupplementReminders }) => reconcileSupplementReminders()
-  ).catch(() => undefined);
-}
-
-export function HomeSupplementQuickActions({
-  initialPlans,
-}: HomeSupplementQuickActionsProps) {
-  const [plans, setPlans] = useState(initialPlans);
-  const [takingPlanId, setTakingPlanId] = useState<string | null>(null);
+export function HomeSupplementQuickActions() {
+  const { plans, pendingPlanIds, take } = useHomeSupplementActivity();
   const today = getLocalSupplementDateKey();
   const actions = useMemo(
     () => getHomeSupplementQuickActions(plans, today, deviceTimeZone()),
@@ -48,49 +30,6 @@ export function HomeSupplementQuickActions({
   const visibleActions = getVisibleHomeSupplementQuickActions(actions);
 
   if (!actions.length) return null;
-
-  async function take(planId: string, name: string) {
-    if (takingPlanId) return;
-    setTakingPlanId(planId);
-
-    try {
-      const response = await createSupplementLogRequest(planId, today);
-      if (!response.ok) {
-        throw new Error(
-          await readSupplementRequestError(
-            response,
-            `Unable to mark ${name} as taken.`
-          )
-        );
-      }
-
-      setPlans((current) =>
-        current.map((plan) =>
-          plan.id === planId &&
-          !plan.logs.some(
-            (log) => String(log.scheduledFor).slice(0, 10) === today
-          )
-            ? {
-                ...plan,
-                logs: [
-                  ...plan.logs,
-                  { scheduledFor: `${today}T00:00:00.000Z` },
-                ],
-              }
-            : plan
-        )
-      );
-      reconcileRemindersAfterTake();
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : `Unable to mark ${name} as taken.`
-      );
-    } finally {
-      setTakingPlanId(null);
-    }
-  }
 
   return (
     <Card className="mt-4 max-w-2xl border-border/80 bg-card/80 py-0 shadow-none">
@@ -103,7 +42,7 @@ export function HomeSupplementQuickActions({
         </div>
         <div className="mt-2 divide-y divide-border/70">
           {visibleActions.map((action) => {
-            const pending = takingPlanId === action.id;
+            const pending = pendingPlanIds.has(action.id);
             return (
               <div
                 key={action.id}
@@ -129,9 +68,9 @@ export function HomeSupplementQuickActions({
                 ) : (
                   <Button
                     size="sm"
-                    disabled={takingPlanId !== null}
+                    disabled={pending}
                     aria-label={`Take ${action.name}`}
-                    onClick={() => take(action.id, action.name)}
+                    onClick={() => void take(action.id, today, action.name)}
                   >
                     {pending ? (
                       <LoaderCircle
