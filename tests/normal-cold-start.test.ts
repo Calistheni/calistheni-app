@@ -38,13 +38,16 @@ test("the root shell does not block first paint on the unread badge query", asyn
   assert.match(shell, /fetch\("\/api\/user\/activity"/);
 });
 
-test("all six real routes begin prefetch without an idle delay", async () => {
+test("all six real routes fully prefetch only after the current document is ready", async () => {
   const [shell, navigation] = await Promise.all([
     read("components/navigation/AppShell.tsx"),
     read("lib/navigation.ts"),
   ]);
-  assert.match(shell, /for \(const href of primaryTabHrefs\)/);
-  assert.match(shell, /router\.prefetch\(href\)/);
+  assert.match(shell, /prefetch=\{primaryRouteWarmingEnabled\}/);
+  assert.match(shell, /document\.readyState === "complete"/);
+  assert.match(shell, /addEventListener\("load", enableAfterCurrentPage/);
+  assert.match(shell, /requestAnimationFrame/);
+  assert.doesNotMatch(shell, /for \(const href of primaryTabHrefs\)/);
   assert.doesNotMatch(shell, /requestIdleCallback|fallbackTimer/);
   for (const href of [
     "/home",

@@ -71,18 +71,25 @@ test("normal routes keep native page scrolling while only full-bleed routes lock
   assert.doesNotMatch(nativeShell, /touchmove[\s\S]{0,200}preventDefault/);
 });
 
-test("primary navigation stays client-side and warms real app routes immediately after commit", () => {
+test("primary navigation stays client-side and warms real routes after the current page", () => {
   const shell = read("components/navigation/AppShell.tsx");
   const parks = read("components/HomePage.tsx");
+  const parksWarming = read("lib/parks-map-warming.ts");
   const nutrition = read("components/nutrition/NutritionTracker.tsx");
 
-  assert.match(shell, /router\.prefetch\(href\)/);
+  assert.match(shell, /prefetch=\{primaryRouteWarmingEnabled\}/);
+  assert.match(shell, /document\.readyState === "complete"/);
+  assert.match(shell, /setPrimaryRouteWarmingEnabled\(true\)/);
   assert.match(shell, /warmCurrentNutritionDay\(userId\)/);
-  assert.match(shell, /calistheni:primary-prefetch-start/);
-  assert.doesNotMatch(shell, /requestIdleCallback|fallbackTimer/);
+  assert.doesNotMatch(shell, /calistheni:primary-prefetch-start/);
   assert.match(shell, /handlePrimaryNavigationPointerDown/);
   assert.match(shell, /router\.prefetch\(href\)/);
   assert.doesNotMatch(shell, /window\.location|location\.href|<a\s/);
   assert.match(parks, /dynamic\(\(\) => import\("@\/components\/ParksMap"\)/);
+  assert.match(parksWarming, /import\("@\/components\/ParksMap"\)/);
+  assert.doesNotMatch(
+    parksWarming,
+    /new mapboxgl\.Map|navigator\.geolocation|requestUserLocation/
+  );
   assert.match(nutrition, /dynamic\([\s\S]*import\("@\/components\/nutrition\/FoodPicker"\)/);
 });

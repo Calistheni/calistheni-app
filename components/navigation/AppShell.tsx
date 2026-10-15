@@ -38,6 +38,7 @@ import {
 } from "@/lib/primary-navigation-intent";
 import { cn } from "@/lib/utils";
 import { warmCurrentNutritionDay } from "@/lib/nutrition/day-presentation-cache";
+import { warmParksMapCode } from "@/lib/parks-map-warming";
 import { AccountMenu } from "./AccountMenu";
 import {
   AppShellUserProvider,
@@ -68,7 +69,9 @@ export function AppShell({ children, user }: AppShellProps) {
   const isSignedIn = Boolean(user);
   const userId = user?.id ?? null;
   const isAppShellRoute = usesSignedInAppShell(pathname);
-  const prefetchedPrimaryTabs = useRef(false);
+  const [primaryRouteWarmingEnabled, setPrimaryRouteWarmingEnabled] =
+    useState(false);
+  const warmedPrimaryData = useRef(false);
   const navigationStart = useRef<{ href: string; startedAt: number } | null>(
     null
   );
@@ -108,26 +111,62 @@ export function AppShell({ children, user }: AppShellProps) {
   }, [isSignedIn, pathname]);
 
   useEffect(() => {
-    if (!userId || !isAppShellRoute || prefetchedPrimaryTabs.current) {
+    if (!userId || !isAppShellRoute || warmedPrimaryData.current) {
       return;
     }
 
-    // Passive effects run after the current real page commits. Start warming
-    // the other real RSC routes immediately; waiting for idle previously left
-    // a 300-1200 ms window in which a cold tab had no route payload.
-    prefetchedPrimaryTabs.current = true;
+    // The primary navigation links use prefetch={true}, so Next's viewport
+    // scheduler warms each complete dynamic RSC route and its code without
+    // mounting the destination. Keep the separate Nutrition data warm here;
+    // it feeds the canonical tracker through its user-scoped snapshot cache.
+    warmedPrimaryData.current = true;
     if (process.env.NODE_ENV !== "production") {
-      performance.mark("calistheni:primary-prefetch-start");
-    }
-    for (const href of primaryTabHrefs) {
-      if (href === pathname) continue;
-      router.prefetch(href);
+      performance.mark("calistheni:primary-data-warm-start");
     }
     void warmCurrentNutritionDay(userId);
     if (process.env.NODE_ENV !== "production") {
-      performance.mark("calistheni:primary-prefetch-dispatched");
+      performance.mark("calistheni:primary-data-warm-dispatched");
     }
-  }, [isAppShellRoute, pathname, router, userId]);
+  }, [isAppShellRoute, userId]);
+
+  useEffect(() => {
+    if (!userId || !isAppShellRoute) return;
+
+    let frame = 0;
+    const enableAfterCurrentPage = () => {
+      // Wait for the current document and one subsequent paint before making
+      // the six visible primary links eligible for full dynamic prefetching.
+      frame = window.requestAnimationFrame(() => {
+        setPrimaryRouteWarmingEnabled(true);
+      });
+    };
+
+    if (document.readyState === "complete") {
+      enableAfterCurrentPage();
+    } else {
+      window.addEventListener("load", enableAfterCurrentPage, { once: true });
+    }
+
+    return () => {
+      window.removeEventListener("load", enableAfterCurrentPage);
+      window.cancelAnimationFrame(frame);
+    };
+  }, [isAppShellRoute, userId]);
+
+  useEffect(() => {
+    if (!primaryRouteWarmingEnabled || getActivePrimaryNavigation(pathname) === "parks") {
+      return;
+    }
+
+    // Full route prefetch prepares the RSC payload and route entry. ParksMap is
+    // a separate dynamic import, so warm that large code path on a later paint
+    // without mounting it, creating a map, or asking for location access.
+    const frame = window.requestAnimationFrame(() => {
+      void warmParksMapCode().catch(() => undefined);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [pathname, primaryRouteWarmingEnabled]);
 
   useEffect(() => {
     if (!isSignedIn) {
@@ -334,6 +373,7 @@ export function AppShell({ children, user }: AppShellProps) {
           <div className="mx-auto flex h-full max-w-7xl items-center gap-4 px-3 sm:px-6">
             <Link
               href="/home"
+              prefetch={primaryRouteWarmingEnabled}
               scroll={false}
               onClick={(event) =>
                 handlePrimaryNavigationClick(event, "/home")
@@ -373,6 +413,11 @@ export function AppShell({ children, user }: AppShellProps) {
                   <Link
                     key={item.key}
                     href={item.href}
+                    prefetch={
+                      primaryTabHrefs.some((href) => href === item.href)
+                        ? primaryRouteWarmingEnabled
+                        : undefined
+                    }
                     scroll={
                       !primaryTabHrefs.some((href) => href === item.href)
                     }
@@ -454,6 +499,7 @@ export function AppShell({ children, user }: AppShellProps) {
                   <Link
                     key={item.key}
                     href={item.href}
+                    prefetch={primaryRouteWarmingEnabled}
                     scroll={
                       !primaryTabHrefs.some((href) => href === item.href)
                     }

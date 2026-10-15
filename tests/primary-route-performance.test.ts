@@ -84,7 +84,7 @@ test("idle and lifecycle refreshes cannot choose a primary route", async () => {
   assert.doesNotMatch(shell, /setTimeout\([^)]*router\.refresh/);
 });
 
-test("primary navigation warms all six destinations exactly once after paint", async () => {
+test("primary navigation fully warms all six dynamic destinations after the current page", async () => {
   const [shell, navigation] = await Promise.all([
     readFile(
       new URL("../components/navigation/AppShell.tsx", import.meta.url),
@@ -93,14 +93,60 @@ test("primary navigation warms all six destinations exactly once after paint", a
     readFile(new URL("../lib/navigation.ts", import.meta.url), "utf8"),
   ]);
 
-  assert.match(shell, /router\.prefetch\(href\)/);
-  assert.match(shell, /prefetchedPrimaryTabs\.current/);
-  assert.match(shell, /for \(const href of primaryTabHrefs\)/);
+  assert.match(shell, /prefetch=\{primaryRouteWarmingEnabled\}/);
+  assert.match(shell, /document\.readyState === "complete"/);
+  assert.match(shell, /addEventListener\("load", enableAfterCurrentPage/);
+  assert.match(shell, /requestAnimationFrame\(\(\) => \{/);
+  assert.match(shell, /setPrimaryRouteWarmingEnabled\(true\)/);
+  assert.match(shell, /warmedPrimaryData\.current/);
+  assert.doesNotMatch(shell, /for \(const href of primaryTabHrefs\)/);
+  assert.doesNotMatch(shell, /Promise\.all\([^)]*primaryTab/);
   assert.match(navigation, /export const primaryTabNavigation/);
-  for (const href of ["/home", "/nutrition", "/parks", "/feed", "/rewards"]) {
+  for (const href of [
+    "/home",
+    "/nutrition",
+    "/parks",
+    "/feed",
+    "/rewards",
+    "/profile",
+  ]) {
     assert.match(navigation, new RegExp(`href: "${href}"`));
   }
   assert.doesNotMatch(shell, /prefetch=\{false\}/);
+  assert.match(shell, /void warmCurrentNutritionDay\(userId\)/);
+});
+
+test("full Parks warming cannot instantiate Mapbox", async () => {
+  const [shell, parks, warming] = await Promise.all([
+    readFile(
+      new URL("../components/navigation/AppShell.tsx", import.meta.url),
+      "utf8"
+    ),
+    readFile(new URL("../components/HomePage.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/parks-map-warming.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.doesNotMatch(
+    shell,
+    /components\/ParksMap|mapbox-gl|new mapboxgl\.Map/
+  );
+  assert.match(parks, /dynamic\(\(\) => import\("@\/components\/ParksMap"\)/);
+  assert.match(parks, /ssr: false/);
+  assert.match(warming, /import\("@\/components\/ParksMap"\)/);
+  assert.doesNotMatch(warming, /new mapboxgl\.Map|navigator\.geolocation|requestUserLocation/);
+});
+
+test("primary warming restarts on AppShell remount without resume storms", async () => {
+  const shell = await readFile(
+    new URL("../components/navigation/AppShell.tsx", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(
+    shell,
+    /useState\(false\)[\s\S]*setPrimaryRouteWarmingEnabled\(true\)/
+  );
+  assert.doesNotMatch(shell, /appStateChange|@capacitor\/app/);
 });
 
 test("primary tab intent gets immediate feedback and development timing", async () => {
@@ -155,6 +201,31 @@ test("primary server routes reuse one request-scoped session lookup", async () =
   for (const route of routes) {
     assert.match(route, /getServerSession\(\)/);
     assert.doesNotMatch(route, /await auth\(\)/);
+  }
+});
+
+test("full warming does not globally cache authenticated primary data", async () => {
+  const [layout, nutrition, feed, rewards] = await Promise.all([
+    readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
+    readFile(
+      new URL("../app/(primary)/@nutrition/nutrition/page.tsx", import.meta.url),
+      "utf8"
+    ),
+    readFile(
+      new URL("../app/(primary)/@community/feed/page.tsx", import.meta.url),
+      "utf8"
+    ),
+    readFile(
+      new URL("../app/(primary)/@rewards/rewards/page.tsx", import.meta.url),
+      "utf8"
+    ),
+  ]);
+
+  assert.match(layout, /export const dynamic = "force-dynamic"/);
+  assert.match(nutrition, /export const dynamic = "force-dynamic"/);
+  assert.match(feed, /export const dynamic = "force-dynamic"/);
+  for (const route of [nutrition, feed, rewards]) {
+    assert.doesNotMatch(route, /unstable_cache|cacheTag|"use cache"/);
   }
 });
 
