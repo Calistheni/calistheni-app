@@ -7,7 +7,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // WKWebView text inputs participate in UIKit's undo manager while they
+        // are focused. Keep ordinary editing and undo support, but prevent a
+        // device shake from presenting the system Undo Typing dialog.
+        application.applicationSupportsShakeToEdit = false
         return true
     }
 
