@@ -1,8 +1,10 @@
 import type {
+  ExerciseTrackingType,
   SupersetColorKey,
   WorkoutSetInput,
   WorkoutSupersetInput,
 } from "@/types/workout";
+import { getTrackingTypeFieldConfig } from "@/lib/exercise-tracking-fields";
 
 export const SUPERSET_COLOR_KEYS: SupersetColorKey[] = [
   "BLUE",
@@ -133,6 +135,85 @@ export function getNextSupersetSetDraft<T extends {
     // -1 is an internal append sentinel only. Never expose it as a UI index.
     setNumber: sets.length + 1,
     source: [...sets].reverse().find((set) => set.completed) ?? null,
+  };
+}
+
+function isSetFromSuperset(
+  set: Pick<WorkoutSetInput, "supersetRoundId" | "supersetRoundIndex">,
+  supersetKey: string,
+  hasExplicitRoundMetadata: boolean
+) {
+  if (set.supersetRoundId) {
+    return set.supersetRoundId.startsWith(`${supersetKey}:`);
+  }
+
+  if (
+    set.supersetRoundIndex !== null &&
+    set.supersetRoundIndex !== undefined
+  ) {
+    // Legacy rounds predate scoped round IDs, so their index is the strongest
+    // available evidence that the set belongs to a superset.
+    return true;
+  }
+
+  // Old drafts without any round metadata used set position as round identity.
+  // Once explicit metadata exists, an unmarked set is a normal/manual set.
+  return !hasExplicitRoundMetadata;
+}
+
+/**
+ * Initializes the real editable set used by the superset round form.
+ *
+ * A planned/incomplete slot can already contain intentional user input. Those
+ * values win field-by-field; missing supported fields fall back to the same
+ * exercise's latest completed set from this superset. Unsupported stale fields
+ * are cleared according to the exercise's canonical tracking type.
+ */
+export function initializeNextSupersetSetDraft(
+  sets: readonly WorkoutSetInput[],
+  trackingType: ExerciseTrackingType,
+  supersetKey: string
+) {
+  const { setIndex, setNumber } = getNextSupersetSetDraft([...sets]);
+  const existingSet = setIndex >= 0 ? sets[setIndex] ?? null : null;
+  const precedingSets = setIndex >= 0 ? sets.slice(0, setIndex) : sets;
+  const hasExplicitRoundMetadata = sets.some(
+    (set) =>
+      Boolean(set.supersetRoundId) ||
+      set.supersetRoundIndex !== null &&
+        set.supersetRoundIndex !== undefined
+  );
+  const previousSet = [...precedingSets]
+    .reverse()
+    .find(
+      (set) =>
+        set.completed &&
+        isSetFromSuperset(set, supersetKey, hasExplicitRoundMetadata)
+    ) ?? null;
+  const fields = getTrackingTypeFieldConfig(trackingType);
+  const inherited = <K extends keyof WorkoutSetInput>(field: K) =>
+    existingSet?.[field] ?? previousSet?.[field] ?? null;
+
+  return {
+    setIndex,
+    setNumber,
+    set: {
+      reps: fields.reps ? inherited("reps") : null,
+      weight: fields.weight ? inherited("weight") : null,
+      durationSeconds: fields.duration
+        ? inherited("durationSeconds")
+        : null,
+      distanceMeters: fields.distance
+        ? inherited("distanceMeters")
+        : null,
+      steps: fields.steps ? inherited("steps") : null,
+      floors: fields.floors ? inherited("floors") : null,
+      rpe: inherited("rpe"),
+      notes: inherited("notes"),
+      completed: false,
+      supersetRoundIndex: existingSet?.supersetRoundIndex ?? null,
+      supersetRoundId: existingSet?.supersetRoundId ?? null,
+    } satisfies WorkoutSetInput,
   };
 }
 

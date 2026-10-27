@@ -150,12 +150,12 @@ import {
 } from "@/lib/workout-set-performance";
 import {
   createSupersetKey,
-  getNextSupersetSetDraft,
   getSupersetDisplayLabel,
   getSupersetMembershipSortableId,
   getSupersetRenderEntries,
   reorderSupersetMembershipIds,
   getSupersetRoundProgress,
+  initializeNextSupersetSetDraft,
   SUPERSET_COLOR_KEYS,
 } from "@/lib/workout-supersets";
 import {
@@ -1959,12 +1959,16 @@ export function WorkoutBuilder({
     const roundId = `${key}:${crypto.randomUUID()}`;
 
     for (const exercise of members) {
-      const { setIndex, setNumber, source } = getNextSupersetSetDraft(exercise.sets);
+      const { setIndex, setNumber, set } = initializeNextSupersetSetDraft(
+        exercise.sets,
+        exercise.trackingType,
+        key
+      );
       draft[exercise.localId] = {
         setIndex,
         setNumber,
         set: {
-          ...toWorkoutSetInput(source ?? createLocalSet()),
+          ...set,
           completed: false,
           supersetRoundIndex: progress.currentRound - 1,
           supersetRoundId: roundId,

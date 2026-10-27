@@ -9,8 +9,30 @@ import {
   getSupersetLetter,
   getSupersetRenderEntries,
   getSupersetMembershipSortableId,
+  initializeNextSupersetSetDraft,
   reorderSupersetMembershipIds,
 } from "../lib/workout-supersets.ts";
+import { calculateActiveWorkoutVolumeKg } from "../lib/active-workout-volume.ts";
+import type { WorkoutSetInput } from "../types/workout.ts";
+
+function workoutSet(
+  values: Partial<WorkoutSetInput> = {}
+): WorkoutSetInput {
+  return {
+    reps: null,
+    weight: null,
+    durationSeconds: null,
+    distanceMeters: null,
+    steps: null,
+    floors: null,
+    rpe: null,
+    notes: null,
+    completed: false,
+    supersetRoundIndex: null,
+    supersetRoundId: null,
+    ...values,
+  };
+}
 
 test("superset labels follow ordered group position and never legacy saved labels", () => {
   const groups = ["group-a", "group-b", "group-c"].map((key) => ({ key, label: "Superset A" }));
@@ -166,6 +188,278 @@ test("planned placeholders are consumed before the latest result is reused", () 
     setNumber: 4,
     source: completedSets[2],
   });
+});
+
+test("superset drafts inherit every supported field from the same exercise", () => {
+  const cases = [
+    {
+      trackingType: "BODYWEIGHT_REPS" as const,
+      previous: { reps: 10 },
+      expected: { reps: 10, weight: null },
+    },
+    {
+      trackingType: "WEIGHTED_BODYWEIGHT" as const,
+      previous: { reps: 10, weight: 10 },
+      expected: { reps: 10, weight: 10 },
+    },
+    {
+      trackingType: "EXTERNAL_WEIGHT" as const,
+      previous: { reps: 8, weight: 80 },
+      expected: { reps: 8, weight: 80 },
+    },
+    {
+      trackingType: "DURATION" as const,
+      previous: { durationSeconds: 60 },
+      expected: { durationSeconds: 60 },
+    },
+    {
+      trackingType: "DISTANCE_DURATION" as const,
+      previous: { durationSeconds: 45, distanceMeters: 100 },
+      expected: { durationSeconds: 45, distanceMeters: 100 },
+    },
+    {
+      trackingType: "STEPS_DISTANCE_DURATION" as const,
+      previous: { durationSeconds: 300, distanceMeters: 400, steps: 600 },
+      expected: { durationSeconds: 300, distanceMeters: 400, steps: 600 },
+    },
+    {
+      trackingType: "FLOORS_DISTANCE_DURATION" as const,
+      previous: { durationSeconds: 240, distanceMeters: 120, floors: 12 },
+      expected: { durationSeconds: 240, distanceMeters: 120, floors: 12 },
+    },
+    {
+      trackingType: "WEIGHT_DISTANCE_DURATION" as const,
+      previous: { weight: 25, durationSeconds: 90, distanceMeters: 50 },
+      expected: { weight: 25, durationSeconds: 90, distanceMeters: 50 },
+    },
+  ];
+
+  for (const { trackingType, previous, expected } of cases) {
+    const result = initializeNextSupersetSetDraft(
+      [
+        workoutSet({
+          ...previous,
+          completed: true,
+          supersetRoundIndex: 0,
+          supersetRoundId: "group-a:round-1",
+        }),
+        workoutSet(),
+      ],
+      trackingType,
+      "group-a"
+    );
+
+    assert.equal(result.setIndex, 1);
+    assert.equal(result.setNumber, 2);
+    assert.equal(result.set.completed, false);
+    assert.deepEqual(
+      Object.fromEntries(
+        Object.keys(expected).map((field) => [
+          field,
+          result.set[field as keyof WorkoutSetInput],
+        ])
+      ),
+      expected
+    );
+  }
+});
+
+test("each mixed-superset exercise inherits only its own values", () => {
+  const pullUp = initializeNextSupersetSetDraft(
+    [
+      workoutSet({ reps: 8, weight: 15, completed: true, supersetRoundId: "mixed:1" }),
+      workoutSet(),
+    ],
+    "WEIGHTED_BODYWEIGHT",
+    "mixed"
+  );
+  const dip = initializeNextSupersetSetDraft(
+    [
+      workoutSet({ reps: 8, weight: 20, completed: true, supersetRoundId: "mixed:1" }),
+      workoutSet(),
+    ],
+    "WEIGHTED_BODYWEIGHT",
+    "mixed"
+  );
+  const plank = initializeNextSupersetSetDraft(
+    [
+      workoutSet({ durationSeconds: 60, completed: true, supersetRoundId: "mixed:1" }),
+      workoutSet(),
+    ],
+    "DURATION",
+    "mixed"
+  );
+
+  assert.deepEqual([pullUp.set.reps, pullUp.set.weight], [8, 15]);
+  assert.deepEqual([dip.set.reps, dip.set.weight], [8, 20]);
+  assert.deepEqual(
+    [plank.set.reps, plank.set.weight, plank.set.durationSeconds],
+    [null, null, 60]
+  );
+});
+
+test("an existing incomplete slot preserves edits and fills only its missing fields", () => {
+  const sets = [
+    workoutSet({
+      reps: 10,
+      weight: 10,
+      completed: true,
+      supersetRoundId: "group-a:round-1",
+    }),
+    workoutSet({ reps: 8, weight: null, notes: "manual edit" }),
+  ];
+
+  const first = initializeNextSupersetSetDraft(
+    sets,
+    "WEIGHTED_BODYWEIGHT",
+    "group-a"
+  );
+  const second = initializeNextSupersetSetDraft(
+    sets,
+    "WEIGHTED_BODYWEIGHT",
+    "group-a"
+  );
+
+  assert.deepEqual(
+    { reps: first.set.reps, weight: first.set.weight, notes: first.set.notes },
+    { reps: 8, weight: 10, notes: "manual edit" }
+  );
+  assert.deepEqual(second, first);
+  assert.equal(sets[1]?.weight, null);
+});
+
+test("appended, restored, and routine-placeholder rounds use the same initializer", () => {
+  const restoredSets = JSON.parse(
+    JSON.stringify([
+      workoutSet({
+        reps: 10,
+        weight: 12.5,
+        completed: true,
+        supersetRoundId: "routine:round-1",
+      }),
+    ])
+  ) as WorkoutSetInput[];
+  const appended = initializeNextSupersetSetDraft(
+    restoredSets,
+    "WEIGHTED_BODYWEIGHT",
+    "routine"
+  );
+  assert.equal(appended.setIndex, -1);
+  assert.deepEqual([appended.set.reps, appended.set.weight], [10, 12.5]);
+
+  const routinePlaceholder = initializeNextSupersetSetDraft(
+    [...restoredSets, workoutSet({ reps: 6 })],
+    "WEIGHTED_BODYWEIGHT",
+    "routine"
+  );
+  assert.deepEqual(
+    [routinePlaceholder.set.reps, routinePlaceholder.set.weight],
+    [6, 12.5]
+  );
+});
+
+test("the immediately preceding completed round wins without mutating earlier rounds", () => {
+  const sets = [
+    workoutSet({ reps: 10, weight: 10, completed: true, supersetRoundId: "group-a:1" }),
+    workoutSet({ reps: 9, weight: 15, completed: true, supersetRoundId: "group-a:2" }),
+    workoutSet(),
+  ];
+  const snapshot = structuredClone(sets);
+  const result = initializeNextSupersetSetDraft(
+    sets,
+    "WEIGHTED_BODYWEIGHT",
+    "group-a"
+  );
+
+  assert.deepEqual([result.set.reps, result.set.weight], [9, 15]);
+  assert.deepEqual(sets, snapshot);
+});
+
+test("unrelated manual or differently scoped sets are not inherited", () => {
+  const result = initializeNextSupersetSetDraft(
+    [
+      workoutSet({ reps: 5, weight: 100, completed: true }),
+      workoutSet({
+        reps: 7,
+        weight: 30,
+        completed: true,
+        supersetRoundId: "other:round-1",
+      }),
+      workoutSet(),
+    ],
+    "EXTERNAL_WEIGHT",
+    "target"
+  );
+
+  assert.deepEqual([result.set.reps, result.set.weight], [null, null]);
+});
+
+test("legacy rounds inherit safely while a new exercise without history stays empty", () => {
+  const legacy = initializeNextSupersetSetDraft(
+    [
+      workoutSet({
+        durationSeconds: 60,
+        completed: true,
+        supersetRoundIndex: 0,
+      }),
+      workoutSet(),
+    ],
+    "DURATION",
+    "legacy-group"
+  );
+  const newExercise = initializeNextSupersetSetDraft(
+    [workoutSet()],
+    "DURATION",
+    "legacy-group"
+  );
+
+  assert.equal(legacy.set.durationSeconds, 60);
+  assert.equal(newExercise.set.durationSeconds, null);
+});
+
+test("suggested weighted-bodyweight values remain incomplete and retain added-weight semantics", () => {
+  const suggestion = initializeNextSupersetSetDraft(
+    [
+      workoutSet({
+        reps: 10,
+        weight: 10,
+        completed: true,
+        supersetRoundId: "weighted:round-1",
+      }),
+    ],
+    "WEIGHTED_BODYWEIGHT",
+    "weighted"
+  );
+
+  assert.equal(suggestion.set.completed, false);
+  assert.equal(suggestion.set.weight, 10);
+  assert.equal(
+    calculateActiveWorkoutVolumeKg({
+      exercises: [{
+        exerciseId: "weighted-pull-up",
+        trackingType: "WEIGHTED_BODYWEIGHT",
+        bodyweightLoadFactor: 1,
+        sets: [suggestion.set],
+      }],
+      userBodyweightKg: 90,
+    }),
+    0
+  );
+
+  const completedSuggestion = { ...suggestion.set, completed: true };
+  assert.equal(
+    calculateActiveWorkoutVolumeKg({
+      exercises: [{
+        exerciseId: "weighted-pull-up",
+        trackingType: "WEIGHTED_BODYWEIGHT",
+        bodyweightLoadFactor: 1,
+        sets: [completedSuggestion],
+      }],
+      userBodyweightKg: 90,
+    }),
+    1_000
+  );
+  assert.equal(suggestion.set.weight, 10);
 });
 
 test("different preset counts safely fall back per exercise", () => {
