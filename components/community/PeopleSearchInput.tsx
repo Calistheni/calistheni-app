@@ -34,23 +34,25 @@ export function PeopleSearchInput({ initialQuery }: { initialQuery: string }) {
   }, [pathname, query, router, searchParams]);
 
   return (
-    <div className="relative">
+    <div>
       <label htmlFor="people-search" className="sr-only">
         Search people by name or username
       </label>
-      <Search
-        aria-hidden="true"
-        className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
-      />
-      <Input
-        id="people-search"
-        type="search"
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-        placeholder="Search name or username"
-        className="h-11 pl-9"
-        autoComplete="off"
-      />
+      <div className="relative">
+        <Search
+          aria-hidden="true"
+          className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+        />
+        <Input
+          id="people-search"
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search name or username"
+          className="h-11 pl-10"
+          autoComplete="off"
+        />
+      </div>
       <p className="mt-2 text-xs text-muted-foreground">
         Search begins after two characters. Email addresses are never searchable.
       </p>
