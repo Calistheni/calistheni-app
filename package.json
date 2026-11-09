@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "build:native": "node scripts/verify-native-source.mjs && CALISTHENI_NATIVE_DIAGNOSTICS=1 next build apps/native && node scripts/stamp-native-output.mjs diagnostics && node scripts/verify-native-output.mjs",
     "start": "next start",
     "lint": "eslint",
