@@ -1,0 +1,16 @@
+name: Actions diagnostic
+
+on:
+  push:
+    branches:
+      - verification/account-lifecycle-phase-6g
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify runner
+        run: echo "GitHub Actions runner works"
