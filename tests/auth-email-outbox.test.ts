@@ -63,6 +63,15 @@ test("scheduled authentication email delivery is disabled until explicitly enabl
   assert.equal(isAuthEmailWorkerEnabled("true"), true);
 });
 
+test("Vercel Hobby retains only the compatible daily account-deletion cron", () => {
+  const config = JSON.parse(
+    readFileSync(new URL("../vercel.json", import.meta.url), "utf8")
+  ) as { crons?: Array<{ path?: string; schedule?: string }> };
+  assert.deepEqual(config.crons, [
+    { path: "/api/cron/account-deletion", schedule: "0 3 * * *" },
+  ]);
+});
+
 test("email outbox monitoring is admin-only and contains aggregate metrics only", () => {
   const page = readFileSync(new URL("../app/admin/auth-email/page.tsx", import.meta.url), "utf8");
   assert.match(page, /isAdminAuthenticated\(\)/);
