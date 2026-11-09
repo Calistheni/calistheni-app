@@ -20,7 +20,7 @@ export async function GET(request: Request) {
   const userId = await getAuthenticatedUserId(request);
   if (!userId) return nativeCorsJson(request, { error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
   const following = await prisma.userFollow.findMany({
-    where: { followerId: userId },
+    where: { followerId: userId, following: { is: { deletedAt: null } } },
     select: { followingId: true },
   });
   const followingIds = following.map((item) => item.followingId);
@@ -28,6 +28,7 @@ export async function GET(request: Request) {
     ? await prisma.workout.findMany({
         where: {
           userId: { in: followingIds },
+          user: { is: { deletedAt: null } },
           visibility: "PUBLIC",
           completedAt: { not: null },
           exercises: { none: { exercise: { createdByUserId: { not: null } } } },

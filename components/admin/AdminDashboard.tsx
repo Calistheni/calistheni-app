@@ -1217,6 +1217,12 @@ export default function AdminDashboard() {
           <Button asChild variant="outline">
             <Link href="/admin/users">Users</Link>
           </Button>
+          <Button asChild variant="outline">
+            <Link href="/admin/account-deletions">Deletion Reviews</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/admin/auth-email">Auth Email Outbox</Link>
+          </Button>
           <form action="/admin/logout" method="post">
             <Button type="submit" variant="outline">
               Logout

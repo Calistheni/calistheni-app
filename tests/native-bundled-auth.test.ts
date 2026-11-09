@@ -32,7 +32,8 @@ test("request principal rejects an invalid supplied bearer instead of falling ba
   assert.match(source, /if \(bearer\.supplied\)[\s\S]*if \(!bearer\.token\) return null/);
   assert.match(source, /resolveNativeSession\(bearer\.token\)/);
   assert.match(resolver, /tokenHash: hashNativeAuthSecret\(token\)/);
-  assert.match(resolver, /select: \{ id: true, userId: true,[^}]*lastUsedAt: true,[^}]*expiresAt: true,[^}]*revokedAt: true \}/);
+  assert.match(resolver, /include: \{ user: \{ select: \{ deletedAt: true \} \} \}/);
+  assert.match(resolver, /session\.user\.deletedAt \|\| !isNativeSessionUsable\(session, now\)/);
   assert.match(source, /const session = await auth\(\)/);
   assert.ok(source.indexOf("if (bearer.supplied)") < source.indexOf("const session = await auth()"));
 });

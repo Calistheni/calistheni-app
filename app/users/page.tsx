@@ -44,6 +44,7 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
   const users = canSearch
     ? await prisma.user.findMany({
         where: {
+          deletedAt: null,
           id: {
             not: session.user.id,
           },
@@ -74,7 +75,7 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
           image: true,
           _count: {
             select: {
-              followers: true,
+              followers: { where: { follower: { is: { deletedAt: null } } } },
             },
           },
         },

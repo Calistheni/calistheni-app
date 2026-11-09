@@ -6,6 +6,8 @@ import { BackButton } from "@/components/navigation/BackButton";
 import { BodyweightForm } from "@/components/profile/BodyweightForm";
 import { CardioGoalCard } from "@/components/profile/CardioGoalCard";
 import { MobileAccountUtilities } from "@/components/profile/MobileAccountUtilities";
+import { ConnectedAccounts } from "@/components/profile/ConnectedAccounts";
+import { AccountDeletionSection } from "@/components/profile/AccountDeletionSection";
 import { ProfileStatCard } from "@/components/profile/ProfileStatCard";
 import { ProgressLinks } from "@/components/profile/ProgressLinks";
 import { SocialConnections } from "@/components/social/SocialConnections";
@@ -368,6 +370,14 @@ export default async function ProfilePage() {
         </CardContent>
       </Card>
 
+      <Card className="mb-6">
+        <CardHeader>
+          <h2 className="text-2xl font-bold">Connected Accounts</h2>
+          <p className="text-sm text-muted-foreground">Manage the secure sign-in methods attached to this Calistheni account.</p>
+        </CardHeader>
+        <CardContent><ConnectedAccounts /></CardContent>
+      </Card>
+
       <Card className="mb-6 md:hidden">
         <CardHeader>
           <h2 className="text-2xl font-bold">Account settings</h2>
@@ -379,6 +389,8 @@ export default async function ProfilePage() {
           <MobileAccountUtilities />
         </CardContent>
       </Card>
+
+      <AccountDeletionSection hasWebsiteSubscription={Boolean(subscription?.stripeSubscriptionId)} />
 
     </main>
   );

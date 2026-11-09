@@ -29,6 +29,7 @@ export async function POST(
     const user = await prisma.user.findUnique({
       where: {
         id: followingId,
+        deletedAt: null,
       },
       select: {
         id: true,
@@ -54,8 +55,8 @@ export async function POST(
     });
 
     const [followerCount, followingCount] = await Promise.all([
-      prisma.userFollow.count({ where: { followingId } }),
-      prisma.userFollow.count({ where: { followerId: followingId } }),
+      prisma.userFollow.count({ where: { followingId, follower: { is: { deletedAt: null } } } }),
+      prisma.userFollow.count({ where: { followerId: followingId, following: { is: { deletedAt: null } } } }),
     ]);
 
     return NextResponse.json({
@@ -90,8 +91,8 @@ export async function DELETE(
     });
 
     const [followerCount, followingCount] = await Promise.all([
-      prisma.userFollow.count({ where: { followingId } }),
-      prisma.userFollow.count({ where: { followerId: followingId } }),
+      prisma.userFollow.count({ where: { followingId, follower: { is: { deletedAt: null } } } }),
+      prisma.userFollow.count({ where: { followerId: followingId, following: { is: { deletedAt: null } } } }),
     ]);
 
     return NextResponse.json({

@@ -104,6 +104,7 @@ export default async function WorkoutDetailPage({
           : []),
         {
           visibility: "PUBLIC",
+          user: { is: { deletedAt: null } },
           exercises: {
             none: {
               exercise: { createdByUserId: { not: null } },
@@ -124,7 +125,12 @@ export default async function WorkoutDetailPage({
           bodyweightKg: true,
         },
       },
-      _count: { select: { likes: true, comments: true } },
+      _count: {
+        select: {
+          likes: true,
+          comments: { where: { user: { is: { deletedAt: null } } } },
+        },
+      },
       likes: {
         where: { userId: session?.user?.id ?? "" },
         select: { userId: true },

@@ -27,8 +27,11 @@ async function FeedItems({ userId }: { userId: string }) {
   const workouts = await prisma.workout.findMany({
         where: {
           user: {
+            is: {
+              deletedAt: null,
             followers: {
               some: { followerId: userId },
+            },
             },
           },
           visibility: "PUBLIC",

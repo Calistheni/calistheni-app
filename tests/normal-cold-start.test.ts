@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { decodeNutritionDay } from "@/lib/nutrition/day-presentation-cache";
+import { resolveCapacitorRuntimeMode } from "@/lib/capacitor-runtime-mode";
 
 const read = (path: string) =>
   readFile(new URL(`../${path}`, import.meta.url), "utf8");
@@ -118,7 +119,7 @@ test("cold-start work preserves real surfaces and does not initialize Mapbox glo
 });
 
 test("normal remote Capacitor runtime remains unchanged", async () => {
-  const config = JSON.parse(await read("ios/App/App/capacitor.config.json"));
+  const config = resolveCapacitorRuntimeMode({});
   assert.equal(config.webDir, "mobile-web");
-  assert.equal(config.server.url, "https://calistheni.app");
+  assert.equal(config.serverUrl, "https://calistheni.app");
 });

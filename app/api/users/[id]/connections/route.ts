@@ -28,8 +28,16 @@ export async function GET(
     const rows = await prisma.userFollow.findMany({
       where:
         type === "followers"
-          ? { followingId: profileUserId }
-          : { followerId: profileUserId },
+          ? {
+              followingId: profileUserId,
+              following: { is: { deletedAt: null } },
+              follower: { is: { deletedAt: null } },
+            }
+          : {
+              followerId: profileUserId,
+              follower: { is: { deletedAt: null } },
+              following: { is: { deletedAt: null } },
+            },
       orderBy: [{ createdAt: "desc" }, { followerId: "asc" }, { followingId: "asc" }],
       ...(cursorParts?.length === 2
         ? {

@@ -33,6 +33,7 @@ export type ProEntitlementGrant =
       provider: "APPLE";
       kind: "SUBSCRIPTION" | "LIFETIME";
       productId: string;
+      environment: "PRODUCTION" | "SANDBOX";
       expiresAt: Date | null;
     };
 
@@ -78,10 +79,11 @@ function isEntitledAppleState(state: ApplePurchaseState) {
 
 export function resolveAppleProGrant(
   purchase: AppleEntitlementInput,
-  now = new Date()
+  now = new Date(),
+  options: { allowSandbox?: boolean } = {}
 ): ProEntitlementGrant | null {
   if (
-    purchase.environment !== "PRODUCTION" ||
+    (purchase.environment !== "PRODUCTION" && !options.allowSandbox) ||
     purchase.revokedAt ||
     !isKnownAppleProduct(purchase.productId, purchase.productKind) ||
     !isEntitledAppleState(purchase.state)
@@ -95,6 +97,7 @@ export function resolveAppleProGrant(
       provider: "APPLE",
       kind: "LIFETIME",
       productId: purchase.productId,
+      environment: purchase.environment,
       expiresAt: null,
     };
   }
@@ -104,6 +107,7 @@ export function resolveAppleProGrant(
       provider: "APPLE",
       kind: "SUBSCRIPTION",
       productId: purchase.productId,
+      environment: purchase.environment,
       expiresAt: purchase.expiresAt,
     };
   }
@@ -117,6 +121,7 @@ export function resolveAppleProGrant(
       provider: "APPLE",
       kind: "SUBSCRIPTION",
       productId: purchase.productId,
+      environment: purchase.environment,
       expiresAt: purchase.gracePeriodExpiresAt,
     };
   }
@@ -128,16 +133,20 @@ export function resolveProEntitlementGrants({
   subscription,
   applePurchases,
   now = new Date(),
+  allowSandboxAppleEntitlements = false,
 }: {
   subscription: StripeEntitlementInput;
   applePurchases: AppleEntitlementInput[];
   now?: Date;
+  allowSandboxAppleEntitlements?: boolean;
 }) {
   const grants: ProEntitlementGrant[] = [];
   const stripeGrant = resolveStripeProGrant(subscription);
   if (stripeGrant) grants.push(stripeGrant);
   for (const purchase of applePurchases) {
-    const grant = resolveAppleProGrant(purchase, now);
+    const grant = resolveAppleProGrant(purchase, now, {
+      allowSandbox: allowSandboxAppleEntitlements,
+    });
     if (grant) grants.push(grant);
   }
   return { isPro: grants.length > 0, grants };

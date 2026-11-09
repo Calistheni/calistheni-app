@@ -3,6 +3,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { NativeGoogleSignInButton } from "@/components/auth/NativeGoogleSignInButton";
+import { AppleSignInButton } from "@/components/auth/AppleSignInButton";
+import { PasswordAuthForm } from "@/components/auth/PasswordAuthForm";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { getPostLoginRedirect } from "@/lib/onboarding";
@@ -45,9 +47,11 @@ export default async function LoginPage({
     redirect(callbackUrl ?? (await getPostLoginRedirect(session.user.id)));
   }
 
-  const isGoogleConfigured =
-    Boolean(process.env.GOOGLE_CLIENT_ID) &&
-    Boolean(process.env.GOOGLE_CLIENT_SECRET);
+  const isGoogleConfigured = Boolean(
+    (process.env.GOOGLE_CLIENT_ID || process.env.AUTH_GOOGLE_ID) &&
+    (process.env.GOOGLE_CLIENT_SECRET || process.env.AUTH_GOOGLE_SECRET)
+  );
+  const isAppleWebConfigured = Boolean(process.env.AUTH_APPLE_ID && process.env.AUTH_APPLE_SECRET);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
@@ -57,7 +61,7 @@ export default async function LoginPage({
             Calistheni
           </p>
           <h1 className="text-3xl font-bold">
-            {isCreatingAccount ? "Create your free account" : "Sign in"}
+            {isCreatingAccount ? "Create your free account" : "Welcome to Calistheni"}
           </h1>
           <p className="text-sm text-muted-foreground">
             {isCreatingAccount
@@ -71,6 +75,7 @@ export default async function LoginPage({
               Google sign-in did not complete. Please try again.
             </div>
           ) : null}
+          {isAppleWebConfigured ? <AppleSignInButton callbackUrl={callbackUrl} /> : null}
           {isGoogleConfigured ? (
             <NativeGoogleSignInButton callbackUrl={callbackUrl} />
           ) : (
@@ -79,6 +84,24 @@ export default async function LoginPage({
               variables before enabling user login.
             </div>
           )}
+
+          <div className="flex items-center gap-3" aria-hidden="true">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-xs uppercase tracking-wide text-muted-foreground">or</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+
+          <PasswordAuthForm mode={isCreatingAccount ? "register" : "login"} callbackUrl={callbackUrl} />
+
+          <p className="text-center text-sm text-muted-foreground">
+            {isCreatingAccount ? "Already have an account?" : "Don’t have an account?"}{" "}
+            <Link
+              className="font-medium text-primary underline-offset-4 hover:underline"
+              href={isCreatingAccount ? "/login" : "/login?intent=signup"}
+            >
+              {isCreatingAccount ? "Sign In" : "Sign Up"}
+            </Link>
+          </p>
 
           <Button asChild variant="outline" className="w-full">
             <Link href={callbackUrl ?? "/"}>

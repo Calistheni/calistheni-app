@@ -11,6 +11,7 @@ import {
   logNativeAuth,
 } from "@/lib/auth/native-auth-server";
 import { getSiteUrl } from "@/lib/site-url";
+import { getDatabaseSessionFromRequest, isRecentAuthentication } from "@/lib/auth/database-session";
 
 export const runtime = "nodejs";
 
@@ -52,10 +53,7 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-  // This endpoint currently starts fresh interactive logins only. Keep the
-  // intent explicit so a future same-account reauthentication flow cannot
-  // accidentally inherit this browser-session reset.
-  if (body.intent !== "login") {
+  if (body.intent !== "login" && body.intent !== "link") {
     return NextResponse.json(
       {
         error: "Unsupported native authentication intent.",
@@ -65,6 +63,13 @@ export async function POST(request: Request) {
     );
   }
   const platform = body.platform;
+  const linkingSession = body.intent === "link" ? await getDatabaseSessionFromRequest(request) : null;
+  if (body.intent === "link" && (!linkingSession || !isRecentAuthentication(linkingSession.authenticatedAt))) {
+    return NextResponse.json(
+      { error: "Sign in again before connecting Google.", code: "RECENT_AUTH_REQUIRED" },
+      { status: 403 }
+    );
+  }
 
   const now = new Date();
   const nonce = createNativeAuthSecret();
@@ -75,6 +80,8 @@ export async function POST(request: Request) {
     return tx.nativeAuthAttempt.create({
       data: {
         platform,
+        intent: body.intent === "link" ? "LINK" : "LOGIN",
+        userId: linkingSession?.userId,
         nonceHash: hashNativeAuthSecret(nonce),
         redirectPath: sanitizeNativeRedirectPath(body.redirectTo),
         expiresAt: new Date(now.getTime() + NATIVE_AUTH_ATTEMPT_TTL_MS),
@@ -86,12 +93,12 @@ export async function POST(request: Request) {
   const startUrl = new URL("/api/native-auth/browser-start", getSiteUrl());
   startUrl.searchParams.set("attempt", attempt.id);
   startUrl.searchParams.set("nonce", nonce);
-  startUrl.searchParams.set("intent", "login");
+  startUrl.searchParams.set("intent", body.intent);
 
   logNativeAuth("attempt_created", {
     attemptId: attempt.id,
     platform,
-    intent: "login",
+    intent: body.intent,
   });
 
   return NextResponse.json({

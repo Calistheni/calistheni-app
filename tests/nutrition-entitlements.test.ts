@@ -64,13 +64,15 @@ test("Free users see locked discovery actions while Describe and ordinary food f
     source("app/(primary)/@nutrition/nutrition/page.tsx"),
   ]);
 
-  assert.match(page, /getUserEntitlements\(session\.user\.id\)/);
-  assert.match(page, /canUseNutritionAiScan\(entitlements\)/);
-  assert.match(page, /canUseNutritionBarcodeScan\(entitlements\)/);
+  const capabilityRoute = await source("app/api/nutrition/capabilities/route.ts");
+  assert.match(page, /<NutritionTracker\s+key=\{session\.user\.id\}\s+userId=\{session\.user\.id\}\s*\/>/);
+  assert.match(capabilityRoute, /getUserEntitlements\(userId\)/);
+  assert.match(capabilityRoute, /canUseNutritionAiScan\(entitlements\)/);
+  assert.match(capabilityRoute, /canUseNutritionBarcodeScan\(entitlements\)/);
   assert.match(tracker, /quickActionCapabilities/);
   assert.match(quickActions, /Barcode, Pro feature/);
   assert.match(quickActions, /AI Scan, Pro feature/);
-  assert.match(quickActions, />PRO<\/Badge>/);
+  assert.match(quickActions, /<Badge[\s\S]*?>\s*PRO\s*<\/Badge>/);
   assert.match(quickActions, /feature !== "describe" && isLocked\(feature\)/);
   assert.match(quickActions, /onClick=\{\(\) => open\("describe"\)\}/);
   assert.match(quickActions, /href="\/pro"/);

@@ -4,6 +4,7 @@ import { registerPlugin } from "@capacitor/core";
 
 type SecureSessionPlugin = {
   setSessionToken(options: { token: string }): Promise<void>;
+  clearSessionToken(): Promise<void>;
 };
 
 const SecureSession = registerPlugin<SecureSessionPlugin>("CalistheniSecureSession");
@@ -23,4 +24,9 @@ export async function enrollCurrentWebSessionForBundledNative() {
     throw new Error(payload.error ?? "Unable to prepare this account for bundled mode.");
   }
   await SecureSession.setSessionToken({ token: payload.token });
+}
+
+export async function clearNativeSessionToken() {
+  if (typeof window === "undefined") return;
+  await SecureSession.clearSessionToken();
 }

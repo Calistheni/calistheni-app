@@ -8,12 +8,13 @@ export async function getOrCreateStripeCustomer(userId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {
+      deletedAt: true,
       email: true,
       subscription: { select: { stripeCustomerId: true } },
     },
   });
 
-  if (!user) throw new Error("Authenticated user does not exist.");
+  if (!user || user.deletedAt) throw new Error("Authenticated user does not exist.");
 
   if (!user.subscription) {
     await prisma.subscription.upsert({

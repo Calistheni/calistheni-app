@@ -190,7 +190,7 @@ test("Apple client configuration and synchronization routes require auth and exp
     ),
   ]);
   for (const source of [configRoute, syncRoute]) {
-    assert.match(source, /getAuthenticatedUserId\(\)/);
+    assert.match(source, /getAuthenticatedUserId\(request\)/);
     assert.match(source, /createUserUnauthorizedResponse\(\)/);
   }
   assert.match(configRoute, /appAccountToken: account\.appAccountToken/);

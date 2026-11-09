@@ -44,6 +44,13 @@ export async function POST(request: Request) {
     });
     if (!attempt?.userId) return null;
 
+    const activeUser = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "User"
+      WHERE "id" = ${attempt.userId} AND "deletedAt" IS NULL
+      FOR UPDATE
+    `;
+    if (!activeUser.length) return null;
+
     const consumed = await tx.nativeAuthAttempt.updateMany({
       where: { id: attempt.id, consumedAt: null },
       data: { consumedAt: now },
@@ -54,6 +61,9 @@ export async function POST(request: Request) {
       data: {
         sessionToken,
         userId: attempt.userId,
+        authenticatedAt: now,
+        purpose: "APPLICATION",
+        authProvider: "google",
         expires: new Date(now.getTime() + NATIVE_AUTH_SESSION_MAX_AGE_SECONDS * 1000),
       },
     });

@@ -10,6 +10,7 @@ import {
   resolveProEntitlementGrants,
   type ProEntitlementGrant,
 } from "@/lib/entitlement-resolution";
+import { isCanonicalUserIdAllowlisted } from "@/lib/sandbox-entitlement-allowlist";
 
 export const FREE_ROUTINE_LIMIT = 4;
 export const FREE_CUSTOM_EXERCISE_LIMIT = 7;
@@ -92,11 +93,48 @@ export async function getUserSubscription(userId: string) {
   return prisma.subscription.findUnique({ where: { userId } });
 }
 
+/**
+ * Exact canonical user IDs only. Email addresses and client-provided flags are
+ * deliberately unsupported so review access cannot be claimed or toggled by a
+ * request. An empty/missing variable keeps every Sandbox purchase isolated.
+ */
+export function isSandboxEntitlementAllowlisted(
+  userId: string,
+  configured = process.env.APPLE_SANDBOX_ENTITLEMENT_USER_IDS
+) {
+  return isCanonicalUserIdAllowlisted(userId, configured);
+}
+
 export async function getUserEntitlements(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { deletedAt: true },
+  });
+  if (!user || user.deletedAt) {
+    return {
+      subscription: null,
+      applePurchases: [],
+      grants: [],
+      entitlements: {
+        isPro: false,
+        routineLimit: FREE_ROUTINE_LIMIT,
+        customExerciseLimit: FREE_CUSTOM_EXERCISE_LIMIT,
+        canEarnRewardPoints: false,
+        hasFullProgressHistory: false,
+      } satisfies UserEntitlements,
+    };
+  }
+  const allowSandboxAppleEntitlements =
+    isSandboxEntitlementAllowlisted(userId);
   const [subscription, applePurchases] = await Promise.all([
     getUserSubscription(userId),
     prisma.applePurchase.findMany({
-      where: { userId, environment: "PRODUCTION" },
+      where: {
+        userId,
+        environment: allowSandboxAppleEntitlements
+          ? { in: ["PRODUCTION", "SANDBOX"] }
+          : "PRODUCTION",
+      },
       select: {
         environment: true,
         productId: true,
@@ -111,6 +149,7 @@ export async function getUserEntitlements(userId: string) {
   const proEntitlement = resolveProEntitlementGrants({
     subscription,
     applePurchases,
+    allowSandboxAppleEntitlements,
   });
   const isPro = proEntitlement.isPro;
 

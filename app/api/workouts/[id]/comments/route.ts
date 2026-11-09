@@ -26,7 +26,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (!(await getCommunityWorkoutForViewer(workoutId, userId))) return createJsonErrorResponse("Workout not found.", 404);
     const cursor = new URL(request.url).searchParams.get("cursor");
     const comments = await prisma.workoutComment.findMany({
-      where: { workoutId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: pageSize + 1,
+      where: { workoutId, user: { is: { deletedAt: null } } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: pageSize + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}), select: commentSelect,
     });
     const hasMore = comments.length > pageSize;

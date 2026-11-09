@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { normalizeBarcode, normalizeFoodQuery, validateNutrition, withChecksum } from "@/lib/nutrition/normalization";
+import { withChecksum } from "@/lib/nutrition/checksum.server";
+import { normalizeBarcode, normalizeFoodQuery, validateNutrition } from "@/lib/nutrition/normalization";
 import { ProviderError, providerFetch } from "./http";
 import type { ExternalFoodResult, NutritionValues } from "../types";
 

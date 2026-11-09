@@ -11,7 +11,7 @@ export class AppleTransactionOwnershipError extends Error {
 }
 
 export type AppleOwnershipRepository = {
-  findUserIdByAppAccountToken(token: string): Promise<string | null>;
+  findUserIdByAppAccountToken(token: string, environment: AppleVerifiedTransaction["environment"]): Promise<string | null>;
   persistTransaction(input: {
     userId: string;
     transaction: AppleVerifiedTransaction;
@@ -40,7 +40,8 @@ export async function synchronizeOwnedAppleTransaction({
   repository: AppleOwnershipRepository;
 }) {
   const ownerUserId = await repository.findUserIdByAppAccountToken(
-    transaction.appAccountToken
+    transaction.appAccountToken,
+    transaction.environment
   );
   if (!ownerUserId) {
     throw new AppleTransactionOwnershipError(

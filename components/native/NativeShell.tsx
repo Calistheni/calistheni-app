@@ -15,6 +15,7 @@ import {
 } from "@/lib/native/supplement-reminders";
 import { dismissActiveTextInput } from "@/lib/mobile-keyboard";
 import { useNativeKeyboardVisibility } from "@/lib/native/keyboard-visibility";
+import { checkNativeAppleCredentialState } from "@/lib/native/apple-auth";
 import {
   clearAppleTransactionAccount,
   initializeAppleTransactionLifecycle,
@@ -63,6 +64,40 @@ function logNativeSplash(event: string, detail?: unknown) {
 export function NativeShell({ userId }: { userId: string | null }) {
   const { resolvedTheme } = useTheme();
   useNativeKeyboardVisibility();
+
+  useEffect(() => {
+    if (!isNativeApp() || Capacitor.getPlatform() !== "ios" || !userId) return;
+    let disposed = false;
+    let appListener: { remove: () => Promise<void> } | undefined;
+    const checkCredential = async () => {
+      const state = await checkNativeAppleCredentialState().catch(() => "unknown" as const);
+      if (disposed || (state !== "revoked" && state !== "notFound")) return;
+      const response = await fetch("/api/auth/apple/native/credential-revoked", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      }).catch(() => null);
+      const result = response?.ok
+        ? await response.json().catch(() => null) as { invalidated?: boolean } | null
+        : null;
+      if (!disposed && result?.invalidated) {
+        // A full navigation guarantees the deleted database session is
+        // re-evaluated by the server before any authenticated UI renders.
+        window.location.replace("/login");
+      }
+    };
+    void checkCredential();
+    void App.addListener("appStateChange", ({ isActive }) => {
+      if (isActive) void checkCredential();
+    }).then((listener) => {
+      if (disposed) void listener.remove();
+      else appListener = listener;
+    });
+    return () => {
+      disposed = true;
+      void appListener?.remove();
+    };
+  }, [userId]);
 
   useEffect(() => {
     if (!isNativeApp() || Capacitor.getPlatform() !== "ios" || !userId) {

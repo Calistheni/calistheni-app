@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button";
 
 export function ManageSubscriptionButton({
   variant = "default",
+  label = "Manage Subscription",
 }: {
   variant?: "default" | "outline" | "secondary";
+  label?: string;
 }) {
   const [isLoading, setIsLoading] = useState(false);
 
@@ -35,7 +37,7 @@ export function ManageSubscriptionButton({
 
   return (
     <Button variant={variant} disabled={isLoading} onClick={() => void openPortal()}>
-      {isLoading ? "Opening Billing..." : "Manage Subscription"}
+      {isLoading ? "Opening Billing..." : label}
     </Button>
   );
 }

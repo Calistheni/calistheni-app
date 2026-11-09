@@ -138,6 +138,32 @@ test("Sandbox subscriptions and lifetime purchases never grant ordinary Producti
   );
 });
 
+test("verified Sandbox purchases grant only when the server has explicitly allowed the user", () => {
+  const purchase = apple({ environment: "SANDBOX" });
+  assert.equal(
+    resolveProEntitlementGrants({
+      subscription: null,
+      applePurchases: [purchase],
+      now,
+    }).isPro,
+    false
+  );
+  const allowed = resolveProEntitlementGrants({
+    subscription: null,
+    applePurchases: [purchase],
+    now,
+    allowSandboxAppleEntitlements: true,
+  });
+  assert.equal(allowed.isPro, true);
+  assert.equal(allowed.grants[0]?.provider, "APPLE");
+  assert.equal(
+    allowed.grants[0]?.provider === "APPLE"
+      ? allowed.grants[0].environment
+      : null,
+    "SANDBOX"
+  );
+});
+
 test("valid Billing Grace Period grants through but not at its boundary", () => {
   const grace = apple({
     state: "GRACE_PERIOD",

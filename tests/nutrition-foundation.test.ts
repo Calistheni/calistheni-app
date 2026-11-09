@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { calculateNutritionSnapshot } from "../lib/nutrition/snapshots.ts";
-import { checksumExternalFood, normalizeBarcode, normalizeFoodQuery } from "../lib/nutrition/normalization.ts";
+import { checksumExternalFood } from "../lib/nutrition/checksum.server.ts";
+import { normalizeBarcode, normalizeFoodQuery } from "../lib/nutrition/normalization.ts";
 import {
   normalizeUsdaDetailedFood,
   normalizeUsdaFdcId,
@@ -41,6 +42,20 @@ test("food icon resolver uses exact, aliases, controlled matches, and refuses un
   assert.equal(resolveFoodIcon({ name: "Ground Turkey", type: "GENERIC", source: "USDA" })?.filename, "turkey_2276706 1 1.png");
   assert.equal(resolveFoodIcon({ name: "Rice cake", type: "GENERIC", source: "USDA" }), undefined);
   assert.equal(resolveFoodIcon({ name: "Beef broth", type: "GENERIC", source: "USDA" }), undefined);
+});
+
+test("browser nutrition search imports remain free of Node.js cryptography", () => {
+  const normalization = readFileSync(new URL("../lib/nutrition/normalization.ts", import.meta.url), "utf8");
+  const ranking = readFileSync(new URL("../lib/nutrition/search-ranking.ts", import.meta.url), "utf8");
+  const foodPicker = readFileSync(new URL("../components/nutrition/FoodPicker.tsx", import.meta.url), "utf8");
+  const quickActions = readFileSync(new URL("../components/nutrition/NutritionQuickActions.tsx", import.meta.url), "utf8");
+  const checksum = readFileSync(new URL("../lib/nutrition/checksum.server.ts", import.meta.url), "utf8");
+
+  assert.doesNotMatch(normalization, /from ["'](?:node:)?crypto["']/);
+  assert.doesNotMatch(ranking, /from ["'](?:node:)?crypto["']/);
+  assert.match(checksum, /from ["']node:crypto["']/);
+  assert.doesNotMatch(foodPicker, /checksum\.server/);
+  assert.doesNotMatch(quickActions, /checksum\.server/);
 });
 
 test("common generic foods resolve against the detected asset inventory", () => {
@@ -91,11 +106,14 @@ test("food visuals keep generic icon, product photo, and placeholder treatments 
   assert.doesNotMatch(visual, /genericIconContainerClass = "[^"]*\b(bg-muted|bg-card|bg-secondary|border|shadow|rounded-[^" ]+|p-[^" ]+)/);
   assert.match(visual, /<img src=\{iconPath\}[\s\S]*className="block size-full object-contain"/);
   assert.match(visual, /const productImageContainerClass = "flex shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted"/);
-  assert.match(visual, /<Image src=\{imageUrl\}[\s\S]*quality=\{80\}[\s\S]*className="size-full object-cover"/);
+  assert.match(visual, /<Image src=\{imageUrl\}[\s\S]*quality=\{75\}[\s\S]*className="size-full object-cover"/);
   assert.match(visual, /const placeholderContainerClass = "flex shrink-0 items-center justify-center rounded-lg bg-muted"/);
   assert.match(visual, /<Package className="size-5 text-muted-foreground"/);
   assert.match(search, /<FoodVisual imageUrl=\{food\.imageUrl\} iconPath=\{food\.genericIcon\?\.url\}/);
-  assert.match(detail, /<FoodVisual imageUrl=\{food\.images\.front\} iconPath=\{food\.genericIcon\?\.url\}/);
+  assert.match(
+    detail,
+    /<FoodVisual\s+imageUrl=\{food\.images\.front\}\s+iconPath=\{food\.genericIcon\?\.url\}/
+  );
   assert.doesNotMatch(`${visual}\n${search}\n${detail}`, /image-rendering:\s*(pixelated|crisp-edges)/);
 });
 

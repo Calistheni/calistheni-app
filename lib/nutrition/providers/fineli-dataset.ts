@@ -1,4 +1,5 @@
-import { normalizeFoodQuery, validateNutrition, withChecksum } from "../normalization";
+import { normalizeFoodQuery, validateNutrition } from "../normalization";
+import { withChecksum } from "../checksum.server";
 import type { ExternalFoodResult } from "../types";
 
 type CsvRow = Record<string, string>;

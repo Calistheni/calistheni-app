@@ -13,7 +13,7 @@ test("exercise picker uses canonical muscles and tracking types, and has a CTA i
   assert.doesNotMatch(picker, /All Equipment|equipmentFilter/);
   assert.match(picker, /flex flex-wrap items-center gap-2/);
   assert.match(picker, /container=\{exercisePickerContentRef\.current\}/);
-  assert.match(picker, /exercise\.muscle\} · \{formatTrackingType\(exercise\.trackingType\)/);
+  assert.match(picker, /exercise\.muscle\} · \{formatTrackingTypeLabel\(exercise\.trackingType\)/);
   assert.match(picker, /No exercises match these filters\./);
   assert.match(picker, /Clear filters/);
   assert.match(picker, /keyboardSafe \? "pb-/);

@@ -23,7 +23,7 @@ const config: CapacitorConfig = {
 
   backgroundColor: "#09090b",
   loggingBehavior:
-    process.env.NODE_ENV === "production" ? "production" : "debug",
+    process.env.NODE_ENV === "production" ? "none" : "debug",
 
   ...(runtime.kind === "remote"
     ? {

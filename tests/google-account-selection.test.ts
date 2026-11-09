@@ -52,7 +52,7 @@ test("a fresh native login clears only Calistheni's stale Browser session before
 
   assert.match(button, /intent: "login"/);
   assert.match(attempt, /body\.intent !== "login"/);
-  assert.match(attempt, /startUrl\.searchParams\.set\("intent", "login"\)/);
+  assert.match(attempt, /startUrl\.searchParams\.set\("intent", body\.intent\)/);
   assert.match(browserStart, /intent !== "login"/);
   assert.match(browserStart, /getAuthSessionCookieName/);
   assert.match(

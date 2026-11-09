@@ -209,9 +209,70 @@ enum AppleNotificationProcessingStatus {
   FAILED
 }
 
+enum AccountDeletionStatus {
+  REQUESTED
+  DEACTIVATED
+  CLEANUP_PENDING
+  CLEANUP_PROCESSING
+  CLEANUP_RETRY
+  CLEANUP_COMPLETED
+}
+
+enum DeletionAppleRevocationStatus {
+  NOT_REQUIRED
+  PENDING
+  PROCESSING
+  RETRY
+  COMPLETED
+}
+
+enum DeletionFinancialProvider {
+  STRIPE
+  APPLE
+}
+
+enum DeletionFinancialRecordKind {
+  STRIPE_CUSTOMER
+  STRIPE_SUBSCRIPTION
+  STRIPE_CHECKOUT_SESSION
+  APPLE_BILLING_ACCOUNT
+  APPLE_PURCHASE
+  APPLE_TRANSACTION
+}
+
+enum DeletionCommunityResourceKind {
+  PARK
+  EXERCISE
+  FOOD
+  MEDIA
+}
+
+enum DeletionReviewStatus {
+  PENDING
+  PROCESSING
+  RETRY
+  RESOLVED
+  REMOVED_FROM_PUBLIC
+}
+
 enum NativeAuthPlatform {
   IOS
   ANDROID
+}
+
+enum NativeAuthIntent {
+  LOGIN
+  LINK
+}
+
+enum SessionPurpose {
+  APPLICATION
+  OAUTH_LINK
+}
+
+enum AuthActionTokenPurpose {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
 }
 
 enum SupplementFrequency {
@@ -275,11 +336,18 @@ model User {
   lastActiveAt                            DateTime?
   createdAt                               DateTime          @default(now())
   updatedAt                               DateTime          @updatedAt
+  deletedAt                               DateTime?
 
+  accountDeletion    AccountDeletion?
   accounts           Account[]
   sessions           Session[]
   nativeSessions     NativeSession[]
   nativeAuthAttempts NativeAuthAttempt[]
+  passwordCredential PasswordCredential?
+  authActionTokens   AuthActionToken[]
+  authLinkIntents    AuthLinkIntent[]
+  appleAuthAttempts  AppleAuthAttempt[]
+  appleAuthorization AppleAuthorization?
 
   submittedParks                Park[]                          @relation("ParkSubmitter")
   parkEditSubmissions           ParkEditSubmission[]            @relation("ParkEditSubmitter")
@@ -316,6 +384,95 @@ model User {
 
   @@index([username])
   @@index([lastActiveAt])
+  @@index([deletedAt])
+}
+
+/// Durable account-deletion workflow state. The referenced User row is retained
+/// as an anonymized tombstone after cleanup, so this relation must not cascade.
+model AccountDeletion {
+  id                          String                         @id @default(cuid())
+  userId                      String                         @unique
+  status                      AccountDeletionStatus          @default(REQUESTED)
+  requestedAt                 DateTime                       @default(now())
+  deactivatedAt               DateTime?
+  cleanupDeadline             DateTime
+  lastAttemptAt               DateTime?
+  completedAt                 DateTime?
+  retryCount                  Int                            @default(0)
+  foodReviewScanComplete      Boolean                        @default(false)
+  lastErrorCategory           String?
+  processingLeaseId           String?
+  processingLeaseExpiresAt    DateTime?
+  appleRevocationStatus       DeletionAppleRevocationStatus   @default(PENDING)
+  appleRevocationAttemptCount Int                            @default(0)
+  appleRevocationLastAttemptAt DateTime?
+  appleRevocationErrorCategory String?
+  createdAt                   DateTime                       @default(now())
+  updatedAt                   DateTime                       @updatedAt
+
+  user                    User                            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  financialReferences     RestrictedFinancialReference[]
+  appleAccountMappings    DeletedAppleAccountMapping[]
+  communityReviewTasks    DeletionCommunityReviewTask[]
+
+  @@index([status, cleanupDeadline])
+  @@index([processingLeaseExpiresAt])
+  @@index([appleRevocationStatus, appleRevocationLastAttemptAt], map: "AccountDeletion_apple_revocation_idx")
+}
+
+/// Points to existing billing rows by opaque internal row ID. It deliberately
+/// does not duplicate payment data or provider transaction payloads.
+model RestrictedFinancialReference {
+  id               String                    @id @default(cuid())
+  accountDeletionId String
+  provider         DeletionFinancialProvider
+  recordKind       DeletionFinancialRecordKind
+  sourceRecordId   String
+  createdAt        DateTime                  @default(now())
+
+  accountDeletion AccountDeletion @relation(fields: [accountDeletionId], references: [id], onDelete: Restrict)
+
+  @@unique([accountDeletionId, provider, recordKind, sourceRecordId], map: "RestrictedFinancialReference_retained_record_key")
+  @@index([provider, recordKind, sourceRecordId], map: "RestrictedFinancialReference_source_idx")
+}
+
+/// Retains the minimum appAccountToken mapping needed to process Apple server
+/// notifications after personal account data has been cleaned up.
+model DeletedAppleAccountMapping {
+  id                String          @id @default(cuid())
+  accountDeletionId String
+  appAccountToken   String          @unique @db.Uuid
+  environment       AppleEnvironment
+  createdAt         DateTime        @default(now())
+
+  accountDeletion AccountDeletion @relation(fields: [accountDeletionId], references: [id], onDelete: Restrict)
+
+  @@index([accountDeletionId])
+}
+
+/// Durable queue item for shared contributions that need human review because
+/// reliable anonymization cannot be completed automatically.
+model DeletionCommunityReviewTask {
+  id                 String                       @id @default(cuid())
+  accountDeletionId  String
+  resourceKind       DeletionCommunityResourceKind
+  resourceId         String
+  status             DeletionReviewStatus         @default(PENDING)
+  cleanupDeadline    DateTime
+  attemptCount       Int                          @default(0)
+  lastAttemptAt      DateTime?
+  completedAt        DateTime?
+  lastErrorCategory  String?
+  processingLeaseId  String?
+  leaseExpiresAt     DateTime?
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+
+  accountDeletion AccountDeletion @relation(fields: [accountDeletionId], references: [id], onDelete: Restrict)
+
+  @@unique([accountDeletionId, resourceKind, resourceId], map: "DeletionCommunityReviewTask_resource_key")
+  @@index([status, cleanupDeadline])
+  @@index([leaseExpiresAt])
 }
 
 /// Minimal support telemetry for actions that cannot be derived from a
@@ -608,23 +765,182 @@ model Account {
 }
 
 model Session {
-  sessionToken String   @unique
-  userId       String
-  expires      DateTime
+  sessionToken    String         @unique
+  userId          String
+  expires         DateTime
+  /// Set only by a completed authentication ceremony. Existing sessions stay
+  /// valid but cannot authorize sensitive account-linking operations.
+  authenticatedAt DateTime?
+  /// OAUTH_LINK sessions are accepted by Auth.js only to complete a verified
+  /// provider callback. They are rejected by application authorization.
+  purpose         SessionPurpose @default(APPLICATION)
+  /// Authentication ceremony that created this session. Existing sessions
+  /// remain nullable so the additive migration preserves them unchanged.
+  authProvider    String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Optional password login for one canonical User. OAuth-only users have no row.
+model PasswordCredential {
+  userId            String   @id
+  emailNormalized   String   @unique
+  passwordHash      String
+  passwordChangedAt DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Digest-only, expiring and single-use email verification/reset capability.
+model AuthActionToken {
+  id              String                 @id @default(cuid())
+  userId          String
+  purpose         AuthActionTokenPurpose
+  tokenHash       String                 @unique
+  emailNormalized String
+  expiresAt       DateTime
+  consumedAt      DateTime?
+  createdAt       DateTime               @default(now())
+
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailDelivery AuthEmailDelivery?
+
+  @@index([userId, purpose, createdAt])
+  @@index([expiresAt])
+}
+
+/// Database-backed throttling state shared by every server instance.
+model AuthRateLimit {
+  keyHash         String    @id
+  action          String
+  count           Int
+  windowStartedAt DateTime
+  blockedUntil    DateTime?
+  expiresAt       DateTime
+  updatedAt       DateTime  @updatedAt
+
+  @@index([expiresAt])
+  @@index([action, blockedUntil])
+}
+
+/// Explicit, session-bound OAuth linking authorization. The raw secret is
+/// carried only in an HttpOnly cookie and is never persisted.
+model AuthLinkIntent {
+  id                       String    @id @default(cuid())
+  userId                   String
+  provider                 String
+  secretHash               String    @unique
+  sessionTokenHash         String
+  expiresAt                DateTime
+  consumedAt               DateTime?
+  createdAt                DateTime  @default(now())
+  nativeAuthAttemptId      String?   @unique
+  pendingProviderAccountId String?
+  pendingAccountType       String?
+  pendingExpiresAt         Int?
+  pendingScope             String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, provider, createdAt])
+  @@index([expiresAt])
+}
+
+/// Server-issued state/nonce for the native AuthenticationServices bridge.
+model AppleAuthAttempt {
+  id               String    @id @default(cuid())
+  userId           String?
+  intent           String
+  stateHash        String    @unique
+  nonceHash        String
+  sessionTokenHash String?
+  redirectPath     String    @default("/home")
+  expiresAt        DateTime
+  consumedAt       DateTime?
+  createdAt        DateTime  @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@index([userId, intent, createdAt])
+}
+
+/// Apple refresh tokens are encrypted with AES-256-GCM before persistence.
+/// Auth.js Account token columns remain empty for newly linked Apple accounts.
+model AppleAuthorization {
+  id                     String    @id @default(cuid())
+  userId                 String    @unique
+  providerAccountId      String    @unique
+  clientId               String
+  refreshTokenCiphertext String
+  refreshTokenIv         String
+  refreshTokenTag        String
+  encryptionKeyId        String?
+  revokedAt              DateTime?
+  revocationPendingAt    DateTime?
+  emailForwardingEnabled Boolean?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Durable encrypted email-delivery outbox. Authentication responses do not
+/// wait on the external mail provider, while failed deliveries remain retryable.
+model AuthEmailDelivery {
+  id              String                 @id @default(cuid())
+  actionTokenId   String                 @unique
+  purpose         AuthActionTokenPurpose
+  emailNormalized String
+  tokenCiphertext String
+  tokenIv         String
+  tokenTag        String
+  encryptionKeyId String?
+  attempts        Int                    @default(0)
+  nextAttemptAt   DateTime               @default(now())
+  deliveredAt     DateTime?
+  permanentlyFailedAt DateTime?
+  leaseId         String?
+  leaseExpiresAt  DateTime?
+  lastAttemptAt   DateTime?
+  lastErrorCategory String?
+  lastError       String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  actionToken AuthActionToken @relation(fields: [actionTokenId], references: [id], onDelete: Cascade)
+
+  @@index([deliveredAt, nextAttemptAt])
+  @@index([permanentlyFailedAt, nextAttemptAt])
+  @@index([leaseExpiresAt])
+}
+
+model AppleAccountEvent {
+  id                String   @id @default(cuid())
+  jti               String   @unique
+  type              String
+  providerAccountId String
+  email             String?
+  privateRelay      Boolean?
+  eventTime         DateTime
+  receivedAt        DateTime @default(now())
+
+  @@index([providerAccountId, eventTime])
+  @@index([receivedAt])
 }
 
 /// Revocable bearer session for the locally bundled first-party application.
 /// Only a SHA-256 token digest is persisted; the raw credential is returned once.
 model NativeSession {
-  id         String    @id @default(cuid())
+  id         String             @id @default(cuid())
   userId     String
-  tokenHash  String    @unique
+  tokenHash  String             @unique
   platform   NativeAuthPlatform
-  createdAt  DateTime  @default(now())
+  createdAt  DateTime           @default(now())
   expiresAt  DateTime
-  lastUsedAt DateTime  @default(now())
+  lastUsedAt DateTime           @default(now())
   revokedAt  DateTime?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -637,16 +953,18 @@ model NativeSession {
 /// A short-lived bridge between the external OAuth browser session and the
 /// first-party Capacitor WebView. Raw nonces and handoff codes are never kept.
 model NativeAuthAttempt {
-  id              String             @id @default(cuid())
-  platform        NativeAuthPlatform
-  nonceHash       String
-  handoffCodeHash String?            @unique
-  redirectPath    String             @default("/home")
-  expiresAt       DateTime
-  handoffIssuedAt DateTime?
-  consumedAt      DateTime?
-  createdAt       DateTime           @default(now())
-  userId          String?
+  id               String             @id @default(cuid())
+  platform         NativeAuthPlatform
+  intent           NativeAuthIntent   @default(LOGIN)
+  nonceHash        String
+  handoffCodeHash  String?            @unique
+  redirectPath     String             @default("/home")
+  expiresAt        DateTime
+  browserStartedAt DateTime?
+  handoffIssuedAt  DateTime?
+  consumedAt       DateTime?
+  createdAt        DateTime           @default(now())
+  userId           String?
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
@@ -700,6 +1018,7 @@ model Park {
   @@index([lat, lon], map: "park_lat_lon_idx")
   @@index([submissionStatus])
   @@index([submittedById])
+  @@index([photoKey])
   @@index([qrStatus])
 }
 

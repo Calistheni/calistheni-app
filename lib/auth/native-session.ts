@@ -19,15 +19,23 @@ export async function createNativeSession(
   now = new Date()
 ) {
   const token = createNativeAuthSecret();
-  const session = await prisma.nativeSession.create({
-    data: {
-      userId,
-      platform,
-      tokenHash: hashNativeAuthSecret(token),
-      expiresAt: new Date(now.getTime() + NATIVE_AUTH_SESSION_MAX_AGE_SECONDS * 1000),
-      lastUsedAt: now,
-    },
-    select: { id: true, userId: true, expiresAt: true },
+  const session = await prisma.$transaction(async (tx) => {
+    const activeUser = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "User"
+      WHERE "id" = ${userId} AND "deletedAt" IS NULL
+      FOR UPDATE
+    `;
+    if (!activeUser.length) throw new Error("AUTH_USER_DEACTIVATED");
+    return tx.nativeSession.create({
+      data: {
+        userId,
+        platform,
+        tokenHash: hashNativeAuthSecret(token),
+        expiresAt: new Date(now.getTime() + NATIVE_AUTH_SESSION_MAX_AGE_SECONDS * 1000),
+        lastUsedAt: now,
+      },
+      select: { id: true, userId: true, expiresAt: true },
+    });
   });
   return { token, session };
 }
@@ -36,9 +44,9 @@ export async function resolveNativeSession(token: string, now = new Date()) {
   if (!NATIVE_BEARER_PATTERN.test(token)) return null;
   const session = await prisma.nativeSession.findUnique({
     where: { tokenHash: hashNativeAuthSecret(token) },
-    select: { id: true, userId: true, lastUsedAt: true, expiresAt: true, revokedAt: true },
+    include: { user: { select: { deletedAt: true } } },
   });
-  if (!session || !isNativeSessionUsable(session, now)) return null;
+  if (!session || session.user.deletedAt || !isNativeSessionUsable(session, now)) return null;
 
   if (session.lastUsedAt.getTime() < now.getTime() - 5 * 60 * 1000) {
     await prisma.nativeSession.updateMany({

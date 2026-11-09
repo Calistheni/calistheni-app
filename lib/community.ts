@@ -4,6 +4,7 @@ export { displayUsername, relativeTime } from "@/lib/community-ui";
 export const publicCommunityWorkoutWhere = {
   visibility: "PUBLIC" as const,
   completedAt: { not: null },
+  user: { is: { deletedAt: null } },
   exercises: { none: { exercise: { createdByUserId: { not: null } } } },
 };
 

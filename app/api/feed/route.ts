@@ -18,6 +18,7 @@ export async function GET() {
     const following = await prisma.userFollow.findMany({
       where: {
         followerId: userId,
+        following: { is: { deletedAt: null } },
       },
       select: {
         followingId: true,
@@ -34,6 +35,7 @@ export async function GET() {
         userId: {
           in: followingIds,
         },
+        user: { is: { deletedAt: null } },
         visibility: "PUBLIC",
         completedAt: {
           not: null,

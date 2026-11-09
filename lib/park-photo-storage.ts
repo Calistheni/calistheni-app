@@ -22,6 +22,7 @@ import {
   PARK_PHOTO_PREFIX,
   PENDING_PARK_PHOTO_PREFIX,
 } from "@/lib/park-photo-keys";
+import { parseParkPhotoReference } from "@/lib/park-photo-object-key";
 
 export {
   getPermanentParkPhotoKey,
@@ -51,13 +52,9 @@ export function getParkPhotoUrlFromKey(key: string) {
 
 /** Returns an R2 key only for URLs issued by the configured park-photo bucket. */
 export function getParkPhotoKeyFromUrl(url: string) {
-  const publicUrl = getParkPhotoR2Configuration().publicUrl.replace(/\/$/, "");
-  const prefix = `${publicUrl}/`;
-
-  if (!url.startsWith(prefix)) return null;
-
-  const key = url.slice(prefix.length);
-  return isSafeParkPhotoObjectKey(key) ? key : null;
+  const reference = parseParkPhotoReference(url, getParkPhotoR2Configuration().publicUrl);
+  if (reference.kind === "invalid") throw new Error("Invalid park photo URL or object key.");
+  return reference.kind === "key" ? reference.key : null;
 }
 
 function createObjectKey({

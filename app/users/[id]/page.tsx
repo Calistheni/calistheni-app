@@ -27,9 +27,10 @@ export default async function UserProfilePage({
 }) {
   const session = await auth();
   const { id } = await params;
-  const user = await prisma.user.findUnique({
+  const user = await prisma.user.findFirst({
     where: {
       id,
+      deletedAt: null,
     },
     select: {
       id: true,
@@ -85,11 +86,13 @@ export default async function UserProfilePage({
       prisma.userFollow.count({
         where: {
           followingId: user.id,
+          follower: { is: { deletedAt: null } },
         },
       }),
       prisma.userFollow.count({
         where: {
           followerId: user.id,
+          following: { is: { deletedAt: null } },
         },
       }),
       session?.user?.id

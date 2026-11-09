@@ -1,0 +1,83 @@
+name: Production build verification
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Validate and build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: calistheni_ci
+          POSTGRES_PASSWORD: ci-only-postgres-password
+          POSTGRES_DB: calistheni_integration_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U calistheni_ci -d calistheni_integration_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # Synthetic test-only values. Migrations target the ephemeral PostgreSQL
+      # service below; no production credentials or services are used.
+      DATABASE_URL: postgresql://calistheni_ci:ci-only-postgres-password@127.0.0.1:5432/calistheni_integration_test?schema=public
+      AUTH_TEST_DATABASE_URL: postgresql://calistheni_ci:ci-only-postgres-password@127.0.0.1:5432/calistheni_integration_test?schema=public
+      REQUIRE_DATABASE_INTEGRATION: "1"
+      AUTH_SECRET: ci-only-placeholder-secret-not-valid-outside-this-workflow
+      AUTH_TOKEN_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Validate Prisma schema
+        run: npx prisma validate
+
+      - name: Apply migrations to disposable PostgreSQL
+        run: npx prisma migrate deploy
+
+      - name: Run required database integration tests
+        run: npm run test:integration
+
+      - name: Generate Next.js route types
+        run: npx next typegen
+
+      - name: Validate TypeScript
+        run: npx tsc --noEmit
+
+      - name: Run automated tests
+        run: npm test
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Run default production build
+        run: npm run build

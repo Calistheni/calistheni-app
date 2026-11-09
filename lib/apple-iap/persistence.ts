@@ -30,12 +30,17 @@ async function withSerializableRetry<T>(operation: () => Promise<T>) {
 }
 
 export const appleOwnershipRepository: AppleOwnershipRepository = {
-  async findUserIdByAppAccountToken(token) {
+  async findUserIdByAppAccountToken(token, _environment) {
     const account = await prisma.appleBillingAccount.findUnique({
       where: { appAccountToken: token },
       select: { userId: true },
     });
-    return account?.userId ?? null;
+    if (account) return account.userId;
+    const deletedMapping = await prisma.deletedAppleAccountMapping.findUnique({
+      where: { appAccountToken: token },
+      select: { accountDeletion: { select: { userId: true } } },
+    });
+    return deletedMapping?.accountDeletion.userId ?? null;
   },
 
   persistTransaction(input) {
@@ -85,8 +90,7 @@ export const appleOwnershipRepository: AppleOwnershipRepository = {
             );
           }
 
-          if (!existingTransaction) {
-            await tx.appleTransaction.create({
+          const savedTransaction = existingTransaction ?? await tx.appleTransaction.create({
               data: {
                 userId,
                 environment: transaction.environment,
@@ -103,12 +107,13 @@ export const appleOwnershipRepository: AppleOwnershipRepository = {
                 payloadHash: transaction.payloadHash,
               },
             });
-          }
 
           const snapshot = deriveApplePurchaseSnapshot(input);
           let aggregateUpdated = false;
+          let savedPurchaseId = existingPurchase?.id ?? null;
           if (!existingPurchase) {
-            await tx.applePurchase.create({ data: { userId, ...snapshot } });
+            const createdPurchase = await tx.applePurchase.create({ data: { userId, ...snapshot } });
+            savedPurchaseId = createdPurchase.id;
             aggregateUpdated = true;
           } else if (
             shouldApplyAppleAggregateUpdate(
@@ -124,6 +129,32 @@ export const appleOwnershipRepository: AppleOwnershipRepository = {
               data: snapshot,
             });
             aggregateUpdated = update.count === 1;
+          }
+
+          const deletion = await tx.accountDeletion.findUnique({
+            where: { userId },
+            select: { id: true },
+          });
+          if (deletion) {
+            await tx.restrictedFinancialReference.createMany({
+              data: [
+                {
+                  accountDeletionId: deletion.id,
+                  provider: "APPLE",
+                  recordKind: "APPLE_TRANSACTION",
+                  sourceRecordId: savedTransaction.id,
+                },
+                ...(savedPurchaseId
+                  ? [{
+                      accountDeletionId: deletion.id,
+                      provider: "APPLE" as const,
+                      recordKind: "APPLE_PURCHASE" as const,
+                      sourceRecordId: savedPurchaseId,
+                    }]
+                  : []),
+              ],
+              skipDuplicates: true,
+            });
           }
 
           return { created: !existingTransaction, aggregateUpdated };
@@ -163,7 +194,12 @@ export async function applyVerifiedAppleRenewalInfo({
             where: { appAccountToken: renewalInfo.appAccountToken },
             select: { userId: true },
           });
-          if (!account || account.userId !== purchase.userId) {
+          const deletedMapping = account ? null : await tx.deletedAppleAccountMapping.findUnique({
+            where: { appAccountToken: renewalInfo.appAccountToken },
+            select: { accountDeletion: { select: { userId: true } } },
+          });
+          const mappedUserId = account?.userId ?? deletedMapping?.accountDeletion.userId;
+          if (!mappedUserId || mappedUserId !== purchase.userId) {
             throw new AppleTransactionOwnershipError(
               "Apple renewal information belongs to another user."
             );

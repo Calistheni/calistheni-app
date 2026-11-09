@@ -5,6 +5,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { createPrimaryPresentation, decodePrimaryPresentation, primaryPresentationKeys, selectLastKnownGood } from "@/lib/primary-presentation";
 import { primaryTabNavigation } from "@/lib/navigation";
 import { isAllowedAuthenticatedApiRequest } from "@/lib/native-api-cors-core";
+import { resolveCapacitorRuntimeMode } from "@/lib/capacitor-runtime-mode";
 
 const read = (path: string) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 const snapshot = { contractVersion: 1 as const, completeness: "complete" as const, generatedAt: new Date().toISOString() };
@@ -116,9 +117,9 @@ test("Rewards and Profile resolve through their actual route implementations", a
 });
 
 test("the normal Capacitor runtime remains remote and independent of apps/native", async () => {
-  const config = JSON.parse(await read("ios/App/App/capacitor.config.json"));
+  const config = resolveCapacitorRuntimeMode({});
   assert.equal(config.webDir, "mobile-web");
-  assert.equal(config.server.url, "https://calistheni.app");
+  assert.equal(config.serverUrl, "https://calistheni.app");
   const shell = await read("components/navigation/AppShell.tsx");
   assert.doesNotMatch(shell, /apps\/native/);
 });

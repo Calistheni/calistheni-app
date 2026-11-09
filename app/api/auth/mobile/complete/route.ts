@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   NATIVE_AUTH_COMPLETION_PATH,
@@ -14,6 +15,7 @@ import {
   NATIVE_AUTH_SESSION_MAX_AGE_SECONDS,
 } from "@/lib/auth/native-auth-server";
 import { getSiteUrl } from "@/lib/site-url";
+import { getDatabaseSessionFromRequest, isRecentAuthentication } from "@/lib/auth/database-session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,6 +44,7 @@ export async function GET(request: Request) {
 
   const now = new Date();
   const sessionToken = createNativeAuthSecret();
+  const initiatingSession = await getDatabaseSessionFromRequest(request);
   const handoff = await prisma.$transaction(async (tx) => {
     // Opportunistic bounded cleanup; it is never needed for correctness.
     await tx.nativeAuthAttempt.deleteMany({
@@ -55,9 +58,68 @@ export async function GET(request: Request) {
         consumedAt: null,
         userId: { not: null },
       },
-      select: { id: true, userId: true, redirectPath: true },
+      select: { id: true, userId: true, redirectPath: true, intent: true },
     });
     if (!candidate?.userId) return null;
+
+    const activeUser = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "User"
+      WHERE "id" = ${candidate.userId} AND "deletedAt" IS NULL
+      FOR UPDATE
+    `;
+    if (!activeUser.length) return null;
+
+    if (candidate.intent === "LINK") {
+      if (
+        !initiatingSession ||
+        initiatingSession.userId !== candidate.userId ||
+        !isRecentAuthentication(initiatingSession.authenticatedAt, now)
+      ) {
+        return null;
+      }
+      await tx.$queryRaw`SELECT 1 AS "locked" FROM pg_advisory_xact_lock(hashtextextended(${candidate.userId}, 0))`;
+      const intent = await tx.authLinkIntent.findUnique({
+        where: { nativeAuthAttemptId: candidate.id },
+      });
+      if (
+        !intent ||
+        intent.userId !== candidate.userId ||
+        intent.provider !== "google" ||
+        !intent.consumedAt ||
+        intent.expiresAt <= now ||
+        !intent.pendingProviderAccountId ||
+        !intent.pendingAccountType
+      ) {
+        return null;
+      }
+      const providerOwner = await tx.account.findUnique({
+        where: {
+          provider_providerAccountId: {
+            provider: "google",
+            providerAccountId: intent.pendingProviderAccountId,
+          },
+        },
+        select: { userId: true },
+      });
+      if (providerOwner && providerOwner.userId !== candidate.userId) return null;
+      const currentGoogle = await tx.account.findFirst({
+        where: { userId: candidate.userId, provider: "google" },
+        select: { providerAccountId: true },
+      });
+      if (currentGoogle && currentGoogle.providerAccountId !== intent.pendingProviderAccountId) return null;
+      if (!providerOwner) {
+        await tx.account.create({
+          data: {
+            userId: candidate.userId,
+            provider: "google",
+            providerAccountId: intent.pendingProviderAccountId,
+            type: intent.pendingAccountType,
+            expires_at: intent.pendingExpiresAt,
+            scope: intent.pendingScope,
+          },
+        });
+      }
+    }
 
     const consumed = await tx.nativeAuthAttempt.updateMany({
       where: { id: candidate.id, consumedAt: null, expiresAt: { gt: now } },
@@ -65,15 +127,20 @@ export async function GET(request: Request) {
     });
     if (consumed.count !== 1) return null;
 
-    await tx.session.create({
-      data: {
-        sessionToken,
-        userId: candidate.userId,
-        expires: new Date(now.getTime() + NATIVE_AUTH_SESSION_MAX_AGE_SECONDS * 1000),
-      },
-    });
+    if (candidate.intent === "LOGIN") {
+      await tx.session.create({
+        data: {
+          sessionToken,
+          userId: candidate.userId,
+          authenticatedAt: now,
+          purpose: "APPLICATION",
+          authProvider: "google",
+          expires: new Date(now.getTime() + NATIVE_AUTH_SESSION_MAX_AGE_SECONDS * 1000),
+        },
+      });
+    }
     return candidate;
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
 
   if (!handoff) {
     logNativeAuth("completion_rejected", { completionPath: NATIVE_AUTH_COMPLETION_PATH });
@@ -84,11 +151,13 @@ export async function GET(request: Request) {
     new URL(sanitizeNativeRedirectPath(handoff.redirectPath), getSiteUrl()),
     { headers: SENSITIVE_HEADERS }
   );
-  response.cookies.set(
-    getAuthSessionCookieName(),
-    sessionToken,
-    getNativeAuthCookieOptions(NATIVE_AUTH_SESSION_MAX_AGE_SECONDS)
-  );
+  if (handoff.intent === "LOGIN") {
+    response.cookies.set(
+      getAuthSessionCookieName(),
+      sessionToken,
+      getNativeAuthCookieOptions(NATIVE_AUTH_SESSION_MAX_AGE_SECONDS)
+    );
+  }
   logNativeAuth("completion_succeeded", { attemptId: handoff.id, userId: handoff.userId });
   return response;
 }
