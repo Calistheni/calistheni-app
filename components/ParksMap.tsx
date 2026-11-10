@@ -42,6 +42,8 @@ import {
 } from "@/lib/cache";
 
 const MAPBOX_ACCESS_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
+const HAS_VALID_MAPBOX_ACCESS_TOKEN =
+  /^pk\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(MAPBOX_ACCESS_TOKEN);
 
 mapboxgl.accessToken = MAPBOX_ACCESS_TOKEN;
 
@@ -1012,7 +1014,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     if (
       !mapboxId ||
       !levels?.length ||
-      !MAPBOX_ACCESS_TOKEN ||
+      !HAS_VALID_MAPBOX_ACCESS_TOKEN ||
       boundariesAccessUnavailableRef.current
     ) {
       return null;
@@ -2044,6 +2046,10 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
 
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) {
+      return;
+    }
+
+    if (!HAS_VALID_MAPBOX_ACCESS_TOKEN) {
       return;
     }
 
@@ -3233,7 +3239,13 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
           )}
         </div>
 
-        {viewportError ? (
+        {!HAS_VALID_MAPBOX_ACCESS_TOKEN ? (
+          <div className="absolute right-4 bottom-4 left-4 z-30 rounded-md border border-border bg-popover p-3 shadow-lg sm:right-auto sm:max-w-sm">
+            <p className="text-sm text-muted-foreground">
+              The map is unavailable because Mapbox is not configured correctly.
+            </p>
+          </div>
+        ) : viewportError ? (
           <div className="absolute right-4 bottom-4 left-4 z-30 rounded-md border border-border bg-popover p-3 shadow-lg sm:right-auto sm:max-w-sm">
             <p className="text-sm text-muted-foreground">{viewportError}</p>
             <Button
