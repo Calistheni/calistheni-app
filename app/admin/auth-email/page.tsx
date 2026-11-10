@@ -64,7 +64,7 @@ export default async function AuthenticationEmailOutboxPage() {
       <Card>
         <CardHeader><h2 className="text-lg font-semibold">Operator response</h2></CardHeader>
         <CardContent className="space-y-2 text-sm text-muted-foreground">
-          <p>Check the scheduled function logs for worker invocation failures. Permanent delivery failures require checking server-side Resend configuration and the safe failure category before any manual recovery.</p>
+          <p>Check the scheduled function logs for worker invocation failures. Permanent delivery failures require checking the selected server-side email provider and the safe failure category before any manual recovery.</p>
           <p>Do not requeue consumed or expired actions, and do not copy tokens or recipient addresses into logs or support messages.</p>
           <p>This dashboard is not a proactive alert. Configure Vercel runtime-log alerting or another approved operator notification path before relying on unattended production processing.</p>
         </CardContent>

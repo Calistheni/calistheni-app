@@ -13,7 +13,7 @@ connected to production Neon is not staging.
 | PostgreSQL | Empty staging database with a staging-only role and network policy | Create manually, record its identity, back it up, run collision preflight, then apply all migrations |
 | Google | Staging OAuth client with `https://<staging-host>/api/auth/callback/google` | Add the exact HTTPS origin and callback in Google Cloud |
 | Apple Sign In | Approved Services ID/domain with `https://<staging-host>/api/auth/callback/apple` | Configure in Apple Developer; use only staging-controlled accounts |
-| Resend | Verified staging sender/domain and controlled test inboxes | Create/configure manually; do not use production recipients |
+| Authentication email | Staging-only Brevo SMTP or Resend credentials, verified sender/domain, and controlled test inboxes | Select with `AUTH_EMAIL_PROVIDER`; create/configure manually and do not use production recipients |
 | Stripe | Test-mode account/catalog, test webhook endpoint, and preferably a least-privilege restricted test key | Configure `https://<staging-host>/api/stripe/webhook`; never supply live keys or Prices |
 | Apple StoreKit | Sandbox/TestFlight users and approved Calistheni product identifiers | Configure manually; keep ordinary Sandbox entitlements disabled unless a canonical staging user ID is explicitly approved |
 | R2 | Separate staging buckets and credentials for exercise and park media | Create manually; never grant access to production buckets |
@@ -100,8 +100,9 @@ of truth. QStash invocation retries and row-level retries are separate.
 Monitor QStash delivery history and DLQ, Vercel function logs, and
 `/admin/auth-email`. Alert on sustained pending age, permanent failures, expired
 leases, HTTP 401/500, and repeated 503. Database leases with `FOR UPDATE SKIP
-LOCKED`, bounded claims, retry backoff, single-use action tokens, and stable
-Resend idempotency keys remain unchanged.
+LOCKED`, bounded claims, retry backoff, and single-use action tokens remain
+unchanged. Resend uses stable idempotency keys; Brevo SMTP uses stable
+`Message-ID` values but does not assume SMTP deduplication.
 
 ## End-to-end staging test checklist
 
@@ -148,7 +149,7 @@ Never delete or modify a real account.
 - [ ] Verify `STRIPE_MODE=test`, test Prices, a test webhook secret, and no live key.
 - [ ] Verify Apple testing uses Sandbox/TestFlight and the Sandbox entitlement allowlist is empty initially.
 - [ ] Verify R2 credentials cannot access production buckets and the Mapbox token is staging-origin restricted.
-- [ ] Verify no production Neon, Resend, Stripe, Apple private key, R2, OAuth, or worker credential is present.
+- [ ] Verify no production Neon, Brevo/Resend, Stripe, Apple private key, R2, OAuth, or worker credential is present.
 - [ ] Confirm GitHub Actions production-build verification is green for the exact commit.
 - [ ] Confirm the staging project cannot alias/promote to `calistheni.app` and merging to `main` remains a separate manual approval.
 - [ ] Keep a staging database backup and forward-recovery plan; never drop populated additive auth tables during rollback.
