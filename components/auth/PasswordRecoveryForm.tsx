@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { submitPasswordRecoveryRequest } from "@/lib/auth/password-recovery-form";
 
 export function PasswordRecoveryForm({ token }: { token?: string }) {
   const isReset = Boolean(token);
@@ -19,23 +20,15 @@ export function PasswordRecoveryForm({ token }: { token?: string }) {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const form = event.currentTarget;
     setBusy(true);
     setError(null);
-    const data = new FormData(event.currentTarget);
+    const data = new FormData(form);
     const body = isReset
       ? { token, password: data.get("password"), confirmPassword: data.get("confirmPassword") }
       : { email: data.get("email") };
     try {
-      const response = await fetch(`/api/auth/password/${isReset ? "reset" : "forgot"}`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const result = (await response.json()) as { error?: string; message?: string };
-      if (!response.ok) throw new Error(result.error ?? "Unable to complete this request.");
-      setMessage(isReset ? "Your password has been reset. Sign in with your new password." : result.message ?? "If an account exists, an email is on its way.");
-      event.currentTarget.reset();
+      setMessage(await submitPasswordRecoveryRequest({ form, isReset, body }));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to complete this request.");
     } finally {

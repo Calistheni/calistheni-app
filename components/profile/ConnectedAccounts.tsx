@@ -143,8 +143,9 @@ export function ConnectedAccounts() {
 
   async function savePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const form = event.currentTarget;
     setBusy("password");
-    const data = new FormData(event.currentTarget);
+    const data = new FormData(form);
     try {
       const response = await fetch("/api/auth/password/manage", {
         method: "POST",
@@ -160,7 +161,7 @@ export function ConnectedAccounts() {
       const result = (await response.json()) as { error?: string; verificationRequired?: boolean };
       if (!response.ok) throw new Error(result.error === "RECENT_AUTH_REQUIRED" ? "Sign in again before changing sign-in methods." : result.error ?? "Unable to save the password.");
       toast.success(result.verificationRequired ? "Password added. Verify your email before using it to sign in." : "Password saved.");
-      event.currentTarget.reset();
+      form.reset();
       setShowPassword(false);
       await refresh();
     } catch (error) {
