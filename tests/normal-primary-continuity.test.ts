@@ -116,10 +116,16 @@ test("Rewards and Profile resolve through their actual route implementations", a
   assert.doesNotMatch(shell, /PrimaryPresentationProvider/);
 });
 
-test("the normal Capacitor runtime remains remote and independent of apps/native", async () => {
-  const config = resolveCapacitorRuntimeMode({});
-  assert.equal(config.webDir, "mobile-web");
-  assert.equal(config.serverUrl, "https://calistheni.app");
+test("the normal production runtime remains remote and independent of apps/native", async () => {
+  const config = resolveCapacitorRuntimeMode({
+    CALISTHENI_NATIVE_REMOTE_TARGET: "production",
+  });
+  assert.deepEqual(config, {
+    kind: "remote",
+    target: "production",
+    webDir: "mobile-web",
+    serverUrl: "https://calistheni.app",
+  });
   const shell = await read("components/navigation/AppShell.tsx");
   assert.doesNotMatch(shell, /apps\/native/);
 });

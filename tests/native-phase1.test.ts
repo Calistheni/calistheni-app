@@ -11,6 +11,12 @@ import {
   resolveCapacitorLoggingBehavior,
   resolveCapacitorRuntimeMode,
 } from "@/lib/capacitor-runtime-mode";
+import {
+  getNativePlatform,
+  isAndroidApp,
+  isIOSApp,
+  isNativeApp,
+} from "@/lib/native/platform";
 
 const root = new URL("../", import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, root), "utf8");
@@ -35,6 +41,10 @@ test("the isolated native app uses strict static export settings", () => {
 test("Capacitor requires an explicit named remote runtime", () => {
   assert.throws(
     () => resolveCapacitorRuntimeMode({}),
+    /must explicitly be production, staging, or custom/
+  );
+  assert.throws(
+    () => resolveCapacitorRuntimeMode({ CALISTHENI_NATIVE_REMOTE_TARGET: "preview" }),
     /must explicitly be production, staging, or custom/
   );
   assert.deepEqual(resolveCapacitorRuntimeMode({ CALISTHENI_NATIVE_REMOTE_TARGET: "production" }), {
@@ -75,6 +85,13 @@ test("Capacitor requires an explicit named remote runtime", () => {
     }),
     /cannot override/
   );
+});
+
+test("the browser runtime remains non-native", () => {
+  assert.equal(getNativePlatform(), "web");
+  assert.equal(isNativeApp(), false);
+  assert.equal(isIOSApp(), false);
+  assert.equal(isAndroidApp(), false);
 });
 
 test("Capacitor logging behavior must be explicit", () => {

@@ -118,8 +118,14 @@ test("cold-start work preserves real surfaces and does not initialize Mapbox glo
   assert.doesNotMatch(shell, /import\("@\/components\/ParksMap"\)/);
 });
 
-test("normal remote Capacitor runtime remains unchanged", async () => {
-  const config = resolveCapacitorRuntimeMode({});
-  assert.equal(config.webDir, "mobile-web");
-  assert.equal(config.serverUrl, "https://calistheni.app");
+test("normal remote Capacitor runtime explicitly selects production", async () => {
+  const config = resolveCapacitorRuntimeMode({
+    CALISTHENI_NATIVE_REMOTE_TARGET: "production",
+  });
+  assert.deepEqual(config, {
+    kind: "remote",
+    target: "production",
+    webDir: "mobile-web",
+    serverUrl: "https://calistheni.app",
+  });
 });
