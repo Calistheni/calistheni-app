@@ -1,30 +1,33 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { signIn } from "next-auth/react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { canUseNativeAppleAuth, performNativeAppleAuth } from "@/lib/native/apple-auth";
+import { getAppleSignInErrorMessage } from "@/lib/native/apple-auth-core";
 
 export function AppleSignInButton({ callbackUrl }: { callbackUrl?: string | null }) {
   const [busy, setBusy] = useState(false);
+  const activeAttempt = useRef(false);
 
   async function authenticate() {
-    if (busy) return;
+    if (activeAttempt.current) return;
+    activeAttempt.current = true;
     setBusy(true);
     try {
       if (canUseNativeAppleAuth()) {
-        const result = await performNativeAppleAuth("login");
-        window.location.assign(result.redirectTo ?? callbackUrl ?? "/home");
+        const outcome = await performNativeAppleAuth("login");
+        if (outcome.status === "cancelled") return;
+        window.location.assign(outcome.result.redirectTo ?? callbackUrl ?? "/home");
         return;
       }
       await signIn("apple", { redirectTo: callbackUrl ?? "/onboarding" });
     } catch (error) {
-      const message = error instanceof Error && error.message === "APPLE_AUTH_CANCELLED"
-        ? "Apple sign-in was cancelled."
-        : "Unable to sign in with Apple. Please try again.";
-      toast.error(message);
+      toast.error(getAppleSignInErrorMessage(error));
+    } finally {
+      activeAttempt.current = false;
       setBusy(false);
     }
   }

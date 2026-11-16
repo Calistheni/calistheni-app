@@ -42,6 +42,7 @@ public class CalistheniAppleAuthPlugin: CAPPlugin, CAPBridgedPlugin, ASAuthoriza
             return
         }
         pendingCall = call
+        Self.log("authorization started")
         let request = ASAuthorizationAppleIDProvider().createRequest()
         request.requestedScopes = [.fullName, .email]
         request.state = state
@@ -64,10 +65,12 @@ public class CalistheniAppleAuthPlugin: CAPPlugin, CAPBridgedPlugin, ASAuthoriza
               let identityToken = String(data: identityData, encoding: .utf8),
               let codeData = credential.authorizationCode,
               let authorizationCode = String(data: codeData, encoding: .utf8) else {
+            Self.log("authorization failed code=APPLE_AUTH_CREDENTIAL_INVALID")
             call.reject("Apple did not return a verifiable credential.", "APPLE_AUTH_CREDENTIAL_INVALID")
             return
         }
         UserDefaults.standard.set(credential.user, forKey: appleUserKey)
+        Self.log("authorization completed credentialReceived=true")
         call.resolve([
             "state": credential.state ?? "",
             "identityToken": identityToken,
@@ -81,9 +84,15 @@ public class CalistheniAppleAuthPlugin: CAPPlugin, CAPBridgedPlugin, ASAuthoriza
         guard let call = pendingCall else { return }
         pendingCall = nil
         if (error as? ASAuthorizationError)?.code == .canceled {
+            Self.log("authorization cancelled")
             call.reject("Apple authentication was cancelled.", "APPLE_AUTH_CANCELLED")
         } else {
+            Self.log("authorization failed code=APPLE_AUTH_FAILED")
             call.reject("Apple authentication failed.", "APPLE_AUTH_FAILED")
         }
+    }
+
+    private static func log(_ message: String) {
+        print("[AppleAuth] \(message)")
     }
 }

@@ -9,6 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { canUseNativeAppleAuth, performNativeAppleAuth } from "@/lib/native/apple-auth";
+import {
+  NativeAppleAuthError,
+  getAppleSignInErrorMessage,
+} from "@/lib/native/apple-auth-core";
 import { getNativePlatform, isNativeApp } from "@/lib/native/platform";
 
 type AccountStatus = {
@@ -45,7 +49,8 @@ export function ConnectedAccounts() {
     setBusy(provider);
     try {
       if (provider === "apple" && canUseNativeAppleAuth()) {
-        await performNativeAppleAuth("link");
+        const outcome = await performNativeAppleAuth("link");
+        if (outcome.status === "cancelled") return;
         toast.success("Apple is connected.");
         await refresh();
         return;
@@ -73,7 +78,14 @@ export function ConnectedAccounts() {
       if (!response.ok) throw new Error(result.error === "RECENT_AUTH_REQUIRED" ? "Sign in again before connecting another account." : result.error ?? "Unable to connect this account.");
       await signIn(provider, { redirectTo: "/profile" }, provider === "google" ? { prompt: "select_account" } : undefined);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to connect this account.");
+      toast.error(
+        error instanceof NativeAppleAuthError
+          ? getAppleSignInErrorMessage(error)
+          : error instanceof Error
+            ? error.message
+            : "Unable to connect this account."
+      );
+    } finally {
       setBusy(null);
     }
   }
@@ -117,8 +129,9 @@ export function ConnectedAccounts() {
         return;
       }
       if (status?.apple && canUseNativeAppleAuth()) {
-        const result = await performNativeAppleAuth("login");
-        window.location.assign(result.redirectTo ?? "/profile");
+        const outcome = await performNativeAppleAuth("login");
+        if (outcome.status === "cancelled") return;
+        window.location.assign(outcome.result.redirectTo ?? "/profile");
         return;
       }
       if (status?.google && isNativeApp()) {
@@ -136,7 +149,14 @@ export function ConnectedAccounts() {
       const provider = status?.apple ? "apple" : "google";
       await signIn(provider, { redirectTo: "/profile" }, provider === "google" ? { prompt: "select_account" } : undefined);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Reauthentication failed.");
+      toast.error(
+        error instanceof NativeAppleAuthError
+          ? getAppleSignInErrorMessage(error)
+          : error instanceof Error
+            ? error.message
+            : "Reauthentication failed."
+      );
+    } finally {
       setBusy(null);
     }
   }

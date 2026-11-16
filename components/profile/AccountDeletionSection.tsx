@@ -23,6 +23,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { canUseNativeAppleAuth, performNativeAppleAuth } from "@/lib/native/apple-auth";
+import {
+  NativeAppleAuthError,
+  getAppleSignInErrorMessage,
+} from "@/lib/native/apple-auth-core";
 import { clearNativeSessionToken } from "@/lib/native/native-session-enrollment";
 import { isNativeApp, getNativePlatform } from "@/lib/native/platform";
 import { canUseAppleStoreKit, showAppleSubscriptionManagement } from "@/lib/native/apple-storekit";
@@ -107,8 +111,11 @@ export function AccountDeletionSection({ hasWebsiteSubscription }: { hasWebsiteS
     setBusy(true);
     try {
       if (provider === "apple" && canUseNativeAppleAuth()) {
-        const result = await performNativeAppleAuth("login");
-        window.location.assign(result.redirectTo ?? "/profile?accountDeletionReauth=1");
+        const outcome = await performNativeAppleAuth("login");
+        if (outcome.status === "cancelled") return;
+        window.location.assign(
+          outcome.result.redirectTo ?? "/profile?accountDeletionReauth=1"
+        );
         return;
       }
       if (provider === "apple" && isNativeApp()) {
@@ -133,7 +140,14 @@ export function AccountDeletionSection({ hasWebsiteSubscription }: { hasWebsiteS
       }
       await signIn(provider, { redirectTo: "/profile?accountDeletionReauth=1" }, provider === "google" ? { prompt: "select_account" } : undefined);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to reauthenticate.");
+      toast.error(
+        error instanceof NativeAppleAuthError
+          ? getAppleSignInErrorMessage(error)
+          : error instanceof Error
+            ? error.message
+            : "Unable to reauthenticate."
+      );
+    } finally {
       setBusy(false);
     }
   }

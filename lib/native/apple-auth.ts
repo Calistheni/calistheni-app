@@ -2,14 +2,10 @@
 
 import { registerPlugin } from "@capacitor/core";
 import { isIOSApp, isNativePluginAvailable } from "@/lib/native/platform";
-
-type AppleAuthorizationResult = {
-  state: string;
-  identityToken: string;
-  authorizationCode: string;
-  givenName?: string;
-  familyName?: string;
-};
+import {
+  performNativeAppleAuthFlow,
+  type AppleAuthorizationResult,
+} from "@/lib/native/apple-auth-core";
 
 type CalistheniAppleAuthPlugin = {
   authorize(options: { state: string; nonce: string }): Promise<AppleAuthorizationResult>;
@@ -25,32 +21,10 @@ export function canUseNativeAppleAuth() {
 
 export async function performNativeAppleAuth(intent: "login" | "link") {
   if (!canUseNativeAppleAuth()) throw new Error("APPLE_AUTH_UNAVAILABLE");
-  const start = await fetch("/api/auth/apple/native/start", {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ intent }),
+  return performNativeAppleAuthFlow(intent, {
+    fetch,
+    authorize: (options) => AppleAuth.authorize(options),
   });
-  const challenge = (await start.json()) as { state?: string; nonce?: string; error?: string };
-  if (!start.ok || !challenge.state || !challenge.nonce) {
-    throw new Error(challenge.error ?? "APPLE_AUTH_START_FAILED");
-  }
-  const credential = await AppleAuth.authorize({ state: challenge.state, nonce: challenge.nonce });
-  if (credential.state !== challenge.state) throw new Error("APPLE_AUTH_STATE_INVALID");
-  const completion = await fetch("/api/auth/apple/native/complete", {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...credential, nonce: challenge.nonce }),
-  });
-  const result = (await completion.json()) as {
-    ok?: boolean;
-    linked?: boolean;
-    redirectTo?: string;
-    error?: string;
-  };
-  if (!completion.ok || !result.ok) throw new Error(result.error ?? "APPLE_AUTH_FAILED");
-  return result;
 }
 
 export async function checkNativeAppleCredentialState() {
