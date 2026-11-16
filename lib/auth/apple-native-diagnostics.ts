@@ -21,6 +21,18 @@ export type AppleOAuthErrorCategory =
   | (typeof APPLE_OAUTH_ERROR_CATEGORIES)[number]
   | "unknown";
 
+export const APPLE_AUTH_EXCHANGE_STEPS = [
+  "configuration",
+  "private_key_parse",
+  "private_key_import",
+  "client_secret_signing",
+  "apple_token_request",
+  "apple_token_response",
+] as const;
+
+export type AppleAuthExchangeStep =
+  (typeof APPLE_AUTH_EXCHANGE_STEPS)[number];
+
 const appleOAuthErrorCategories = new Set<string>(APPLE_OAUTH_ERROR_CATEGORIES);
 
 export function classifyAppleOAuthError(value: unknown): AppleOAuthErrorCategory {
@@ -31,26 +43,34 @@ export function classifyAppleOAuthError(value: unknown): AppleOAuthErrorCategory
 
 export class AppleOAuthExchangeError extends Error {
   readonly oauthError: AppleOAuthErrorCategory;
+  readonly exchangeStep: AppleAuthExchangeStep;
 
-  constructor(oauthError: AppleOAuthErrorCategory) {
+  constructor(
+    oauthError: AppleOAuthErrorCategory,
+    exchangeStep: AppleAuthExchangeStep = "apple_token_response"
+  ) {
     super("APPLE_CODE_EXCHANGE_FAILED");
     this.name = "AppleOAuthExchangeError";
     this.oauthError = oauthError;
+    this.exchangeStep = exchangeStep;
   }
 }
 
 export class NativeAppleAuthStageError extends Error {
   readonly stage: NativeAppleAuthStage;
   readonly oauthError: AppleOAuthErrorCategory;
+  readonly exchangeStep: AppleAuthExchangeStep | null;
 
   constructor(
     stage: NativeAppleAuthStage,
-    oauthError: AppleOAuthErrorCategory = "unknown"
+    oauthError: AppleOAuthErrorCategory = "unknown",
+    exchangeStep: AppleAuthExchangeStep | null = null
   ) {
     super("NATIVE_APPLE_AUTH_STAGE_FAILED");
     this.name = "NativeAppleAuthStageError";
     this.stage = stage;
     this.oauthError = oauthError;
+    this.exchangeStep = exchangeStep;
   }
 }
 
@@ -64,7 +84,8 @@ export async function runNativeAppleAuthStage<T>(
     if (error instanceof NativeAppleAuthStageError) throw error;
     throw new NativeAppleAuthStageError(
       stage,
-      error instanceof AppleOAuthExchangeError ? error.oauthError : "unknown"
+      error instanceof AppleOAuthExchangeError ? error.oauthError : "unknown",
+      error instanceof AppleOAuthExchangeError ? error.exchangeStep : null
     );
   }
 }
@@ -74,6 +95,14 @@ export function getNativeAppleAuthDiagnostic(
   fallbackStage: NativeAppleAuthStage
 ) {
   return error instanceof NativeAppleAuthStageError
-    ? { stage: error.stage, oauthError: error.oauthError }
-    : { stage: fallbackStage, oauthError: "unknown" as const };
+    ? {
+        stage: error.stage,
+        oauthError: error.oauthError,
+        exchangeStep: error.exchangeStep,
+      }
+    : {
+        stage: fallbackStage,
+        oauthError: "unknown" as const,
+        exchangeStep: null,
+      };
 }

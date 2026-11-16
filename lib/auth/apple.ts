@@ -30,20 +30,32 @@ async function createAppleClientSecret(clientId: string) {
   const keyId = process.env.APPLE_AUTH_KEY_ID?.trim();
   const privateKey = process.env.APPLE_AUTH_PRIVATE_KEY?.replace(/\\n/g, "\n").trim();
   if (!teamId || !keyId || !privateKey) {
-    throw new Error("Apple authentication server credentials are not configured.");
+    throw new AppleOAuthExchangeError("unknown", "configuration");
   }
-  // Fail early with a precise server-only configuration error for malformed keys.
-  createPrivateKey(privateKey);
-  const key = await importPKCS8(privateKey, "ES256");
+  try {
+    createPrivateKey(privateKey);
+  } catch {
+    throw new AppleOAuthExchangeError("unknown", "private_key_parse");
+  }
+  let key;
+  try {
+    key = await importPKCS8(privateKey, "ES256");
+  } catch {
+    throw new AppleOAuthExchangeError("unknown", "private_key_import");
+  }
   const now = Math.floor(Date.now() / 1000);
-  return new SignJWT({})
-    .setProtectedHeader({ alg: "ES256", kid: keyId })
-    .setIssuer(teamId)
-    .setSubject(clientId)
-    .setAudience(APPLE_ISSUER)
-    .setIssuedAt(now)
-    .setExpirationTime(now + 5 * 60)
-    .sign(key);
+  try {
+    return await new SignJWT({})
+      .setProtectedHeader({ alg: "ES256", kid: keyId })
+      .setIssuer(teamId)
+      .setSubject(clientId)
+      .setAudience(APPLE_ISSUER)
+      .setIssuedAt(now)
+      .setExpirationTime(now + 5 * 60)
+      .sign(key);
+  } catch {
+    throw new AppleOAuthExchangeError("unknown", "client_secret_signing");
+  }
 }
 
 type AppleTokenResponse = {
@@ -57,21 +69,30 @@ type AppleTokenResponse = {
 
 export async function exchangeNativeAppleAuthorizationCode(code: string) {
   const clientId = nativeClientId();
-  const response = await fetch(APPLE_TOKEN_ENDPOINT, {
-    method: "POST",
-    cache: "no-store",
-    signal: AbortSignal.timeout(10_000),
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: clientId,
-      client_secret: await createAppleClientSecret(clientId),
-      code,
-      grant_type: "authorization_code",
-    }),
-  });
+  const clientSecret = await createAppleClientSecret(clientId);
+  let response: Response;
+  try {
+    response = await fetch(APPLE_TOKEN_ENDPOINT, {
+      method: "POST",
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        grant_type: "authorization_code",
+      }),
+    });
+  } catch {
+    throw new AppleOAuthExchangeError("unknown", "apple_token_request");
+  }
   const body = (await response.json().catch(() => ({}))) as AppleTokenResponse;
   if (!response.ok || typeof body.id_token !== "string") {
-    throw new AppleOAuthExchangeError(classifyAppleOAuthError(body.error));
+    throw new AppleOAuthExchangeError(
+      classifyAppleOAuthError(body.error),
+      "apple_token_response"
+    );
   }
   return {
     idToken: body.id_token,

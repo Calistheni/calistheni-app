@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
+  APPLE_AUTH_EXCHANGE_STEPS,
   AppleOAuthExchangeError,
   NativeAppleAuthStageError,
   classifyAppleOAuthError,
@@ -39,8 +40,13 @@ test("native Apple failures retain only stage and safe OAuth category", async ()
   assert.deepEqual(diagnostic, {
     stage: "authorization_code_exchange",
     oauthError: "invalid_client",
+    exchangeStep: "apple_token_response",
   });
-  assert.deepEqual(Object.keys(diagnostic).sort(), ["oauthError", "stage"]);
+  assert.deepEqual(Object.keys(diagnostic).sort(), [
+    "exchangeStep",
+    "oauthError",
+    "stage",
+  ]);
   assert.doesNotMatch(JSON.stringify(diagnostic), new RegExp(secret));
 });
 
@@ -56,12 +62,45 @@ test("arbitrary exceptions cannot leak messages into native Apple diagnostics", 
   }
   assert.deepEqual(
     getNativeAppleAuthDiagnostic(failure, "session_creation"),
-    { stage: "identity_token_verification", oauthError: "unknown" }
+    {
+      stage: "identity_token_verification",
+      oauthError: "unknown",
+      exchangeStep: null,
+    }
   );
   assert.doesNotMatch(
     JSON.stringify(getNativeAppleAuthDiagnostic(failure, "session_creation")),
     new RegExp(secret)
   );
+});
+
+test("every native Apple exchange operation has a safe diagnostic step", async () => {
+  assert.deepEqual(APPLE_AUTH_EXCHANGE_STEPS, [
+    "configuration",
+    "private_key_parse",
+    "private_key_import",
+    "client_secret_signing",
+    "apple_token_request",
+    "apple_token_response",
+  ]);
+  for (const exchangeStep of APPLE_AUTH_EXCHANGE_STEPS) {
+    let failure: unknown;
+    try {
+      await runNativeAppleAuthStage("authorization_code_exchange", async () => {
+        throw new AppleOAuthExchangeError("unknown", exchangeStep);
+      });
+    } catch (error) {
+      failure = error;
+    }
+    assert.deepEqual(
+      getNativeAppleAuthDiagnostic(failure, "session_creation"),
+      {
+        stage: "authorization_code_exchange",
+        oauthError: "unknown",
+        exchangeStep,
+      }
+    );
+  }
 });
 
 test("native Apple route preserves public behavior while covering every diagnostic stage", () => {
@@ -96,5 +135,8 @@ test("Apple code exchange classifies the allow-listed response error without log
     "utf8"
   );
   assert.match(source, /classifyAppleOAuthError\(body\.error\)/);
+  for (const exchangeStep of APPLE_AUTH_EXCHANGE_STEPS) {
+    assert.match(source, new RegExp(`\\b${exchangeStep}\\b`));
+  }
   assert.doesNotMatch(source, /console\.(?:log|info|warn|error)/);
 });
