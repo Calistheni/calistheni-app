@@ -3,6 +3,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const remoteTargets = {
+  staging: "https://calistheni-staging.vercel.app",
+  production: "https://calistheni.app",
+};
 
 async function optionalText(file) {
   return readFile(file, "utf8").catch(() => null);
@@ -11,7 +15,8 @@ async function optionalText(file) {
 export async function verifyXcodeRuntimeMode(root = repositoryRoot) {
   const iosRoot = path.join(root, "ios/App");
   const expected = (await optionalText(path.join(iosRoot, ".calistheni-runtime-mode")))?.trim();
-  if (expected !== "bundled" && expected !== "remote") {
+  const remoteExpectation = expected?.match(/^remote:(staging|production):(none)$/);
+  if (expected !== "bundled" && !remoteExpectation) {
     throw new Error("Xcode runtime mode is not locked. Run a mobile:sync:ios:* script before building.");
   }
 
@@ -33,9 +38,32 @@ export async function verifyXcodeRuntimeMode(root = repositoryRoot) {
     return { mode: expected, buildId: manifest.buildId };
   }
 
-  if (!config.server?.url) throw new Error("Remote Xcode build blocked: server.url is absent.");
-  console.info(`[Capacitor] Xcode remote runtime verified: ${config.server.url}.`);
-  return { mode: expected, serverUrl: config.server.url };
+  const [, target, logging] = remoteExpectation;
+  const expectedUrl = remoteTargets[target];
+  if (config.server?.url !== expectedUrl) {
+    throw new Error(
+      `Remote Xcode build blocked: expected ${target} (${expectedUrl}), found ${config.server?.url ?? "no server.url"}.`
+    );
+  }
+  if (config.loggingBehavior !== logging) {
+    throw new Error(
+      `Remote Xcode build blocked: expected logging=${logging}, found ${config.loggingBehavior ?? "unset"}.`
+    );
+  }
+  if (config.webDir !== "mobile-web") {
+    throw new Error(`Remote Xcode build blocked: webDir is ${config.webDir}.`);
+  }
+  const allowedHosts = config.server?.allowNavigation;
+  const expectedHost = new URL(expectedUrl).hostname;
+  if (!Array.isArray(allowedHosts) || allowedHosts.length !== 1 || allowedHosts[0] !== expectedHost) {
+    throw new Error(
+      `Remote Xcode build blocked: allowNavigation must contain only ${expectedHost}.`
+    );
+  }
+  console.info(
+    `[Capacitor] Xcode remote runtime verified: target=${target} url=${expectedUrl} logging=${logging}.`
+  );
+  return { mode: "remote", target, serverUrl: expectedUrl, logging };
 }
 
 const direct = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);

@@ -17,25 +17,33 @@ Run `npm install` after cloning. Native projects are committed in `ios/` and
 
 ## Configuration and environments
 
-`capacitor.config.ts` has the stable app identifier `app.calistheni.mobile` and
-loads `https://calistheni.app` by default. The Next.js app is not statically
+`capacitor.config.ts` has the stable app identifier
+`com.petershikrenov.calistheni`. A remote target must be selected explicitly;
+the named staging and production scripts cannot be overridden by
+`CAPACITOR_SERVER_URL`. The Next.js app is not statically
 exportable: it contains Auth.js, route handlers, Prisma, and server rendering.
 The small `mobile-web/` bundle exists only as a branded local launch fallback;
 the application is served by the configured HTTPS origin.
 
-Set `CAPACITOR_SERVER_URL` before `mobile:sync` to select an environment:
+Use a named sync command before opening Xcode:
 
 ```bash
-# Production (the default)
-npm run mobile:sync
+# Staging physical-device Debug build (bridge payload logging remains disabled)
+npm run mobile:sync:ios:staging
 
-# Staging: use an HTTPS deployment
-CAPACITOR_SERVER_URL=https://staging.calistheni.app npm run mobile:sync
+# Staging internal TestFlight / Release build
+npm run mobile:sync:ios:staging:release
 
-# Device live reload: use your computer's LAN IP, never localhost.
-# Android needs cleartext only for this local HTTP case.
-CAPACITOR_SERVER_URL=http://192.168.1.25:3000 npm run mobile:sync
+# Production Release build
+npm run mobile:sync:ios:production
 ```
+
+Each named iOS sync records the selected origin and logging behavior in an
+ignored runtime lock. Both the sync verifier and an Xcode build phase compare
+that lock with the copied Capacitor configuration. Native bridge payload
+logging is always disabled because plugin responses can contain identity,
+session, or StoreKit credentials. Debug builds remain inspectable with Xcode
+and Safari Web Inspector without printing plugin payloads.
 
 Do not put database, Auth.js, R2, Stripe secret, or Mapbox secret values in
 `capacitor.config.ts`. Browser-visible values remain governed by Next.js’s

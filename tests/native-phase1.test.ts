@@ -4,8 +4,11 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 import {
   BUNDLED_CAPACITOR_WEB_DIR,
+  CAPACITOR_REMOTE_TARGETS,
   DEFAULT_CAPACITOR_SERVER_URL,
   REMOTE_CAPACITOR_WEB_DIR,
+  STAGING_CAPACITOR_SERVER_URL,
+  resolveCapacitorLoggingBehavior,
   resolveCapacitorRuntimeMode,
 } from "@/lib/capacitor-runtime-mode";
 
@@ -29,20 +32,55 @@ test("the isolated native app uses strict static export settings", () => {
   assert.match(config, /turbopack:[\s\S]*root: path\.resolve\(__dirname, "\.\.\/\.\."\)/);
 });
 
-test("Capacitor defaults to the existing remote runtime", () => {
-  assert.deepEqual(resolveCapacitorRuntimeMode({}), {
+test("Capacitor requires an explicit named remote runtime", () => {
+  assert.throws(
+    () => resolveCapacitorRuntimeMode({}),
+    /must explicitly be production, staging, or custom/
+  );
+  assert.deepEqual(resolveCapacitorRuntimeMode({ CALISTHENI_NATIVE_REMOTE_TARGET: "production" }), {
     kind: "remote",
     webDir: REMOTE_CAPACITOR_WEB_DIR,
+    target: "production",
     serverUrl: DEFAULT_CAPACITOR_SERVER_URL,
   });
   assert.deepEqual(
-    resolveCapacitorRuntimeMode({ CAPACITOR_SERVER_URL: "http://127.0.0.1:3000" }),
+    resolveCapacitorRuntimeMode({ CALISTHENI_NATIVE_REMOTE_TARGET: "staging" }),
     {
       kind: "remote",
       webDir: REMOTE_CAPACITOR_WEB_DIR,
+      target: "staging",
+      serverUrl: STAGING_CAPACITOR_SERVER_URL,
+    }
+  );
+  assert.deepEqual(CAPACITOR_REMOTE_TARGETS, {
+    production: "https://calistheni.app",
+    staging: "https://calistheni-staging.vercel.app",
+  });
+  assert.deepEqual(
+    resolveCapacitorRuntimeMode({
+      CALISTHENI_NATIVE_REMOTE_TARGET: "custom",
+      CAPACITOR_SERVER_URL: "http://127.0.0.1:3000",
+    }),
+    {
+      kind: "remote",
+      webDir: REMOTE_CAPACITOR_WEB_DIR,
+      target: "custom",
       serverUrl: "http://127.0.0.1:3000",
     }
   );
+  assert.throws(
+    () => resolveCapacitorRuntimeMode({
+      CALISTHENI_NATIVE_REMOTE_TARGET: "staging",
+      CAPACITOR_SERVER_URL: "https://calistheni.app",
+    }),
+    /cannot override/
+  );
+});
+
+test("Capacitor logging behavior must be explicit", () => {
+  assert.equal(resolveCapacitorLoggingBehavior({ CALISTHENI_CAPACITOR_LOGGING: "none" }), "none");
+  assert.throws(() => resolveCapacitorLoggingBehavior({ CALISTHENI_CAPACITOR_LOGGING: "debug" }), /must be none/);
+  assert.throws(() => resolveCapacitorLoggingBehavior({}), /must be none/);
 });
 
 test("explicit bundled mode selects native output and has no server URL", () => {
@@ -96,19 +134,23 @@ test("bundled build, sync, and open scripts verify the exact copied runtime", ()
   assert.match(packageJson.scripts["mobile:sync:ios:bundled"], /verify-bundled-ios/);
   assert.match(packageJson.scripts["mobile:sync:ios:bundled"], /set-ios-runtime-expectation\.mjs bundled/);
   assert.match(packageJson.scripts["mobile:sync:ios:bundled"], /verify-xcode-runtime-mode/);
-  assert.match(packageJson.scripts["mobile:sync"], /CALISTHENI_BUNDLED_NATIVE=0/);
-  assert.match(packageJson.scripts["mobile:sync"], /set-ios-runtime-expectation\.mjs remote/);
+  assert.match(packageJson.scripts["mobile:sync"], /CALISTHENI_NATIVE_REMOTE_TARGET=production/);
+  assert.match(packageJson.scripts["mobile:sync:ios:staging"], /CALISTHENI_NATIVE_REMOTE_TARGET=staging/);
+  assert.match(packageJson.scripts["mobile:sync:ios:staging"], /set-ios-runtime-expectation\.mjs remote staging none/);
+  assert.match(packageJson.scripts["mobile:sync:ios:staging:release"], /set-ios-runtime-expectation\.mjs remote staging none/);
+  assert.match(packageJson.scripts["mobile:sync:ios:production"], /set-ios-runtime-expectation\.mjs remote production none/);
+  assert.doesNotMatch(JSON.stringify(packageJson.scripts), /CALISTHENI_CAPACITOR_LOGGING=debug/);
   assert.match(packageJson.scripts["mobile:open:ios:bundled"], /^node scripts\/verify-bundled-ios\.mjs/);
   assert.match(packageJson.scripts["mobile:ios:bundled"], /build:native[\s\S]*sync:ios:bundled[\s\S]*open:ios:bundled/);
   assert.match(read("scripts/verify-built-ios-app.mjs"), /CalistheniSecureSessionPlugin/);
 });
 
-test("Xcode plugin registration stays independent of Node and runtime-mode locks", () => {
+test("Xcode runtime verification stays independent of Node", () => {
   const project = read("ios/App/App.xcodeproj/project.pbxproj");
   const nodeResolver = read("scripts/run-with-node.sh");
   const verifier = read("scripts/verify-xcode-runtime-mode.mjs");
   const artifactVerifier = read("scripts/verify-built-ios-app.mjs");
-  assert.doesNotMatch(project, /verify-xcode-runtime-mode\.mjs/);
+  assert.match(project, /verify-ios-runtime\.sh/);
   assert.doesNotMatch(project, /scripts\/run-with-node\.sh/);
   assert.doesNotMatch(project, /\/usr\/bin\/env node/);
   for (const plugin of [
