@@ -7,6 +7,11 @@ import {
   verifyNativeAppleIdentityToken,
 } from "@/lib/auth/apple";
 import {
+  getNativeAppleAuthDiagnostic,
+  runNativeAppleAuthStage,
+  type NativeAppleAuthStage,
+} from "@/lib/auth/apple-native-diagnostics";
+import {
   createDatabaseSession,
   getDatabaseSessionFromRequest,
   isRecentAuthentication,
@@ -50,25 +55,38 @@ export async function POST(request: Request) {
   ) {
     return NextResponse.json({ error: "Apple authentication did not complete." }, { status: 400 });
   }
+  const state = body.state;
+  const nonce = body.nonce;
+  const identityToken = body.identityToken;
+  const authorizationCode = body.authorizationCode;
   const now = new Date();
   const attempt = await prisma.appleAuthAttempt.findFirst({
     where: {
-      stateHash: hashAuthSecret(body.state),
-      nonceHash: hashAuthSecret(body.nonce),
+      stateHash: hashAuthSecret(state),
+      nonceHash: hashAuthSecret(nonce),
       expiresAt: { gt: now },
       consumedAt: null,
     },
   });
   if (!attempt) return NextResponse.json({ error: "Apple authentication expired." }, { status: 400 });
 
+  let currentStage: NativeAppleAuthStage = "identity_token_verification";
   try {
     const [identity, exchanged] = await Promise.all([
-      verifyNativeAppleIdentityToken(body.identityToken, body.nonce),
-      exchangeNativeAppleAuthorizationCode(body.authorizationCode),
+      runNativeAppleAuthStage("identity_token_verification", () =>
+        verifyNativeAppleIdentityToken(identityToken, nonce)
+      ),
+      runNativeAppleAuthStage("authorization_code_exchange", () =>
+        exchangeNativeAppleAuthorizationCode(authorizationCode)
+      ),
     ]);
-    const exchangedSubject = await verifyExchangedAppleIdentityToken(exchanged.idToken, body.nonce);
+    currentStage = "exchanged_token_verification";
+    const exchangedSubject = await runNativeAppleAuthStage(currentStage, () =>
+      verifyExchangedAppleIdentityToken(exchanged.idToken, nonce)
+    );
     if (exchangedSubject !== identity.subject) throw new Error("APPLE_IDENTITY_MISMATCH");
 
+    currentStage = "account_resolution";
     let linkSession = null;
     if (attempt.intent === "link") {
       linkSession = await getDatabaseSessionFromRequest(request);
@@ -108,6 +126,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "APPLE_AUTHORIZATION_INCOMPLETE" }, { status: 400 });
     }
 
+    currentStage = "authorization_persistence";
     const encrypted = exchanged.refreshToken ? encryptAuthToken(exchanged.refreshToken) : null;
     const userId = await prisma.$transaction(
       async (tx) => {
@@ -189,6 +208,7 @@ export async function POST(request: Request) {
     );
 
     if (attempt.intent === "link") return NextResponse.json({ ok: true, linked: true });
+    currentStage = "session_creation";
     const sessionToken = await createDatabaseSession(userId, now, "apple");
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { onboardingCompleted: true } });
     const response = NextResponse.json({
@@ -198,9 +218,10 @@ export async function POST(request: Request) {
     setDatabaseSessionCookie(response, sessionToken);
     return response;
   } catch (error) {
-    console.error("[auth.apple] native authentication rejected", {
-      errorType: error instanceof Error ? error.name : "UnknownError",
-    });
+    console.error(
+      "[auth.apple] native authentication rejected",
+      getNativeAppleAuthDiagnostic(error, currentStage)
+    );
     return NextResponse.json({ error: "Apple authentication could not be verified." }, { status: 401 });
   }
 }

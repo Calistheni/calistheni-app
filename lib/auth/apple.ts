@@ -3,6 +3,10 @@ import "server-only";
 import { createPrivateKey } from "node:crypto";
 import { createRemoteJWKSet, importPKCS8, SignJWT } from "jose";
 import { prisma } from "@/lib/prisma";
+import {
+  AppleOAuthExchangeError,
+  classifyAppleOAuthError,
+} from "@/lib/auth/apple-native-diagnostics";
 import { decryptAuthToken, encryptAuthToken } from "@/lib/auth/security";
 import { verifyAppleAccountEvent, verifyAppleIdentityToken } from "@/lib/auth/apple-token-verification";
 
@@ -67,7 +71,7 @@ export async function exchangeNativeAppleAuthorizationCode(code: string) {
   });
   const body = (await response.json().catch(() => ({}))) as AppleTokenResponse;
   if (!response.ok || typeof body.id_token !== "string") {
-    throw new Error("APPLE_CODE_EXCHANGE_FAILED");
+    throw new AppleOAuthExchangeError(classifyAppleOAuthError(body.error));
   }
   return {
     idToken: body.id_token,
