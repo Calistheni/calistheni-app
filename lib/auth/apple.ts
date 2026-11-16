@@ -1,8 +1,8 @@
 import "server-only";
 
-import { createPrivateKey } from "node:crypto";
 import { createRemoteJWKSet, importPKCS8, SignJWT } from "jose";
 import { prisma } from "@/lib/prisma";
+import { normalizeApplePrivateKey } from "@/lib/auth/apple-private-key";
 import {
   AppleOAuthExchangeError,
   classifyAppleOAuthError,
@@ -28,12 +28,13 @@ function nativeClientId() {
 async function createAppleClientSecret(clientId: string) {
   const teamId = process.env.APPLE_TEAM_ID?.trim();
   const keyId = process.env.APPLE_AUTH_KEY_ID?.trim();
-  const privateKey = process.env.APPLE_AUTH_PRIVATE_KEY?.replace(/\\n/g, "\n").trim();
-  if (!teamId || !keyId || !privateKey) {
+  const privateKeyValue = process.env.APPLE_AUTH_PRIVATE_KEY?.trim();
+  if (!teamId || !keyId || !privateKeyValue) {
     throw new AppleOAuthExchangeError("unknown", "configuration");
   }
+  let privateKey: string;
   try {
-    createPrivateKey(privateKey);
+    privateKey = normalizeApplePrivateKey(privateKeyValue);
   } catch {
     throw new AppleOAuthExchangeError("unknown", "private_key_parse");
   }
