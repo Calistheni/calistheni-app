@@ -149,13 +149,15 @@ export function NativeShell({ userId }: { userId: string | null }) {
     document.documentElement.dataset.nativeApp = "true";
     void registerSupplementNotificationListeners();
     let lastReconciliation = 0;
+    let disposed = false;
     let appListener: { remove: () => Promise<void> } | undefined;
     void App.addListener("appStateChange", ({ isActive }) => {
       if (!isActive || Date.now() - lastReconciliation < 10_000) return;
       lastReconciliation = Date.now();
       void reconcileSupplementReminders();
     }).then((listener) => {
-      appListener = listener;
+      if (disposed) void listener.remove();
+      else appListener = listener;
     });
     // First meaningful paint and the splash dismissal win the launch critical
     // path. Notification reconciliation can safely happen just afterwards.
@@ -179,6 +181,7 @@ export function NativeShell({ userId }: { userId: string | null }) {
     }
 
     return () => {
+      disposed = true;
       delete document.documentElement.dataset.nativeApp;
       window.clearTimeout(reconciliationTimer);
       void appListener?.remove();

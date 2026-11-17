@@ -22,6 +22,7 @@ export function NativeGoogleSignInButton({
 
   useEffect(() => {
     if (!isNativeApp()) return;
+    let disposed = false;
     let browserFinished:
       | Awaited<ReturnType<typeof Browser.addListener>>
       | undefined;
@@ -36,11 +37,18 @@ export function NativeGoogleSignInButton({
       // A completed Universal Link also closes Browser; the appUrlOpen handler
       // immediately navigates away, while a regular close returns a usable UI.
       clear();
-    }).then((handle) => (browserFinished = handle));
+    }).then((handle) => {
+      if (disposed) void handle.remove();
+      else browserFinished = handle;
+    });
     void App.addListener("appStateChange", ({ isActive }) => {
       if (isActive && !successfulCallbackRef.current) clear();
-    }).then((handle) => (appState = handle));
+    }).then((handle) => {
+      if (disposed) void handle.remove();
+      else appState = handle;
+    });
     return () => {
+      disposed = true;
       window.removeEventListener("native-auth:finished", completed);
       void browserFinished?.remove();
       void appState?.remove();

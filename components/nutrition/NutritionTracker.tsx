@@ -293,14 +293,17 @@ export function NutritionTracker({ userId }: { userId: string }) {
   useEffect(() => {
     if (!isNativeApp()) return;
 
+    let disposed = false;
     let listener: { remove: () => Promise<void> } | undefined;
     void App.addListener("appStateChange", ({ isActive }) => {
       if (isActive) reconcileForReturn();
     }).then((registered) => {
-      listener = registered;
+      if (disposed) void registered.remove();
+      else listener = registered;
     });
 
     return () => {
+      disposed = true;
       void listener?.remove();
     };
   }, [reconcileForReturn]);

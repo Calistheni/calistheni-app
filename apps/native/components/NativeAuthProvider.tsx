@@ -206,14 +206,22 @@ export function NativeAuthProvider({ children }: { children: ReactNode }) {
   }, [queryClient, state]);
   useEffect(() => {
     let active = true;
+    let disposed = false;
     let listener: Awaited<ReturnType<typeof App.addListener>> | undefined;
     void App.getLaunchUrl()
       .then((launch) => { if (active && launch?.url) void exchange(launch.url); })
       .catch(() => failAuth("launch-url-read"));
     void App.addListener("appUrlOpen", ({ url }) => { if (active) void exchange(url); })
-      .then((handle) => { listener = handle; })
+      .then((handle) => {
+        if (disposed) void handle.remove();
+        else listener = handle;
+      })
       .catch(() => failAuth("app-url-listener"));
-    return () => { active = false; void listener?.remove(); };
+    return () => {
+      active = false;
+      disposed = true;
+      void listener?.remove();
+    };
   }, [exchange, failAuth]);
   useEffect(() => {
     if (!authenticatedUserId) return;

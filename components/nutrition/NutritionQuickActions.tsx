@@ -932,6 +932,7 @@ function BarcodeWorkflow({
   ]);
   useEffect(() => {
     if (!open || !nativeRuntime) return;
+    let disposed = false;
     let handle: { remove: () => Promise<void> } | undefined;
     // Capacitor maps appStateChange(false) to iOS willResignActive, which also
     // fires for transient system overlays. Pause maps to didEnterBackground.
@@ -943,9 +944,11 @@ function BarcodeWorkflow({
         );
       }
     }).then((registered) => {
-      handle = registered;
+      if (disposed) void registered.remove();
+      else handle = registered;
     });
     return () => {
+      disposed = true;
       void handle?.remove();
     };
   }, [open, nativeRuntime, endNativeScannerSession]);

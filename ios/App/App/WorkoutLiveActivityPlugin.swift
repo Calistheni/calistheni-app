@@ -42,7 +42,7 @@ public class WorkoutLiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         Task {
             do {
                 if let activity = Activity<WorkoutActivityAttributes>.activities.first(where: { $0.attributes.workoutId == payload.workoutId }) {
-                    try await activity.update(using: payload.contentState)
+                    await activity.update(using: payload.contentState)
                 } else {
                     _ = try Activity.request(attributes: WorkoutActivityAttributes(workoutId: payload.workoutId, workoutStartedAt: payload.workoutStartedAt), contentState: payload.contentState, pushType: nil)
                 }
@@ -55,7 +55,7 @@ public class WorkoutLiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
         guard #available(iOS 16.1, *), let payload = payload(from: call) else { call.resolve(); return }
         Task {
             for activity in Activity<WorkoutActivityAttributes>.activities where activity.attributes.workoutId == payload.workoutId {
-                try? await activity.update(using: payload.contentState)
+                await activity.update(using: payload.contentState)
             }
             call.resolve()
         }

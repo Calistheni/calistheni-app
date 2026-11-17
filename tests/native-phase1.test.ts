@@ -100,6 +100,33 @@ test("Capacitor logging behavior must be explicit", () => {
   assert.throws(() => resolveCapacitorLoggingBehavior({}), /must be none/);
 });
 
+test("the iOS host uses Capacitor's supported UIScene lifecycle", () => {
+  const packageJson = JSON.parse(read("package.json")) as {
+    dependencies: Record<string, string>;
+    devDependencies: Record<string, string>;
+  };
+  const appDelegate = read("ios/App/App/AppDelegate.swift");
+  const sceneDelegate = read("ios/App/App/SceneDelegate.swift");
+  const infoPlist = read("ios/App/App/Info.plist");
+  const project = read("ios/App/App.xcodeproj/project.pbxproj");
+
+  assert.match(packageJson.dependencies["@capacitor/core"], /^~8\.5\./);
+  assert.match(packageJson.dependencies["@capacitor/ios"], /^~8\.5\./);
+  assert.match(packageJson.devDependencies["@capacitor/cli"], /^~8\.5\./);
+  assert.match(appDelegate, /configurationForConnecting/);
+  assert.match(appDelegate, /configuration\.delegateClass = SceneDelegate\.self/);
+  assert.doesNotMatch(appDelegate, /applicationDidEnterBackground|applicationDidBecomeActive/);
+  assert.doesNotMatch(sceneDelegate, /rootViewController|makeKeyAndVisible/);
+  assert.match(sceneDelegate, /Capacitor\.SceneDelegateProxy\.shared\.scene/);
+  assert.match(sceneDelegate, /openURLContexts/);
+  assert.match(sceneDelegate, /continue userActivity/);
+  assert.match(infoPlist, /<key>UIApplicationSceneManifest<\/key>/);
+  assert.match(infoPlist, /<key>UIApplicationSupportsMultipleScenes<\/key>[\s\S]*<false\/>/);
+  assert.doesNotMatch(infoPlist, /<key>UIMainStoryboardFile<\/key>/);
+  assert.match(infoPlist, /<key>UISceneStoryboardFile<\/key>[\s\S]*<string>Main<\/string>/);
+  assert.match(project, /SceneDelegate\.swift in Sources/);
+});
+
 test("explicit bundled mode selects native output and has no server URL", () => {
   const bundled = resolveCapacitorRuntimeMode({
     CALISTHENI_BUNDLED_NATIVE: "1",

@@ -58,6 +58,16 @@ test("manual measurements create deterministic canonical HealthKit samples while
   assert.equal(getAppleHealthMeasurementPayloads({ id: "imported", measuredAt: "2026-08-14T08:00:00.000Z", bodyweightKg: 88.5, source: "APPLE_HEALTH" }).length, 0);
 });
 
+test("native measurement export decodes bridge objects without an impossible array cast", async () => {
+  const source = await readFile(
+    new URL("../ios/App/App/CalistheniHealthPlugin.swift", import.meta.url),
+    "utf8"
+  );
+  assert.match(source, /getArray\("measurements", JSObject\.self\)/);
+  assert.match(source, /for measurement in values/);
+  assert.doesNotMatch(source, /for case let measurement as \[String: Any\]/);
+});
+
 test("the explicit history backfill migration marks only legacy manual snapshots as exportable", async () => {
   const migration = await readFile(
     new URL("../prisma/migrations/20260814140000_mark_existing_manual_measurements_health_exportable/migration.sql", import.meta.url),

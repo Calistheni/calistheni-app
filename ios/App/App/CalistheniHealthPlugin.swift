@@ -142,7 +142,7 @@ public class CalistheniHealthPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func saveBodyMeasurements(_ call: CAPPluginCall) {
-        guard HKHealthStore.isHealthDataAvailable(), let values = call.getArray("measurements", [Any].self) else {
+        guard HKHealthStore.isHealthDataAvailable(), let values = call.getArray("measurements", JSObject.self) else {
             call.resolve(["savedIds": [], "duplicateIds": [], "failedIds": []])
             return
         }
@@ -152,7 +152,7 @@ public class CalistheniHealthPlugin: CAPPlugin, CAPBridgedPlugin {
         var duplicateIds: [String] = []
         var failedIds: [String] = []
 
-        for case let measurement as [String: Any] in values {
+        for measurement in values {
             guard let measurementId = measurement["measurementId"] as? String,
                   let kind = measurement["kind"] as? String,
                   let canonicalValue = measurement["canonicalValue"] as? Double,

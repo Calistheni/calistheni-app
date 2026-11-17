@@ -19,12 +19,17 @@
     <main>
       <div class="mark" aria-hidden="true">C</div>
       <h1>Calistheni is unavailable</h1>
-      <p>Check your connection, then try loading the app again.</p>
+      <p id="status">Check your connection, then try loading the app again.</p>
       <button type="button" id="retry">Try again</button>
     </main>
     <script>
       document.getElementById("retry").addEventListener("click", () => {
-        const serverUrl = window.Capacitor?.getServerUrl?.() || "https://calistheni.app";
+        const serverUrl = window.Capacitor?.getServerUrl?.();
+        if (typeof serverUrl !== "string" || !/^https?:\/\//.test(serverUrl)) {
+          document.getElementById("status").textContent =
+            "Unable to recover this runtime safely. Close and reopen Calistheni, then try again.";
+          return;
+        }
         window.location.replace(serverUrl);
       });
     </script>

@@ -309,7 +309,7 @@ final class BarcodeScannerViewController: UIViewController, AVCaptureMetadataOut
                 captureCleanupComplete = true
                 debugLog("capture cleanup complete")
             }
-            DispatchQueue.main.async { [self] in completion() }
+            DispatchQueue.main.async { completion() }
         }
     }
 
