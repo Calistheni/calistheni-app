@@ -1,8 +1,9 @@
 # Account deletion and retention policy
 
-Status: **product policy approved**. This document records approved product
-decisions and the Phase 1 database foundation. It is not a statement that the
-workflow has already been implemented or enabled.
+Status: **implemented but not enabled for rollout**. This document records the
+approved product policy and implemented deletion lifecycle. The feature remains
+fail-closed until its request and worker flags are both enabled after staging
+verification.
 
 ## Approved product policy
 
@@ -176,12 +177,12 @@ must leave a retryable state without delaying immediate account deactivation.
 
 ## Scope and status
 
-Phase 1 schema migration and Phase 2 deactivation remain local and have not
-been applied to production. Phase 3 worker and cron implementation are local
-only; no production account has been processed. The user-facing deletion flow
-is local and uncommitted; full staging verification remains. Legal/accounting advisers
-must still confirm statutory retention durations for the narrowly retained
-financial categories; no specific period is assumed.
+The schema, deactivation endpoint, cleanup worker, operator review surface, and
+user-facing flow are implemented. Rollout remains disabled pending full staging
+verification; no production account should be processed before that gate is
+completed. Legal/accounting advisers must still confirm statutory retention
+durations for the narrowly retained financial categories; no specific period
+is assumed.
 
 ### Capacity and alerting verification required before rollout
 
@@ -210,8 +211,9 @@ must configure and test approved runtime-log alerting before unattended rollout.
 A dashboard alone does not ensure the 30-day deadline is met.
 
 `ACCOUNT_DELETION_REQUESTS_ENABLED` and `ACCOUNT_DELETION_WORKER_ENABLED` must
-both be exactly `true` before the application accepts deletion requests and the
-scheduled endpoint processes accounts. Both default to disabled. This prevents
+both be exactly `true` before the application accepts deletion requests; the
+scheduled endpoint separately requires the worker flag. Both default to
+disabled. This prevents
 the API from deactivating users while cleanup is unavailable and keeps a newly
 deployed cron from processing data before verification. Keep both unset until
 migrations, staging, schedule registration, and operator monitoring are

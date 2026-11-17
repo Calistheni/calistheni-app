@@ -14,6 +14,7 @@ test("profile settings expose the account-deletion danger zone", () => {
 
 test("deletion UI preserves the subscription warning and posts the existing confirmation contract", () => {
   const component = read("../components/profile/AccountDeletionSection.tsx");
+  const route = read("../app/api/account/deletion/request/route.ts");
   assert.match(component, /does not automatically cancel your subscriptions/i);
   assert.match(component, /Manage Website Subscription/);
   assert.match(component, /Manage Apple Subscription/);
@@ -25,6 +26,8 @@ test("deletion UI preserves the subscription warning and posts the existing conf
   assert.match(component, /register again later with the same email or sign-in method[\s\S]*new account[\s\S]*will not be restored or transferred/i);
   assert.match(component, /\/api\/account\/deletion\/request/);
   assert.match(component, /confirmation: "DELETE_MY_ACCOUNT"/);
+  assert.match(route, /export async function POST\(request: Request\)/);
+  assert.doesNotMatch(route, /export async function GET\(/);
   assert.match(component, /<AlertDialog/);
   assert.match(component, /if \(busy \|\| !status\?\.recentAuthentication/);
   assert.match(component, /disabled=\{!canConfirm \|\| busy\}/);

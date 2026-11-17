@@ -3,13 +3,13 @@ import { attemptAppleAuthorizationRevocation, deactivateAccountForDeletion } fro
 import { getDatabaseSessionFromRequest, isRecentAuthentication } from "@/lib/auth/database-session";
 import { getAuthSessionCookieName, getNativeAuthCookieOptions } from "@/lib/auth/native-auth-server";
 import { assertTrustedAuthOrigin } from "@/lib/auth/security";
-import { isAccountDeletionRequestsEnabled } from "@/lib/account-deletion-config";
+import { isAccountDeletionRequestProcessingEnabled } from "@/lib/account-deletion-config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  if (!isAccountDeletionRequestsEnabled()) {
+  if (!isAccountDeletionRequestProcessingEnabled()) {
     return NextResponse.json({ error: "Account deletion is temporarily unavailable." }, { status: 503, headers: { "Cache-Control": "no-store" } });
   }
 

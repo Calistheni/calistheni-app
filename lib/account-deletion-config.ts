@@ -10,6 +10,14 @@ export function isAccountDeletionWorkerEnabled(value = process.env.ACCOUNT_DELET
   return value === "true";
 }
 
+/** Accept irreversible requests only when both intake and durable cleanup are enabled. */
+export function isAccountDeletionRequestProcessingEnabled(
+  requestsValue = process.env.ACCOUNT_DELETION_REQUESTS_ENABLED,
+  workerValue = process.env.ACCOUNT_DELETION_WORKER_ENABLED
+) {
+  return isAccountDeletionRequestsEnabled(requestsValue) && isAccountDeletionWorkerEnabled(workerValue);
+}
+
 /** Keep scheduled worker invocations bounded; invalid configuration uses the safe default. */
 export function getAccountDeletionBatchLimit(value: string | undefined) {
   if (!value) return 5;

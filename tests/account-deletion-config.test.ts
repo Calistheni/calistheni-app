@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getAccountDeletionBatchLimit, isAccountDeletionRequestsEnabled, isAccountDeletionWorkerEnabled, MAX_ACCOUNT_DELETION_CRON_BATCH_SIZE } from "../lib/account-deletion-config";
+import {
+  getAccountDeletionBatchLimit,
+  isAccountDeletionRequestProcessingEnabled,
+  isAccountDeletionRequestsEnabled,
+  isAccountDeletionWorkerEnabled,
+  MAX_ACCOUNT_DELETION_CRON_BATCH_SIZE,
+} from "../lib/account-deletion-config";
 
 test("deletion cron batch limit uses a safe bounded default and clamps configured values", () => {
   assert.equal(getAccountDeletionBatchLimit(undefined), 5);
@@ -20,4 +26,13 @@ test("deletion requests are disabled until cleanup is ready for production", () 
   assert.equal(isAccountDeletionRequestsEnabled(undefined), false);
   assert.equal(isAccountDeletionRequestsEnabled("true"), true);
   assert.equal(isAccountDeletionRequestsEnabled("1"), false);
+});
+
+test("deletion intake requires both the request and durable cleanup flags", () => {
+  assert.equal(isAccountDeletionRequestProcessingEnabled(undefined, undefined), false);
+  assert.equal(isAccountDeletionRequestProcessingEnabled("true", undefined), false);
+  assert.equal(isAccountDeletionRequestProcessingEnabled(undefined, "true"), false);
+  assert.equal(isAccountDeletionRequestProcessingEnabled("true", "true"), true);
+  assert.equal(isAccountDeletionRequestProcessingEnabled("TRUE", "true"), false);
+  assert.equal(isAccountDeletionRequestProcessingEnabled("true", "1"), false);
 });

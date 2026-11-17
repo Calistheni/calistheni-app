@@ -9,6 +9,7 @@ test(
   async () => {
     process.env.DATABASE_URL = databaseUrl;
     process.env.ACCOUNT_DELETION_REQUESTS_ENABLED = "true";
+    process.env.ACCOUNT_DELETION_WORKER_ENABLED = "true";
     process.env.NEXT_PUBLIC_SITE_URL = "http://localhost:3000";
     process.env.AUTH_SECRET ??= "local-account-deletion-integration-test-secret";
     process.env.AUTH_TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64url");
@@ -32,6 +33,7 @@ test(
       { POST: exchangeNativeHandoff },
       passwordLoginRoute,
       passwordResetRoute,
+      passwordManageRoute,
     ] = await Promise.all([
       import("../../lib/prisma.ts"),
       import("../../app/api/account/deletion/request/route.ts"),
@@ -45,6 +47,7 @@ test(
       import("../../app/api/native-auth/exchange/route.ts"),
       import("../../app/api/auth/password/login/route.ts"),
       import("../../app/api/auth/password/reset/route.ts"),
+      import("../../app/api/auth/password/manage/route.ts"),
     ]);
 
     const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -173,10 +176,27 @@ test(
           })
         );
 
+      process.env.ACCOUNT_DELETION_WORKER_ENABLED = "false";
+      assert.equal((await post(sessionToken)).status, 503, "deletion intake stays closed while durable cleanup is disabled");
+      process.env.ACCOUNT_DELETION_WORKER_ENABLED = "true";
       assert.equal((await post()).status, 401, "unauthenticated requests are rejected");
       assert.equal((await post(sessionToken, "")).status, 403, "missing Origin is rejected");
       assert.equal((await post(staleSessionToken)).status, 403, "stale authentication is rejected");
       assert.equal((await post(sessionToken, "http://localhost:3000", {})).status, 400, "explicit confirmation is required");
+
+      const incorrectReauthentication = await passwordManageRoute.POST(
+        new Request("http://localhost:3000/api/auth/password/manage", {
+          method: "POST",
+          headers: {
+            origin: "http://localhost:3000",
+            cookie: `${cookieName}=${staleSessionToken}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ action: "reauthenticate", currentPassword: "incorrect password" }),
+        })
+      );
+      assert.equal(incorrectReauthentication.status, 401, "an incorrect password cannot refresh recent authentication");
+      assert.equal((await post(staleSessionToken)).status, 403, "failed reauthentication leaves the session stale");
 
       const response = await post(sessionToken, "http://localhost:3000", {
         confirmation: "DELETE_MY_ACCOUNT",
