@@ -1218,6 +1218,9 @@ export default function AdminDashboard() {
             <Link href="/admin/users">Users</Link>
           </Button>
           <Button asChild variant="outline">
+            <Link href="/admin/moderation">Moderation</Link>
+          </Button>
+          <Button asChild variant="outline">
             <Link href="/admin/account-deletions">Deletion Reviews</Link>
           </Button>
           <Button asChild variant="outline">

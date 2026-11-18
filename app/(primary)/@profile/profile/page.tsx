@@ -378,6 +378,26 @@ export default async function ProfilePage() {
         <CardContent><ConnectedAccounts /></CardContent>
       </Card>
 
+      <Card className="mb-6">
+        <CardHeader>
+          <h2 className="text-2xl font-bold">Safety &amp; community</h2>
+          <p className="text-sm text-muted-foreground">
+            Review community rules, manage blocked users, or contact support.
+          </p>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-3">
+          <Button asChild variant="outline">
+            <Link href="/community-guidelines">Community Guidelines</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/profile/blocked-users">Blocked Users</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <a href="mailto:hello@calistheni.app">Contact Support</a>
+          </Button>
+        </CardContent>
+      </Card>
+
       <Card className="mb-6 md:hidden">
         <CardHeader>
           <h2 className="text-2xl font-bold">Account settings</h2>

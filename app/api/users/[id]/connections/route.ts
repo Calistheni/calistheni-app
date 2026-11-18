@@ -5,6 +5,7 @@ import {
   createJsonErrorResponse,
 } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
+import { communityUserWhereForViewer } from "@/lib/moderation";
 
 const PAGE_SIZE = 20;
 
@@ -22,21 +23,32 @@ export async function GET(
   }
 
   const session = await auth();
+  const visibleUserWhere = session?.user?.id
+    ? communityUserWhereForViewer(session.user.id)
+    : { deletedAt: null, communityRestrictedAt: null };
 
   try {
+    const profileIsVisible = await prisma.user.findFirst({
+      where: { id: profileUserId, ...visibleUserWhere },
+      select: { id: true },
+    });
+    if (!profileIsVisible) {
+      return createJsonErrorResponse("Profile not found.", 404);
+    }
+
     const cursorParts = cursor?.split("|");
     const rows = await prisma.userFollow.findMany({
       where:
         type === "followers"
           ? {
               followingId: profileUserId,
-              following: { is: { deletedAt: null } },
-              follower: { is: { deletedAt: null } },
+              following: { is: visibleUserWhere },
+              follower: { is: visibleUserWhere },
             }
           : {
               followerId: profileUserId,
-              follower: { is: { deletedAt: null } },
-              following: { is: { deletedAt: null } },
+              follower: { is: visibleUserWhere },
+              following: { is: visibleUserWhere },
             },
       orderBy: [{ createdAt: "desc" }, { followerId: "asc" }, { followingId: "asc" }],
       ...(cursorParts?.length === 2

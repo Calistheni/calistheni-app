@@ -31,6 +31,7 @@ import {
   getSupersetDisplayLabel,
   SUPERSET_COLOR_STYLES,
 } from "@/lib/workout-supersets";
+import { communityUserWhereForViewer } from "@/lib/moderation";
 
 export const metadata: Metadata = {
   title: "Workout Details",
@@ -104,7 +105,8 @@ export default async function WorkoutDetailPage({
           : []),
         {
           visibility: "PUBLIC",
-          user: { is: { deletedAt: null } },
+          moderationHiddenAt: null,
+          user: { is: session?.user?.id ? communityUserWhereForViewer(session.user.id) : { deletedAt: null, communityRestrictedAt: null } },
           exercises: {
             none: {
               exercise: { createdByUserId: { not: null } },
@@ -127,8 +129,16 @@ export default async function WorkoutDetailPage({
       },
       _count: {
         select: {
-          likes: true,
-          comments: { where: { user: { is: { deletedAt: null } } } },
+          likes: {
+            where: {
+              user: {
+                is: session?.user?.id
+                  ? communityUserWhereForViewer(session.user.id)
+                  : { deletedAt: null, communityRestrictedAt: null },
+              },
+            },
+          },
+          comments: { where: { moderationHiddenAt: null, user: { is: { deletedAt: null, communityRestrictedAt: null } } } },
         },
       },
       likes: {
@@ -232,6 +242,8 @@ export default async function WorkoutDetailPage({
         <div className="mb-6">
           <WorkoutSocialActions
             workoutId={workout.id}
+            ownerId={workout.userId}
+            targetLabel={detail.title ?? "workout"}
             initialLikeCount={workout._count.likes}
             initialLiked={workout.likes.length > 0}
             canCopy={!isOwner}

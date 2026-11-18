@@ -4,10 +4,11 @@ import { createInternalServerErrorResponse, createJsonErrorResponse, parsePositi
 import { getCommunityWorkoutForViewer } from "@/lib/community";
 import { prisma } from "@/lib/prisma";
 import { createUserUnauthorizedResponse, getAuthenticatedUserId } from "@/lib/user-auth";
+import { canParticipateInCommunity, communityUserWhereForViewer, usersBlockEachOther } from "@/lib/moderation";
 
 async function details(workoutId: number, viewerId: string) {
   const [likeCount, currentUserLike] = await Promise.all([
-    prisma.workoutLike.count({ where: { workoutId } }),
+    prisma.workoutLike.count({ where: { workoutId, user: { is: communityUserWhereForViewer(viewerId) } } }),
     prisma.workoutLike.findUnique({ where: { workoutId_userId: { workoutId, userId: viewerId } }, select: { workoutId: true } }),
   ]);
   return { likeCount, likedByCurrentUser: Boolean(currentUserLike) };
@@ -21,6 +22,8 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   try {
     const workout = await getCommunityWorkoutForViewer(workoutId, userId);
     if (!workout) return createJsonErrorResponse("Workout not found.", 404);
+    if (!(await canParticipateInCommunity(userId))) return createJsonErrorResponse("Community interactions are unavailable for this account.", 403);
+    if (await usersBlockEachOther(userId, workout.userId)) return createJsonErrorResponse("Workout not found.", 404);
     if (workout.userId === userId) return createJsonErrorResponse("You cannot like your own workout.", 400);
     let created = false;
     try {

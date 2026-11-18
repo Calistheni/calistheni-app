@@ -6,6 +6,7 @@ const links = [
   { label: "Rewards", href: "/rewards" },
   { label: "Pricing", href: "/pro" },
   { label: "Partners", href: "/partners" },
+  { label: "Community Guidelines", href: "/community-guidelines" },
   { label: "Contact", href: "/partners#contact" },
 ];
 

@@ -640,6 +640,51 @@ async function removePrivateRecords(deletion: ClaimedDeletion) {
   removed += await deleteBatch(prisma.workoutNotification, { OR: [{ userId }, { actorId: userId }] });
   removed += await deleteBatch(prisma.workoutLike, { userId }, ["workoutId", "userId"]);
   removed += await deleteBatch(prisma.userFollow, { OR: [{ followerId: userId }, { followingId: userId }] }, ["followerId", "followingId"]);
+  removed += await deleteBatch(prisma.userBlock, { OR: [{ blockerId: userId }, { blockedId: userId }] }, ["blockerId", "blockedId"]);
+  // Reports remain as a minimal moderation audit record. Bounded updates
+  // detach reporter-authored context and remove target identity/content before
+  // the account tombstone is completed.
+  const moderationReports = await prisma.moderationReport.findMany({
+    where: {
+      OR: [
+        { reporterId: userId },
+        { targetOwnerId: userId },
+        { targetType: "USER", targetId: userId },
+      ],
+    },
+    take: BATCH_SIZE,
+    select: { id: true, reporterId: true, targetOwnerId: true, targetType: true, targetId: true },
+  });
+  for (const report of moderationReports) {
+    const targetsDeletedUser =
+      report.targetOwnerId === userId ||
+      (report.targetType === "USER" && report.targetId === userId);
+    const anonymizedTargetId = `deleted:${report.id}`;
+    await prisma.$transaction([
+      prisma.moderationReport.update({
+        where: { id: report.id },
+        data: {
+          ...(report.reporterId === userId ? { reporterId: null, explanation: null } : {}),
+          ...(targetsDeletedUser
+            ? {
+                targetId: anonymizedTargetId,
+                targetOwnerId: null,
+                targetLabel: "Deleted community content",
+                targetExcerpt: null,
+              }
+            : {}),
+        },
+      }),
+      ...(targetsDeletedUser
+        ? [
+            prisma.moderationAction.updateMany({
+              where: { reportId: report.id },
+              data: { targetId: anonymizedTargetId },
+            }),
+          ]
+        : []),
+    ]);
+  }
   removed += await deleteBatch(prisma.personalRecord, { userId });
   removed += await deleteBatch(prisma.rewardTransaction, { userId });
   removed += await deleteBatch(prisma.rewardRedemption, { userId });
@@ -726,6 +771,8 @@ async function removePrivateRecords(deletion: ClaimedDeletion) {
       weeklyWorkoutGoal: 3,
       weeklyCardioGoalMinutes: null,
       lastActiveAt: null,
+      communityRestrictedAt: null,
+      communityRestrictionReason: null,
     },
   });
   return removed;
@@ -754,6 +801,16 @@ async function countPersonalRows(userId: string) {
     prisma.rewardTransaction.count({ where: { userId } }),
     prisma.rewardRedemption.count({ where: { userId } }),
     prisma.userFollow.count({ where: { OR: [{ followerId: userId }, { followingId: userId }] } }),
+    prisma.userBlock.count({ where: { OR: [{ blockerId: userId }, { blockedId: userId }] } }),
+    prisma.moderationReport.count({
+      where: {
+        OR: [
+          { reporterId: userId },
+          { targetOwnerId: userId },
+          { targetType: "USER", targetId: userId },
+        ],
+      },
+    }),
     prisma.workoutComment.count({ where: { userId } }),
     prisma.workoutLike.count({ where: { userId } }),
     prisma.workoutNotification.count({ where: { OR: [{ userId }, { actorId: userId }] } }),

@@ -6,8 +6,9 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { WorkoutComments } from "./WorkoutComments";
+import { ModerationMenu } from "./ModerationMenu";
 
-export function WorkoutSocialActions({ workoutId, initialLikeCount, initialLiked, canCopy }: { workoutId: number; initialLikeCount: number; initialLiked: boolean; canCopy: boolean }) {
+export function WorkoutSocialActions({ workoutId, ownerId, targetLabel, initialLikeCount, initialLiked, canCopy }: { workoutId: number; ownerId: string; targetLabel: string; initialLikeCount: number; initialLiked: boolean; canCopy: boolean }) {
   const router = useRouter();
   const [liked, setLiked] = useState(initialLiked);
   const [likeCount, setLikeCount] = useState(initialLikeCount);
@@ -49,5 +50,6 @@ export function WorkoutSocialActions({ workoutId, initialLikeCount, initialLiked
     <WorkoutComments workoutId={workoutId} trigger={<Button type="button" variant="ghost" size="sm" aria-label="View and add comments"><MessageCircle /> Comment</Button>} />
     <Button type="button" variant="ghost" size="sm" aria-label="Sharing is coming soon" onClick={() => toast.message("Sharing is coming soon.")}><Share2 /> Share</Button>
     {canCopy ? <Button type="button" variant="ghost" size="sm" disabled={copying} onClick={() => void copyWorkout()}><Copy /> {copying ? "Copying..." : "Copy workout"}</Button> : null}
+    {canCopy ? <ModerationMenu targetType="WORKOUT" targetId={String(workoutId)} targetLabel={targetLabel} userId={ownerId} afterBlockHref="/feed" /> : null}
   </div>;
 }

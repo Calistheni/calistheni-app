@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { communityUserWhereForViewer } from "@/lib/moderation";
 import { getAuthenticatedUserId } from "@/lib/user-auth";
 import {
   nativeCorsJson,
@@ -20,7 +21,7 @@ export async function GET(request: Request) {
   const userId = await getAuthenticatedUserId(request);
   if (!userId) return nativeCorsJson(request, { error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
   const following = await prisma.userFollow.findMany({
-    where: { followerId: userId, following: { is: { deletedAt: null } } },
+    where: { followerId: userId, following: { is: communityUserWhereForViewer(userId) } },
     select: { followingId: true },
   });
   const followingIds = following.map((item) => item.followingId);
@@ -28,8 +29,9 @@ export async function GET(request: Request) {
     ? await prisma.workout.findMany({
         where: {
           userId: { in: followingIds },
-          user: { is: { deletedAt: null } },
+          user: { is: communityUserWhereForViewer(userId) },
           visibility: "PUBLIC",
+          moderationHiddenAt: null,
           completedAt: { not: null },
           exercises: { none: { exercise: { createdByUserId: { not: null } } } },
         },

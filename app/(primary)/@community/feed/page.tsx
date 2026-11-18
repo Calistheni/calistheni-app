@@ -13,6 +13,7 @@ import { displayUsername } from "@/lib/community";
 import { LocalWorkoutRelativeTime } from "@/components/workouts/LocalWorkoutDateTime";
 import { WorkoutSocialActions } from "@/components/community/WorkoutSocialActions";
 import { ClickableWorkoutCard } from "@/components/community/ClickableWorkoutCard";
+import { communityUserWhereForViewer } from "@/lib/moderation";
 
 export const metadata: Metadata = {
   title: "Workout Feed",
@@ -28,13 +29,14 @@ async function FeedItems({ userId }: { userId: string }) {
         where: {
           user: {
             is: {
-              deletedAt: null,
+              ...communityUserWhereForViewer(userId),
             followers: {
               some: { followerId: userId },
             },
             },
           },
           visibility: "PUBLIC",
+          moderationHiddenAt: null,
           completedAt: {
             not: null,
           },
@@ -81,7 +83,7 @@ async function FeedItems({ userId }: { userId: string }) {
           },
           likes: { where: { userId }, select: { userId: true } },
           photos: { orderBy: { createdAt: "asc" }, take: 4, select: { id: true, width: true, height: true } },
-          _count: { select: { likes: true, comments: true, photos: true } },
+          _count: { select: { likes: { where: { user: { is: communityUserWhereForViewer(userId) } } }, comments: { where: { moderationHiddenAt: null, user: { is: communityUserWhereForViewer(userId) } } }, photos: true } },
         },
       });
   const summaries = workouts.map(mapWorkoutSummary);
@@ -167,7 +169,7 @@ async function FeedItems({ userId }: { userId: string }) {
                       .join(", ")}
                   </p>
                   {workoutRecord.photos.length === 1 ? <div className="w-full overflow-hidden rounded-xl bg-muted"><Image src={`/api/workouts/${workout.id}/photos/${workoutRecord.photos[0].id}`} alt={`Workout photo from ${workout.title ?? "workout"}`} width={Math.max(1, workoutRecord.photos[0].width)} height={Math.max(1, workoutRecord.photos[0].height)} sizes="(max-width:768px) calc(100vw - 2rem), 672px" unoptimized loading="lazy" className="block h-auto w-full" /></div> : workoutRecord.photos.length ? <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{workoutRecord.photos.map((photo, photoIndex) => <div key={photo.id} className="relative aspect-square overflow-hidden rounded-lg bg-muted"><Image src={`/api/workouts/${workout.id}/photos/${photo.id}`} alt={`Workout photo ${photoIndex + 1}`} fill sizes="180px" unoptimized loading="lazy" className="object-cover" />{photoIndex === 3 && workoutRecord._count.photos > 4 ? <span className="absolute inset-0 grid place-items-center bg-black/50 text-lg font-semibold text-white">+{workoutRecord._count.photos - 4}</span> : null}</div>)}</div> : null}
-                  <WorkoutSocialActions workoutId={workout.id} initialLikeCount={workoutRecord._count.likes} initialLiked={workoutRecord.likes.length > 0} canCopy={workoutRecord.userId !== userId} />
+                  <WorkoutSocialActions workoutId={workout.id} ownerId={workoutRecord.userId} targetLabel={workout.title ?? "workout"} initialLikeCount={workoutRecord._count.likes} initialLiked={workoutRecord.likes.length > 0} canCopy={workoutRecord.userId !== userId} />
                 </CardContent>
               </Card></ClickableWorkoutCard>
             );

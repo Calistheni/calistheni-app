@@ -3,6 +3,7 @@ import { createInternalServerErrorResponse, createJsonErrorResponse, parsePositi
 import { displayUsername, getCommunityWorkoutForViewer } from "@/lib/community";
 import { prisma } from "@/lib/prisma";
 import { createUserUnauthorizedResponse, getAuthenticatedUserId } from "@/lib/user-auth";
+import { canParticipateInCommunity, communityUserWhereForViewer, usersBlockEachOther } from "@/lib/moderation";
 
 const pageSize = 20;
 const commentSelect = {
@@ -26,7 +27,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (!(await getCommunityWorkoutForViewer(workoutId, userId))) return createJsonErrorResponse("Workout not found.", 404);
     const cursor = new URL(request.url).searchParams.get("cursor");
     const comments = await prisma.workoutComment.findMany({
-      where: { workoutId, user: { is: { deletedAt: null } } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: pageSize + 1,
+      where: { workoutId, moderationHiddenAt: null, user: { is: communityUserWhereForViewer(userId) } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: pageSize + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}), select: commentSelect,
     });
     const hasMore = comments.length > pageSize;
@@ -47,8 +48,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   try { content = (await request.json()).content; } catch { return createJsonErrorResponse("Invalid comment payload.", 400); }
   if (typeof content !== "string" || !content.trim() || content.trim().length > 500) return createJsonErrorResponse("Comments must be between 1 and 500 characters.", 400);
   try {
+    if (!(await canParticipateInCommunity(userId))) return createJsonErrorResponse("Community interactions are unavailable for this account.", 403);
     const workout = await getCommunityWorkoutForViewer(workoutId, userId);
     if (!workout) return createJsonErrorResponse("Workout not found.", 404);
+    if (await usersBlockEachOther(userId, workout.userId)) return createJsonErrorResponse("Workout not found.", 404);
     const comment = await prisma.$transaction(async (tx) => {
       const created = await tx.workoutComment.create({ data: { workoutId, userId, content: content.trim() }, select: commentSelect });
       if (workout.userId !== userId) await tx.workoutNotification.create({ data: { userId: workout.userId, actorId: userId, workoutId, commentId: created.id, type: "WORKOUT_COMMENTED" } });

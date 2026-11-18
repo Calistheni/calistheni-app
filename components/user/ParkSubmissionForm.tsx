@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import dynamic from "next/dynamic";
 import {
   AlertTriangle,
@@ -1295,6 +1296,13 @@ export function ParkSubmissionForm({
             ? "Submit for Review"
             : "Submit Edit for Review"}
         </Button>
+        <p className="text-xs text-muted-foreground">
+          Submissions are reviewed before publication and must follow our{" "}
+          <Link className="underline underline-offset-4" href="/community-guidelines">
+            Community Guidelines
+          </Link>
+          .
+        </p>
         </form>
       </CardContent>
 

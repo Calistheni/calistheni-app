@@ -15,6 +15,8 @@ import { ClickableWorkoutCard } from "@/components/community/ClickableWorkoutCar
 import { LocalWorkoutDateTime } from "@/components/workouts/LocalWorkoutDateTime";
 import { displayUsername } from "@/lib/community";
 import { WorkoutSocialActions } from "@/components/community/WorkoutSocialActions";
+import { ModerationMenu } from "@/components/community/ModerationMenu";
+import { communityUserWhereForViewer } from "@/lib/moderation";
 
 export const metadata: Metadata = {
   title: "Athlete Profile",
@@ -28,10 +30,12 @@ export default async function UserProfilePage({
   const session = await auth();
   const { id } = await params;
   const user = await prisma.user.findFirst({
-    where: {
-      id,
-      deletedAt: null,
-    },
+    where:
+      session?.user?.id === id
+        ? { id, deletedAt: null }
+        : session?.user?.id
+          ? { id, ...communityUserWhereForViewer(session.user.id) }
+          : { id, deletedAt: null, communityRestrictedAt: null },
     select: {
       id: true,
       name: true,
@@ -50,6 +54,7 @@ export default async function UserProfilePage({
         where: {
           userId: user.id,
           visibility: "PUBLIC",
+          moderationHiddenAt: null,
           completedAt: {
             not: null,
           },
@@ -78,7 +83,20 @@ export default async function UserProfilePage({
               sets: true,
             },
           },
-          _count: { select: { likes: true, photos: true } },
+          _count: {
+            select: {
+              likes: {
+                where: {
+                  user: {
+                    is: session?.user?.id
+                      ? communityUserWhereForViewer(session.user.id)
+                      : { deletedAt: null, communityRestrictedAt: null },
+                  },
+                },
+              },
+              photos: true,
+            },
+          },
           likes: { where: { userId: session?.user?.id ?? "" }, select: { userId: true } },
           photos: { orderBy: { createdAt: "asc" }, take: 4, select: { id: true, width: true, height: true } },
         },
@@ -86,13 +104,13 @@ export default async function UserProfilePage({
       prisma.userFollow.count({
         where: {
           followingId: user.id,
-          follower: { is: { deletedAt: null } },
+          follower: { is: session?.user?.id ? communityUserWhereForViewer(session.user.id) : { deletedAt: null, communityRestrictedAt: null } },
         },
       }),
       prisma.userFollow.count({
         where: {
           followerId: user.id,
-          following: { is: { deletedAt: null } },
+          following: { is: session?.user?.id ? communityUserWhereForViewer(session.user.id) : { deletedAt: null, communityRestrictedAt: null } },
         },
       }),
       session?.user?.id
@@ -152,12 +170,7 @@ export default async function UserProfilePage({
             </div>
           </div>
 
-          {session?.user?.id && session.user.id !== user.id ? (
-            <FollowButton
-              userId={user.id}
-              initialFollowing={Boolean(isFollowing)}
-            />
-          ) : null}
+          {session?.user?.id && session.user.id !== user.id ? <div className="flex items-center gap-2"><FollowButton userId={user.id} initialFollowing={Boolean(isFollowing)} /><ModerationMenu targetType="USER" targetId={user.id} targetLabel="profile" userId={user.id} afterBlockHref="/feed" /></div> : null}
         </CardContent>
       </Card>
 
@@ -230,7 +243,7 @@ export default async function UserProfilePage({
                   </Badge>
                   </div>
                   {workouts[index].photos.length === 1 ? <div className="w-full overflow-hidden rounded-xl bg-muted"><Image src={`/api/workouts/${workout.id}/photos/${workouts[index].photos[0].id}`} alt={`Workout photo from ${workout.title ?? "workout"}`} width={Math.max(1, workouts[index].photos[0].width)} height={Math.max(1, workouts[index].photos[0].height)} unoptimized sizes="(max-width:640px) calc(100vw - 2rem), 768px" className="block h-auto w-full" /></div> : workouts[index].photos.length ? <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{workouts[index].photos.map((photo, photoIndex) => <div key={photo.id} className="relative aspect-square overflow-hidden rounded-lg"><Image src={`/api/workouts/${workout.id}/photos/${photo.id}`} alt={`Workout photo ${photoIndex + 1}`} fill unoptimized sizes="180px" className="object-cover" />{photoIndex===3&&workouts[index]._count.photos>4?<span className="absolute inset-0 grid place-items-center bg-black/50 text-white">+{workouts[index]._count.photos-4}</span>:null}</div>)}</div> : null}
-                  {session?.user?.id ? <WorkoutSocialActions workoutId={workout.id} initialLikeCount={workouts[index]._count.likes} initialLiked={workouts[index].likes.length > 0} canCopy={session.user.id !== user.id} /> : null}
+                  {session?.user?.id ? <WorkoutSocialActions workoutId={workout.id} ownerId={user.id} targetLabel={workout.title ?? "workout"} initialLikeCount={workouts[index]._count.likes} initialLiked={workouts[index].likes.length > 0} canCopy={session.user.id !== user.id} /> : null}
                 </CardContent>
               </Card></ClickableWorkoutCard>
           ))

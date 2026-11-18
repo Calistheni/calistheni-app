@@ -6,6 +6,7 @@ import {
 } from "@/lib/user-auth";
 import { prisma } from "@/lib/prisma";
 import { mapWorkoutSummary } from "@/lib/workouts";
+import { communityUserWhereForViewer } from "@/lib/moderation";
 
 export async function GET() {
   const userId = await getAuthenticatedUserId();
@@ -18,7 +19,7 @@ export async function GET() {
     const following = await prisma.userFollow.findMany({
       where: {
         followerId: userId,
-        following: { is: { deletedAt: null } },
+        following: { is: communityUserWhereForViewer(userId) },
       },
       select: {
         followingId: true,
@@ -35,8 +36,9 @@ export async function GET() {
         userId: {
           in: followingIds,
         },
-        user: { is: { deletedAt: null } },
+        user: { is: communityUserWhereForViewer(userId) },
         visibility: "PUBLIC",
+        moderationHiddenAt: null,
         completedAt: {
           not: null,
         },

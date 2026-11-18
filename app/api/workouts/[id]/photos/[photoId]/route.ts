@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { communityUserWhereForViewer } from "@/lib/moderation";
 import { parsePositiveInteger } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { getWorkoutPhotoObject } from "@/lib/workout-photo-storage";
@@ -8,7 +9,7 @@ import { getWorkoutPhotoObject } from "@/lib/workout-photo-storage";
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string; photoId: string }> }) {
   const session = await auth(); const { id, photoId } = await params; const workoutId = parsePositiveInteger(id);
   if (workoutId === null) return NextResponse.json({ error: "Not found." }, { status: 404 });
-  const photo = await prisma.workoutPhoto.findFirst({ where: { id: photoId, workoutId, workout: { OR: [{ visibility: "PUBLIC" }, ...(session?.user?.id ? [{ userId: session.user.id }] : [])] } }, select: { storageKey: true, workout: { select: { visibility: true } } } });
+  const photo = await prisma.workoutPhoto.findFirst({ where: { id: photoId, workoutId, workout: { OR: [{ visibility: "PUBLIC", moderationHiddenAt: null, user: { is: session?.user?.id ? communityUserWhereForViewer(session.user.id) : { deletedAt: null, communityRestrictedAt: null } } }, ...(session?.user?.id ? [{ userId: session.user.id }] : [])] } }, select: { storageKey: true, workout: { select: { visibility: true } } } });
   if (!photo) return NextResponse.json({ error: "Not found." }, { status: 404 });
   try {
     const object = await getWorkoutPhotoObject(photo.storageKey);

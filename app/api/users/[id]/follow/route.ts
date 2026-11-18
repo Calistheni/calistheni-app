@@ -8,6 +8,7 @@ import {
   getAuthenticatedUserId,
 } from "@/lib/user-auth";
 import { prisma } from "@/lib/prisma";
+import { canParticipateInCommunity, communityUserWhereForViewer, usersBlockEachOther } from "@/lib/moderation";
 
 export async function POST(
   _request: Request,
@@ -26,10 +27,13 @@ export async function POST(
   }
 
   try {
+    if (!(await canParticipateInCommunity(followerId))) return createJsonErrorResponse("Community interactions are unavailable for this account.", 403);
+    if (await usersBlockEachOther(followerId, followingId)) return createJsonErrorResponse("User not found.", 404);
     const user = await prisma.user.findUnique({
       where: {
         id: followingId,
         deletedAt: null,
+        communityRestrictedAt: null,
       },
       select: {
         id: true,
@@ -55,8 +59,8 @@ export async function POST(
     });
 
     const [followerCount, followingCount] = await Promise.all([
-      prisma.userFollow.count({ where: { followingId, follower: { is: { deletedAt: null } } } }),
-      prisma.userFollow.count({ where: { followerId: followingId, following: { is: { deletedAt: null } } } }),
+      prisma.userFollow.count({ where: { followingId, follower: { is: communityUserWhereForViewer(followerId) } } }),
+      prisma.userFollow.count({ where: { followerId: followingId, following: { is: communityUserWhereForViewer(followerId) } } }),
     ]);
 
     return NextResponse.json({
@@ -91,8 +95,8 @@ export async function DELETE(
     });
 
     const [followerCount, followingCount] = await Promise.all([
-      prisma.userFollow.count({ where: { followingId, follower: { is: { deletedAt: null } } } }),
-      prisma.userFollow.count({ where: { followerId: followingId, following: { is: { deletedAt: null } } } }),
+      prisma.userFollow.count({ where: { followingId, follower: { is: communityUserWhereForViewer(followerId) } } }),
+      prisma.userFollow.count({ where: { followerId: followingId, following: { is: communityUserWhereForViewer(followerId) } } }),
     ]);
 
     return NextResponse.json({

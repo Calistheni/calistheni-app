@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
 import { displayUsername } from "@/lib/community";
+import { communityUserWhereForViewer } from "@/lib/moderation";
 
 export const metadata: Metadata = {
   title: "Find Users",
@@ -44,7 +45,7 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
   const users = canSearch
     ? await prisma.user.findMany({
         where: {
-          deletedAt: null,
+          ...communityUserWhereForViewer(session.user.id),
           id: {
             not: session.user.id,
           },
