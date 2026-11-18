@@ -60,3 +60,12 @@ test("Stripe catalog setup creates only the current offer amounts", async () => 
   );
   assert.match(lifetimeSync, /stripeLifetimeCheckoutSessionId: session\.id/);
 });
+
+test("the public pricing alias permanently redirects to the canonical Pro page", async () => {
+  const pricingAlias = await readFile(
+    new URL("../app/pricing/page.tsx", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(pricingAlias, /permanentRedirect\("\/pro"\)/);
+});
