@@ -30,7 +30,7 @@ async function withSerializableRetry<T>(operation: () => Promise<T>) {
 }
 
 export const appleOwnershipRepository: AppleOwnershipRepository = {
-  async findUserIdByAppAccountToken(token, _environment) {
+  async findUserIdByAppAccountToken(token) {
     const account = await prisma.appleBillingAccount.findUnique({
       where: { appAccountToken: token },
       select: { userId: true },

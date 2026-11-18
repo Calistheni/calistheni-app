@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { App } from "@capacitor/app";
 import { Check, Crown, RefreshCw, Sparkles } from "lucide-react";
 import { toast } from "sonner";
@@ -37,14 +38,6 @@ const applePlans = [
     note: "One annual payment for the same Pro access.",
     features: ["Everything in Pro", "One annual payment"],
     icon: Sparkles,
-  },
-  {
-    productId: APPLE_PRO_PRODUCT_IDS.lifetime,
-    name: "Lifetime Pro",
-    cadence: "once",
-    note: "Paid once — no renewal.",
-    features: ["Lifetime Pro access", "No recurring subscription"],
-    icon: Crown,
   },
 ] as const;
 
@@ -297,7 +290,7 @@ export function ApplePurchaseOptions({
         </div>
       ) : null}
 
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="mx-auto grid max-w-4xl gap-5 md:grid-cols-2">
         {applePlans.map((plan) => {
           const product = productsById.get(plan.productId);
           const Icon = plan.icon;
@@ -372,6 +365,25 @@ export function ApplePurchaseOptions({
           <RefreshCw className={busyAction === "restore" ? "size-4 animate-spin" : "size-4"} aria-hidden="true" />
           {busyAction === "restore" ? "Restoring..." : "Restore Purchases"}
         </Button>
+      </div>
+      <div className="mx-auto max-w-3xl space-y-2 text-center text-xs leading-5 text-muted-foreground">
+        <p>
+          Monthly and yearly plans renew automatically unless cancelled at
+          least 24 hours before the end of the current period. Payment is
+          charged to your Apple Account when you confirm the purchase. You can
+          manage or cancel in your App Store subscription settings.
+        </p>
+        <p>
+          By subscribing, you agree to the{" "}
+          <Link className="underline underline-offset-4" href="/terms">
+            Terms of Use
+          </Link>{" "}
+          and acknowledge the{" "}
+          <Link className="underline underline-offset-4" href="/privacy">
+            Privacy Policy
+          </Link>
+          .
+        </p>
       </div>
     </div>
   );

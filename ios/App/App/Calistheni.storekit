@@ -4,21 +4,7 @@
 
   ],
   "products" : [
-    {
-      "displayPrice" : "119.99",
-      "familyShareable" : false,
-      "internalID" : "2E78ED5E-2E93-48B4-A948-7283D680B7B2",
-      "localizations" : [
-        {
-          "description" : "Permanent access to Calistheni Pro.",
-          "displayName" : "Lifetime Pro",
-          "locale" : "en_US"
-        }
-      ],
-      "productID" : "com.petershikrenov.calistheni.pro.lifetime",
-      "referenceName" : "Lifetime Pro",
-      "type" : "NonConsumable"
-    }
+
   ],
   "settings" : {
     "_applicationInternalID" : "",

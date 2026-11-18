@@ -5,7 +5,10 @@ import {
   type PluginListenerHandle,
 } from "@capacitor/core";
 import { acknowledgeThenFinishAppleTransaction } from "@/lib/apple-purchase-flow";
-import { APPLE_PRO_PRODUCT_IDS } from "@/lib/apple-iap/products";
+import {
+  APPLE_NATIVE_SUBSCRIPTION_PRODUCT_IDS,
+  APPLE_PRO_PRODUCT_IDS,
+} from "@/lib/apple-iap/products";
 import {
   getNativePlatform,
   isIOSApp,
@@ -160,7 +163,6 @@ export async function loadAppleStoreKitProducts() {
   const expectedTypes = new Map<string, AppleStoreKitProduct["type"]>([
     [APPLE_PRO_PRODUCT_IDS.monthly, "subscription"],
     [APPLE_PRO_PRODUCT_IDS.yearly, "subscription"],
-    [APPLE_PRO_PRODUCT_IDS.lifetime, "lifetime"],
   ]);
   const acceptedProducts = result.products.filter(
     (product) => expectedTypes.get(product.productId) === product.type
@@ -208,6 +210,7 @@ function getSafePluginErrorCode(error: unknown) {
 type AppleBillingConfig = {
   appAccountToken: string;
   productIds: typeof APPLE_PRO_PRODUCT_IDS;
+  isPro: boolean;
 };
 
 let activeUserKey: string | null = null;
@@ -228,8 +231,8 @@ function activateAccount(userKey: string | null) {
   return activeGeneration;
 }
 
-async function getAppleBillingConfig(userKey: string) {
-  if (cachedBillingConfig?.userKey === userKey) {
+async function getAppleBillingConfig(userKey: string, forceRefresh = false) {
+  if (!forceRefresh && cachedBillingConfig?.userKey === userKey) {
     return cachedBillingConfig.value;
   }
   let response: Response;
@@ -267,6 +270,7 @@ async function getAppleBillingConfig(userKey: string) {
     !response.ok ||
     !payload.appAccountToken ||
     !payload.productIds ||
+    typeof payload.isPro !== "boolean" ||
     payload.productIds.monthly !== APPLE_PRO_PRODUCT_IDS.monthly ||
     payload.productIds.yearly !== APPLE_PRO_PRODUCT_IDS.yearly ||
     payload.productIds.lifetime !== APPLE_PRO_PRODUCT_IDS.lifetime
@@ -287,6 +291,7 @@ async function getAppleBillingConfig(userKey: string) {
   const value = {
     appAccountToken: payload.appAccountToken,
     productIds: payload.productIds,
+    isPro: payload.isPro,
   } as AppleBillingConfig;
   console.info("[apple-iap] Apple billing config loaded", {
     stage: "config_ready",
@@ -471,10 +476,16 @@ export async function purchaseAppleProduct({
   productId: string;
 }) {
   requireAppleStoreKit();
-  if (!new Set<string>(Object.values(APPLE_PRO_PRODUCT_IDS)).has(productId)) {
+  if (!new Set<string>(APPLE_NATIVE_SUBSCRIPTION_PRODUCT_IDS).has(productId)) {
     throw new AppleStoreKitError("This Apple product is not available.");
   }
-  const configuration = await getAppleBillingConfig(userKey);
+  const configuration = await getAppleBillingConfig(userKey, true);
+  if (configuration.isPro) {
+    throw new AppleStoreKitError(
+      "Pro is already active on this Calistheni account. Manage the existing purchase instead of starting another subscription.",
+      "APPLE_PURCHASE_ALREADY_PRO"
+    );
+  }
   const outcome = await StoreKit.purchase({
     productId,
     appAccountToken: configuration.appAccountToken,

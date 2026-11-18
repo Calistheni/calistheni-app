@@ -18,8 +18,7 @@ public class CalistheniStoreKitPlugin: CAPPlugin, CAPBridgedPlugin {
 
     private static let monthlyProductId = "com.petershikrenov.calistheni.pro.monthly"
     private static let yearlyProductId = "com.petershikrenov.calistheni.pro.yearly"
-    private static let lifetimeProductId = "com.petershikrenov.calistheni.pro.lifetime"
-    private static let productIds = [monthlyProductId, yearlyProductId, lifetimeProductId]
+    private static let productIds = [monthlyProductId, yearlyProductId]
     private static let productIdSet = Set(productIds)
 
     private var productsById: [String: Product] = [:]

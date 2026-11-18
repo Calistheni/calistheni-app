@@ -74,6 +74,42 @@ export async function verifyAppleTransaction(
   });
 }
 
+export async function verifyAppleRenewalInfo(
+  signedRenewalInfo: string,
+  expectedEnvironment: AppleRuntimeEnvironment,
+  options: {
+    getVerifier?: (
+      environment: AppleRuntimeEnvironment
+    ) => AppleSignedDataVerifierBoundary;
+    environmentVariables?: AppleEnvironmentVariables;
+  } = {}
+) {
+  const selectedEnvironment = getSignedPayloadEnvironmentHint(
+    signedRenewalInfo,
+    "renewal"
+  );
+  if (selectedEnvironment !== expectedEnvironment) {
+    throw new AppleVerificationError(
+      "Apple renewal environment does not match the expected environment."
+    );
+  }
+  const verifier = (options.getVerifier ?? getAppleSignedDataVerifier)(
+    selectedEnvironment
+  );
+  try {
+    return validateVerifiedAppleRenewalInfo(
+      await verifier.verifyAndDecodeRenewalInfo(signedRenewalInfo),
+      selectedEnvironment,
+      options.environmentVariables
+    );
+  } catch (error) {
+    if (error instanceof AppleVerificationError) throw error;
+    throw new AppleVerificationError(
+      "Apple renewal signature verification failed."
+    );
+  }
+}
+
 export async function verifyAppleNotification(
   signedPayload: string,
   options: {

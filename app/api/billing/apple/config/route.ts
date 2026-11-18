@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getOrCreateAppleBillingAccount } from "@/lib/apple-iap/account";
 import { getApplePublicConfiguration } from "@/lib/apple-iap/config";
+import { getUserEntitlements } from "@/lib/entitlements";
 import {
   createUserUnauthorizedResponse,
   getAuthenticatedUserId,
@@ -17,10 +18,14 @@ export async function GET(request: Request) {
 
   try {
     const configuration = getApplePublicConfiguration();
-    const account = await getOrCreateAppleBillingAccount(userId);
+    const [account, entitlement] = await Promise.all([
+      getOrCreateAppleBillingAccount(userId),
+      getUserEntitlements(userId),
+    ]);
     return withNativeCors(request, NextResponse.json({
       appAccountToken: account.appAccountToken,
       productIds: configuration.productIds,
+      isPro: entitlement.entitlements.isPro,
     }));
   } catch (error) {
     console.error("[billing.apple.config] failed", {

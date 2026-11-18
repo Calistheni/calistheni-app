@@ -1,8 +1,15 @@
 import "server-only";
 
 import { appleOwnershipRepository } from "@/lib/apple-iap/persistence";
-import { synchronizeOwnedAppleTransaction } from "@/lib/apple-iap/ownership";
+import {
+  AppleTransactionOwnershipError,
+  synchronizeOwnedAppleTransaction,
+} from "@/lib/apple-iap/ownership";
 import { verifyAppleTransaction } from "@/lib/apple-iap/verification";
+import {
+  getAuthoritativeAppleTransactionState,
+  type AppleAuthoritativeTransactionState,
+} from "@/lib/apple-iap/reconciliation";
 
 export const MAX_APPLE_TRANSACTION_SYNC_BATCH = 50;
 export const MAX_APPLE_SIGNED_PAYLOAD_LENGTH = 256_000;
@@ -41,9 +48,13 @@ export function parseAppleTransactionSyncInput(body: unknown) {
 export async function synchronizeAppleTransactionJwsBatch({
   userId,
   signedTransactions,
+  getAuthoritativeState = getAuthoritativeAppleTransactionState,
 }: {
   userId: string;
   signedTransactions: string[];
+  getAuthoritativeState?: (
+    transaction: Awaited<ReturnType<typeof verifyAppleTransaction>>
+  ) => Promise<AppleAuthoritativeTransactionState>;
 }) {
   // Verify the complete batch before persisting any item. A malformed or
   // foreign item cannot produce a partially accepted restore response.
@@ -52,15 +63,37 @@ export async function synchronizeAppleTransactionJwsBatch({
       verifyAppleTransaction(signedTransaction)
     )
   );
-  const results = [];
+  // Reject a foreign account token before making an App Store Server API call
+  // or persisting any member of a restore batch.
   for (const transaction of transactions) {
+    const ownerUserId = await appleOwnershipRepository.findUserIdByAppAccountToken(
+      transaction.appAccountToken,
+      transaction.environment
+    );
+    if (ownerUserId !== userId) {
+      throw new AppleTransactionOwnershipError(
+        "Verified Apple transaction belongs to another Calistheni account."
+      );
+    }
+  }
+  const authoritativeStates = await Promise.all(
+    transactions.map((transaction) => getAuthoritativeState(transaction))
+  );
+  const results = [];
+  for (const state of authoritativeStates) {
     results.push(
       await synchronizeOwnedAppleTransaction({
         authenticatedUserId: userId,
-        transaction,
+        transaction: state.transaction,
+        renewalInfo: state.renewalInfo,
+        subscriptionStatus: state.subscriptionStatus,
+        sourceSignedDate: state.sourceSignedDate,
         repository: appleOwnershipRepository,
       })
     );
   }
-  return { transactions, results };
+  return {
+    transactions: authoritativeStates.map((state) => state.transaction),
+    results,
+  };
 }

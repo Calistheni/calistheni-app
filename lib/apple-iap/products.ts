@@ -6,6 +6,14 @@ export const APPLE_PRO_PRODUCT_IDS = {
   lifetime: "com.petershikrenov.calistheni.pro.lifetime",
 } as const;
 
+// The native storefront launches with recurring plans only. Existing web
+// lifetime entitlements remain valid; a native non-consumable requires a
+// separate product decision and App Store Connect approval before exposure.
+export const APPLE_NATIVE_SUBSCRIPTION_PRODUCT_IDS = [
+  APPLE_PRO_PRODUCT_IDS.monthly,
+  APPLE_PRO_PRODUCT_IDS.yearly,
+] as const;
+
 export type AppleProProductId =
   (typeof APPLE_PRO_PRODUCT_IDS)[keyof typeof APPLE_PRO_PRODUCT_IDS];
 

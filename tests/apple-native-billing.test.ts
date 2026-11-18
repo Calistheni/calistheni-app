@@ -134,16 +134,20 @@ test("backend failure leaves the StoreKit transaction unfinished", async () => {
   assert.equal(finished, false);
 });
 
-test("approved Apple product identifiers remain exact across native and web code", () => {
+test("approved Apple product identifiers remain exact and native launches recurring plans only", () => {
   assert.deepEqual(APPLE_PRO_PRODUCT_IDS, {
     monthly: "com.petershikrenov.calistheni.pro.monthly",
     yearly: "com.petershikrenov.calistheni.pro.yearly",
     lifetime: "com.petershikrenov.calistheni.pro.lifetime",
   });
   const swift = read("ios/App/App/CalistheniStoreKitPlugin.swift");
-  for (const productId of Object.values(APPLE_PRO_PRODUCT_IDS)) {
+  for (const productId of [
+    APPLE_PRO_PRODUCT_IDS.monthly,
+    APPLE_PRO_PRODUCT_IDS.yearly,
+  ]) {
     assert.match(swift, new RegExp(productId.replaceAll(".", "\\.")));
   }
+  assert.doesNotMatch(swift, /pro\.lifetime/);
 });
 
 test("native prices come from StoreKit metadata and never from Stripe constants", () => {
@@ -226,6 +230,24 @@ test("native purchase UI handles cancellation, pending, unavailable products, an
   assert.match(options, /This App Store product is unavailable/);
 });
 
+test("native subscription screen includes renewal terms and legal links", () => {
+  const options = read("components/billing/ApplePurchaseOptions.tsx");
+  assert.match(options, /renew automatically/);
+  assert.match(options, /24 hours before/);
+  assert.match(options, /href="\/terms"/);
+  assert.match(options, /href="\/privacy"/);
+  assert.doesNotMatch(options, /Lifetime Pro/);
+});
+
+test("purchase config rechecks unified Pro state before presenting StoreKit", () => {
+  const route = read("app/api/billing/apple/config/route.ts");
+  const bridge = read("lib/native/apple-storekit.ts");
+  assert.match(route, /getUserEntitlements\(userId\)/);
+  assert.match(route, /isPro: entitlement\.entitlements\.isPro/);
+  assert.match(bridge, /getAppleBillingConfig\(userKey, true\)/);
+  assert.match(bridge, /APPLE_PURCHASE_ALREADY_PRO/);
+});
+
 test("successful purchase refresh happens only after the sync-aware purchase helper resolves", () => {
   const bridge = read("lib/native/apple-storekit.ts");
   const options = read("components/billing/ApplePurchaseOptions.tsx");
@@ -299,7 +321,7 @@ test("Swift plugin uses StoreKit 2, appAccountToken, signed JWS, and acknowledge
   assert.doesNotMatch(swift, /SKPaymentQueue|SKProductsRequest/);
 });
 
-test("local StoreKit configuration models all approved products without archive coupling", () => {
+test("local StoreKit configuration models the two native subscription products without archive coupling", () => {
   const configuration = JSON.parse(
     read("ios/App/App/Calistheni.storekit")
   ) as {
@@ -324,10 +346,7 @@ test("local StoreKit configuration models all approved products without archive 
       [APPLE_PRO_PRODUCT_IDS.yearly, "P1Y"],
     ]
   );
-  assert.deepEqual(
-    configuration.products.map((product) => [product.productID, product.type]),
-    [[APPLE_PRO_PRODUCT_IDS.lifetime, "NonConsumable"]]
-  );
+  assert.deepEqual(configuration.products, []);
 
   const project = read("ios/App/App.xcodeproj/project.pbxproj");
   assert.match(project, /Calistheni\.storekit/);

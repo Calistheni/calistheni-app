@@ -15,9 +15,9 @@ Bundle ID: `com.petershikrenov.calistheni`
 
 - Monthly subscription: `com.petershikrenov.calistheni.pro.monthly`
 - Yearly subscription: `com.petershikrenov.calistheni.pro.yearly`
-- Lifetime non-consumable: `com.petershikrenov.calistheni.pro.lifetime`
+- Reserved future lifetime non-consumable: `com.petershikrenov.calistheni.pro.lifetime`
 
-Monthly and yearly belong to the `Calistheni Pro` subscription group at the same service level. Lifetime is outside that group. Family Sharing is disabled initially.
+Monthly and yearly belong to the `Calistheni Pro` subscription group at the same service level. The iOS launch offers only these recurring plans. Existing Stripe lifetime entitlements remain valid, but a native lifetime non-consumable is deliberately omitted until it receives a separate product and pricing approval. Family Sharing is disabled initially.
 
 Every Apple account, transaction, aggregate, and notification retains its Apple environment. `SANDBOX` records can be stored for TestFlight diagnostics, but only `PRODUCTION` Apple purchases participate in normal Pro authorization.
 
@@ -40,11 +40,11 @@ The token is created server-side and returned only to an authenticated user. It 
 
 ## API foundation
 
-- `GET /api/billing/apple/config` requires a Calistheni session and returns only the stable `appAccountToken` and allowed product IDs.
-- `POST /api/billing/apple/transactions/sync` requires a session, verifies signed StoreKit transaction JWS values, enforces ownership, persists them idempotently, updates aggregates monotonically, and returns safe entitlement status. The native plugin will finish transactions only after this endpoint acknowledges durable processing.
+- `GET /api/billing/apple/config` requires a Calistheni session and returns only the stable `appAccountToken`, approved product identifiers, and current unified Pro state. The native bridge independently restricts purchase presentation to monthly and yearly.
+- `POST /api/billing/apple/transactions/sync` requires a session, verifies signed StoreKit transaction JWS values, enforces ownership, obtains authoritative current state from the environment-matched App Store Server API, verifies the returned signed transaction and renewal information, persists it idempotently, updates aggregates monotonically, and returns safe entitlement status. The native plugin will finish transactions only after this endpoint acknowledges durable processing.
 - `POST /api/billing/apple/notifications` is unauthenticated because Apple calls it. It cryptographically verifies the V2 `signedPayload` and nested signed data, records the notification durably, and applies only verified newer state.
 
-Notifications such as subscription creation/renewal/failure/expiration, renewal changes, grace-period expiration, refunds, refund reversals, revocation, renewal extension, price increase, and one-time charges are handled according to their verified transaction and renewal facts rather than granting or revoking from the notification name alone. `TEST` is audit-only and never grants Pro. A later App Store Server API reconciliation job can use the included environment-specific client factory when a notification does not contain enough current state.
+Notifications such as subscription creation/renewal/failure/expiration, renewal changes, grace-period expiration, refunds, refund reversals, revocation, renewal extension, price increase, and one-time charges are handled according to their verified transaction and renewal facts rather than granting or revoking from the notification name alone. `TEST` is audit-only and never grants Pro. Authenticated purchase and restore synchronization also reconciles current state through the environment-specific App Store Server API client, covering stale client transactions without trusting client claims.
 
 ## Entitlement rules
 
@@ -81,7 +81,7 @@ Product IDs default to, and are validated against, the approved values above. Th
 1. Complete Paid Applications agreements, tax, and banking prerequisites.
 2. Create the `Calistheni Pro` subscription group.
 3. Create monthly and yearly auto-renewable subscriptions in that group at the same service level.
-4. Create the lifetime non-consumable outside the group.
+4. Do not create or expose the reserved lifetime non-consumable unless a later product decision explicitly approves it.
 5. Configure storefront prices, localizations, descriptions, and review material; keep Family Sharing off.
 6. Enable Billing Grace Period and select the intended environments.
 7. Create the App Store Connect In-App Purchase key and configure the server variables securely.
@@ -90,7 +90,7 @@ Product IDs default to, and are validated against, the approved values above. Th
 
 ## Native StoreKit architecture
 
-`CalistheniStoreKitPlugin` is a first-party Capacitor plugin implemented with StoreKit 2. It exposes availability, product loading, purchase, current entitlements, explicit restore, transaction finishing, subscription management, and one `transactionUpdated` listener. Product loading is restricted to the three approved identifiers and sends StoreKit's localized `displayPrice` to the web UI.
+`CalistheniStoreKitPlugin` is a first-party Capacitor plugin implemented with StoreKit 2. It exposes availability, product loading, purchase, current entitlements, explicit restore, transaction finishing, subscription management, and one `transactionUpdated` listener. Product loading is restricted to the approved monthly and yearly identifiers and sends StoreKit's localized `displayPrice` to the web UI.
 
 The purchase flow obtains the authenticated user's stable token from `/api/billing/apple/config` and passes its UUID through StoreKit's `.appAccountToken` purchase option. A locally verified success returns the signed transaction JWS, but does not grant Pro or finish the StoreKit transaction. The TypeScript bridge sends the JWS to `/api/billing/apple/transactions/sync`; only a successful, durable backend acknowledgement permits `Transaction.finish()`. A timeout, ownership rejection, or server failure leaves the transaction unfinished so StoreKit can redeliver it.
 
@@ -108,7 +108,7 @@ Client state is keyed to the authenticated Calistheni user. Logout or account sw
 
 ## Local StoreKit testing
 
-`ios/App/App/Calistheni.storekit` is a local, unsynchronized Xcode StoreKit configuration containing the approved monthly, yearly, and lifetime identifiers. Its prices are test metadata only; the native UI still reads `Product.displayPrice`. In Xcode, edit the App scheme's **Run > Options > StoreKit Configuration** and select `Calistheni.storekit` for local manual testing. The repository does not activate it in an archive action, so Xcode Cloud and App Store archives are not tied to local test products.
+`ios/App/App/Calistheni.storekit` is a local, unsynchronized Xcode StoreKit configuration containing the approved monthly and yearly identifiers. Its prices are test metadata only; the native UI still reads `Product.displayPrice`. In Xcode, edit the App scheme's **Run > Options > StoreKit Configuration** and select `Calistheni.storekit` for local manual testing. The repository does not activate it in an archive action, so Xcode Cloud and App Store archives are not tied to local test products.
 
 Xcode-local StoreKit transactions are not App Store-signed transactions and therefore are intentionally rejected by the production Apple-root verifier. Local configuration testing covers product loading, the Apple sheet, cancellation/pending behavior, redelivery, and the safe “do not finish on backend failure” path. End-to-end backend acknowledgement requires real App Store Connect products with Sandbox/TestFlight transactions.
 
@@ -116,4 +116,4 @@ TestFlight transactions retain `SANDBOX` environment and can be persisted and in
 
 ## Remaining activation work
 
-Create and configure the three products and subscription group in App Store Connect, configure the Apple server credentials and notification URL in Vercel, apply the additive Prisma migration through the approved production workflow, and ship a native binary containing `CalistheniStoreKitPlugin`. Then test with Sandbox, TestFlight, and Production across purchases, pending/cancelled/failed flows, renewals, expiration, billing retry and grace, refund/revocation, restore, reinstall, multiple devices, Apple ID and Calistheni account switching, duplicate/replayed transactions and notifications, existing Stripe Pro/lifetime users, and strict Sandbox/Production isolation.
+Create and configure the two subscription products and subscription group in App Store Connect, configure the Apple server credentials and notification URL in Vercel, apply the additive Prisma migration through the approved production workflow, and ship a native binary containing `CalistheniStoreKitPlugin`. Then test with Sandbox and TestFlight across purchases, pending/cancelled/failed flows, renewals, expiration, billing retry and grace, refund/revocation, restore, reinstall, multiple devices, Apple ID and Calistheni account switching, duplicate/replayed transactions and notifications, existing Stripe Pro/lifetime users, and strict Sandbox/Production isolation. Production purchase testing requires a separately approved release procedure and is not part of staging acceptance.

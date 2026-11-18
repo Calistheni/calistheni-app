@@ -7,6 +7,8 @@ const links = [
   { label: "Pricing", href: "/pro" },
   { label: "Partners", href: "/partners" },
   { label: "Community Guidelines", href: "/community-guidelines" },
+  { label: "Privacy", href: "/privacy" },
+  { label: "Terms", href: "/terms" },
   { label: "Contact", href: "/partners#contact" },
 ];
 
