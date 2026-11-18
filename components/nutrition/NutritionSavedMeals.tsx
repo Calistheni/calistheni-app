@@ -95,10 +95,12 @@ async function importFood(food: Food): Promise<Food & { id: string }> {
 }
 
 async function searchFoods(query: string) {
-  const response = await fetch(
-    `/api/nutrition/foods/search?q=${encodeURIComponent(query)}`,
-    { cache: "no-store" }
-  );
+  const response = await fetch("/api/nutrition/foods/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query }),
+    cache: "no-store",
+  });
   if (!response.ok) throw new Error("Unable to search foods.");
   const data = await response.json();
   return (data.results ?? [

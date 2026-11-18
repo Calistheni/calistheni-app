@@ -193,9 +193,11 @@ async function importFood(food: Food): Promise<Food & { id: string }> {
   return { ...food, ...imported, servings: imported.servings ?? food.servings };
 }
 async function searchCanonical(query: string) {
-  const response = await fetch(
-    `/api/nutrition/foods/search?q=${encodeURIComponent(query)}`
-  );
+  const response = await fetch("/api/nutrition/foods/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query }),
+  });
   if (!response.ok) return [] as Food[];
   const data = await response.json();
   const candidates = (data.results ?? [
@@ -873,7 +875,6 @@ function BarcodeWorkflow({
         setCode(value);
         setLookupState("detected");
         if (process.env.NODE_ENV === "development")
-          console.info("[Barcode] detected", { barcode: value });
         lookupRef.current(value);
       },
       {
@@ -970,7 +971,10 @@ function BarcodeWorkflow({
       lookupAbortRef.current = activeController;
       const isCurrentLookup = () => lookupAbortRef.current === activeController;
       const timeoutId = window.setTimeout(() => activeController.abort(), 12_000);
-      const response = await fetch(`/api/nutrition/foods/barcode/${encodeURIComponent(barcode)}`, {
+      const response = await fetch("/api/nutrition/foods/barcode/lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ barcode }),
         signal: activeController.signal,
       }).finally(() => window.clearTimeout(timeoutId));
       if (!isCurrentLookup()) return;
@@ -985,7 +989,6 @@ function BarcodeWorkflow({
         setMissingBarcode(true);
         setLookupState("not_found");
         setError("");
-        if (process.env.NODE_ENV === "development") console.info("[Barcode] transition not_found", { barcode: data.barcode });
         return;
       }
       if (data.status !== "found" || !data.food) {

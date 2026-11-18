@@ -306,7 +306,7 @@ test("English generic ranking, barcode reuse, and AI canonical selection stay in
 
   const [service, barcodeRoute, aiMatching] = await Promise.all([
     readFile(new URL("lib/nutrition/service.ts", root), "utf8"),
-    readFile(new URL("app/api/nutrition/foods/barcode/[barcode]/route.ts", root), "utf8"),
+    readFile(new URL("app/api/nutrition/foods/barcode/lookup/route.ts", root), "utf8"),
     readFile(new URL("lib/nutrition/ai-meal-food-matching.ts", root), "utf8"),
   ]);
   assert.ok(service.indexOf("source_sourceExternalId") < service.indexOf("fetchExternal(provider, externalId)"));

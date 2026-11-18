@@ -102,7 +102,12 @@ export function NutritionFoodSearch() {
     activeRequest.current = requestId;
     setLoading(true);
     try {
-      const response = await fetch(`/api/nutrition/foods/search?q=${encodeURIComponent(requestedQuery)}`, { signal: controller.signal });
+      const response = await fetch("/api/nutrition/foods/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: requestedQuery }),
+        signal: controller.signal,
+      });
       const data = await response.json();
       if (!response.ok) throw new Error(responseErrorMessage(data, "Search failed."));
       if (activeRequest.current === requestId) setResults(data);
@@ -168,7 +173,11 @@ export function NutritionFoodSearch() {
     activeRequest.current = requestId;
     setLoading(true);
     try {
-      const response = await fetch(`/api/nutrition/foods/barcode/${encodeURIComponent(barcode)}`);
+      const response = await fetch("/api/nutrition/foods/barcode/lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ barcode }),
+      });
       const data = await response.json();
       if (!response.ok) throw new Error(responseErrorMessage(data, "Barcode lookup failed."));
       if (activeRequest.current === requestId) setResults({ query: barcode, queryKind: "BARCODE", localResults: data.local ? [data.local] : [], genericResults: [], packagedResults: data.external ? [data.external] : [], externalResults: data.external ? [data.external] : [] });

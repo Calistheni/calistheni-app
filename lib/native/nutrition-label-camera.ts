@@ -1,20 +1,27 @@
-import {
-  Camera,
-  CameraResultType,
-  CameraSource,
-  type Photo,
-} from "@capacitor/camera";
-import { Capacitor } from "@capacitor/core";
+import { Camera, CameraResultType, CameraSource, type Photo } from "@capacitor/camera";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 
 export type NutritionLabelPhotoSource = "camera" | "gallery";
 
 export class NativePhotoAcquisitionError extends Error {}
 export class NativePhotoPreparationError extends Error {}
 
+type IOSNutritionPhotoPicker = {
+  getPhoto(options: { source: NutritionLabelPhotoSource }): Promise<{
+    base64String?: string;
+    cancelled?: boolean;
+  }>;
+};
+
+const IOSNutritionPhotoPicker = registerPlugin<IOSNutritionPhotoPicker>(
+  "CalistheniNutritionPhotoPicker"
+);
+
 export function canAcquireNativeNutritionLabelPhoto() {
-  return (
-    Capacitor.isNativePlatform() && Capacitor.isPluginAvailable("Camera")
-  );
+  if (!Capacitor.isNativePlatform()) return false;
+  return Capacitor.getPlatform() === "ios"
+    ? Capacitor.isPluginAvailable("CalistheniNutritionPhotoPicker")
+    : Capacitor.isPluginAvailable("Camera");
 }
 
 export function isNativePhotoCancellation(reason: unknown) {
@@ -29,8 +36,8 @@ function nativePhotoToFile(photo: Photo) {
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index += 1)
     bytes[index] = binary.charCodeAt(index);
-  // Capacitor Camera normalizes iOS capture and Photos output to JPEG. Keeping
-  // this explicit avoids passing HEIC MIME types to the Vision endpoint.
+  // Native capture and picker output are normalized to JPEG so the Vision
+  // endpoint does not receive HEIC MIME types.
   return new File([bytes], "nutrition-label.jpeg", {
     type: "image/jpeg",
     lastModified: Date.now(),
@@ -38,27 +45,41 @@ function nativePhotoToFile(photo: Photo) {
 }
 
 type CameraPhotoApi = Pick<typeof Camera, "getPhoto">;
+type NutritionPhotoPickerApi = Pick<IOSNutritionPhotoPicker, "getPhoto">;
 
 /**
- * Uses the native Capacitor Camera bridge. This must remain separate from the
- * WebView file-input fallback: programmatic file-input clicks are unreliable
- * in an installed iOS app after another native controller was dismissed. Base64
- * also avoids fetching a cross-scheme capacitor:// URI from WKWebView.
+ * Uses native picker bridges. This must remain separate from the WebView
+ * file-input fallback: programmatic file-input clicks are unreliable in an
+ * installed iOS app after another native controller was dismissed. Base64 also
+ * avoids fetching a cross-scheme capacitor:// URI from WKWebView.
  */
-export function createNativeNutritionLabelPhotoAcquirer(camera: CameraPhotoApi) {
+export function createNativeNutritionLabelPhotoAcquirer(
+  camera: CameraPhotoApi,
+  iosPicker?: NutritionPhotoPickerApi
+) {
   return async function acquireNativeNutritionLabelPhoto(
     source: NutritionLabelPhotoSource
   ) {
     let photo: Photo;
     try {
-      photo = await camera.getPhoto({
-        source: source === "camera" ? CameraSource.Camera : CameraSource.Photos,
-        resultType: CameraResultType.Base64,
-        quality: 90,
-        width: 2400,
-        correctOrientation: true,
-        saveToGallery: false,
-      });
+      if (iosPicker) {
+        const result = await iosPicker.getPhoto({ source });
+        if (result.cancelled) throw new Error("User cancelled photos app");
+        photo = {
+          base64String: result.base64String,
+          format: "jpeg",
+          saved: false,
+        };
+      } else {
+        photo = await camera.getPhoto({
+          source: source === "camera" ? CameraSource.Camera : CameraSource.Photos,
+          resultType: CameraResultType.Base64,
+          quality: 90,
+          width: 2400,
+          correctOrientation: true,
+          saveToGallery: false,
+        });
+      }
     } catch (reason) {
       if (isNativePhotoCancellation(reason)) throw reason;
       throw new NativePhotoAcquisitionError(
@@ -77,4 +98,9 @@ export function createNativeNutritionLabelPhotoAcquirer(camera: CameraPhotoApi) 
 }
 
 export const acquireNativeNutritionLabelPhoto =
-  createNativeNutritionLabelPhotoAcquirer(Camera);
+  createNativeNutritionLabelPhotoAcquirer(
+    Camera,
+    Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios"
+      ? IOSNutritionPhotoPicker
+      : undefined
+  );

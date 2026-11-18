@@ -878,12 +878,11 @@ export function ParkSubmissionForm({
     setIsCheckingNearbyParks(true);
 
     try {
-      const searchParams = new URLSearchParams({
-        lat: String(data.lat),
-        lon: String(data.lon),
-        radius: "100",
+      const response = await fetch("/api/parks/nearby-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lat: data.lat, lon: data.lon, radius: 100 }),
       });
-      const response = await fetch(`/api/parks/nearby-check?${searchParams}`);
 
       if (!response.ok) {
         throw new Error("Unable to check for nearby parks. Please try again.");

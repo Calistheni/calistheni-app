@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import sharp from "sharp";
 import { parsePositiveInteger, createJsonErrorResponse, createInternalServerErrorResponse } from "@/lib/api-response";
 import { createUserUnauthorizedResponse, getAuthenticatedUserId } from "@/lib/user-auth";
 import { prisma } from "@/lib/prisma";
 import { getWorkoutPhotoKey, validateCompressedWorkoutPhoto, WORKOUT_PHOTO_MAX_COUNT, WORKOUT_PHOTO_MAX_FILE_SIZE } from "@/lib/workout-photo";
 import { detectParkPhotoFamily } from "@/lib/park-photo-file";
 import { deleteWorkoutPhotoObject, putWorkoutPhoto } from "@/lib/workout-photo-storage";
+import { sanitizeWorkoutPhotoImage } from "@/lib/workout-photo-image";
 
 export const runtime = "nodejs";
 
@@ -23,16 +23,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const sourceBytes = new Uint8Array(await file.arrayBuffer());
   const sourceFamily = detectParkPhotoFamily(sourceBytes);
   if (!sourceFamily || !["jpeg", "png", "webp"].includes(sourceFamily)) return createJsonErrorResponse("This photo format is not supported.", 400);
-  let bytes = sourceBytes;
-  let normalizedFile = file;
-  // Safari/WebViews may be unable to encode WebP client-side. Convert the
-  // validated original in Node and store only the resulting WebP.
-  if (sourceFamily !== "webp") {
-    try {
-      bytes = new Uint8Array(await sharp(sourceBytes, { failOn: "error" }).rotate().resize({ width: 2048, height: 2048, fit: "inside", withoutEnlargement: true }).webp({ quality: 86 }).toBuffer());
-      normalizedFile = new File([bytes], `${file.name.replace(/\.[^.]+$/, "")}.webp`, { type: "image/webp" });
-    } catch { return createJsonErrorResponse("This photo could not be processed. Try another image.", 400); }
-  }
+  let bytes: Uint8Array;
+  let normalizedFile: { name: string; type: string; size: number };
+  // Re-encode every accepted source, including WebP, so crafted uploads cannot
+  // retain EXIF/XMP metadata even when the client-side compressor is bypassed.
+  try {
+    bytes = new Uint8Array(await sanitizeWorkoutPhotoImage(sourceBytes));
+    normalizedFile = {
+      name: `${file.name.replace(/\.[^.]+$/, "")}.webp`,
+      type: "image/webp",
+      size: bytes.byteLength,
+    };
+  } catch { return createJsonErrorResponse("This photo could not be processed. Try another image.", 400); }
   const validated = validateCompressedWorkoutPhoto(normalizedFile, bytes);
   if (!validated.success) return createJsonErrorResponse(validated.error, 400);
   const { dimensions } = validated;

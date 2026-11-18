@@ -3,12 +3,27 @@ import {
   createInternalServerErrorResponse,
   createJsonErrorResponse,
 } from "@/lib/api-response";
-import { parseParkMapQuery } from "@/lib/park-map-query";
+import { parseParkMapParams } from "@/lib/park-map-query";
 import { getParksInBounds } from "@/lib/parks";
 import type { ParksMapResponse } from "@/types/park";
 
-export async function GET(request: Request) {
-  const query = parseParkMapQuery(request.url);
+export async function POST(request: Request) {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return createJsonErrorResponse("Invalid map bounds or zoom.", 400, "PARK_BOUNDS_INVALID");
+  }
+  const params = new URLSearchParams(
+    body && typeof body === "object"
+      ? Object.entries(body).flatMap(([key, value]) =>
+          typeof value === "string" || typeof value === "number"
+            ? [[key, String(value)]]
+            : []
+        )
+      : []
+  );
+  const query = parseParkMapParams(params);
   if (!query.success) {
     return createJsonErrorResponse(query.message, 400, query.code);
   }
@@ -30,11 +45,11 @@ export async function GET(request: Request) {
 
     return NextResponse.json(response, {
       headers: {
-        "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+        "Cache-Control": "private, no-store",
       },
     });
-  } catch (error) {
-    console.error("Unable to load map parks.", error);
+  } catch {
+    console.error("Unable to load map parks.");
     return createInternalServerErrorResponse();
   }
 }

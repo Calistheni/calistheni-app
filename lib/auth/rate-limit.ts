@@ -11,6 +11,27 @@ type RateLimitRule = {
   blockMs: number;
 };
 
+const EXPIRED_RATE_LIMIT_CLEANUP_BATCH_SIZE = 50;
+
+async function deleteExpiredRateLimitRows(
+  tx: Prisma.TransactionClient,
+  now: Date
+) {
+  await tx.$executeRaw`
+    WITH expired AS (
+      SELECT "keyHash"
+      FROM "AuthRateLimit"
+      WHERE "expiresAt" <= ${now}
+      ORDER BY "expiresAt" ASC
+      LIMIT ${EXPIRED_RATE_LIMIT_CLEANUP_BATCH_SIZE}
+      FOR UPDATE SKIP LOCKED
+    )
+    DELETE FROM "AuthRateLimit" AS rate_limit
+    USING expired
+    WHERE rate_limit."keyHash" = expired."keyHash"
+  `;
+}
+
 async function withSerializableRetry<T>(operation: () => Promise<T>) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
@@ -46,6 +67,7 @@ export async function consumeAuthRateLimit({
   return withSerializableRetry(() =>
     prisma.$transaction(
       async (tx) => {
+        await deleteExpiredRateLimitRows(tx, now);
         const current = await tx.authRateLimit.findUnique({ where: { keyHash } });
         if (current?.blockedUntil && current.blockedUntil > now) {
           return {

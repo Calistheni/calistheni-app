@@ -40,11 +40,9 @@
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Calistheni uses your camera to scan food barcodes and identify food from photos.</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Calistheni can save a photo only when you explicitly choose to do so.</string>
+	<string>Calistheni uses your camera to scan nutrition barcodes or capture food label photos.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Calistheni lets you choose a nutrition-label photo to identify food information.</string>
+	<string>Calistheni uses the system photo picker so you can select a nutrition-label photo without granting access to your full library.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Calistheni uses selected Apple Health body measurements to let you explicitly import information such as body weight, waist, height, body fat, and profile details.</string>
 	<key>NSHealthUpdateUsageDescription</key>

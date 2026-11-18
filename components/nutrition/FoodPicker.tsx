@@ -186,10 +186,13 @@ export function FoodPicker({
     }
     const timer = window.setTimeout(async () => {
       try {
-        const response = await fetch(
-          `/api/nutrition/foods/search?q=${encodeURIComponent(query.trim())}`,
-          { cache: "no-store", signal: controller.signal }
-        );
+        const response = await fetch("/api/nutrition/foods/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: query.trim() }),
+          cache: "no-store",
+          signal: controller.signal,
+        });
         if (!response.ok) throw new Error("Unable to search foods.");
         const data = await response.json();
         if (controller.signal.aborted) return;

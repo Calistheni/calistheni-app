@@ -23,6 +23,7 @@ import {
   PENDING_PARK_PHOTO_PREFIX,
 } from "@/lib/park-photo-keys";
 import { parseParkPhotoReference } from "@/lib/park-photo-object-key";
+import { sanitizeParkPhotoImage } from "@/lib/park-photo-image";
 
 export {
   getPermanentParkPhotoKey,
@@ -97,8 +98,9 @@ export async function uploadParkPhoto({
     throw new Error(validated.error);
   }
 
+  const sanitizedBytes = await sanitizeParkPhotoImage(bytes);
   const key = createObjectKey({
-    extension: validated.extension,
+    extension: "jpg",
     owner,
     pending,
   });
@@ -108,8 +110,8 @@ export async function uploadParkPhoto({
     new PutObjectCommand({
       Bucket: configuration.bucketName,
       Key: key,
-      Body: bytes,
-      ContentType: validated.contentType,
+      Body: sanitizedBytes,
+      ContentType: "image/jpeg",
       CacheControl: pending
         ? "private, no-store"
         : "public, max-age=31536000, immutable",

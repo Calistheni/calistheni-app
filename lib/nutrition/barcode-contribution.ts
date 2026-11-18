@@ -57,7 +57,7 @@ export async function saveBarcodeContribution(userId: string, input: BarcodeCont
     if (error instanceof Error && error.message === "BARCODE_EXISTS" || error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       const raced = await prisma.food.findUnique({ where: { barcode }, include: barcodeFoodInclude });
       if (raced && canReuseBarcodeFood(raced, userId)) {
-        if (process.env.NODE_ENV === "development") console.info("[Barcode] creator-visible pending match reused", { barcode, foodId: raced.id });
+        if (process.env.NODE_ENV === "development") console.info("[Barcode] creator-visible pending match reused");
         return { kind: "existing" as const, food: toFoodSummary(raced) };
       }
       return { kind: "raced" as const };

@@ -21,8 +21,8 @@ export type ParsedParkMapQuery =
       message: string;
     };
 
-function parseFiniteParameter(url: URL, name: string) {
-  const rawValue = url.searchParams.get(name);
+function parseFiniteParameter(params: URLSearchParams, name: string) {
+  const rawValue = params.get(name);
   if (rawValue === null || rawValue.trim() === "") return null;
   const value = Number(rawValue);
   return Number.isFinite(value) ? value : null;
@@ -63,11 +63,18 @@ export function parseParkMapQuery(
   areaKeySuffix?: string
 ): ParsedParkMapQuery {
   const url = new URL(requestUrl);
-  const west = parseFiniteParameter(url, "west");
-  const south = parseFiniteParameter(url, "south");
-  const east = parseFiniteParameter(url, "east");
-  const north = parseFiniteParameter(url, "north");
-  const zoom = parseFiniteParameter(url, "zoom");
+  return parseParkMapParams(url.searchParams, areaKeySuffix);
+}
+
+export function parseParkMapParams(
+  params: URLSearchParams,
+  areaKeySuffix?: string
+): ParsedParkMapQuery {
+  const west = parseFiniteParameter(params, "west");
+  const south = parseFiniteParameter(params, "south");
+  const east = parseFiniteParameter(params, "east");
+  const north = parseFiniteParameter(params, "north");
+  const zoom = parseFiniteParameter(params, "zoom");
 
   if (
     west === null ||

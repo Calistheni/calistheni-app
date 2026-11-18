@@ -811,12 +811,15 @@ export default function AdminDashboard() {
 
   async function submitCreate(payload: ParkMutationPayload) {
     try {
-      const params = new URLSearchParams({
-        lat: String(payload.lat),
-        lon: String(payload.lon),
-        radius: String(PARK_DUPLICATE_WARNING_RADIUS_METERS),
+      const response = await fetch("/api/parks/nearby-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lat: payload.lat,
+          lon: payload.lon,
+          radius: PARK_DUPLICATE_WARNING_RADIUS_METERS,
+        }),
       });
-      const response = await fetch(`/api/parks/nearby-check?${params}`);
       if (response.ok) {
         const result = (await response.json()) as {
           nearbyParks: Array<{

@@ -936,11 +936,15 @@ function FoodPicker({
     if (!meal) return;
     const timer = window.setTimeout(async () => {
       const isSearching = query.trim().length >= 2;
-      const path = isSearching
-        ? `/api/nutrition/foods/search?q=${encodeURIComponent(query.trim())}`
-        : "/api/nutrition/saved-foods";
       setSavedLoading(!isSearching);
-      const response = await fetch(path, { cache: "no-store" });
+      const response = isSearching
+        ? await fetch("/api/nutrition/foods/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query: query.trim() }),
+            cache: "no-store",
+          })
+        : await fetch("/api/nutrition/saved-foods", { cache: "no-store" });
       if (!response.ok) return;
       const data = await response.json();
       setFoods(

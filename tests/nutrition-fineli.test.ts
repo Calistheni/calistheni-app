@@ -216,7 +216,7 @@ test("Fineli is additive, locally synchronized, idempotent, attributed, and abse
     readFile(new URL("../scripts/sync-fineli.mts", import.meta.url), "utf8"),
     readFile(new URL("../app/nutrition/data-sources/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../docs/nutrition-food-foundation.md", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/nutrition/foods/barcode/[barcode]/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/nutrition/foods/barcode/lookup/route.ts", import.meta.url), "utf8"),
   ]);
   assert.match(schema, /enum FoodSource \{\s+FINELI\s+USDA\s+OPEN_FOOD_FACTS/);
   assert.match(migration, /ALTER TYPE "FoodSource" ADD VALUE 'FINELI'/);

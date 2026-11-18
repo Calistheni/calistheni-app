@@ -31,7 +31,7 @@ test("Nutrition AI Scan is Pro-gated before quota reservation or provider work",
 });
 
 test("Nutrition Barcode is Pro-gated before lookup or provider access", async () => {
-  const route = await source("app/api/nutrition/foods/barcode/[barcode]/route.ts");
+  const route = await source("app/api/nutrition/foods/barcode/lookup/route.ts");
   const authenticated = route.indexOf("getAuthenticatedUserId()");
   const entitlements = route.indexOf("getUserEntitlements(userId)");
   const capability = route.indexOf("canUseNutritionBarcodeScan(entitlements)");

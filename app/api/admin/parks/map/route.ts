@@ -10,16 +10,29 @@ import {
 } from "@/lib/admin-auth";
 import {
   parseParkArchiveStatus,
-  parseParkMapQuery,
+  parseParkMapParams,
   parseParkQrStatus,
 } from "@/lib/park-map-query";
 import type { AdminParksMapResponse } from "@/types/park";
 
-export async function GET(request: Request) {
+export async function POST(request: Request) {
   if (!(await isAdminAuthenticated())) return createUnauthorizedResponse();
 
-  const url = new URL(request.url);
-  const qrStatus = parseParkQrStatus(url.searchParams.get("qrStatus"), {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return createJsonErrorResponse("Invalid map bounds or zoom.", 400, "PARK_BOUNDS_INVALID");
+  }
+  const values = body && typeof body === "object" ? body as Record<string, unknown> : {};
+  const params = new URLSearchParams(
+    Object.entries(values).flatMap(([key, value]) =>
+      typeof value === "string" || typeof value === "number"
+        ? [[key, String(value)]]
+        : []
+    )
+  );
+  const qrStatus = parseParkQrStatus(params.get("qrStatus"), {
     allowAll: true,
   });
   if (qrStatus === null) {
@@ -30,7 +43,7 @@ export async function GET(request: Request) {
     );
   }
   const archiveStatus = parseParkArchiveStatus(
-    url.searchParams.get("parkStatus"),
+    params.get("parkStatus"),
     { allowAll: true }
   );
   if (archiveStatus === null) {
@@ -41,8 +54,8 @@ export async function GET(request: Request) {
     );
   }
 
-  const query = parseParkMapQuery(
-    request.url,
+  const query = parseParkMapParams(
+    params,
     `qr-${qrStatus}:park-${archiveStatus}`
   );
   if (!query.success) {
@@ -86,7 +99,6 @@ export async function GET(request: Request) {
       route: "/api/admin/parks/map",
       qrStatus,
       archiveStatus,
-      bounds: query.bounds,
       prismaCode,
     });
     return createInternalServerErrorResponse("ADMIN_PARK_MAP_FAILED");

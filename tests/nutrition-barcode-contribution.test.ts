@@ -21,9 +21,9 @@ test("label conversion only derives per-100-g data when the basis is safe", asyn
 });
 
 test("barcode lookup applies creator-only pending visibility", async () => {
-  const route = await readFile(new URL("../app/api/nutrition/foods/barcode/[barcode]/route.ts", import.meta.url), "utf8");
+  const route = await readFile(new URL("../app/api/nutrition/foods/barcode/lookup/route.ts", import.meta.url), "utf8");
   assert.match(route, /canUseNutritionFood\(local, userId\)/);
-  assert.match(route, /creator-pending-hit/);
+  assert.match(route, /canUseNutritionFood\(local, userId\)/);
   assert.match(route, /isOwnContribution: local\.createdByUserId === userId/);
 });
 

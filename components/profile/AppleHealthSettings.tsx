@@ -13,6 +13,7 @@ import {
   requestAppleHealthAuthorization,
   type AppleHealthAuthorizationStatus,
 } from "@/lib/native/apple-health";
+import { appleHealthAuthorizationCopy } from "@/lib/native/apple-health-permission-copy";
 import { formatLength, formatWeight, type MeasurementSystem } from "@/lib/measurement-units";
 
 type AppleHealthSettingsProps = {
@@ -30,12 +31,6 @@ type AppleHealthSettingsProps = {
   onExportMeasurementHistory: () => Promise<{ exported: number; failed: number }>;
   isPro: boolean;
 };
-
-function authorizationCopy(status: AppleHealthAuthorizationStatus) {
-  if (status === "unnecessary") return "Apple Health authorization has been requested on this device.";
-  if (status === "shouldRequest") return "Connect to request workout export plus the body measurements available on your plan.";
-  return "Apple Health permission status is managed by iOS.";
-}
 
 export function AppleHealthSettings({
   measurementSystem,
@@ -74,7 +69,7 @@ export function AppleHealthSettings({
       const nextStatus = await requestAppleHealthAuthorization(false);
       setStatus(nextStatus);
       if (nextStatus === "unavailable") toast.error("Apple Health is unavailable on this device.");
-      else toast.success("Apple Health authorization request finished.");
+      else toast.success("Apple Health authorization request submitted. iOS controls access to each data type.");
     } finally {
       setIsWorking(false);
     }
@@ -85,7 +80,7 @@ export function AppleHealthSettings({
     try {
       const nextStatus = await requestAppleHealthAuthorization(true);
       setProStatus(nextStatus);
-      toast.success("Advanced Apple Health authorization request finished.");
+      toast.success("Advanced Apple Health authorization request submitted. iOS controls access to each data type.");
     } finally {
       setIsWorking(false);
     }
@@ -157,7 +152,7 @@ export function AppleHealthSettings({
     return sampledAtMs ? ` · ${new Date(sampledAtMs).toLocaleDateString()}` : "";
   }
 
-  const connected = status === "unnecessary";
+  const authorizationWasRequested = status === "unnecessary";
   return (
     <div className="space-y-3 rounded-lg border p-3">
       <div className="flex items-start gap-3">
@@ -167,7 +162,7 @@ export function AppleHealthSettings({
           <p className="text-xs text-muted-foreground">Connect completed workouts and explicitly import your latest body weight.</p>
         </div>
       </div>
-      <p className="text-xs text-muted-foreground">{authorizationCopy(status)}</p>
+      <p className="text-xs text-muted-foreground">{appleHealthAuthorizationCopy(status)}</p>
       {isWorking ? (
         <div
           aria-busy="true"
@@ -179,7 +174,7 @@ export function AppleHealthSettings({
           Working with Apple Health…
         </div>
       ) : null}
-      {!connected ? <Button type="button" variant="outline" onClick={() => void connect()} disabled={isWorking}>Connect Apple Health</Button> : <>
+      {!authorizationWasRequested ? <Button type="button" variant="outline" onClick={() => void connect()} disabled={isWorking}>Connect Apple Health</Button> : <>
         <div className="flex items-start justify-between gap-4">
           <div><p className="text-sm font-medium">Save completed workouts</p><p className="text-xs text-muted-foreground">Exports one completed workout to Apple Health.</p></div>
           <Switch checked={workoutExportEnabled} disabled={isWorking} onCheckedChange={(checked) => void savePreferences({ appleHealthWorkoutExportEnabled: checked, appleHealthBodyweightImportEnabled: bodyweightImportEnabled, appleHealthBodyMeasurementExportEnabled: bodyMeasurementExportEnabled })} aria-label="Save completed workouts to Apple Health" />

@@ -5,59 +5,31 @@ import {
 } from "@/lib/api-response";
 import {
   findNearbyPublicParks,
-  PARK_DUPLICATE_WARNING_RADIUS_METERS,
 } from "@/lib/nearby-parks";
+import { parseNearbyParkCheckInput } from "@/lib/nearby-park-check-input";
 
-function parseLatitude(value: string | null) {
-  const parsed = Number(value);
-
-  return Number.isFinite(parsed) && parsed >= -90 && parsed <= 90
-    ? parsed
-    : null;
-}
-
-function parseLongitude(value: string | null) {
-  const parsed = Number(value);
-
-  return Number.isFinite(parsed) && parsed >= -180 && parsed <= 180
-    ? parsed
-    : null;
-}
-
-function parseRadius(value: string | null) {
-  if (value === null) {
-    return PARK_DUPLICATE_WARNING_RADIUS_METERS;
+export async function POST(request: Request) {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return createJsonErrorResponse("Invalid nearby park check parameters.", 400);
   }
-
-  const parsed = Number(value);
-
-  return Number.isFinite(parsed) && parsed > 0 && parsed <= 1_000
-    ? parsed
-    : null;
-}
-
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const lat = parseLatitude(searchParams.get("lat"));
-  const lon = parseLongitude(searchParams.get("lon"));
-  const radiusMeters = parseRadius(searchParams.get("radius"));
-
-  if (lat === null || lon === null || radiusMeters === null) {
+  const input = parseNearbyParkCheckInput(body);
+  if (!input) {
     return createJsonErrorResponse("Invalid nearby park check parameters.", 400);
   }
 
   try {
     const nearbyParks = await findNearbyPublicParks({
-      lat,
-      lon,
-      radiusMeters,
+      ...input,
     });
 
     return NextResponse.json({
       nearbyParks,
     });
-  } catch (error) {
-    console.error(error);
+  } catch {
+    console.error("Unable to check nearby parks.");
     return createInternalServerErrorResponse();
   }
 }

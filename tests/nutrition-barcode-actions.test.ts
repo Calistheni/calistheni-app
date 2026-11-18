@@ -35,7 +35,7 @@ test("manual and photo barcodes share the local-first canonical lookup flow", as
     readFile(quickActionsUrl, "utf8"),
     readFile(
       new URL(
-        "../app/api/nutrition/foods/barcode/[barcode]/route.ts",
+        "../app/api/nutrition/foods/barcode/lookup/route.ts",
         import.meta.url
       ),
       "utf8"
@@ -43,7 +43,7 @@ test("manual and photo barcodes share the local-first canonical lookup flow", as
   ]);
 
   assert.match(source, /await lookup\(values\[0\]\)/);
-  assert.match(source, /\/api\/nutrition\/foods\/barcode\/\$\{encodeURIComponent\(barcode\)\}/);
+  assert.match(source, /\/api\/nutrition\/foods\/barcode\/lookup/);
   assert.match(source, /data\.status === "not_found"/);
   assert.match(route, /prisma\.food\.findUnique/);
   assert.match(route, /getOpenFoodFactsProduct\(barcode\)/);
@@ -202,13 +202,13 @@ test("a genuine barcode miss is an explicit creation state rather than a hidden 
   const [workflow, route] = await Promise.all([
     readFile(quickActionsUrl, "utf8"),
     readFile(
-      new URL("../app/api/nutrition/foods/barcode/[barcode]/route.ts", import.meta.url),
+      new URL("../app/api/nutrition/foods/barcode/lookup/route.ts", import.meta.url),
       "utf8"
     ),
   ]);
 
   assert.match(route, /status: "not_found", barcode/);
-  assert.match(route, /\[Barcode\] OFF result not_found/);
+  assert.match(workflow, /data\.status === "not_found"/);
   assert.match(workflow, /type BarcodeLookupState/);
   assert.match(workflow, /setLookupState\("not_found"\)/);
   assert.match(workflow, /!missingBarcode/);

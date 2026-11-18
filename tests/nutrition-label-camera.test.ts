@@ -80,3 +80,48 @@ test("native photo cancellation is safely distinguishable from an acquisition fa
   assert.equal(isNativePhotoCancellation(new Error("User cancelled photos app")), true);
   assert.equal(isNativePhotoCancellation(new Error("Camera permission denied")), false);
 });
+
+test("iOS uses the app-owned system picker for camera and gallery without invoking Capacitor Camera", async () => {
+  const cameraCalls: string[] = [];
+  const pickerCalls: string[] = [];
+  const acquire = createNativeNutritionLabelPhotoAcquirer(
+    {
+      async getPhoto(options) {
+        cameraCalls.push(String(options.source));
+        throw new Error("Capacitor Camera must not be used by the iOS path.");
+      },
+    },
+    {
+      async getPhoto({ source }) {
+        pickerCalls.push(source);
+        return {
+          base64String: Buffer.from("selected-photo").toString("base64"),
+          cancelled: false,
+        };
+      },
+    }
+  );
+
+  const cameraPhoto = await acquire("camera");
+  const galleryPhoto = await acquire("gallery");
+
+  assert.deepEqual(pickerCalls.sort(), ["camera", "gallery"]);
+  assert.deepEqual(cameraCalls, []);
+  assert.equal(cameraPhoto.type, "image/jpeg");
+  assert.equal(galleryPhoto.type, "image/jpeg");
+});
+
+test("iOS system-picker cancellation and camera denial remain distinguishable", async () => {
+  const acquire = createNativeNutritionLabelPhotoAcquirer(
+    { async getPhoto() { throw new Error("unexpected camera plugin call"); } },
+    {
+      async getPhoto({ source }) {
+        if (source === "gallery") return { cancelled: true };
+        throw new Error("Camera permission was denied.");
+      },
+    }
+  );
+
+  await assert.rejects(() => acquire("gallery"), isNativePhotoCancellation);
+  await assert.rejects(() => acquire("camera"), NativePhotoAcquisitionError);
+});

@@ -188,33 +188,23 @@ function SearchResultMarker() {
   );
 }
 
-function readStoredUserLocation(): [number, number] | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
+const PARKS_VIEWPORT_STORAGE_KEY = "calistheni-parks-viewport-v1";
 
+function clearLegacyUserLocation() {
+  if (typeof window === "undefined") return;
   try {
-    const storedLocation = localStorage.getItem("user-location");
-    if (!storedLocation) {
-      return null;
+    const locationWasPreviouslySaved =
+      localStorage.getItem("location-allowed") === "true" ||
+      localStorage.getItem("user-location") !== null;
+    localStorage.removeItem("location-allowed");
+    localStorage.removeItem("user-location");
+    if (locationWasPreviouslySaved) {
+      sessionStorage.removeItem(PARKS_VIEWPORT_STORAGE_KEY);
     }
-
-    const coordinates = JSON.parse(storedLocation) as unknown;
-    if (
-      !Array.isArray(coordinates) ||
-      coordinates.length !== 2 ||
-      !coordinates.every((coordinate) => Number.isFinite(coordinate))
-    ) {
-      return null;
-    }
-
-    return [Number(coordinates[0]), Number(coordinates[1])];
   } catch {
-    return null;
+    // Storage may be unavailable in restricted WebViews.
   }
 }
-
-const PARKS_VIEWPORT_STORAGE_KEY = "calistheni-parks-viewport-v1";
 
 type StoredParksViewport = {
   center: [number, number];
@@ -746,10 +736,10 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   const boundaryRequestRef = useRef<AbortController | null>(null);
   const boundariesAccessUnavailableRef = useRef(false);
   const searchSelectionRef = useRef(0);
-  const storedUserLocationRef = useRef<[number, number] | null>(null);
   const parksRef = useRef(parks);
   const userLocationRef = useRef<[number, number] | null>(null);
   const focusOnNextGeolocateRef = useRef(false);
+  const manualCameraInteractionWhileTrackingRef = useRef(false);
   const recenterInProgressRef = useRef(false);
   const trackingActiveRef = useRef(false);
   const viewportCacheRef = useRef(new Map<string, MapParkSummary[]>());
@@ -839,6 +829,10 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   }, [onViewportLoadingChange]);
   const markManualCameraInteraction = useCallback(() => {
     areaSearchPendingRef.current = true;
+    focusOnNextGeolocateRef.current = false;
+    if (trackingActiveRef.current) {
+      manualCameraInteractionWhileTrackingRef.current = true;
+    }
     if (recenterInProgressRef.current) {
       recenterInProgressRef.current = false;
       setIsRecentering(false);
@@ -1850,8 +1844,11 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     }
     const mapEndpoint =
       mode === "admin" ? "/api/admin/parks/map" : "/api/parks/map";
-    const promise = fetch(`${mapEndpoint}?${viewport.params.toString()}`, {
+    const promise = fetch(mapEndpoint, {
       signal: controller.signal,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(Object.fromEntries(viewport.params)),
     })
       .then(async (response) => {
         if (!response.ok) {
@@ -2053,26 +2050,17 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       return;
     }
 
-    const storedLocation = readStoredUserLocation();
+    clearLegacyUserLocation();
     const storedViewport = mode === "public" ? readStoredParksViewport() : null;
-    storedUserLocationRef.current = storedLocation;
-    userLocationRef.current = storedLocation;
-
     if (storedViewport) {
       initialCenterRef.current = storedViewport.center;
-    } else if (storedLocation) {
-      initialCenterRef.current = storedLocation;
     }
 
     const hydrationFrame = window.requestAnimationFrame(() => {
       setHasHydrated(true);
-      setHasUserLocation(Boolean(storedLocation));
-      setSearchProximity(
-        storedLocation
-          ? { lng: storedLocation[0], lat: storedLocation[1] }
-          : null
-      );
-      setFocused(Boolean(storedLocation));
+      setHasUserLocation(false);
+      setSearchProximity(null);
+      setFocused(false);
     });
 
     const initialLightPreset = getInitialLightPreset();
@@ -2098,14 +2086,11 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       center: initialCenterRef.current,
       zoom: storedViewport
         ? storedViewport.zoom
-        : storedUserLocationRef.current
-        ? userLocationZoom
         : mode === "admin"
         ? 10
         : 2,
       pitch: storedViewport?.pitch ?? 0,
-      bearing:
-        storedViewport?.bearing ?? (storedUserLocationRef.current ? 0 : -20),
+      bearing: storedViewport?.bearing ?? -20,
       attributionControl: false,
     });
 
@@ -2127,7 +2112,13 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
 
       const center = map.getCenter();
 
-      if (mode === "public") {
+      const focusResult = finishCameraMove({
+        center: [center.lng, center.lat],
+        zoom: map.getZoom(),
+        userLocation: userLocationRef.current,
+      });
+
+      if (mode === "public" && !isFocusedRef.current) {
         storeParksViewport({
           center: [center.lng, center.lat],
           zoom: map.getZoom(),
@@ -2135,12 +2126,6 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
           bearing: map.getBearing(),
         });
       }
-
-      const focusResult = finishCameraMove({
-        center: [center.lng, center.lat],
-        zoom: map.getZoom(),
-        userLocation: userLocationRef.current,
-      });
 
       if (recenterInProgressRef.current && focusResult !== null) {
         recenterInProgressRef.current = false;
@@ -2195,10 +2180,8 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       mapLoadedRef.current = true;
       const detailedParkLayerMinZoom =
         mode === "public" ? PLACEHOLDER_MAX_ZOOM : 0;
-      if (!storedUserLocationRef.current) {
-        const center = map.getCenter();
-        setSearchProximity({ lng: center.lng, lat: center.lat });
-      }
+      const center = map.getCenter();
+      setSearchProximity({ lng: center.lng, lat: center.lat });
       map.addSource("parks", {
         type: "geojson",
         data: buildGeoJson([]),
@@ -2826,28 +2809,8 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         });
       });
 
-      const deviceOrientation = window.DeviceOrientationEvent as
-        | (typeof DeviceOrientationEvent & {
-            requestPermission?: () => Promise<"granted" | "denied">;
-          })
-        | undefined;
-      const requiresHeadingGesture =
-        typeof deviceOrientation?.requestPermission === "function";
-
-      // Mapbox requests device-orientation access when tracking starts. On
-      // iOS that request is valid only from the native control's user gesture;
-      // restoring an old location permission programmatically would leave a
-      // blue dot without a heading listener. Let the existing Mapbox button
-      // start tracking on those devices instead.
-      if (
-        localStorage.getItem("location-allowed") === "true" &&
-        !requiresHeadingGesture
-      ) {
-        window.setTimeout(() => {
-          focusOnNextGeolocateRef.current = true;
-          geolocateRef.current?.trigger();
-        }, 500);
-      }
+      // Location is requested only from a user action. Do not restore a
+      // previous opt-in by triggering geolocation when the map loads.
       if (mode === "public") {
         void clearLegacyGlobalParkCache().catch((error) => {
           console.error(
@@ -2892,6 +2855,8 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
 
     geolocate.on("trackuserlocationstart", () => {
       trackingActiveRef.current = true;
+      manualCameraInteractionWhileTrackingRef.current = false;
+      focusOnNextGeolocateRef.current = true;
       beginTrackingMove();
       setFocused(true);
       queueViewportLoadAfterLocationMove();
@@ -2907,15 +2872,13 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         event.coords.latitude,
       ];
 
-      const shouldFocusUser =
-        focusOnNextGeolocateRef.current || !userLocationRef.current;
+      const shouldFocusUser = focusOnNextGeolocateRef.current;
+      focusOnNextGeolocateRef.current = false;
 
       userLocationRef.current = location;
       setHasUserLocation(true);
       setSearchProximity({ lng: location[0], lat: location[1] });
 
-      localStorage.setItem("location-allowed", "true");
-      localStorage.setItem("user-location", JSON.stringify(location));
       onLocationStatusChangeRef.current?.("success");
 
       if (shouldFocusUser) {
@@ -2923,7 +2886,10 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         beginTrackingMove();
         setFocused(true);
         queueViewportLoadAfterLocationMove();
-      } else if (trackingActiveRef.current) {
+      } else if (
+        trackingActiveRef.current &&
+        !manualCameraInteractionWhileTrackingRef.current
+      ) {
         beginTrackingMove();
         setFocused(true);
       } else if (isFocusedRef.current) {
