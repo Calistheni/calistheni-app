@@ -28,7 +28,7 @@
     "mobile:open:ios:bundled": "node scripts/verify-bundled-ios.mjs && node scripts/verify-xcode-runtime-mode.mjs && open ios/App/App.xcodeproj",
     "mobile:ios:bundled": "npm run build:native && npm run mobile:sync:ios:bundled && npm run mobile:open:ios:bundled",
     "mobile:ios:build:bundled": "npm run build:native && npm run mobile:sync:ios:bundled && xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/calistheni-bundled-derived CODE_SIGNING_ALLOWED=NO build && node scripts/verify-built-ios-app.mjs /tmp/calistheni-bundled-derived/Build/Products/Debug-iphonesimulator/App.app",
-    "mobile:ios:build:staging": "npm run mobile:sync:ios:staging && xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/calistheni-staging-derived CODE_SIGNING_ALLOWED=NO build",
+    "mobile:ios:build:staging": "npm run mobile:sync:ios:staging && xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/calistheni-staging-derived CALISTHENI_APP_ENTITLEMENTS=App/App.Staging.entitlements CODE_SIGNING_ALLOWED=NO build",
     "mobile:prepare": "npm run build && npm run mobile:sync",
     "mobile:ios": "npm run mobile:prepare && cap open ios",
     "mobile:android": "npm run mobile:prepare && cap open android",

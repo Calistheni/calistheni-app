@@ -8,6 +8,10 @@
 - Serve workout photos through authorization checks and private storage. Prevent caching of protected image responses.
 - Apply an additive Prisma migration for the native authentication handoff.
 
+## Staging verification
+
+Use separate staging credentials and synthetic fixtures. A protected, read-only check verifies that the deployment connects to the intended database. Review migration readiness, photo authorization, and authentication behavior before promoting a build.
+
 ## Readiness
 
 Staging acceptance remains pending.
