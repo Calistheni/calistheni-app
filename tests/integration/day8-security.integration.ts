@@ -38,6 +38,7 @@ test("workout photo responses reauthorize access and never cache, using a privat
   const allowed = async (id?: string) => {
     const response = await requestPhoto(id);
     assert.equal(response.headers.get("cache-control"), "private, no-store");
+    assert.equal(response.headers.get("location"), null);
     await response.text();
     return response.status === 200;
   };
@@ -50,6 +51,8 @@ test("workout photo responses reauthorize access and never cache, using a privat
     process.env.WORKOUT_PHOTO_R2_ENDPOINT = "https://00000000000000000000000000000000.r2.cloudflarestorage.com";
     process.env.WORKOUT_PHOTO_R2_ACCESS_KEY_ID = "test-placeholder";
     process.env.WORKOUT_PHOTO_R2_SECRET_ACCESS_KEY = "test-placeholder";
+    assert.equal(await allowed(), false);
+    process.env.WORKOUT_PHOTO_R2_BUCKET_NAME = "calistheni-photos";
     assert.equal(await allowed(), false);
     assert.equal(r2.mock.callCount(), 0);
     process.env.WORKOUT_PHOTO_R2_BUCKET_NAME = "isolated-test-workout-bucket";

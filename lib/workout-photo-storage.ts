@@ -10,8 +10,8 @@ function workoutPhotoStorage() {
   const endpoint = process.env.WORKOUT_PHOTO_R2_ENDPOINT?.trim();
   const accessKeyId = process.env.WORKOUT_PHOTO_R2_ACCESS_KEY_ID?.trim();
   const secretAccessKey = process.env.WORKOUT_PHOTO_R2_SECRET_ACCESS_KEY?.trim();
-  const parkBucket = process.env.PARK_PHOTO_R2_BUCKET_NAME?.trim() || process.env.R2_BUCKET_NAME?.trim();
-  if (!bucket || !endpoint || !accessKeyId || !secretAccessKey || bucket === parkBucket) {
+  const sharedBuckets = ["calistheni-photos", process.env.PARK_PHOTO_R2_BUCKET_NAME?.trim(), process.env.R2_BUCKET_NAME?.trim()];
+  if (!bucket || !endpoint || !accessKeyId || !secretAccessKey || sharedBuckets.includes(bucket)) {
     throw new Error("Private workout photo storage is not configured.");
   }
   if (!/^https:\/\/[a-f0-9]{32}(?:\.(?:eu|fedramp))?\.r2\.cloudflarestorage\.com\/?$/.test(endpoint)) {

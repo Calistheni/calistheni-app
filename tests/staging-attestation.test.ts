@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import test from "node:test";
+import { Client } from "pg";
 import { attestStaging } from "../scripts/staging-attestation/handler";
+import { PHOTO_REFERENCE_COUNTS_SQL } from "../scripts/staging-attestation/photo-references";
 
 const now = Date.parse("2026-11-19T18:00:00Z");
 const deploymentHost = "calistheni-staging-test-team.vercel.app";
-const neonHost = "ep-floral-violet-bb5i81e9-pooler.fixture.neon.tech";
+const neonHost = "ep-floral-violet-bb5i81e9-pooler.c-15.us-east-1.aws.neon.tech";
 const token = randomBytes(32).toString("base64url");
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 const fixtureUrl = new URL(`postgresql://${neonHost}/neondb?sslmode=require`);
@@ -43,6 +45,7 @@ test("accepts only an authenticated HTTPS POST to the immutable staging URL", as
     [accepted, { ...environment, VERCEL_DEPLOYMENT_ID: "" }],
     [accepted, { ...environment, STAGING_ATTESTATION_EXPIRES_AT: new Date(now).toISOString() }],
     [accepted, { ...environment, STAGING_ATTESTATION_EXPIRES_AT: new Date(now + 1_800_001).toISOString() }],
+    [new Request(accepted, { headers: { ...Object.fromEntries(accepted.headers), "x-staging-attestation-operation": "query" } }), environment],
   ] as const) {
     const response = await attestStaging(request, env, rejectConnection, now);
     assert.equal(response.status, 404);
@@ -65,6 +68,7 @@ test("rejects inherited, mismatched and overridden database configuration before
     { ...environment, PGOPTIONS: "-c role=other" },
     ...[
       connection.replace("ep-floral-violet-bb5i81e9-pooler", "ep-dark-dew-aizz21ag"),
+      connection.replace("c-15", "c-16"),
       connection.replace("neondb_owner", "other_role"),
       connection.replace("/neondb?", "/other?"),
       connection.replace("/neondb?", ":6543/neondb?"),
@@ -80,6 +84,48 @@ test("rejects inherited, mismatched and overridden database configuration before
     assert.equal((await attestStaging(accepted, env, inspect, now)).status, 503);
   }
   assert.equal(connectionAttempts, 0);
+});
+
+test("photo aggregates require authentication and a matching read-only session", async (t) => {
+  const requested = new Request(accepted, { headers: {
+    ...Object.fromEntries(accepted.headers), "x-staging-attestation-operation": "photo-references",
+  } });
+  const counts = { photo_rows: "0", pending_only_keys: "0" };
+  const calls: string[] = [];
+  let effectiveRole = "other_role";
+  t.mock.method(Client.prototype, "connect", async () => { calls.push("connect"); });
+  t.mock.method(Client.prototype, "end", async () => { calls.push("end"); });
+  t.mock.method(Client.prototype, "query", async (sql: string) => {
+    if (sql.includes("current_database()")) {
+      calls.push("identity");
+      return { rows: [{ database: "neondb", session_role: "neondb_owner", effective_role: effectiveRole, read_only: "on" }] };
+    }
+    if (sql === PHOTO_REFERENCE_COUNTS_SQL) {
+      calls.push("aggregate");
+      return { rows: [counts] };
+    }
+    calls.push(sql);
+    return { rows: [] };
+  });
+
+  const unauthenticated = new Request(requested, { headers: { "x-staging-attestation-operation": "photo-references" } });
+  assert.equal((await attestStaging(unauthenticated, environment, undefined, now)).status, 404);
+  assert.deepEqual(calls, []);
+
+  const mismatched = await attestStaging(requested, environment, undefined, now);
+  assert.equal(mismatched.status, 503);
+  const transaction = ["connect", "BEGIN ISOLATION LEVEL REPEATABLE READ, READ ONLY", "SET LOCAL statement_timeout = '3s'", "identity"];
+  assert.deepEqual(calls.splice(0), [...transaction, "ROLLBACK", "end"]);
+
+  effectiveRole = "neondb_owner";
+  assert.equal((await attestStaging(accepted, environment, undefined, now)).status, 200);
+  assert.deepEqual(calls.splice(0), [...transaction, "ROLLBACK", "end"]);
+
+  const verified = await attestStaging(requested, environment, undefined, now);
+  assert.equal(verified.status, 200);
+  assert.equal(verified.headers.get("cache-control"), "private, no-store");
+  assert.deepEqual(await verified.json(), counts);
+  assert.deepEqual(calls, [...transaction, "aggregate", "ROLLBACK", "end"]);
 });
 
 test("reports allowlisted runtime identity over verified TLS and sanitizes database errors", async () => {

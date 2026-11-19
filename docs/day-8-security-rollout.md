@@ -12,6 +12,10 @@
 
 Use separate staging credentials and synthetic fixtures. A protected, read-only check verifies that the deployment connects to the intended database. Review migration readiness, photo authorization, and authentication behavior before promoting a build.
 
+## Private storage readiness
+
+Verification covers private object access, cleanup references, and protection against direct public access. Recheck data references before switching storage. Keep any transfer and verification scoped to the intended environment.
+
 ## Readiness
 
 Staging acceptance remains pending.
