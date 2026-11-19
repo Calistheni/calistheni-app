@@ -20,6 +20,8 @@ Verification covers private object access, cleanup references, and protection ag
 
 Focused regression tests cover authenticated diagnostic requests through the hosting platform. The diagnostic requires HTTPS and rejects unexpected request bodies.
 
-## Readiness
+## Staging acceptance
 
-Staging acceptance remains pending.
+Day 8 staging acceptance passed. Focused tests and staging smoke checks covered database identity, migration compatibility, private photo access, authentication, replay prevention, and request throttling.
+
+Final manual Google sign-in remains part of the TestFlight release checks.
