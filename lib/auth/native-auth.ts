@@ -17,7 +17,7 @@ export function sanitizeNativeRedirectPath(value: unknown) {
     typeof value !== "string" ||
     !value.startsWith("/") ||
     value.startsWith("//") ||
-    value.includes("\\") ||
+    /[\\\u0000-\u0020\u007f]/.test(value) ||
     DISALLOWED_NATIVE_REDIRECT_PREFIXES.some((prefix) =>
       value.startsWith(prefix)
     )
@@ -32,7 +32,11 @@ export function isNativeAuthPlatform(value: unknown): value is "IOS" | "ANDROID"
   return value === "IOS" || value === "ANDROID";
 }
 
-export type NativeAuthCallbackPayload = { code: string };
+export type NativeAuthCallbackPayload = { attempt: string };
+
+export function isNativeAuthAttemptId(value: unknown): value is string {
+  return typeof value === "string" && /^c[a-z0-9]{24}$/.test(value);
+}
 
 /**
  * Parses the two deliberately narrow native return locations. URL treats
@@ -55,9 +59,9 @@ export function parseNativeAuthCallbackUrl(
       !url.username &&
       !url.password &&
       !url.port;
-    const code = url.searchParams.get("code");
-    return (isHttpsCallback || isCustomSchemeCallback) && isNativeAuthCode(code)
-      ? { code }
+    const attempt = url.searchParams.get("attempt");
+    return (isHttpsCallback || isCustomSchemeCallback) && isNativeAuthAttemptId(attempt)
+      ? { attempt }
       : null;
   } catch {
     return null;
@@ -68,13 +72,25 @@ export function isNativeAuthCallbackUrl(value: string, expectedOrigin = "https:/
   return parseNativeAuthCallbackUrl(value, expectedOrigin) !== null;
 }
 
-export function createNativeAuthCustomSchemeUrl(code: string) {
+export function createNativeAuthCustomSchemeUrl(attempt: string) {
   const url = new URL("calistheni://auth/mobile/callback");
-  url.searchParams.set("code", code);
+  url.searchParams.set("attempt", attempt);
   return url.toString();
 }
 
 /** 256-bit base64url secret produced by createNativeAuthSecret(). */
 export function isNativeAuthCode(value: unknown): value is string {
   return typeof value === "string" && /^[A-Za-z0-9_-]{43}$/.test(value);
+}
+
+export function isNativeAuthVerifierChallenge(value: unknown): value is string {
+  return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+}
+
+export async function createNativeAuthProof() {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  const verifier = btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
+  const verifierChallenge = Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return { verifier, verifierChallenge };
 }

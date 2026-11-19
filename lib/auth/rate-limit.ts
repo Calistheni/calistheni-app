@@ -1,5 +1,6 @@
 import "server-only";
 
+import { isIP } from "node:net";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { authHmac, getClientAddress } from "@/lib/auth/security";
@@ -12,6 +13,14 @@ type RateLimitRule = {
 };
 
 const EXPIRED_RATE_LIMIT_CLEANUP_BATCH_SIZE = 50;
+
+function getTrustedClientAddress(request: Request) {
+  const address = process.env.VERCEL === "1" ? request.headers.get("x-vercel-forwarded-for")?.trim() : null;
+  if (!address || address.includes("%")) return "unknown";
+  const version = isIP(address);
+  if (version === 6) return new URL(`http://[${address}]`).hostname;
+  return version === 4 ? address : "unknown";
+}
 
 async function deleteExpiredRateLimitRows(
   tx: Prisma.TransactionClient,
@@ -54,19 +63,27 @@ export async function consumeAuthRateLimit({
   subject,
   rule,
   now = new Date(),
+  scope = "origin",
 }: {
   request: Request;
   subject: string;
   rule: RateLimitRule;
   now?: Date;
+  scope?: "origin" | "account" | "trusted-origin";
 }) {
-  const keyHash = authHmac(
-    `${rule.action}\0${getClientAddress(request)}\0${subject}`
-  );
+  const address = scope === "account"
+    ? "all"
+    : scope === "trusted-origin"
+      ? getTrustedClientAddress(request)
+      : getClientAddress(request);
+  const keyHash = authHmac(`${rule.action}\0${address}\0${subject}`);
 
   return withSerializableRetry(() =>
     prisma.$transaction(
       async (tx) => {
+        if (scope !== "origin") {
+          await tx.$queryRaw`SELECT 1 AS "locked" FROM pg_advisory_xact_lock(hashtextextended(${keyHash}, 0))`;
+        }
         await deleteExpiredRateLimitRows(tx, now);
         const current = await tx.authRateLimit.findUnique({ where: { keyHash } });
         if (current?.blockedUntil && current.blockedUntil > now) {
@@ -117,7 +134,7 @@ export async function consumeAuthRateLimit({
             : 0,
         };
       },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+      { isolationLevel: scope === "origin" ? Prisma.TransactionIsolationLevel.Serializable : Prisma.TransactionIsolationLevel.ReadCommitted }
     )
   );
 }
@@ -135,3 +152,23 @@ export const AUTH_RATE_LIMITS = {
   resend: { action: "resend", limit: 3, windowMs: 60 * 60_000, blockMs: 60 * 60_000 },
   apple: { action: "apple", limit: 10, windowMs: 15 * 60_000, blockMs: 15 * 60_000 },
 } satisfies Record<string, RateLimitRule>;
+
+const loginBudgets = {
+  admin: { perOrigin: 5, total: 30 },
+  "native-google": { perOrigin: 15, total: 300 },
+} as const;
+
+/** Reserve a slot before authentication work so concurrent requests count too. */
+export async function consumeLoginBudget(request: Request, flow: keyof typeof loginBudgets, now = new Date()) {
+  const { perOrigin, total } = loginBudgets[flow];
+  const interval = { windowMs: 15 * 60_000, blockMs: 15 * 60_000 };
+  const origin = await consumeAuthRateLimit({
+    request, subject: flow, now, scope: "trusted-origin",
+    rule: { action: `${flow}-origin`, limit: perOrigin, ...interval },
+  });
+  if (!origin.allowed) return origin;
+  return consumeAuthRateLimit({
+    request, subject: flow, now, scope: "account",
+    rule: { action: `${flow}-global`, limit: total, ...interval },
+  });
+}

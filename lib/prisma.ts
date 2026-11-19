@@ -1,9 +1,12 @@
+import { createHash } from "node:crypto";
+import { validateDatabaseIdentity } from "@/lib/deployment-identity";
 import { Prisma, PrismaClient } from "@/lib/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 const globalForPrisma = globalThis as typeof globalThis & {
   prisma?: PrismaClient;
   prismaSchemaSignature?: string;
+  prismaConnectionFingerprint?: string;
 };
 
 const prismaSchemaSignature = Object.entries(
@@ -29,10 +32,17 @@ function getDatabaseConnectionString() {
     throw new Error("DATABASE_URL is required to connect to the database.");
   }
 
-  const databaseUrl = new URL(connectionString);
+  let databaseUrl: URL;
+  try {
+    databaseUrl = new URL(connectionString);
+  } catch {
+    throw new Error("Invalid database URL.");
+  }
+  const { hosted } = validateDatabaseIdentity(databaseUrl);
   const sslMode = databaseUrl.searchParams.get("sslmode");
 
   if (
+    hosted ||
     sslMode === "prefer" ||
     sslMode === "require" ||
     sslMode === "verify-ca"
@@ -43,8 +53,11 @@ function getDatabaseConnectionString() {
   return databaseUrl.toString();
 }
 
+const connectionString = getDatabaseConnectionString();
+const connectionFingerprint = createHash("sha256").update(connectionString).digest("hex");
 const cachedPrisma =
-  globalForPrisma.prismaSchemaSignature === prismaSchemaSignature
+  globalForPrisma.prismaSchemaSignature === prismaSchemaSignature &&
+  globalForPrisma.prismaConnectionFingerprint === connectionFingerprint
     ? globalForPrisma.prisma
     : undefined;
 
@@ -52,7 +65,7 @@ export const prisma =
   cachedPrisma ??
   new PrismaClient({
     adapter: new PrismaPg({
-      connectionString: getDatabaseConnectionString(),
+      connectionString,
     }),
   });
 
@@ -63,4 +76,5 @@ if (process.env.NODE_ENV !== "production") {
 
   globalForPrisma.prisma = prisma;
   globalForPrisma.prismaSchemaSignature = prismaSchemaSignature;
+  globalForPrisma.prismaConnectionFingerprint = connectionFingerprint;
 }

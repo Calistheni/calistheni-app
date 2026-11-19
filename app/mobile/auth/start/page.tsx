@@ -10,29 +10,18 @@ export default function NativeAuthStartPage() {
   const [error, setError] = useState<string | null>(null);
 
   async function beginGoogleSignIn() {
-    const params = new URLSearchParams(window.location.search);
-    const attempt = params.get("attempt");
-    const nonce = params.get("nonce");
-    if (!attempt || !nonce) {
-      setError("This sign-in request is invalid or has expired.");
-      return;
-    }
-
     const callbackUrl = new URL(
       NATIVE_AUTH_CALLBACK_PATH,
       window.location.origin
     );
     callbackUrl.pathname = "/api/native-auth/complete";
-    callbackUrl.searchParams.set("attempt", attempt);
-    callbackUrl.searchParams.set("nonce", nonce);
     try {
       await signIn(
         "google",
         { redirectTo: callbackUrl.toString() },
         { prompt: "select_account" }
       );
-    } catch (cause) {
-      console.error("[native-auth] browser Google start failed", cause);
+    } catch {
       setError("Unable to open Google sign-in. Please try again.");
     }
   }

@@ -1,9 +1,11 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { NextResponse } from "next/server";
 import { getSiteUrl } from "@/lib/site-url";
+import { isNativeAuthAttemptId, isNativeAuthCode } from "./native-auth";
 
 export const NATIVE_AUTH_BROWSER_COOKIE = "calistheni.native-auth-attempt";
 export const NATIVE_AUTH_SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
+export const NATIVE_AUTH_HANDOFF_TTL_MS = 5 * 60_000;
 
 export function createNativeAuthSecret() {
   return randomBytes(32).toString("base64url");
@@ -51,12 +53,10 @@ export function clearNativeAuthAttemptCookie(response: NextResponse) {
 
 export function parseNativeAuthAttemptCookie(value?: string) {
   if (!value) return null;
-  const separator = value.indexOf(".");
-  if (separator <= 0 || separator === value.length - 1) return null;
-  return {
-    attemptId: value.slice(0, separator),
-    nonce: value.slice(separator + 1),
-  };
+  const [attemptId, nonce, extra] = value.split(".");
+  return isNativeAuthAttemptId(attemptId) && isNativeAuthCode(nonce) && extra === undefined
+    ? { attemptId, nonce }
+    : null;
 }
 
 export function logNativeAuth(event: string, detail: Record<string, unknown>) {

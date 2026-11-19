@@ -9,6 +9,7 @@ import {
 
 const liveEnvironment = {
   VERCEL_ENV: "production",
+  VERCEL_PROJECT_PRODUCTION_URL: "calistheni.app",
   STRIPE_MODE: "live",
   STRIPE_SECRET_KEY: "sk_live_example",
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: "pk_test_unused",

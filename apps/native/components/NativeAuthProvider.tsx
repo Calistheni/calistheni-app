@@ -31,6 +31,7 @@ import {
 import type { NativeBootstrap } from "@native/lib/types";
 import { getNativeQueryClient } from "@native/lib/query-client";
 import { recordNativeAuth } from "@native/lib/runtime-diagnostics";
+import { nativeClientConfig } from "@native/lib/config";
 
 type AuthState =
   | { status: "initializing" }
@@ -50,14 +51,14 @@ type NativeAuthContextValue = {
 const NativeAuthContext = createContext<NativeAuthContextValue | null>(null);
 const bootstrapCacheKey = "bootstrap";
 
-function nativeCode(value: string) {
+function nativeAttempt(value: string) {
   try {
     const url = new URL(value);
     const validLocation =
       (url.protocol === "calistheni:" && url.hostname === "auth" && url.pathname === "/mobile/callback") ||
-      (url.protocol === "https:" && url.hostname === "calistheni.app" && url.pathname === "/auth/mobile/callback");
-    const code = url.searchParams.get("code");
-    return validLocation && code && /^[A-Za-z0-9_-]{43}$/.test(code) ? code : null;
+      (url.origin === nativeClientConfig.apiOrigin && url.pathname === "/auth/mobile/callback");
+    const attempt = url.searchParams.get("attempt");
+    return validLocation && attempt && /^c[a-z0-9]{24}$/.test(attempt) ? attempt : null;
   } catch { return null; }
 }
 
@@ -66,8 +67,7 @@ export function NativeAuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({ status: "initializing" });
   const [authStage, setAuthStage] = useState("initializing");
   const [authFailure, setAuthFailure] = useState<string | null>(null);
-  const exchangingCodesRef = useRef(new Set<string>());
-  const consumedCodesRef = useRef(new Set<string>());
+  const pendingAuth = useRef<{ attempt: string; code: string; verifier: string } | null>(null);
   const authenticatedUserId = state.status === "authenticated" ? state.bootstrap.user.id : null;
 
   const updateAuthStage = useCallback((stage: string, detail?: string) => {
@@ -146,13 +146,10 @@ export function NativeAuthProvider({ children }: { children: ReactNode }) {
   }, [failAuth, queryClient, updateAuthStage]);
 
   const exchange = useCallback(async (rawUrl: string) => {
-    const code = nativeCode(rawUrl);
-    if (!code) return;
-    if (consumedCodesRef.current.has(code) || exchangingCodesRef.current.has(code)) {
-      recordNativeAuth("callback-duplicate-ignored");
-      return;
-    }
-    exchangingCodesRef.current.add(code);
+    const attempt = nativeAttempt(rawUrl);
+    const proof = pendingAuth.current;
+    if (!attempt || !proof || proof.attempt !== attempt) return;
+    pendingAuth.current = null;
     updateAuthStage("callback-received", rawUrl.startsWith("calistheni:") ? "custom-scheme" : "universal-link");
     await Browser.close().catch(() => undefined);
     try {
@@ -160,7 +157,7 @@ export function NativeAuthProvider({ children }: { children: ReactNode }) {
       const result = await apiFetch<{ token: string }>("/api/native/v1/auth/exchange", {
         method: "POST",
         authenticated: false,
-        body: JSON.stringify({ code }),
+        body: JSON.stringify(proof),
       });
       const previous = await readUserCache<NativeBootstrap>("current", bootstrapCacheKey);
       if (previous) await clearUserCache(previous.user.id);
@@ -169,15 +166,12 @@ export function NativeAuthProvider({ children }: { children: ReactNode }) {
       queryClient.clear();
       updateAuthStage("keychain-write");
       await setNativeSessionToken(result.token);
-      consumedCodesRef.current.add(code);
       updateAuthStage("keychain-write-success");
       setState({ status: "initializing" });
       await bootstrap();
     } catch (error) {
       failAuth(error instanceof NativeApiError ? `exchange-http-${error.status}:${error.code ?? "unknown"}` : "exchange-or-keychain");
       setState({ status: "signed-out", message: error instanceof Error ? error.message : "Sign-in failed." });
-    } finally {
-      exchangingCodesRef.current.delete(code);
     }
   }, [bootstrap, failAuth, queryClient, updateAuthStage]);
 
@@ -251,21 +245,30 @@ export function NativeAuthProvider({ children }: { children: ReactNode }) {
     authStage,
     authFailure,
     async signIn() {
+      pendingAuth.current = null;
       try {
         updateAuthStage("attempt-request");
-        const result = await apiFetch<{ externalAuthUrl: string }>("/api/native/v1/auth/attempt", {
+        const randomBytes = crypto.getRandomValues(new Uint8Array(32));
+        const verifier = btoa(String.fromCharCode(...randomBytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+        const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
+        const verifierChallenge = Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
+        const result = await apiFetch<{ attemptId: string; handoffCode: string; externalAuthUrl: string }>("/api/native/v1/auth/attempt", {
           method: "POST",
           authenticated: false,
-          body: JSON.stringify({ platform: "IOS", redirectTo: "/home" }),
+          body: JSON.stringify({ platform: "IOS", redirectTo: "/home", verifierChallenge }),
         });
         const external = new URL(result.externalAuthUrl);
-        if (external.protocol !== "https:" || external.origin !== "https://calistheni.app") {
+        if (external.origin !== nativeClientConfig.apiOrigin || external.pathname !== "/api/native-auth/browser-start" ||
+            external.searchParams.get("attempt") !== result.attemptId || !/^c[a-z0-9]{24}$/.test(result.attemptId) ||
+            !/^[A-Za-z0-9_-]{43}$/.test(result.handoffCode)) {
           throw new Error("Native authentication returned an unexpected browser origin.");
         }
+        pendingAuth.current = { attempt: result.attemptId, code: result.handoffCode, verifier };
         updateAuthStage("attempt-created");
         await Browser.open({ url: external.toString(), presentationStyle: "fullscreen" });
         updateAuthStage("browser-open");
       } catch (error) {
+        pendingAuth.current = null;
         failAuth(error instanceof NativeApiError ? `attempt-http-${error.status}:${error.code ?? "unknown"}` : "browser-open");
         setState({ status: "signed-out", message: error instanceof Error ? error.message : "Unable to start sign-in." });
       }

@@ -13,13 +13,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid Apple authentication request." }, { status: 403 });
   }
   const body = (await request.json().catch(() => null)) as { intent?: unknown } | null;
-  const intent = body?.intent === "link" ? "link" : body?.intent === "login" ? "login" : null;
-  if (!intent) return NextResponse.json({ error: "Invalid Apple authentication intent." }, { status: 400 });
+  const intent = body?.intent;
+  if (intent !== "login" && intent !== "link" && intent !== "reauth") {
+    return NextResponse.json({ error: "Invalid Apple authentication intent." }, { status: 400 });
+  }
   const limit = await consumeAuthRateLimit({ request, subject: intent, rule: AUTH_RATE_LIMITS.apple });
   if (!limit.allowed) return NextResponse.json({ error: "Too many attempts. Try again later." }, { status: 429 });
 
-  const session = intent === "link" ? await getDatabaseSessionFromRequest(request) : null;
-  if (intent === "link" && (!session || !isRecentAuthentication(session.authenticatedAt))) {
+  const session = intent !== "login" ? await getDatabaseSessionFromRequest(request) : null;
+  if (intent !== "login" && (!session || (intent === "link" && !isRecentAuthentication(session.authenticatedAt)))) {
     return NextResponse.json({ error: "RECENT_AUTH_REQUIRED" }, { status: 403 });
   }
   const state = createAuthSecret();
@@ -34,5 +36,5 @@ export async function POST(request: Request) {
       expiresAt: new Date(Date.now() + 10 * 60 * 1000),
     },
   });
-  return NextResponse.json({ state, nonce });
+  return NextResponse.json({ state, nonce }, { headers: { "Cache-Control": "no-store" } });
 }

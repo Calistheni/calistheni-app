@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 import {
   NATIVE_AUTH_DEFAULT_REDIRECT,
   createNativeAuthCustomSchemeUrl,
+  createNativeAuthProof,
+  isNativeAuthCode,
   isNativeAuthCallbackUrl,
   isNativeAuthPlatform,
   parseNativeAuthCallbackUrl,
@@ -22,27 +25,35 @@ test("native handoff accepts only supported platforms and its verified callback 
   assert.equal(isNativeAuthPlatform("ANDROID"), true);
   assert.equal(isNativeAuthPlatform("web"), false);
   assert.equal(
-    isNativeAuthCallbackUrl("https://calistheni.app/auth/mobile/callback?code=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ"),
+    isNativeAuthCallbackUrl("https://calistheni.app/auth/mobile/callback?attempt=c123456789012345678901234"),
     true
   );
   assert.equal(
-    isNativeAuthCallbackUrl("https://example.com/auth/mobile/callback?code=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ"),
+    isNativeAuthCallbackUrl("https://example.com/auth/mobile/callback?attempt=c123456789012345678901234"),
     false
   );
   assert.equal(
-    isNativeAuthCallbackUrl("http://calistheni.app/auth/mobile/callback?code=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ"),
+    isNativeAuthCallbackUrl("http://calistheni.app/auth/mobile/callback?attempt=c123456789012345678901234"),
     false
   );
   assert.equal(isNativeAuthCallbackUrl("https://calistheni.app/auth/mobile/callback"), false);
 
-  const code = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ";
-  const https = parseNativeAuthCallbackUrl(`https://calistheni.app/auth/mobile/callback?code=${code}`);
-  const scheme = parseNativeAuthCallbackUrl(`calistheni://auth/mobile/callback?code=${code}`);
-  assert.deepEqual(https, { code });
+  const attempt = "c123456789012345678901234";
+  const https = parseNativeAuthCallbackUrl(`https://calistheni.app/auth/mobile/callback?attempt=${attempt}`);
+  const scheme = parseNativeAuthCallbackUrl(`calistheni://auth/mobile/callback?attempt=${attempt}`);
+  assert.deepEqual(https, { attempt });
   assert.deepEqual(scheme, https);
-  assert.equal(createNativeAuthCustomSchemeUrl(code), `calistheni://auth/mobile/callback?code=${code}`);
-  assert.equal(parseNativeAuthCallbackUrl(`calistheni://wrong/mobile/callback?code=${code}`), null);
-  assert.equal(parseNativeAuthCallbackUrl(`calistheni://auth/wrong?code=${code}`), null);
-  assert.equal(parseNativeAuthCallbackUrl(`other://auth/mobile/callback?code=${code}`), null);
+  assert.equal(createNativeAuthCustomSchemeUrl(attempt), `calistheni://auth/mobile/callback?attempt=${attempt}`);
+  assert.equal(parseNativeAuthCallbackUrl(`calistheni://wrong/mobile/callback?attempt=${attempt}`), null);
+  assert.equal(parseNativeAuthCallbackUrl(`calistheni://auth/wrong?attempt=${attempt}`), null);
+  assert.equal(parseNativeAuthCallbackUrl(`other://auth/mobile/callback?attempt=${attempt}`), null);
   assert.equal(parseNativeAuthCallbackUrl("calistheni://auth/mobile/callback"), null);
+});
+
+test("each native sign-in generates a fresh verifier and compatible SHA-256 challenge", async () => {
+  const first = await createNativeAuthProof();
+  const second = await createNativeAuthProof();
+  assert.ok(isNativeAuthCode(first.verifier));
+  assert.notEqual(first.verifier, second.verifier);
+  assert.equal(first.verifierChallenge, createHash("sha256").update(first.verifier).digest("hex"));
 });

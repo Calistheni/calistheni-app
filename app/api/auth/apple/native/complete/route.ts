@@ -87,14 +87,15 @@ export async function POST(request: Request) {
     if (exchangedSubject !== identity.subject) throw new Error("APPLE_IDENTITY_MISMATCH");
 
     currentStage = "account_resolution";
-    let linkSession = null;
-    if (attempt.intent === "link") {
-      linkSession = await getDatabaseSessionFromRequest(request);
+    const initiatingSession = attempt.intent === "link" || attempt.intent === "reauth"
+      ? await getDatabaseSessionFromRequest(request)
+      : null;
+    if (attempt.intent !== "login") {
       if (
-        !linkSession ||
-        linkSession.userId !== attempt.userId ||
-        linkSession.sessionTokenHash !== attempt.sessionTokenHash ||
-        !isRecentAuthentication(linkSession.authenticatedAt, now)
+        !initiatingSession ||
+        initiatingSession.userId !== attempt.userId ||
+        initiatingSession.sessionTokenHash !== attempt.sessionTokenHash ||
+        (attempt.intent === "link" && !isRecentAuthentication(initiatingSession.authenticatedAt, now))
       ) {
         return NextResponse.json({ error: "RECENT_AUTH_REQUIRED" }, { status: 403 });
       }
@@ -104,6 +105,9 @@ export async function POST(request: Request) {
       where: { provider_providerAccountId: { provider: "apple", providerAccountId: identity.subject } },
       select: { userId: true },
     });
+    if (attempt.intent === "reauth" && existingAccount?.userId !== initiatingSession?.userId) {
+      throw new Error("APPLE_IDENTITY_MISMATCH");
+    }
     const existingAuthorization = existingAccount
       ? await prisma.appleAuthorization.findUnique({
           where: { userId: existingAccount.userId },
@@ -144,6 +148,20 @@ export async function POST(request: Request) {
           data: { consumedAt: now },
         });
         if (consumed.count !== 1) throw new Error("APPLE_ATTEMPT_REPLAYED");
+
+        if (attempt.intent === "reauth" && initiatingSession) {
+          const refreshedAt = new Date();
+          const refreshed = await tx.session.updateMany({
+            where: {
+              sessionToken: initiatingSession.sessionToken,
+              userId: initiatingSession.userId,
+              purpose: "APPLICATION",
+              expires: { gt: refreshedAt },
+            },
+            data: { authenticatedAt: refreshedAt },
+          });
+          if (refreshed.count !== 1) throw new Error("APPLE_IDENTITY_MISMATCH");
+        }
 
         if (existingAccount) {
           if (encrypted) {
@@ -208,6 +226,7 @@ export async function POST(request: Request) {
     );
 
     if (attempt.intent === "link") return NextResponse.json({ ok: true, linked: true });
+    if (attempt.intent === "reauth") return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
     currentStage = "session_creation";
     const sessionToken = await createDatabaseSession(userId, now, "apple");
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { onboardingCompleted: true } });

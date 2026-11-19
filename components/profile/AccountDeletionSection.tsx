@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { signIn, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Browser } from "@capacitor/browser";
+import { openNativeGoogleAuth } from "@/lib/native/google-handoff";
 import { AlertTriangle, Apple, Check, Loader2, Shield, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ManageSubscriptionButton } from "@/components/billing/ManageSubscriptionButton";
@@ -28,7 +29,7 @@ import {
   getAppleSignInErrorMessage,
 } from "@/lib/native/apple-auth-core";
 import { clearNativeSessionToken } from "@/lib/native/native-session-enrollment";
-import { isNativeApp, getNativePlatform } from "@/lib/native/platform";
+import { isNativeApp } from "@/lib/native/platform";
 import { canUseAppleStoreKit, showAppleSubscriptionManagement } from "@/lib/native/apple-storekit";
 
 const APPLE_SUBSCRIPTIONS_URL = "https://apps.apple.com/account/subscriptions";
@@ -111,31 +112,17 @@ export function AccountDeletionSection({ hasWebsiteSubscription }: { hasWebsiteS
     setBusy(true);
     try {
       if (provider === "apple" && canUseNativeAppleAuth()) {
-        const outcome = await performNativeAppleAuth("login");
+        const outcome = await performNativeAppleAuth("reauth");
         if (outcome.status === "cancelled") return;
-        window.location.assign(
-          outcome.result.redirectTo ?? "/profile?accountDeletionReauth=1"
-        );
+        const updated = await refreshStatus();
+        if (updated?.recentAuthentication) toast.success("Your identity is verified for the next 10 minutes.");
         return;
       }
       if (provider === "apple" && isNativeApp()) {
         throw new Error("Native Apple reauthentication is unavailable in this app version. Use another connected sign-in method, such as Google or your verified password.");
       }
       if (provider === "google" && isNativeApp()) {
-        const response = await fetch("/api/native-auth/attempt", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            platform: getNativePlatform() === "ios" ? "IOS" : "ANDROID",
-            intent: "login",
-            redirectTo: "/profile?accountDeletionReauth=1",
-          }),
-        });
-        const result = await response.json() as { externalAuthUrl?: string; error?: string };
-        if (!response.ok || !result.externalAuthUrl) throw new Error("Unable to start Google reauthentication.");
-        await Browser.open({ url: result.externalAuthUrl, presentationStyle: "fullscreen" });
-        setBusy(false);
+        await openNativeGoogleAuth("reauth", "/profile?accountDeletionReauth=1");
         return;
       }
       await signIn(provider, { redirectTo: "/profile?accountDeletionReauth=1" }, provider === "google" ? { prompt: "select_account" } : undefined);

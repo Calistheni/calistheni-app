@@ -67,7 +67,7 @@ async function request(
 }
 
 export async function performNativeAppleAuthFlow(
-  intent: "login" | "link",
+  intent: "login" | "link" | "reauth",
   dependencies: NativeAppleAuthDependencies
 ): Promise<NativeAppleAuthOutcome> {
   const start = await request(dependencies.fetch, "/api/auth/apple/native/start", {

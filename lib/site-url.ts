@@ -1,25 +1,18 @@
+import { resolveDeploymentIdentity } from "./deployment-identity.ts";
+
 type SiteUrlEnvironment = Record<string, string | undefined>;
 
 const PRODUCTION_URL = "https://calistheni.app";
+const LOCAL_URL = "http://localhost:3000";
 
 function origin(value: string) {
   return new URL(value.startsWith("http") ? value : `https://${value}`).origin;
 }
 
 export function getSiteUrl(environment: SiteUrlEnvironment = process.env) {
-  const deploymentTarget = environment.CALISTHENI_DEPLOYMENT_TARGET?.trim();
+  const { target, stable } = resolveDeploymentIdentity(environment);
 
-  if (
-    deploymentTarget &&
-    deploymentTarget !== "production" &&
-    deploymentTarget !== "staging"
-  ) {
-    throw new Error(
-      "CALISTHENI_DEPLOYMENT_TARGET must be production or staging."
-    );
-  }
-
-  if (deploymentTarget === "staging") {
+  if (target === "staging") {
     const publicUrl = environment.NEXT_PUBLIC_SITE_URL?.trim();
     const authUrl = environment.AUTH_URL?.trim();
     if (!publicUrl || !authUrl) {
@@ -37,16 +30,16 @@ export function getSiteUrl(environment: SiteUrlEnvironment = process.env) {
     if (publicOrigin === PRODUCTION_URL) {
       throw new Error("Staging must not use the Calistheni production origin.");
     }
+    if (stable && publicOrigin !== "https://calistheni-staging.vercel.app") {
+      throw new Error("Hosted staging must use the Calistheni staging origin.");
+    }
     if (!publicOrigin.startsWith("https://")) {
       throw new Error("Staging URLs must use HTTPS.");
     }
     return publicOrigin;
   }
 
-  if (
-    deploymentTarget === "production" ||
-    environment.VERCEL_ENV === "production"
-  ) {
+  if (target === "production" && stable) {
     for (const [name, value] of [
       ["NEXT_PUBLIC_SITE_URL", environment.NEXT_PUBLIC_SITE_URL],
       ["AUTH_URL", environment.AUTH_URL],
@@ -61,14 +54,17 @@ export function getSiteUrl(environment: SiteUrlEnvironment = process.env) {
     return PRODUCTION_URL;
   }
 
+  if (target === "production") {
+    if (!environment.VERCEL_URL) throw new Error("Preview deployment URL is required.");
+    return origin(environment.VERCEL_URL);
+  }
+
   const configuredUrl =
     environment.NEXT_PUBLIC_SITE_URL ||
-    environment.AUTH_URL ||
-    environment.VERCEL_PROJECT_PRODUCTION_URL ||
-    environment.VERCEL_URL;
+    environment.AUTH_URL;
 
   if (!configuredUrl) {
-    return PRODUCTION_URL;
+    return LOCAL_URL;
   }
 
   return configuredUrl.startsWith("http")

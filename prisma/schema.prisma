@@ -263,6 +263,8 @@ enum NativeAuthPlatform {
 enum NativeAuthIntent {
   LOGIN
   LINK
+  REAUTH
+  BEARER_LOGIN
 }
 
 enum SessionPurpose {
@@ -1000,6 +1002,8 @@ model NativeAuthAttempt {
   intent           NativeAuthIntent   @default(LOGIN)
   nonceHash        String
   handoffCodeHash  String?            @unique
+  verifierChallenge String?
+  initiatingSessionHash String?
   redirectPath     String             @default("/home")
   expiresAt        DateTime
   browserStartedAt DateTime?

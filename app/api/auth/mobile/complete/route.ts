@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
-  NATIVE_AUTH_COMPLETION_PATH,
+  isNativeAuthAttemptId,
   isNativeAuthCode,
   sanitizeNativeRedirectPath,
 } from "@/lib/auth/native-auth";
@@ -14,7 +14,7 @@ import {
   logNativeAuth,
   NATIVE_AUTH_SESSION_MAX_AGE_SECONDS,
 } from "@/lib/auth/native-auth-server";
-import { getSiteUrl } from "@/lib/site-url";
+import { assertTrustedAuthOrigin } from "@/lib/auth/security";
 import { getDatabaseSessionFromRequest, isRecentAuthentication } from "@/lib/auth/database-session";
 
 export const runtime = "nodejs";
@@ -26,39 +26,38 @@ const SENSITIVE_HEADERS = {
   "X-Robots-Tag": "noindex, nofollow",
 };
 
-function failedCompletion(reason: "expired" | "invalid") {
-  const url = new URL("/login", getSiteUrl());
-  url.searchParams.set("nativeAuthError", reason);
-  return NextResponse.redirect(url, { headers: SENSITIVE_HEADERS });
+function failedCompletion(status: number) {
+  return NextResponse.json({ error: "Unable to finish Google sign-in." }, { status, headers: SENSITIVE_HEADERS });
 }
 
-/**
- * Consumes the opaque browser handoff in the WKWebView.  The transaction's
- * conditional update is the state transition: concurrent requests cannot both
- * create an Auth.js database session.
- */
-export async function GET(request: Request) {
-  const url = new URL(request.url);
-  const code = url.searchParams.get("code");
-  if (!isNativeAuthCode(code)) return failedCompletion("invalid");
+export async function POST(request: Request) {
+  try {
+    assertTrustedAuthOrigin(request);
+  } catch {
+    return failedCompletion(403);
+  }
+  const body = await request.json().catch(() => null);
+  const { attempt, code, verifier } = body ?? {};
+  if (!isNativeAuthAttemptId(attempt) || !isNativeAuthCode(code) || !isNativeAuthCode(verifier)) {
+    return failedCompletion(400);
+  }
 
   const now = new Date();
   const sessionToken = createNativeAuthSecret();
   const initiatingSession = await getDatabaseSessionFromRequest(request);
   const handoff = await prisma.$transaction(async (tx) => {
-    // Opportunistic bounded cleanup; it is never needed for correctness.
-    await tx.nativeAuthAttempt.deleteMany({
-      where: { OR: [{ expiresAt: { lt: now } }, { consumedAt: { not: null } }] },
-    });
-
     const candidate = await tx.nativeAuthAttempt.findFirst({
       where: {
+        id: attempt,
+        intent: { in: ["LOGIN", "LINK", "REAUTH"] },
+        handoffIssuedAt: { not: null },
+        verifierChallenge: hashNativeAuthSecret(verifier),
         handoffCodeHash: hashNativeAuthSecret(code),
         expiresAt: { gt: now },
         consumedAt: null,
         userId: { not: null },
       },
-      select: { id: true, userId: true, redirectPath: true, intent: true },
+      select: { id: true, userId: true, redirectPath: true, intent: true, initiatingSessionHash: true },
     });
     if (!candidate?.userId) return null;
 
@@ -69,14 +68,20 @@ export async function GET(request: Request) {
     `;
     if (!activeUser.length) return null;
 
-    if (candidate.intent === "LINK") {
-      if (
-        !initiatingSession ||
-        initiatingSession.userId !== candidate.userId ||
-        !isRecentAuthentication(initiatingSession.authenticatedAt, now)
-      ) {
-        return null;
-      }
+    if (candidate.intent !== "LOGIN") {
+      if (!initiatingSession || initiatingSession.userId !== candidate.userId ||
+          initiatingSession.sessionTokenHash !== candidate.initiatingSessionHash) return null;
+    }
+
+    let pendingLink: Prisma.AccountUncheckedCreateInput | undefined;
+    if (candidate.intent === "LINK" && initiatingSession) {
+      const [currentSession] = await tx.$queryRaw<Array<{ authenticatedAt: Date | null }>>`
+        SELECT "authenticatedAt" FROM "Session"
+        WHERE "sessionToken" = ${initiatingSession.sessionToken} AND "userId" = ${candidate.userId}
+          AND "purpose" = 'APPLICATION' AND "expires" > ${now}
+        FOR UPDATE
+      `;
+      if (!currentSession || !isRecentAuthentication(currentSession.authenticatedAt, now)) return null;
       await tx.$queryRaw`SELECT 1 AS "locked" FROM pg_advisory_xact_lock(hashtextextended(${candidate.userId}, 0))`;
       const intent = await tx.authLinkIntent.findUnique({
         where: { nativeAuthAttemptId: candidate.id },
@@ -108,16 +113,14 @@ export async function GET(request: Request) {
       });
       if (currentGoogle && currentGoogle.providerAccountId !== intent.pendingProviderAccountId) return null;
       if (!providerOwner) {
-        await tx.account.create({
-          data: {
-            userId: candidate.userId,
-            provider: "google",
-            providerAccountId: intent.pendingProviderAccountId,
-            type: intent.pendingAccountType,
-            expires_at: intent.pendingExpiresAt,
-            scope: intent.pendingScope,
-          },
-        });
+        pendingLink = {
+          userId: candidate.userId,
+          provider: "google",
+          providerAccountId: intent.pendingProviderAccountId,
+          type: intent.pendingAccountType,
+          expires_at: intent.pendingExpiresAt,
+          scope: intent.pendingScope,
+        };
       }
     }
 
@@ -126,6 +129,20 @@ export async function GET(request: Request) {
       data: { consumedAt: now },
     });
     if (consumed.count !== 1) return null;
+    if (pendingLink) await tx.account.create({ data: pendingLink });
+
+    if (candidate.intent === "REAUTH") {
+      const refreshed = await tx.session.updateMany({
+        where: {
+          userId: candidate.userId,
+          sessionToken: initiatingSession!.sessionToken,
+          expires: { gt: now },
+          purpose: "APPLICATION",
+        },
+        data: { authenticatedAt: now },
+      });
+      if (refreshed.count !== 1) throw new Error("Initiating session is no longer active.");
+    }
 
     if (candidate.intent === "LOGIN") {
       await tx.session.create({
@@ -140,17 +157,11 @@ export async function GET(request: Request) {
       });
     }
     return candidate;
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }).catch(() => null);
 
-  if (!handoff) {
-    logNativeAuth("completion_rejected", { completionPath: NATIVE_AUTH_COMPLETION_PATH });
-    return failedCompletion("expired");
-  }
+  if (!handoff) return failedCompletion(401);
 
-  const response = NextResponse.redirect(
-    new URL(sanitizeNativeRedirectPath(handoff.redirectPath), getSiteUrl()),
-    { headers: SENSITIVE_HEADERS }
-  );
+  const response = NextResponse.json({ redirectTo: sanitizeNativeRedirectPath(handoff.redirectPath) }, { headers: SENSITIVE_HEADERS });
   if (handoff.intent === "LOGIN") {
     response.cookies.set(
       getAuthSessionCookieName(),
@@ -158,6 +169,6 @@ export async function GET(request: Request) {
       getNativeAuthCookieOptions(NATIVE_AUTH_SESSION_MAX_AGE_SECONDS)
     );
   }
-  logNativeAuth("completion_succeeded", { attemptId: handoff.id, userId: handoff.userId });
+  logNativeAuth("completion_succeeded", { intent: handoff.intent });
   return response;
 }

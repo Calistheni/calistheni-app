@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import sharp from "sharp";
 import test from "node:test";
+import nextConfig from "../next.config.ts";
+import { hasLocalMatch } from "next/dist/shared/lib/match-local-pattern";
 import { sanitizeParkPhotoImage } from "@/lib/park-photo-image";
 import { sanitizeWorkoutPhotoImage } from "@/lib/workout-photo-image";
 
@@ -76,4 +78,11 @@ test("photo verification keeps exact coordinates for authorized review, outside 
   assert.equal(stored[0].photoLatitude, 42.6977);
   assert.doesNotMatch(publicParks, /photoLocationVerifications|gpsVerification/);
   assert.doesNotMatch(api, /photoLocationVerifications|gpsVerification/);
+});
+test("Next image optimization is limited to public local assets", () => {
+  const patterns = nextConfig.images?.localPatterns;
+  assert.ok(patterns);
+  assert.equal(hasLocalMatch(patterns, "/icons/icon.png"), true);
+  assert.equal(hasLocalMatch(patterns, "/api/workouts/42/photos/test"), false);
+  assert.equal(hasLocalMatch(patterns, "/icons/../api/workouts/42/photos/test"), false);
 });

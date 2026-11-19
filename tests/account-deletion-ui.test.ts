@@ -42,8 +42,9 @@ test("reauthentication state comes from the server and native logout clears the 
   assert.match(component, /\/api\/auth\/accounts/);
   assert.match(component, /status\?\.recentAuthentication/);
   assert.match(component, /\/api\/auth\/password\/manage/);
-  assert.match(component, /performNativeAppleAuth\("login"\)/);
-  assert.match(component, /\/api\/native-auth\/attempt/);
+  assert.match(component, /performNativeAppleAuth\("reauth"\)/);
+  assert.match(component, /openNativeGoogleAuth\("reauth",/);
+  assert.match(read("../lib/native/google-handoff.ts"), /\/api\/native-auth\/attempt/);
   assert.match(component, /clearNativeSessionToken\(\)/);
   assert.match(enrollment, /SecureSession\.clearSessionToken\(\)/);
   assert.match(component, /router\.replace\("\/account-deleted"\)/);

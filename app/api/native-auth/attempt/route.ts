@@ -1,15 +1,11 @@
+import { consumeLoginBudget } from "@/lib/auth/rate-limit";
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import {
-  NATIVE_AUTH_ATTEMPT_TTL_MS,
   isNativeAuthPlatform,
-  sanitizeNativeRedirectPath,
+  isNativeAuthVerifierChallenge,
 } from "@/lib/auth/native-auth";
-import {
-  createNativeAuthSecret,
-  hashNativeAuthSecret,
-  logNativeAuth,
-} from "@/lib/auth/native-auth-server";
+import { logNativeAuth } from "@/lib/auth/native-auth-server";
+import { createNativeGoogleAttempt } from "@/lib/auth/native-auth-attempt";
 import { getSiteUrl } from "@/lib/site-url";
 import { getDatabaseSessionFromRequest, isRecentAuthentication } from "@/lib/auth/database-session";
 
@@ -17,7 +13,7 @@ export const runtime = "nodejs";
 
 function hasTrustedOrigin(request: Request) {
   const origin = request.headers.get("origin");
-  return !origin || origin === new URL(getSiteUrl()).origin;
+  return origin === new URL(getSiteUrl()).origin;
 }
 
 export async function POST(request: Request) {
@@ -31,10 +27,8 @@ export async function POST(request: Request) {
     );
   }
 
-  let body: { platform?: unknown; redirectTo?: unknown; intent?: unknown };
-  try {
-    body = await request.json();
-  } catch {
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== "object") {
     return NextResponse.json(
       {
         error: "Invalid native authentication request.",
@@ -53,7 +47,7 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-  if (body.intent !== "login" && body.intent !== "link") {
+  if (body.intent !== "login" && body.intent !== "link" && body.intent !== "reauth") {
     return NextResponse.json(
       {
         error: "Unsupported native authentication intent.",
@@ -62,47 +56,49 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
+  if (!isNativeAuthVerifierChallenge(body.verifierChallenge)) {
+    return NextResponse.json({ error: "Invalid native authentication request." }, { status: 400 });
+  }
+  try {
+    const budget = await consumeLoginBudget(request, "native-google");
+    if (!budget.allowed) return NextResponse.json({ error: "Too many attempts. Try again later." }, {
+      status: 429, headers: { "Retry-After": String(budget.retryAfterSeconds) },
+    });
+  } catch {
+    return NextResponse.json({ error: "Sign-in is temporarily unavailable." }, { status: 503 });
+  }
+  const verifierChallenge = body.verifierChallenge;
   const platform = body.platform;
-  const linkingSession = body.intent === "link" ? await getDatabaseSessionFromRequest(request) : null;
-  if (body.intent === "link" && (!linkingSession || !isRecentAuthentication(linkingSession.authenticatedAt))) {
+  const linkingSession = body.intent !== "login" ? await getDatabaseSessionFromRequest(request) : null;
+  if (body.intent !== "login" && (!linkingSession ||
+    (body.intent === "link" && !isRecentAuthentication(linkingSession.authenticatedAt)))) {
     return NextResponse.json(
       { error: "Sign in again before connecting Google.", code: "RECENT_AUTH_REQUIRED" },
       { status: 403 }
     );
   }
 
-  const now = new Date();
-  const nonce = createNativeAuthSecret();
-  const attempt = await prisma.$transaction(async (tx) => {
-    await tx.nativeAuthAttempt.deleteMany({
-      where: { expiresAt: { lt: now } },
-    });
-    return tx.nativeAuthAttempt.create({
-      data: {
-        platform,
-        intent: body.intent === "link" ? "LINK" : "LOGIN",
-        userId: linkingSession?.userId,
-        nonceHash: hashNativeAuthSecret(nonce),
-        redirectPath: sanitizeNativeRedirectPath(body.redirectTo),
-        expiresAt: new Date(now.getTime() + NATIVE_AUTH_ATTEMPT_TTL_MS),
-      },
-      select: { id: true },
-    });
+  const { attemptId, handoffCode } = await createNativeGoogleAttempt({
+    platform,
+    intent: body.intent === "link" ? "LINK" : body.intent === "reauth" ? "REAUTH" : "LOGIN",
+    userId: linkingSession?.userId,
+    verifierChallenge,
+    initiatingSessionHash: linkingSession?.sessionTokenHash,
+    redirectTo: body.redirectTo,
   });
 
   const startUrl = new URL("/api/native-auth/browser-start", getSiteUrl());
-  startUrl.searchParams.set("attempt", attempt.id);
-  startUrl.searchParams.set("nonce", nonce);
+  startUrl.searchParams.set("attempt", attemptId);
   startUrl.searchParams.set("intent", body.intent);
 
   logNativeAuth("attempt_created", {
-    attemptId: attempt.id,
     platform,
     intent: body.intent,
   });
 
   return NextResponse.json({
-    attemptId: attempt.id,
+    attemptId,
+    handoffCode,
     externalAuthUrl: startUrl.toString(),
-  });
+  }, { headers: { "Cache-Control": "no-store" } });
 }

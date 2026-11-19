@@ -4,9 +4,12 @@ import Apple from "next-auth/providers/apple";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import type { Adapter, AdapterAccount } from "next-auth/adapters";
 import type { NextRequest } from "next/server";
+import { getSiteUrl } from "@/lib/site-url";
 import { prisma } from "@/lib/prisma";
 import { AUTH_LINK_COOKIE, consumeOAuthLinkIntent, stageNativeOAuthLink } from "@/lib/auth/account-linking";
 import { markCurrentSessionRecentlyAuthenticated } from "@/lib/auth/database-session";
+import { NATIVE_AUTH_BROWSER_COOKIE, parseNativeAuthAttemptCookie, hashNativeAuthSecret } from "@/lib/auth/native-auth-server";
+import { issueNativeGoogleReauthentication } from "@/lib/auth/native-google-reauth";
 import { encryptAuthToken } from "@/lib/auth/security";
 import { currentAuthCallbackProvider, runInAuthRequestContext } from "@/lib/auth/auth-request-context";
 
@@ -139,6 +142,33 @@ const nextAuth = NextAuth({
         },
         select: { userId: true },
       });
+      const cookieStore = await import("next/headers").then(({ cookies }) => cookies());
+      const callbackUrl = cookieStore.get("__Secure-authjs.callback-url")?.value
+        ?? cookieStore.get("authjs.callback-url")?.value;
+      const siteUrl = getSiteUrl();
+      const destination = callbackUrl && URL.canParse(callbackUrl, siteUrl) ? new URL(callbackUrl, siteUrl) : null;
+      const isDeletionReauth = destination?.pathname === "/profile" &&
+        destination.searchParams.get("accountDeletionReauth") === "1";
+      if (account.provider === "google" && currentAuthCallbackProvider() === "google") {
+        const browserAttempt = parseNativeAuthAttemptCookie(cookieStore.get(NATIVE_AUTH_BROWSER_COOKIE)?.value);
+        if (callbackUrl === new URL("/api/native-auth/complete", siteUrl).toString()) {
+          if (!browserAttempt) return false;
+          const attempt = await prisma.nativeAuthAttempt.findFirst({
+            where: {
+              id: browserAttempt.attemptId, nonceHash: hashNativeAuthSecret(browserAttempt.nonce),
+              expiresAt: { gt: new Date() }, consumedAt: null, handoffIssuedAt: null,
+              browserStartedAt: { not: null }, verifierChallenge: { not: null },
+            },
+            select: { intent: true },
+          });
+          if (!attempt) return false;
+          if (attempt.intent === "REAUTH") {
+            const issued = await issueNativeGoogleReauthentication(browserAttempt.attemptId, browserAttempt.nonce, account.providerAccountId);
+            // Returning a redirect from Auth.js signIn skips creation of a browser session.
+            return issued ? callbackUrl : false;
+          }
+        }
+      }
       if (linked) {
         const owner = await prisma.user.findUnique({
           where: { id: linked.userId },
@@ -190,15 +220,16 @@ const nextAuth = NextAuth({
         });
         if (!reauthorized) return false;
       }
-      const cookieStore = await import("next/headers").then(({ cookies }) => cookies());
       const sessionCookie =
         cookieStore.get("__Secure-authjs.session-token") ??
         cookieStore.get("authjs.session-token");
-      if (!sessionCookie) return !cookieStore.get(AUTH_LINK_COOKIE);
+      if (!sessionCookie) return !isDeletionReauth && !cookieStore.get(AUTH_LINK_COOKIE);
       const session = await prisma.session.findFirst({
         where: { sessionToken: sessionCookie.value, expires: { gt: new Date() } },
         select: { userId: true, purpose: true, user: { select: { deletedAt: true } } },
       });
+      if (isDeletionReauth) return session?.purpose === "APPLICATION" &&
+        !session.user.deletedAt && linked?.userId === session.userId;
       if (!session) return !cookieStore.get(AUTH_LINK_COOKIE);
       if (session.user.deletedAt) return false;
       if (session.purpose === "OAUTH_LINK") {

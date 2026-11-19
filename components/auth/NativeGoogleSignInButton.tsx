@@ -5,9 +5,10 @@ import { App } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
 import { signIn } from "next-auth/react";
 import { Loader2 } from "lucide-react";
+import { openNativeGoogleAuth } from "@/lib/native/google-handoff";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { getNativePlatform, isNativeApp } from "@/lib/native/platform";
+import { isNativeApp } from "@/lib/native/platform";
 import { sanitizeNativeRedirectPath } from "@/lib/auth/native-auth";
 
 type NativeGoogleSignInButtonProps = {
@@ -74,31 +75,7 @@ export function NativeGoogleSignInButton({
         return;
       }
 
-      const platform = getNativePlatform() === "ios" ? "IOS" : "ANDROID";
-      const response = await fetch("/api/native-auth/attempt", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          platform,
-          intent: "login",
-          redirectTo: callbackUrl
-            ? sanitizeNativeRedirectPath(callbackUrl)
-            : "/home",
-        }),
-      });
-      const payload = (await response.json()) as {
-        externalAuthUrl?: string;
-        error?: string;
-      };
-      if (!response.ok || !payload.externalAuthUrl) {
-        throw new Error(payload.error ?? "Unable to start Google sign-in.");
-      }
-
-      await Browser.open({
-        url: payload.externalAuthUrl,
-        presentationStyle: "fullscreen",
-      });
+      await openNativeGoogleAuth("login", callbackUrl ? sanitizeNativeRedirectPath(callbackUrl) : "/home");
       // Browser.open resolving means its sheet was presented, not that OAuth succeeded.
       window.setTimeout(() => setIsSubmitting(false), 5 * 60 * 1000);
     } catch (error) {

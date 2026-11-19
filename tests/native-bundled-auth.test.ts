@@ -125,10 +125,12 @@ test("native API client preserves caller options and never patches global fetch"
   assert.doesNotMatch(source, /globalThis\.fetch|window\.fetch\s*=/);
 });
 
-test("bundled login starts the production HTTPS browser flow without navigating the WebView", () => {
+test("bundled login starts a verifier-bound browser flow at the configured origin", () => {
   const provider = read("apps/native/components/NativeAuthProvider.tsx");
-  assert.match(provider, /apiFetch<\{ externalAuthUrl: string \}>\("\/api\/native\/v1\/auth\/attempt"/);
-  assert.match(provider, /external\.protocol !== "https:" \|\| external\.origin !== "https:\/\/calistheni\.app"/);
+  assert.match(provider, /apiFetch<[^>]*externalAuthUrl: string[^>]*>\("\/api\/native\/v1\/auth\/attempt"/);
+  assert.match(provider, /external\.origin !== nativeClientConfig\.apiOrigin/);
+  assert.match(provider, /crypto\.getRandomValues\(new Uint8Array\(32\)\)/);
+  assert.match(provider, /JSON\.stringify\(\{ platform: "IOS", redirectTo: "\/home", verifierChallenge \}\)/);
   assert.match(provider, /Browser\.open\(\{ url: external\.toString\(\), presentationStyle: "fullscreen" \}\)/);
   assert.doesNotMatch(provider, /window\.location\.(?:assign|replace)|window\.location\.href\s*=/);
 });
@@ -137,10 +139,9 @@ test("warm and cold native callbacks share one replay-safe exchange owner", () =
   const provider = read("apps/native/components/NativeAuthProvider.tsx");
   assert.match(provider, /App\.getLaunchUrl\(\)/);
   assert.match(provider, /App\.addListener\("appUrlOpen"/);
-  assert.match(provider, /exchangingCodesRef = useRef\(new Set<string>\(\)\)/);
-  assert.match(provider, /consumedCodesRef = useRef\(new Set<string>\(\)\)/);
-  assert.match(provider, /consumedCodesRef\.current\.has\(code\) \|\| exchangingCodesRef\.current\.has\(code\)/);
-  assert.match(provider, /callback-duplicate-ignored/);
+  assert.match(provider, /proof\.attempt !== attempt\) return;\s*pendingAuth\.current = null;/);
+  assert.match(provider, /body: JSON\.stringify\(proof\)/);
+  assert.doesNotMatch(provider, /searchParams\.get\("(?:code|verifier)"\)/);
   assert.match(provider, /setNativeSessionToken\(result\.token\)/);
   assert.ok(provider.indexOf("setNativeSessionToken(result.token)") < provider.indexOf("await bootstrap()"));
 });

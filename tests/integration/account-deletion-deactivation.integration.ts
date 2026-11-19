@@ -250,20 +250,24 @@ test(
       );
       assert.equal(deletedPasswordReset.status, 400);
 
+      const code = "c".repeat(43);
+      const verifier = "v".repeat(43);
       const staleNativeAttempt = await prisma.nativeAuthAttempt.create({
         data: {
           platform: "IOS",
           userId: user.id,
           nonceHash: hashNativeAuthSecret(`late-native-nonce-${suffix}`),
-          handoffCodeHash: hashNativeAuthSecret(`late-native-code-${suffix}`),
+          handoffCodeHash: hashNativeAuthSecret(code),
+          verifierChallenge: hashNativeAuthSecret(verifier),
+          handoffIssuedAt: new Date(),
           expiresAt: validUntil,
         },
       });
       const handoff = await exchangeNativeHandoff(
         new Request("http://localhost:3000/api/native-auth/exchange", {
           method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ attempt: staleNativeAttempt.id, code: `late-native-code-${suffix}` }),
+          headers: { "content-type": "application/json", origin: "http://localhost:3000" },
+          body: JSON.stringify({ attempt: staleNativeAttempt.id, code, verifier }),
         })
       );
       assert.equal(handoff.status, 401, "a delayed native handoff cannot restore access");

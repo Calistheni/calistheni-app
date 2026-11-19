@@ -1,19 +1,34 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
-import { communityUserWhereForViewer } from "@/lib/moderation";
 import { parsePositiveInteger } from "@/lib/api-response";
+import { getDatabaseSessionFromRequest } from "@/lib/auth/database-session";
 import { prisma } from "@/lib/prisma";
+import { workoutPhotoWhere, WORKOUT_PHOTO_RESPONSE_HEADERS as headers } from "@/lib/workout-photo-access";
 import { getWorkoutPhotoObject } from "@/lib/workout-photo-storage";
 
-/** Streams only photos belonging to an owner-visible or public workout. */
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string; photoId: string }> }) {
-  const session = await auth(); const { id, photoId } = await params; const workoutId = parsePositiveInteger(id);
-  if (workoutId === null) return NextResponse.json({ error: "Not found." }, { status: 404 });
-  const photo = await prisma.workoutPhoto.findFirst({ where: { id: photoId, workoutId, workout: { OR: [{ visibility: "PUBLIC", moderationHiddenAt: null, user: { is: session?.user?.id ? communityUserWhereForViewer(session.user.id) : { deletedAt: null, communityRestrictedAt: null } } }, ...(session?.user?.id ? [{ userId: session.user.id }] : [])] } }, select: { storageKey: true, workout: { select: { visibility: true } } } });
-  if (!photo) return NextResponse.json({ error: "Not found." }, { status: 404 });
+export const dynamic = "force-dynamic";
+
+/** Authorize every request before opening the object stream. */
+export async function GET(request: Request, { params }: { params: Promise<{ id: string; photoId: string }> }) {
+  const { id, photoId } = await params;
+  const workoutId = parsePositiveInteger(id);
+  if (workoutId === null) return NextResponse.json({ error: "Not found." }, { status: 404, headers });
+  const session = await getDatabaseSessionFromRequest(request);
+
+  const photo = await prisma.workoutPhoto.findFirst({
+    where: workoutPhotoWhere(workoutId, photoId, session?.userId),
+    select: { storageKey: true },
+  });
+  if (!photo) return NextResponse.json({ error: "Not found." }, { status: 404, headers });
+
   try {
     const object = await getWorkoutPhotoObject(photo.storageKey);
-    if (!object.Body || !("transformToWebStream" in object.Body)) return NextResponse.json({ error: "Photo unavailable." }, { status: 404 });
-    return new NextResponse(object.Body.transformToWebStream(), { headers: { "Content-Type": "image/webp", "Cache-Control": photo.workout.visibility === "PUBLIC" ? "public, max-age=86400" : "private, no-store" } });
-  } catch { return NextResponse.json({ error: "Photo unavailable." }, { status: 404 }); }
+    if (object.Body && "transformToWebStream" in object.Body) {
+      return new NextResponse(object.Body.transformToWebStream(), {
+        headers: { ...headers, "Content-Type": "image/webp" },
+      });
+    }
+  } catch {
+    // Avoid revealing storage configuration or an object key.
+  }
+  return NextResponse.json({ error: "Photo unavailable." }, { status: 404, headers });
 }

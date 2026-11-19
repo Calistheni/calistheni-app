@@ -4,23 +4,23 @@ import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import {
   createNativeAuthCustomSchemeUrl,
-  isNativeAuthCode,
+  isNativeAuthAttemptId,
 } from "@/lib/auth/native-auth";
 
 /** Browser-only bridge: it never redeems the code or navigates to an app route. */
 const subscribeToLocation = () => () => {};
 
-function readCallbackCode() {
-  return new URLSearchParams(window.location.search).get("code");
+function readCallbackAttempt() {
+  return new URLSearchParams(window.location.search).get("attempt");
 }
 
 export function MobileAuthCallbackPage() {
   const launched = useRef(false);
   // `undefined` is the server snapshot. React replaces it with the browser
   // location after hydration, without a synchronous state update in an effect.
-  const code = useSyncExternalStore(subscribeToLocation, readCallbackCode, () => undefined);
+  const code = useSyncExternalStore(subscribeToLocation, readCallbackAttempt, () => undefined);
   const schemeUrl = useMemo(
-    () => (code && isNativeAuthCode(code) ? createNativeAuthCustomSchemeUrl(code) : null),
+    () => (code && isNativeAuthAttemptId(code) ? createNativeAuthCustomSchemeUrl(code) : null),
     [code]
   );
   const loaded = code !== undefined;

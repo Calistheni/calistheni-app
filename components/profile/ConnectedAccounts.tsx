@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
-import { Browser } from "@capacitor/browser";
+import { openNativeGoogleAuth } from "@/lib/native/google-handoff";
 import { Check, Link2, Loader2, Unlink } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import {
   NativeAppleAuthError,
   getAppleSignInErrorMessage,
 } from "@/lib/native/apple-auth-core";
-import { getNativePlatform, isNativeApp } from "@/lib/native/platform";
+import { isNativeApp } from "@/lib/native/platform";
 
 type AccountStatus = {
   google: boolean;
@@ -56,15 +56,7 @@ export function ConnectedAccounts() {
         return;
       }
       if (provider === "google" && isNativeApp()) {
-        const response = await fetch("/api/native-auth/attempt", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ platform: getNativePlatform() === "ios" ? "IOS" : "ANDROID", intent: "link", redirectTo: "/profile" }),
-        });
-        const result = (await response.json()) as { externalAuthUrl?: string; error?: string };
-        if (!response.ok || !result.externalAuthUrl) throw new Error(result.error ?? "Unable to connect Google.");
-        await Browser.open({ url: result.externalAuthUrl, presentationStyle: "fullscreen" });
+        await openNativeGoogleAuth("link", "/profile");
         setBusy(null);
         return;
       }
@@ -135,15 +127,7 @@ export function ConnectedAccounts() {
         return;
       }
       if (status?.google && isNativeApp()) {
-        const response = await fetch("/api/native-auth/attempt", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ platform: getNativePlatform() === "ios" ? "IOS" : "ANDROID", intent: "login", redirectTo: "/profile" }),
-        });
-        const result = (await response.json()) as { externalAuthUrl?: string; error?: string };
-        if (!response.ok || !result.externalAuthUrl) throw new Error(result.error ?? "Reauthentication failed.");
-        await Browser.open({ url: result.externalAuthUrl, presentationStyle: "fullscreen" });
+        await openNativeGoogleAuth("reauth", "/profile");
         return;
       }
       const provider = status?.apple ? "apple" : "google";

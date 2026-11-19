@@ -1,21 +1,20 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { NATIVE_AUTH_CALLBACK_PATH } from "@/lib/auth/native-auth";
 import {
   clearNativeAuthAttemptCookie,
-  createNativeAuthSecret,
   hashNativeAuthSecret,
   logNativeAuth,
+  NATIVE_AUTH_HANDOFF_TTL_MS,
+  NATIVE_AUTH_BROWSER_COOKIE,
   parseNativeAuthAttemptCookie,
 } from "@/lib/auth/native-auth-server";
 import { getSiteUrl } from "@/lib/site-url";
-import { readAuthSessionToken } from "@/lib/auth/database-session";
+import { getDatabaseSessionFromRequest, readAuthSessionToken } from "@/lib/auth/database-session";
 import { hashAuthSecret } from "@/lib/auth/security";
 import { getAuthSessionCookieName, getNativeAuthCookieOptions } from "@/lib/auth/native-auth-server";
 
 export const runtime = "nodejs";
-const HANDOFF_TTL_MS = 5 * 60 * 1000;
 
 function errorRedirect(code: string) {
   const url = new URL(NATIVE_AUTH_CALLBACK_PATH, getSiteUrl());
@@ -23,38 +22,56 @@ function errorRedirect(code: string) {
   return url;
 }
 
+function createHandoffRedirect(attemptId: string) {
+  const callbackUrl = new URL(NATIVE_AUTH_CALLBACK_PATH, getSiteUrl());
+  // Both app-held proofs are required before any session or link can be created.
+  callbackUrl.searchParams.set("attempt", attemptId);
+  const response = NextResponse.redirect(callbackUrl, { headers: { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
+  clearNativeAuthAttemptCookie(response);
+  return response;
+}
+
 export async function GET(request: Request) {
-  const requestUrl = new URL(request.url);
-  const attemptId = requestUrl.searchParams.get("attempt");
-  const nonce = requestUrl.searchParams.get("nonce");
   const browserAttempt = parseNativeAuthAttemptCookie(
     request.headers.get("cookie")
       ?.split(";")
       .map((part) => part.trim())
-      .find((part) => part.startsWith("calistheni.native-auth-attempt="))
-      ?.slice("calistheni.native-auth-attempt=".length)
+      .find((part) => part.startsWith(`${NATIVE_AUTH_BROWSER_COOKIE}=`))
+      ?.slice(NATIVE_AUTH_BROWSER_COOKIE.length + 1)
   );
-  if (
-    !attemptId ||
-    !nonce ||
-    !browserAttempt ||
-    browserAttempt.attemptId !== attemptId ||
-    browserAttempt.nonce !== nonce
-  ) {
-    logNativeAuth("provider_callback_rejected", { attemptId: attemptId ?? "missing" });
+  if (!browserAttempt) {
+    logNativeAuth("provider_callback_rejected", {});
     const response = NextResponse.redirect(errorRedirect("authentication_failed"));
     clearNativeAuthAttemptCookie(response);
     return response;
   }
 
-  const expectedAttempt = await prisma.nativeAuthAttempt.findUnique({
-    where: { id: attemptId },
-    select: { intent: true, userId: true },
+  const { attemptId, nonce } = browserAttempt;
+  const expectedAttempt = await prisma.nativeAuthAttempt.findFirst({
+    where: {
+      id: attemptId, nonceHash: hashNativeAuthSecret(nonce), expiresAt: { gt: new Date() },
+      browserStartedAt: { not: null }, consumedAt: null,
+      verifierChallenge: { not: null },
+      OR: [
+        { intent: "REAUTH", handoffIssuedAt: { not: null } },
+        { intent: { not: "REAUTH" }, handoffIssuedAt: null },
+      ],
+    },
+    select: { intent: true, userId: true, browserStartedAt: true },
   });
-  const session = expectedAttempt?.intent === "LINK" ? null : await auth();
-  let authenticatedUserId = session?.user?.id ?? null;
+  if (!expectedAttempt) {
+    const response = NextResponse.redirect(errorRedirect("attempt_expired"));
+    clearNativeAuthAttemptCookie(response);
+    return response;
+  }
+  if (expectedAttempt.intent === "REAUTH") return createHandoffRedirect(attemptId);
+  const session = expectedAttempt.intent === "LINK" ? null : await getDatabaseSessionFromRequest(request);
+  let authenticatedUserId = session?.authProvider === "google" && session.authenticatedAt &&
+    expectedAttempt.browserStartedAt && session.authenticatedAt >= expectedAttempt.browserStartedAt
+    ? session.userId
+    : null;
 
-  if (expectedAttempt?.intent === "LINK" && expectedAttempt.userId) {
+  if (expectedAttempt.intent === "LINK" && expectedAttempt.userId) {
     const linkSessionToken = readAuthSessionToken(request);
     const now = new Date();
     const linkSession = linkSessionToken
@@ -83,7 +100,7 @@ export async function GET(request: Request) {
         })
       : null;
     if (!linkSession || !completedIntent) {
-      logNativeAuth("provider_link_rejected", { attemptId });
+      logNativeAuth("provider_link_rejected", {});
       const response = NextResponse.redirect(errorRedirect("account_mismatch"));
       clearNativeAuthAttemptCookie(response);
       return response;
@@ -92,13 +109,12 @@ export async function GET(request: Request) {
   }
 
   if (!authenticatedUserId) {
-    logNativeAuth("provider_callback_rejected", { attemptId });
+    logNativeAuth("provider_callback_rejected", {});
     const response = NextResponse.redirect(errorRedirect("authentication_failed"));
     clearNativeAuthAttemptCookie(response);
     return response;
   }
 
-  const handoffCode = createNativeAuthSecret();
   const now = new Date();
   const updated = await prisma.$transaction(async (tx) => {
     const activeUser = await tx.$queryRaw<Array<{ id: string }>>`
@@ -112,32 +128,30 @@ export async function GET(request: Request) {
         id: attemptId,
         nonceHash: hashNativeAuthSecret(nonce),
         expiresAt: { gt: now },
-        handoffCodeHash: null,
+        handoffIssuedAt: null,
+        verifierChallenge: { not: null },
         consumedAt: null,
-        ...(expectedAttempt?.intent === "LINK" ? { userId: authenticatedUserId } : {}),
+        ...(expectedAttempt.intent === "LINK" ? { userId: authenticatedUserId } : {}),
       },
       data: {
         userId: authenticatedUserId,
-        handoffCodeHash: hashNativeAuthSecret(handoffCode),
         handoffIssuedAt: now,
         // The pre-OAuth attempt has a longer setup lifetime; the usable browser
         // handoff itself is intentionally limited to five minutes.
-        expiresAt: new Date(now.getTime() + HANDOFF_TTL_MS),
+        expiresAt: new Date(now.getTime() + NATIVE_AUTH_HANDOFF_TTL_MS),
       },
     });
   });
 
   if (updated.count !== 1) {
-    logNativeAuth("handoff_issue_rejected", { attemptId });
+    logNativeAuth("handoff_issue_rejected", {});
     const response = NextResponse.redirect(errorRedirect("attempt_expired"));
     clearNativeAuthAttemptCookie(response);
     return response;
   }
 
-  const callbackUrl = new URL(NATIVE_AUTH_CALLBACK_PATH, getSiteUrl());
-  callbackUrl.searchParams.set("code", handoffCode);
-  const response = NextResponse.redirect(callbackUrl);
-  if (expectedAttempt?.intent === "LINK") {
+  const response = createHandoffRedirect(attemptId);
+  if (expectedAttempt.intent === "LINK") {
     const linkSessionToken = readAuthSessionToken(request);
     if (linkSessionToken) {
       await prisma.session.deleteMany({ where: { sessionToken: linkSessionToken, purpose: "OAUTH_LINK" } });
@@ -147,7 +161,6 @@ export async function GET(request: Request) {
       expires: new Date(0),
     });
   }
-  clearNativeAuthAttemptCookie(response);
-  logNativeAuth("handoff_issued", { attemptId, userId: authenticatedUserId });
+  logNativeAuth("handoff_issued", {});
   return response;
 }

@@ -19,7 +19,7 @@ export function canUseNativeAppleAuth() {
   return isIOSApp() && isNativePluginAvailable(PLUGIN_NAME);
 }
 
-export async function performNativeAppleAuth(intent: "login" | "link") {
+export async function performNativeAppleAuth(intent: "login" | "link" | "reauth") {
   if (!canUseNativeAppleAuth()) throw new Error("APPLE_AUTH_UNAVAILABLE");
   return performNativeAppleAuthFlow(intent, {
     fetch,

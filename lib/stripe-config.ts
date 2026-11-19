@@ -1,3 +1,4 @@
+import { resolveDeploymentIdentity } from "./deployment-identity";
 import { PRO_PRICE_EUR_CENTS } from "@/lib/pro-pricing";
 
 export type StripeMode = "test" | "live";
@@ -34,16 +35,18 @@ export function getStripeModeFromEnvironment(
     );
   }
 
-  const vercelEnvironment = environment.VERCEL_ENV;
-  if (vercelEnvironment === "production" && mode !== "live") {
-    throw new StripeConfigurationError(
-      "Vercel Production requires STRIPE_MODE=live."
-    );
+  let identity: ReturnType<typeof resolveDeploymentIdentity>;
+  try {
+    identity = resolveDeploymentIdentity(environment);
+  } catch {
+    throw new StripeConfigurationError("Stripe deployment identity is missing or conflicting.");
   }
-  if (mode === "live" && vercelEnvironment !== "production") {
-    throw new StripeConfigurationError(
-      "Live Stripe runtime access is allowed only in Vercel Production."
-    );
+  const allowsLive = identity.target === "production" && identity.stable;
+  if (allowsLive && mode !== "live") {
+    throw new StripeConfigurationError("Production requires STRIPE_MODE=live.");
+  }
+  if (!allowsLive && mode !== "test") {
+    throw new StripeConfigurationError("Live Stripe requires the verified production deployment.");
   }
 
   return mode;

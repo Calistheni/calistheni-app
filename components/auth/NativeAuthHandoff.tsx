@@ -7,7 +7,9 @@ import { toast } from "sonner";
 import {
   NATIVE_AUTH_COMPLETION_PATH,
   parseNativeAuthCallbackUrl,
+  sanitizeNativeRedirectPath,
 } from "@/lib/auth/native-auth";
+import { takeNativeGoogleHandoff } from "@/lib/native/google-handoff";
 import { isNativeApp } from "@/lib/native/platform";
 
 const isDevelopment = process.env.NODE_ENV === "development";
@@ -18,42 +20,32 @@ function logNativeAuthClient(event: string, detail?: Record<string, unknown>) {
   }
 }
 
-function redirectToNativeLoginError(reason = "handoff_failed") {
-  window.dispatchEvent(new CustomEvent("native-auth:finished"));
-  window.location.replace(`/login?nativeAuthError=${encodeURIComponent(reason)}`);
-}
-
-/** Receives Universal/App Links once and lets a server navigation set the WebView cookie. */
+/** Redeems the browser result from the initiating WebView. */
 export function NativeAuthHandoff() {
-  const handledCodesRef = useRef(new Set<string>());
   const isExchangingRef = useRef(false);
 
   const handleUrl = useCallback(async (rawUrl: string) => {
     const handoff = parseNativeAuthCallbackUrl(rawUrl, window.location.origin);
-    if (!handoff || handledCodesRef.current.has(handoff.code)) return;
-    handledCodesRef.current.add(handoff.code);
-    logNativeAuthClient("native_callback_received", { transport: rawUrl.startsWith("calistheni:") ? "scheme" : "universal-link" });
-
-    await Browser.close().catch(() => undefined);
-    if (isExchangingRef.current) {
-      toast.error("Google sign-in did not complete. Please try again.");
-      redirectToNativeLoginError();
-      return;
-    }
-
+    if (!handoff || isExchangingRef.current) return;
     isExchangingRef.current = true;
     try {
-      const completion = new URL(NATIVE_AUTH_COMPLETION_PATH, window.location.origin);
-      completion.searchParams.set("code", handoff.code);
-      // This full WebView navigation is critical: the server's Set-Cookie is
-      // written into WKWebView, never read from Safari.
-      window.dispatchEvent(new CustomEvent("native-auth:finished"));
-      window.location.replace(completion.toString());
-    } catch (error) {
-      console.error("[native-auth] handoff exchange failed", error);
+      const proof = takeNativeGoogleHandoff(handoff.attempt);
+      if (!proof) return;
+      logNativeAuthClient("native_callback_received");
+      await Browser.close().catch(() => undefined);
+      const response = await fetch(NATIVE_AUTH_COMPLETION_PATH, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(proof),
+      });
+      if (!response.ok) throw new Error("Handoff rejected");
+      const { redirectTo } = await response.json();
+      window.location.replace(sanitizeNativeRedirectPath(redirectTo));
+    } catch {
       toast.error("Unable to finish Google sign-in. Please try again.");
-      redirectToNativeLoginError();
     } finally {
+      window.dispatchEvent(new CustomEvent("native-auth:finished"));
       isExchangingRef.current = false;
     }
   }, []);

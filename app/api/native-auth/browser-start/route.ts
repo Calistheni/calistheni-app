@@ -11,15 +11,17 @@ import {
 import { getSiteUrl } from "@/lib/site-url";
 import { AUTH_LINK_COOKIE } from "@/lib/auth/account-linking";
 import { hashAuthSecret } from "@/lib/auth/security";
+import { isNativeAuthAttemptId } from "@/lib/auth/native-auth";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const attemptId = url.searchParams.get("attempt");
-  const nonce = url.searchParams.get("nonce");
+  const nonce = createNativeAuthSecret();
   const intent = url.searchParams.get("intent");
-  if (!attemptId || !nonce || (intent !== "login" && intent !== "link")) {
+  if (!isNativeAuthAttemptId(attemptId) ||
+      (intent !== "login" && intent !== "link" && intent !== "reauth" && intent !== "bearer_login")) {
     return NextResponse.redirect(
       new URL("/login?nativeAuthError=invalid", getSiteUrl())
     );
@@ -28,32 +30,31 @@ export async function GET(request: Request) {
   const attempt = await prisma.nativeAuthAttempt.findFirst({
     where: {
       id: attemptId,
-      nonceHash: hashNativeAuthSecret(nonce),
+      verifierChallenge: { not: null },
       expiresAt: { gt: new Date() },
       consumedAt: null,
-      handoffCodeHash: null,
+      handoffIssuedAt: null,
       browserStartedAt: null,
     },
     select: { id: true, intent: true, userId: true },
   });
-  if (!attempt || (intent === "link" ? attempt.intent !== "LINK" || !attempt.userId : attempt.intent !== "LOGIN")) {
-    logNativeAuth("browser_start_rejected", { attemptId });
+  if (!attempt || attempt.intent.toLowerCase() !== intent ||
+      ((intent === "link" || intent === "reauth") && !attempt.userId)) {
+    logNativeAuth("browser_start_rejected", {});
     return NextResponse.redirect(
       new URL("/login?nativeAuthError=expired", getSiteUrl())
     );
   }
   const claimed = await prisma.nativeAuthAttempt.updateMany({
     where: { id: attempt.id, browserStartedAt: null, consumedAt: null, expiresAt: { gt: new Date() } },
-    data: { browserStartedAt: new Date() },
+    data: { browserStartedAt: new Date(), nonceHash: hashNativeAuthSecret(nonce) },
   });
   if (claimed.count !== 1) {
     return NextResponse.redirect(new URL("/login?nativeAuthError=expired", getSiteUrl()));
   }
 
   const startPage = new URL("/mobile/auth/start", getSiteUrl());
-  startPage.searchParams.set("attempt", attempt.id);
-  startPage.searchParams.set("nonce", nonce);
-  const response = NextResponse.redirect(startPage);
+  const response = NextResponse.redirect(startPage, { headers: { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
   // Capacitor Browser and WKWebView have separate cookie jars. A normal
   // in-app logout clears the WKWebView session, but this Browser cookie can
   // still authenticate the next Auth.js callback as the old user. Clear only
@@ -106,7 +107,7 @@ export async function GET(request: Request) {
     });
   }
   setNativeAuthAttemptCookie(response, attempt.id, nonce);
-  logNativeAuth("external_oauth_context_prepared", { attemptId, intent });
-  logNativeAuth("external_authorization_started", { attemptId, intent });
+  logNativeAuth("external_oauth_context_prepared", { intent });
+  logNativeAuth("external_authorization_started", { intent });
   return response;
 }
