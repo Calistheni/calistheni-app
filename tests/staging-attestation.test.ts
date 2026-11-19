@@ -86,6 +86,26 @@ test("rejects inherited, mismatched and overridden database configuration before
   assert.equal(connectionAttempts, 0);
 });
 
+test("authenticates the Vercel adapter's empty POST stream and requires forwarded HTTPS", async () => {
+  const fromAdapter = (protocol: string, bytes?: string) => new Request(`http://${deploymentHost}/api/attest`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "x-forwarded-proto": protocol },
+    duplex: "half",
+    body: new ReadableStream({
+      start(controller) {
+        if (bytes) controller.enqueue(new TextEncoder().encode(bytes));
+        controller.close();
+      },
+    }),
+  } as RequestInit & { duplex: "half" });
+  const inspect = async () => true;
+  assert.equal((await attestStaging(fromAdapter("https"), environment, inspect, now)).status, 200);
+  for (const request of [fromAdapter("http"), fromAdapter("https,http"), fromAdapter("https", "{}")]) {
+    const response = await attestStaging(request, environment, async () => assert.fail("must reject before connecting"), now);
+    assert.equal(response.status, 404);
+  }
+});
+
 test("photo aggregates require authentication and a matching read-only session", async (t) => {
   const requested = new Request(accepted, { headers: {
     ...Object.fromEntries(accepted.headers), "x-staging-attestation-operation": "photo-references",

@@ -17,6 +17,25 @@ function matchesDigest(value: string, digest?: string) {
   return timingSafeEqual(createHash("sha256").update(value).digest(), Buffer.from(digest, "hex"));
 }
 
+async function hasEmptyBody(request: Request) {
+  if (!request.body) return true;
+  const reader = request.body.getReader();
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) return true;
+      if (chunk.value.byteLength) {
+        void reader.cancel().catch(() => undefined);
+        return false;
+      }
+    }
+  } catch {
+    return false;
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 type InspectionResult = boolean | PhotoReferenceCounts;
 
 async function readIdentity(config: ClientConfig, includeCounts: boolean): Promise<InspectionResult> {
@@ -58,17 +77,21 @@ export async function attestStaging(
   now = Date.now(),
 ) {
   const url = new URL(request.url);
+  // The Vercel Node adapter reconstructs the internal URL and supplies the edge protocol separately.
+  const forwardedProtocol = request.headers.get("x-forwarded-proto");
+  const secure = forwardedProtocol === null ? url.protocol === "https:" :
+    forwardedProtocol === "https" && (url.protocol === "https:" || url.protocol === "http:");
   const token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(request.headers.get("authorization") ?? "")?.[1];
   const operation = request.headers.get("x-staging-attestation-operation");
   const expiresAt = Date.parse(env.STAGING_ATTESTATION_EXPIRES_AT ?? "");
-  if (request.method !== "POST" || request.body !== null || url.pathname !== "/api/attest" ||
-      url.search || url.protocol !== "https:" || url.host !== env.VERCEL_URL ||
+  if (request.method !== "POST" || url.pathname !== "/api/attest" ||
+      url.search || !secure || url.host !== env.VERCEL_URL ||
       !/^calistheni-staging-[a-z0-9-]+\.vercel\.app$/.test(url.host) ||
       env.VERCEL_PROJECT_ID !== projectId || env.VERCEL !== "1" ||
       !/^dpl_[a-zA-Z0-9]+$/.test(env.VERCEL_DEPLOYMENT_ID ?? "") ||
       !Number.isFinite(expiresAt) || expiresAt <= now || expiresAt - now > maxLifetimeMs ||
       !token || !matchesDigest(token, env.STAGING_ATTESTATION_TOKEN_SHA256) ||
-      (operation !== null && operation !== "photo-references")) {
+      (operation !== null && operation !== "photo-references") || !await hasEmptyBody(request)) {
     return new Response(null, { status: 404, headers });
   }
 

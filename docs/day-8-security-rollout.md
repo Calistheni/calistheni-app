@@ -16,6 +16,10 @@ Use separate staging credentials and synthetic fixtures. A protected, read-only 
 
 Verification covers private object access, cleanup references, and protection against direct public access. Recheck data references before switching storage. Keep any transfer and verification scoped to the intended environment.
 
+## Diagnostic compatibility
+
+Focused regression tests cover authenticated diagnostic requests through the hosting platform. The diagnostic requires HTTPS and rejects unexpected request bodies.
+
 ## Readiness
 
 Staging acceptance remains pending.
