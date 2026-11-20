@@ -579,11 +579,12 @@ export function FoodPicker({
                 value="recipes"
                 className="mt-2 min-h-0 flex-1 overflow-y-auto overscroll-contain"
               >
-                <Empty
-                  title="No recipes yet"
-                  text="Create a recipe and define its ingredients and servings."
-                  action="Create recipe"
-                />
+                <div className="py-10 text-center">
+                  <p className="font-semibold">No recipes yet</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Recipes are coming soon.
+                  </p>
+                </div>
               </TabsContent>
             </Tabs>
           </div>
@@ -598,30 +599,5 @@ export function FoodPicker({
         onUseFood={logFood}
       />
     </>
-  );
-}
-
-function Empty({
-  title,
-  text,
-  action,
-}: {
-  title: string;
-  text: string;
-  action: string;
-}) {
-  return (
-    <div className="py-10 text-center">
-      <p className="font-semibold">{title}</p>
-      <p className="mt-1 text-sm text-muted-foreground">{text}</p>
-      <Button
-        className="mt-3"
-        variant="outline"
-        onClick={() => toast.message(`${action} is coming soon.`)}
-      >
-        <Plus />
-        {action}
-      </Button>
-    </div>
   );
 }
