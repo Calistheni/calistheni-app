@@ -274,10 +274,19 @@ export function ApplePurchaseOptions({
 
   return (
     <div className="space-y-5">
+      <p className="sr-only" role="status">
+        {busyAction === "restore"
+          ? "Restoring purchases."
+          : busyAction
+            ? "Purchase in progress."
+            : loadingProducts
+              ? "Loading App Store products."
+              : ""}
+      </p>
       {loadError ||
       (!loadingProducts && products.length !== applePlans.length) ? (
         <div className="flex flex-col items-center justify-between gap-3 rounded-2xl border border-border/80 bg-card/75 p-4 text-center sm:flex-row sm:text-left">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground" role="status">
             Some App Store products are unavailable right now. No web checkout
             fallback is used inside the iOS app.
           </p>

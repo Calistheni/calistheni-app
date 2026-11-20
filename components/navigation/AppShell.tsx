@@ -435,10 +435,15 @@ export function AppShell({ children, user }: AppShellProps) {
                       handlePrimaryNavigationPointerCancel(item.href)
                     }
                     aria-current={active ? "page" : undefined}
+                    aria-label={
+                      item.key === "community" && unreadCommunityActivity
+                        ? `${item.label}, ${unreadCommunityActivity} unread community activities`
+                        : undefined
+                    }
                     className={cn(
                       "flex h-9 items-center gap-2 rounded-md px-2 text-sm font-medium text-muted-foreground transition-[color,background-color,transform] hover:bg-accent hover:text-accent-foreground active:scale-[0.97] active:bg-accent xl:px-3",
                       active &&
-                        "border border-primary/30 bg-primary/10 text-primary"
+                        "border border-primary/30 bg-primary/10 text-primary dark:text-accent-foreground"
                     )}
                   >
                     <Icon
@@ -449,8 +454,8 @@ export function AppShell({ children, user }: AppShellProps) {
                     {item.key === "community" &&
                     unreadCommunityActivity ? (
                       <span
-                        className="flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] leading-4 text-white"
-                        aria-label={`${unreadCommunityActivity} unread community activities`}
+                        className="flex min-w-4 items-center justify-center rounded-full bg-red-700 px-1 text-[10px] leading-4 text-white dark:bg-red-300 dark:text-red-950"
+                        aria-hidden="true"
                       >
                         {unreadCommunityActivity > 9
                           ? "9+"
@@ -517,9 +522,14 @@ export function AppShell({ children, user }: AppShellProps) {
                       handlePrimaryNavigationPointerCancel(item.href)
                     }
                     aria-current={active ? "page" : undefined}
+                    aria-label={
+                      item.key === "community" && unreadCommunityActivity
+                        ? `${item.label}, ${unreadCommunityActivity} unread community activities`
+                        : undefined
+                    }
                     className={cn(
-                      "relative flex min-h-11 min-w-0 flex-1 basis-0 touch-manipulation flex-col items-center justify-center gap-0.5 overflow-hidden px-0.5 text-[10px] font-medium whitespace-nowrap text-muted-foreground transition-[color,transform] active:scale-[0.96] focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      active && "text-primary"
+                      "relative flex min-h-11 min-w-0 flex-1 basis-0 touch-manipulation flex-col items-center justify-center gap-0.5 overflow-hidden px-0.5 text-[10px] font-medium whitespace-nowrap text-muted-foreground transition-[color,transform] active:scale-[0.96] focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                      active && "text-primary dark:text-accent-foreground"
                     )}
                   >
                     <span
@@ -533,9 +543,11 @@ export function AppShell({ children, user }: AppShellProps) {
                     {item.key === "community" &&
                     unreadCommunityActivity ? (
                       <span
-                        className="absolute top-1 right-[calc(50%-14px)] size-2 rounded-full bg-red-500"
-                        aria-label={`${unreadCommunityActivity} unread community activities`}
-                      />
+                        className="absolute top-1 left-[calc(50%+4px)] min-w-4 rounded-full bg-red-700 px-0.5 text-center text-[10px] leading-4 text-white dark:bg-red-300 dark:text-red-950"
+                        aria-hidden="true"
+                      >
+                        {unreadCommunityActivity > 9 ? "9+" : unreadCommunityActivity}
+                      </span>
                     ) : null}
                     <span className="max-w-full truncate">{item.label}</span>
                   </Link>

@@ -71,7 +71,7 @@ export default async function LoginPage({
         </CardHeader>
         <CardContent className="space-y-4">
           {typeof query.nativeAuthError === "string" ? (
-            <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-muted-foreground">
+            <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-foreground" role="alert">
               Google sign-in did not complete. Please try again.
             </div>
           ) : null}
@@ -79,7 +79,7 @@ export default async function LoginPage({
           {isGoogleConfigured ? (
             <NativeGoogleSignInButton callbackUrl={callbackUrl} />
           ) : (
-            <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-muted-foreground">
+            <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-foreground">
               Google login is not configured yet. Add OAuth environment
               variables before enabling user login.
             </div>
@@ -96,7 +96,7 @@ export default async function LoginPage({
           <p className="text-center text-sm text-muted-foreground">
             {isCreatingAccount ? "Already have an account?" : "Don’t have an account?"}{" "}
             <Link
-              className="font-medium text-primary underline-offset-4 hover:underline"
+              className="font-medium text-primary underline-offset-4 hover:underline dark:text-accent-foreground"
               href={isCreatingAccount ? "/login" : "/login?intent=signup"}
             >
               {isCreatingAccount ? "Sign In" : "Sign Up"}

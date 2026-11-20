@@ -182,6 +182,7 @@ import {
   getWorkoutKeyboardSpacerRemovalState,
   getWorkoutKeyboardScrollTarget,
 } from "@/lib/workout-keyboard";
+import { prefersReducedMotion } from "@/lib/reduced-motion";
 import { endWorkoutLiveActivity, syncWorkoutLiveActivity } from "@/lib/native/workout-live-activity";
 import { getAppleHealthWorkoutPayload } from "@/lib/apple-health-workout";
 import { saveAppleHealthWorkout } from "@/lib/native/apple-health";
@@ -1354,7 +1355,10 @@ export function WorkoutBuilder({
     });
 
     if (Math.abs(targetScrollTop - scrollOwner.scrollTop) > 1) {
-      scrollOwner.scrollTo({ top: targetScrollTop, behavior: "smooth" });
+      scrollOwner.scrollTo({
+        top: targetScrollTop,
+        behavior: prefersReducedMotion() ? "instant" : "smooth",
+      });
     }
     return false;
   }, []);
@@ -1668,7 +1672,7 @@ export function WorkoutBuilder({
     const frame = window.requestAnimationFrame(() => {
       row.focus({ preventScroll: true });
       row.scrollIntoView({
-        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        behavior: prefersReducedMotion()
           ? "auto"
           : "smooth",
         block: "center",
@@ -3116,7 +3120,7 @@ export function WorkoutBuilder({
                   </span>
                 ) : null}
                 <span className={WORKOUT_TABLE_CELL_CLASS}>
-                  <Button type="button" size="icon" variant={set.completed ? "secondary" : "outline"} className={`size-8 ${set.completed ? "border-primary/40 bg-primary text-primary-foreground shadow-none" : ""}`} aria-label={set.completed ? `Mark set ${setIndex + 1} incomplete` : `Mark set ${setIndex + 1} complete`} aria-pressed={set.completed} onClick={(event) => { if (event.detail > 0) event.currentTarget.blur(); updateSetCompleted(selectedExercise.localId, setIndex, !set.completed, exercise.name, selectedExercise.restSeconds); }}>{set.completed ? <CheckCircle2 className="size-4" /> : <Circle className="size-4" />}</Button>
+                  <Button type="button" size="icon" variant={set.completed ? "secondary" : "outline"} className={`size-8 ${set.completed ? "border-primary/40 bg-primary text-primary-foreground shadow-none" : ""}`} aria-label={`Mark set ${setIndex + 1} complete for ${exercise.name}`} aria-pressed={set.completed} onClick={() => updateSetCompleted(selectedExercise.localId, setIndex, !set.completed, exercise.name, selectedExercise.restSeconds)}>{set.completed ? <CheckCircle2 className="size-4" aria-hidden="true" /> : <Circle className="size-4" aria-hidden="true" />}</Button>
                 </span>
               </div>
               {isWarned ? <p id={warningId} role="status" className="mt-1 flex items-center gap-1 px-1 text-xs font-medium text-destructive"><AlertTriangle className="size-3.5" aria-hidden="true" />Not marked done</p> : null}
@@ -3478,7 +3482,8 @@ export function WorkoutBuilder({
                           ? "border-primary/40 bg-primary/10 text-primary"
                           : undefined
                       }
-                      aria-label={`Mark ${exercise.name} set ${setIndex + 1} as done`}
+                      aria-label={`Mark set ${setIndex + 1} complete for ${exercise.name}`}
+                      aria-pressed={set.completed}
                       onClick={() =>
                         updateSetCompleted(
                           selectedExercise.localId,
@@ -4617,17 +4622,9 @@ export function WorkoutBuilder({
                                     ? "border-primary/40 bg-primary/10 text-primary shadow-none"
                                     : undefined
                                 }
-                                aria-label={
-                                  set.completed
-                                    ? `Mark set ${setIndex + 1} incomplete`
-                                    : `Mark set ${setIndex + 1} complete`
-                                }
+                                aria-label={`Mark set ${setIndex + 1} complete for ${exercise.name}`}
                                 aria-pressed={set.completed}
-                                onClick={(event) => {
-                                  if (event.detail > 0) {
-                                    event.currentTarget.blur();
-                                  }
-
+                                onClick={() => {
                                   updateSetCompleted(
                                     selectedExercise.localId,
                                     setIndex,

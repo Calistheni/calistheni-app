@@ -7,6 +7,7 @@ import { getNutritionAiQuotas, releaseNutritionAiQuota, reserveNutritionAiQuota 
 import { resolveDescribedFoods } from "@/lib/nutrition/describe-resolver";
 import { nutritionFoodIntent } from "@/lib/nutrition/food-intent";
 import { normalizeFoodQuery } from "@/lib/nutrition/normalization";
+import { hasNutritionAiConsent } from "@/lib/nutrition/ai-consent";
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const SPECIES_CONFIDENCE_THRESHOLD = 0.85;
@@ -42,6 +43,9 @@ function validSignature(bytes: Uint8Array, mime: string) {
 export async function POST(request: Request) {
   const userId = await getAuthenticatedUserId();
   if (!userId) return createUserUnauthorizedResponse();
+  if (!hasNutritionAiConsent(request.headers)) {
+    return createJsonErrorResponse("Confirm sharing this request with OpenAI.", 400, "CONSENT_REQUIRED");
+  }
   const { entitlements } = await getUserEntitlements(userId);
   if (!canUseNutritionAiScan(entitlements)) {
     return NextResponse.json(

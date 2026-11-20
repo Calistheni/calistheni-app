@@ -5,11 +5,15 @@ import { canUseNutritionAiScan, getUserEntitlements } from "@/lib/entitlements";
 import { getNutritionAiQuotas, releaseNutritionAiQuota, reserveNutritionAiQuota } from "@/lib/nutrition/ai-quota";
 import { labelExtractionSchema, labelExtractionToContribution } from "@/lib/nutrition/barcode-contribution";
 import { normalizeBarcode } from "@/lib/nutrition/normalization";
+import { hasNutritionAiConsent } from "@/lib/nutrition/ai-consent";
 
 const maxBytes = 4 * 1024 * 1024;
 function outputText(payload: unknown) { if (!payload || typeof payload !== "object" || !("output" in payload) || !Array.isArray(payload.output)) return null; for (const item of payload.output) if (item && typeof item === "object" && "content" in item && Array.isArray(item.content)) for (const content of item.content) if (content && typeof content === "object" && "type" in content && content.type === "output_text" && "text" in content && typeof content.text === "string") return content.text; return null; }
 export async function POST(request: Request) {
   const userId = await getAuthenticatedUserId(); if (!userId) return createUserUnauthorizedResponse();
+  if (!hasNutritionAiConsent(request.headers)) {
+    return createJsonErrorResponse("Confirm sharing this request with OpenAI.", 400, "CONSENT_REQUIRED");
+  }
   const { entitlements } = await getUserEntitlements(userId); if (!canUseNutritionAiScan(entitlements)) return createJsonErrorResponse("Nutrition label scanning is available with Calistheni Pro.", 403, "PRO_REQUIRED");
   const form = await request.formData(); const barcode = typeof form.get("barcode") === "string" ? String(form.get("barcode")) : ""; const image = form.get("image");
   if (process.env.NODE_ENV === "development" && image instanceof File) console.info("[BarcodeContribution] label image received", { type: image.type, size: image.size });

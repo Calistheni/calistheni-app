@@ -5,6 +5,7 @@ import { getUserEntitlements } from "@/lib/entitlements";
 import { getAuthenticatedUserId, createUserUnauthorizedResponse } from "@/lib/user-auth";
 import { releaseNutritionAiQuota, reserveNutritionAiQuota } from "@/lib/nutrition/ai-quota";
 import { missingFoodProposalSchema, proposeMissingFood, saveMissingFood } from "@/lib/nutrition/missing-food";
+import { hasNutritionAiConsent } from "@/lib/nutrition/ai-consent";
 
 const requestSchema = z.object({ action: z.enum(["generate", "save"]), name: z.string().trim().min(2).max(120).optional(), context: z.string().trim().max(200).nullable().optional(), proposal: missingFoodProposalSchema.optional() }).strict();
 
@@ -17,6 +18,9 @@ export async function POST(request: Request) {
     if (!parsed.data.proposal) return createJsonErrorResponse("Missing food proposal.", 400);
     try { const saved = await saveMissingFood(userId, parsed.data.proposal); return NextResponse.json(saved, { status: saved.duplicate ? 200 : 201 }); }
     catch (error) { if (error instanceof Error && error.message === "PENDING_CONTRIBUTION_EXISTS") return createJsonErrorResponse("A matching community contribution is already awaiting review.", 409, "PENDING_CONTRIBUTION_EXISTS"); throw error; }
+  }
+  if (!hasNutritionAiConsent(request.headers)) {
+    return createJsonErrorResponse("Confirm sharing this request with OpenAI.", 400, "CONSENT_REQUIRED");
   }
   if (!parsed.data.name) return createJsonErrorResponse("Missing food name.", 400);
   const { entitlements } = await getUserEntitlements(userId);

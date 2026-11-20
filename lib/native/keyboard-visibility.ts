@@ -3,6 +3,7 @@
 import { Keyboard } from "@capacitor/keyboard";
 import { useEffect } from "react";
 import { isIOSApp } from "@/lib/native/platform";
+import { prefersReducedMotion } from "@/lib/reduced-motion";
 
 export const NATIVE_KEYBOARD_INPUT_MARGIN = 12;
 
@@ -164,7 +165,7 @@ export function useNativeKeyboardVisibility() {
 
       owner.scrollTo({
         top: Math.min(maxScrollTop, Math.max(0, requestedTop)),
-        behavior: "smooth",
+        behavior: prefersReducedMotion() ? "instant" : "smooth",
       });
     };
 

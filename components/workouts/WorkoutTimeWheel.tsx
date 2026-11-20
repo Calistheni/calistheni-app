@@ -3,6 +3,7 @@
 import { Haptics } from "@capacitor/haptics";
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type UIEvent, type WheelEvent } from "react";
 import { isNativePluginAvailable } from "@/lib/native/platform";
+import { prefersReducedMotion } from "@/lib/reduced-motion";
 import {
   getWorkoutClockWheelIndex,
   shouldEmitWorkoutClockSelectionHaptic,
@@ -106,7 +107,10 @@ export function WorkoutTimeWheel({ label, maximum, value, unit, onChange }: Work
     nextValue = Math.min(maximum, Math.max(0, nextValue));
     if (nextValue === centeredValue) return;
     beginSelection();
-    viewportRef.current?.scrollTo({ top: nextValue * WORKOUT_CLOCK_WHEEL_ROW_HEIGHT, behavior: "smooth" });
+    viewportRef.current?.scrollTo({
+      top: nextValue * WORKOUT_CLOCK_WHEEL_ROW_HEIGHT,
+      behavior: prefersReducedMotion() ? "instant" : "smooth",
+    });
     scheduleSelectionEnd();
   }
 

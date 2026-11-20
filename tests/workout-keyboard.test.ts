@@ -217,7 +217,7 @@ test("active workout owns keyboard accommodation in its internal shell", async (
   assert.match(builder, /getWorkoutKeyboardScrollTarget/);
   assert.match(builder, /getWorkoutKeyboardSpacerRemovalState/);
   assert.match(builder, /--active-workout-keyboard-bottom-space/);
-  assert.match(builder, /scrollOwner\.scrollTo\(\{ top: targetScrollTop, behavior: "smooth" \}\)/);
+  assert.match(builder, /scrollOwner\.scrollTo\(\{\s*top: targetScrollTop,\s*behavior: prefersReducedMotion\(\) \? "instant" : "smooth"/);
   assert.match(builder, /keyboardScrollRequestRef/);
   assert.match(builder, /cancelAnimationFrame\(keyboardScrollFrameRef\.current\)/);
   assert.match(

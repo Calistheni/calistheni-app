@@ -45,6 +45,7 @@ export function BodyMeasurementProgressChart({
       label: definition.label,
       shortLabel: definition.label,
       summary: definition.unit,
+      formatValue: (value: number) => `${value.toLocaleString()} ${definition.unit}`,
       locked,
       lockDescription: locked ? "Upgrade to Pro to track" : undefined,
     };

@@ -73,39 +73,51 @@ export default function PrivacyPage() {
               billing events.
             </p>
             <p>
+              Calistheni uses account-linked records for first-party analytics.
+              We measure sign-ups, active accounts, feature use, workout
+              activity, and subscription trends such as plan mix and scheduled
+              cancellations. Authorized administrators can review account
+              activity, including nutrition logging frequency and summaries, for
+              support and to understand how the app is used. These records are
+              not used for advertising.
+            </p>
+            <p>
               Calistheni is hosted on Vercel, uses Neon PostgreSQL for
               application data, and uses Cloudflare R2 for application media.
               These providers process information as part of delivering the
-              service. Platform request and security logs may also be generated;
-              their exact retention depends on provider configuration and plan
-              settings that are not described here as a fixed period.
+              service. Operational and security logs can include technical
+              events, request paths, and URL parameters. This can include terms
+              from searches that use URLs, such as exercise and people searches.
+              Log access and retention depend on the service and its settings.
             </p>
           </section>
 
           <section className="space-y-3">
             <h2 className="text-xl font-semibold text-foreground">Nutrition tools and outside food services</h2>
             <p>
-              If you choose nutrition image analysis, the selected meal image
-              and any description you provide are sent to OpenAI to identify
-              foods. Text descriptions and candidate food names may also be
-              sent for food matching. Calistheni requests non-persisted Responses
-              API output using <code>store: false</code>; this does not by itself
-              establish the provider account&apos;s abuse-monitoring or other
-              retention settings. OpenAI&apos;s published API documentation says
-              that, by default, abuse-monitoring logs may include content and
-              are retained for up to 30 days, subject to stated exceptions.
-              Calistheni has not verified whether its OpenAI account has
-              different retention controls. Do not include information in an
-              image or description that you do not want processed by this
-              feature.
+              Optional AI nutrition features ask you to confirm before sending
+              information to OpenAI. Depending on the feature, Calistheni sends a
+              meal or nutrition-label photo, a meal description, or food names
+              and context for matching or proposing a nutrition entry. You can
+              decline and use food search or manual entry. Calistheni does not
+              add the submitted AI photos to your profile. Nutrition entries you
+              choose to save are stored in your account.
+            </p>
+            <p>
+              Calistheni sends OpenAI Responses API requests with{" "}
+              <code>store: false</code>. OpenAI may still retain request content
+              for abuse monitoring. Its published default is up to 30 days,
+              subject to exceptions. The retention controls on Calistheni&apos;s
+              OpenAI account have not been verified here. Avoid including
+              personal details unrelated to the food or label.
             </p>
             <p>
               Food search can send a search term to USDA FoodData Central or
               Open Food Facts, and barcode lookup can send a barcode to Open
               Food Facts. The synchronized Fineli catalogue is searched locally;
               an individual search is not sent to Fineli. Calistheni stores nutrition entries
-              you save in your account; it does not create an account search
-              history record for each query. Search terms are sent in the
+              you save in your account. The app does not offer a saved food
+              search history. Food search terms are sent in the
               authenticated search or barcode-lookup request body and may be
               sent to the selected food provider. Barcode values are not stored
               in Calistheni activity records. Provider-side logging and retention
@@ -125,26 +137,30 @@ export default function PrivacyPage() {
               for map browsing. Map requests necessarily reveal the viewed map
               area to Mapbox. If you explicitly request directions from your
               current location, the origin and destination are sent to Mapbox
-              for route calculation. Mapbox GL JS also sends anonymized map and
-              style usage telemetry to Mapbox. Calistheni checks park
+              for route calculation. Calistheni checks park
               coordinates submitted by a user for nearby existing parks; those
               coordinates are sent in a request body and are not stored by that
               check itself.
             </p>
             <p>
-              A user&apos;s selected location can be processed by the map provider
-              as map requests are made. We have not verified the active Mapbox
-              account&apos;s data-retention or telemetry controls. The map can be
-              used without granting device location permission.
+              Mapbox GL JS sends map and style usage events and collects map
+              performance metrics, which can include load timing, browser
+              information, and display characteristics. It uses a rotating
+              identifier stored in the browser or app WebView for map usage
+              events. Calistheni does not attach its account ID to those events.
+              Mapbox receives network information such as IP addresses when
+              serving requests. Retention and linkage within Mapbox depend on
+              its data handling and have not been independently verified here.
             </p>
             <p>
               When you submit or edit a park photo, Calistheni may read GPS
               coordinates embedded in the selected image. If the image has no
-              GPS data, the flow may request browser location to compare the
-              photo with the park location. The precise photo/device coordinate,
-              source, and distance are stored with the park submission for
-              authorized moderator review and are not included in public park
-              responses. The source image is re-encoded before storage so its
+              GPS data, the flow may request your device location to compare
+              where the photo was taken with the park location. The precise
+              photo/device coordinate, source, and distance are stored with
+              the account-linked park submission for authorized moderator
+              review and are not included in public park responses. The image
+              is re-encoded before storage so its
               embedded metadata is not published with the image. We have not
               set a separate retention period for this review information;
               shared park records and account-deletion review can affect when
@@ -158,8 +174,9 @@ export default function PrivacyPage() {
               On supported iOS devices, you may connect Apple Health. Calistheni
               requests only supported workout and body-measurement types for
               the features shown in the connection settings. With your action,
-              the app can read available body mass, waist, and profile
-              measurements, and can write workouts and selected body
+              the app can read available body mass, waist, height, body fat,
+              date of birth, and biological sex, depending on your settings
+              and permissions, and can write workouts and selected body
               measurements to Health. Read access is controlled by iOS; the app
               cannot determine from the HealthKit authorization-request status
               whether read access was granted. Health-derived values that you

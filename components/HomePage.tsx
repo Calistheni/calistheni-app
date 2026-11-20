@@ -94,6 +94,7 @@ export default function HomePage({
           : "relative flex h-dvh w-full flex-col overflow-hidden bg-background"
       }
     >
+      {!isGuestOnboardingOpen ? <h1 className="sr-only">Parks</h1> : null}
       <div className="relative min-h-0 flex-1 overflow-hidden">
         <div
           className="h-full"

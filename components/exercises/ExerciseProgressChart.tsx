@@ -47,6 +47,7 @@ export function ExerciseProgressChart({
         label: metric.label,
         shortLabel: metric.shortLabel,
         summary: formatExerciseRecordMetricValue(metric, metric.bestValue),
+        formatValue: (value) => formatExerciseRecordMetricValue(metric, value),
       }))}
       pointsByMetric={pointsByMetric}
       emptyText={() => "No completed data is available for this metric yet."}

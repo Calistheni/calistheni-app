@@ -23,6 +23,7 @@ export type ProgressChartMetric = {
   label: string;
   shortLabel: string;
   summary: string;
+  formatValue: (value: number) => string;
   locked?: boolean;
   lockDescription?: string;
 };
@@ -31,6 +32,16 @@ export type ProgressChartPoint = {
   value: number | null;
   title?: string;
 };
+
+function formatProgressDate(value: string) {
+  return new Date(value).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
 export function ProgressChart({
   title,
@@ -91,15 +102,15 @@ export function ProgressChart({
               }}
               type="button"
             >
-              <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                {metric.locked ? <LockKeyhole className="size-3" /> : null}
+              <span className="flex items-center gap-1 text-xs">
+                {metric.locked ? <LockKeyhole className="size-3" aria-hidden="true" /> : null}
                 {metric.shortLabel}
               </span>
               <span className="mt-1 block text-base font-bold leading-none">
                 {metric.locked ? "Pro" : metric.summary}
               </span>
               {metric.locked ? (
-                <span className="mt-1 block text-[11px] text-muted-foreground">
+                <span className="mt-1 block text-[11px]">
                   {metric.lockDescription ?? "Upgrade to Pro to track"}
                 </span>
               ) : null}
@@ -157,15 +168,7 @@ export function ProgressChart({
                     className="w-[190px]"
                     color={EXERCISE_RECORD_CHART_COLOR}
                     labelFormatter={(_, payload) =>
-                      new Date(
-                        String(payload[0]?.payload?.date ?? "")
-                      ).toLocaleString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })
+                      formatProgressDate(String(payload[0]?.payload?.date ?? ""))
                     }
                     formatter={(value) => (
                       <div className="flex w-full items-center justify-between gap-3">
@@ -173,8 +176,7 @@ export function ProgressChart({
                           {activeMetric.shortLabel}
                         </span>
                         <span className="font-mono font-medium tabular-nums">
-                          {Number(value).toLocaleString()}{" "}
-                          {activeMetric.summary.replace(/[\d.,\s]/g, "")}
+                          {activeMetric.formatValue(Number(value))}
                         </span>
                       </div>
                     )}
@@ -184,6 +186,7 @@ export function ProgressChart({
               <Line
                 dataKey="value"
                 name={activeMetric.label}
+                isAnimationActive="auto"
                 type="monotone"
                 stroke={EXERCISE_RECORD_CHART_COLOR}
                 strokeWidth={2.5}
@@ -207,6 +210,34 @@ export function ProgressChart({
               />
             </LineChart>
           </ChartContainer>
+        )}
+        {chartData.length > 0 && (
+          <details className="mx-2 mt-3 rounded-lg border sm:mx-0">
+            <summary className="cursor-pointer rounded-lg px-3 py-2 text-sm font-medium focus-visible:outline-2 focus-visible:outline-ring">
+              View {activeMetric.label.toLowerCase()} data
+            </summary>
+            <table className="w-full text-left text-sm">
+              <caption className="sr-only">{activeMetric.label} history</caption>
+              <thead>
+                <tr className="border-t">
+                  <th scope="col" className="px-3 py-2">Date</th>
+                  <th scope="col" className="px-3 py-2">{activeMetric.label}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {chartData.map((point, index) => (
+                  <tr key={`${point.date}-${index}`} className="border-t">
+                    <td className="px-3 py-2">
+                      <time dateTime={point.date}>{formatProgressDate(point.date)}</time>
+                    </td>
+                    <td className="px-3 py-2 tabular-nums">
+                      {point.value === null ? "No value" : activeMetric.formatValue(point.value)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </details>
         )}
       </CardContent>
     </Card>

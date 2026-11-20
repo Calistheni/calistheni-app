@@ -41,6 +41,10 @@ import {
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FoodVisual } from "@/components/nutrition/FoodVisual";
+import {
+  NutritionAiConsentDialog,
+  type NutritionAiConsentRequest,
+} from "@/components/nutrition/NutritionAiConsentDialog";
 import { NutritionAmountInput } from "@/components/nutrition/NutritionAmountInput";
 import { NutritionMobileSheet } from "@/components/nutrition/NutritionMobileSheet";
 import {
@@ -61,6 +65,7 @@ import {
   type NutritionLabelPhotoSource,
 } from "@/lib/native/nutrition-label-camera";
 import { compressWorkoutPhoto } from "@/lib/workout-photo-client";
+import { NUTRITION_AI_CONSENT_HEADERS } from "@/lib/nutrition/ai-consent";
 import { rankNutritionFoodCandidates } from "@/lib/nutrition/search-ranking";
 import {
   missingFoodProposalSchema,
@@ -68,6 +73,7 @@ import {
 } from "@/lib/nutrition/missing-food-validation";
 
 export type QuickMeal = "BREAKFAST" | "LUNCH" | "DINNER" | "SNACKS";
+
 type Food = {
   id?: string;
   provider?: "FINELI" | "USDA" | "OPEN_FOOD_FACTS";
@@ -321,6 +327,7 @@ export function NutritionQuickActions({
   const [upgradeFeature, setUpgradeFeature] = useState<"barcode" | "ai" | null>(
     null
   );
+  const [aiConsent, setAiConsent] = useState<NutritionAiConsentRequest | null>(null);
   const isLocked = (feature: "barcode" | "ai") =>
     feature === "barcode"
       ? !capabilities.canUseBarcodeScan
@@ -331,6 +338,10 @@ export function NutritionQuickActions({
       return;
     }
     setWorkflow(feature);
+  }
+  function closeWorkflow() {
+    setAiConsent(null);
+    setWorkflow(null);
   }
   const upgradeCopy =
     upgradeFeature === "ai"
@@ -394,24 +405,28 @@ export function NutritionQuickActions({
         open={workflow === "barcode"}
         meal={meal}
         date={date}
-        close={() => setWorkflow(null)}
+        close={closeWorkflow}
         onEntries={onEntries}
+        requestAiConsent={setAiConsent}
       />
       <AiWorkflow
         open={workflow === "ai"}
         meal={meal}
         date={date}
-        close={() => setWorkflow(null)}
+        close={closeWorkflow}
         onEntries={onEntries}
+        requestAiConsent={setAiConsent}
       />
       <DescribeWorkflow
         open={workflow === "describe"}
         meal={meal}
         date={date}
         isPro={capabilities.canUseAiScan}
-        close={() => setWorkflow(null)}
+        close={closeWorkflow}
         onEntries={onEntries}
+        requestAiConsent={setAiConsent}
       />
+      <NutritionAiConsentDialog request={aiConsent} onDismiss={() => setAiConsent(null)} />
       <Dialog
         open={upgradeFeature !== null}
         onOpenChange={(isOpen) => !isOpen && setUpgradeFeature(null)}
@@ -532,12 +547,14 @@ function BarcodeWorkflow({
   date,
   close,
   onEntries,
+  requestAiConsent,
 }: {
   open: boolean;
   meal: QuickMeal;
   date: string;
   close: () => void;
   onEntries: (entries: Entry[]) => void;
+  requestAiConsent: (request: NutritionAiConsentRequest) => void;
 }) {
   const [code, setCode] = useState("");
   const [detected, setDetected] = useState<string[]>([]);
@@ -717,7 +734,7 @@ function BarcodeWorkflow({
       clearLabelPreview();
       setLabelPreview(URL.createObjectURL(file));
       setLabelSourceChooserOpen(false);
-      setAiLabelState("preparing");
+      setBusy(false);
       setLabelFailureStage(null);
       if (process.env.NODE_ENV === "development")
         console.info("[BarcodeAI] image received", {
@@ -725,7 +742,11 @@ function BarcodeWorkflow({
           type: file.type,
           size: file.size,
         });
-      void extractLabel(file);
+      requestAiConsent({
+        description: "Calistheni will send the selected label photo to OpenAI to read the nutrition label.",
+        onApprove: () => void extractLabel(file),
+        onCancel: clearLabelPreview,
+      });
     } catch (reason) {
       setBusy(false);
       setAiLabelState("error");
@@ -1150,7 +1171,7 @@ function BarcodeWorkflow({
         });
       const response = await fetch(
         "/api/nutrition/foods/barcode/extract-label",
-        { method: "POST", body: form }
+        { method: "POST", headers: NUTRITION_AI_CONSENT_HEADERS, body: form }
       );
       const payload = await response.json().catch(() => null);
       if (!response.ok)
@@ -2011,12 +2032,14 @@ function AiWorkflow({
   date,
   close,
   onEntries,
+  requestAiConsent,
 }: {
   open: boolean;
   meal: QuickMeal;
   date: string;
   close: () => void;
   onEntries: (entries: Entry[]) => void;
+  requestAiConsent: (request: NutritionAiConsentRequest) => void;
 }) {
   const [image, setImage] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -2097,6 +2120,7 @@ function AiWorkflow({
       setPendingMessage("Analyzing your food…");
       const response = await fetch("/api/nutrition/ai-scan", {
         method: "POST",
+        headers: NUTRITION_AI_CONSENT_HEADERS,
         body: form,
       });
       if (!response.ok) {
@@ -2203,7 +2227,7 @@ function AiWorkflow({
     try {
       const response = await fetch("/api/nutrition/foods/propose", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...NUTRITION_AI_CONSENT_HEADERS },
         body: JSON.stringify({
           action: "generate",
           name,
@@ -2554,7 +2578,10 @@ function AiWorkflow({
             <Button
               className="w-full"
               disabled={!image || busy}
-              onClick={() => void analyze()}
+              onClick={() => requestAiConsent({
+                description: "Calistheni will send this meal photo and any description you entered to OpenAI to identify foods.",
+                onApprove: () => void analyze(),
+              })}
             >
               {busy ? <Loader2 className="animate-spin" /> : <Camera />}
               {busy ? pendingMessage || "Analyzing your food…" : "Analyze meal"}
@@ -2620,7 +2647,10 @@ function AiWorkflow({
                     <Button
                       size="sm"
                       disabled={busy}
-                      onClick={() => void proposeMissingSuggestion(suggestion)}
+                      onClick={() => requestAiConsent({
+                        description: "Calistheni may send this food name and description to OpenAI to suggest a nutrition entry.",
+                        onApprove: () => void proposeMissingSuggestion(suggestion),
+                      })}
                     >
                       Add {suggestion.missingIntent}
                     </Button>
@@ -2667,6 +2697,7 @@ function DescribeWorkflow({
   isPro,
   close,
   onEntries,
+  requestAiConsent,
 }: {
   open: boolean;
   meal: QuickMeal;
@@ -2674,6 +2705,7 @@ function DescribeWorkflow({
   isPro: boolean;
   close: () => void;
   onEntries: (entries: Entry[]) => void;
+  requestAiConsent: (request: NutritionAiConsentRequest) => void;
 }) {
   const [state, setState] = useState<DescribeState>({
     type: "input",
@@ -2750,6 +2782,14 @@ function DescribeWorkflow({
       unit: usesServingHint ? serving.name.slice(0, 40) : "g",
     };
   }
+  function requestDescribeConsent() {
+    if (!description.trim() || isBusy) return;
+    requestAiConsent({
+      description: "Calistheni will send your meal description and may send matching food names to OpenAI to identify foods.",
+      onApprove: () => void findFoods(),
+    });
+  }
+
   async function findFoods() {
     const text = description.trim();
     if (!text || isBusy) return;
@@ -2758,7 +2798,7 @@ function DescribeWorkflow({
     try {
       const response = await fetch("/api/nutrition/describe", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...NUTRITION_AI_CONSENT_HEADERS },
         body: JSON.stringify({ description: text }),
       });
       if (!response.ok) {
@@ -2913,7 +2953,7 @@ function DescribeWorkflow({
     try {
       const response = await fetch("/api/nutrition/foods/propose", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...NUTRITION_AI_CONSENT_HEADERS },
         body: JSON.stringify({
           action: "generate",
           name: item.label,
@@ -3006,7 +3046,7 @@ function DescribeWorkflow({
                 className="space-y-2"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  void findFoods();
+                  requestDescribeConsent();
                 }}
               >
                 <Label htmlFor="nutrition-description">
@@ -3055,7 +3095,7 @@ function DescribeWorkflow({
                   <AlertDescription>{state.message}</AlertDescription>
                 </Alert>
                 <div className="flex gap-2">
-                  <Button className="flex-1" onClick={() => void findFoods()}>
+                  <Button className="flex-1" onClick={requestDescribeConsent}>
                     Try again
                   </Button>
                   <Button
@@ -3109,7 +3149,10 @@ function DescribeWorkflow({
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => void proposeMissingFood(item)}
+                            onClick={() => requestAiConsent({
+                              description: "Calistheni may send this food name and meal description to OpenAI to suggest a nutrition entry.",
+                              onApprove: () => void proposeMissingFood(item),
+                            })}
                           >
                             Add {item.label}
                           </Button>

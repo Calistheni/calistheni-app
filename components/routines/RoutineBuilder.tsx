@@ -851,6 +851,7 @@ export function RoutineBuilder({
                     <Button
                       type="button"
                       variant="outline"
+                      aria-label={`Remove ${exercise.name}`}
                       onClick={() => removeExercise(selectedExercise.localId)}
                     >
                       Remove
@@ -1059,6 +1060,7 @@ export function RoutineBuilder({
                       <Button
                         type="button"
                         variant="outline"
+                        aria-label={`Remove set ${setIndex + 1} from ${exercise.name}`}
                         onClick={() =>
                           removeSet(selectedExercise.localId, setIndex)
                         }

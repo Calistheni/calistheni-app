@@ -926,7 +926,6 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
           : { top: 96, right: 96, bottom: 72, left: 96 },
         maxZoom: resultZoom,
         duration: 1000,
-        essential: true,
       });
       return;
     }
@@ -937,7 +936,6 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       bearing: 0,
       pitch: 0,
       duration: 1000,
-      essential: true,
     });
   }
 
@@ -1154,7 +1152,6 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       bearing: 0,
       pitch: 0,
       duration: source === "mapbox" ? 850 : 700,
-      essential: true,
     });
     onLocationStatusChangeRef.current?.("success");
     return true;
@@ -2493,7 +2490,6 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
               center: coordinates,
               zoom: zoom ?? PLACEHOLDER_MAX_ZOOM,
               duration: 900,
-              essential: true,
             });
           });
           return;
@@ -2558,7 +2554,6 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
             center: coordinates,
             zoom: Math.max(map.getZoom(), PLACEHOLDER_RESOLUTION_ZOOM),
             duration: 900,
-            essential: true,
           });
         });
       });
@@ -2728,7 +2723,6 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
             center: coordinates,
             zoom,
             duration: 1200,
-            essential: true,
           });
         });
       });
@@ -3156,7 +3150,6 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       center: selectedCenter,
       zoom: targetZoom,
       duration: 900,
-      essential: true,
     });
     map.once("moveend", showSelectedPark);
 
@@ -3207,13 +3200,13 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
 
         {!HAS_VALID_MAPBOX_ACCESS_TOKEN ? (
           <div className="absolute right-4 bottom-4 left-4 z-30 rounded-md border border-border bg-popover p-3 shadow-lg sm:right-auto sm:max-w-sm">
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground" role="status">
               The map is unavailable because Mapbox is not configured correctly.
             </p>
           </div>
         ) : viewportError ? (
           <div className="absolute right-4 bottom-4 left-4 z-30 rounded-md border border-border bg-popover p-3 shadow-lg sm:right-auto sm:max-w-sm">
-            <p className="text-sm text-muted-foreground">{viewportError}</p>
+            <p className="text-sm text-muted-foreground" role="status">{viewportError}</p>
             <Button
               className="mt-2"
               size="sm"
@@ -3256,7 +3249,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
           </Button>
         </div>
         {isAreaTruncated && !isViewportLoading ? (
-          <p className="pointer-events-auto absolute top-10 left-1/2 mt-2 max-w-full -translate-x-1/2 rounded-full border border-border bg-card px-3 py-1 text-center text-xs text-muted-foreground shadow-sm">
+          <p role="status" className="pointer-events-auto absolute top-10 left-1/2 mt-2 max-w-full -translate-x-1/2 rounded-full border border-border bg-card px-3 py-1 text-center text-xs text-muted-foreground shadow-sm">
             Zoom in to see more parks
           </p>
         ) : null}

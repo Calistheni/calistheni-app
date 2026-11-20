@@ -92,7 +92,7 @@ export function PasswordAuthForm({
       </Button>
       {mode === "login" ? (
         <div className="text-center text-sm">
-          <Link className="text-primary underline-offset-4 hover:underline" href="/forgot-password">Forgot password?</Link>
+          <Link className="text-primary underline-offset-4 hover:underline dark:text-accent-foreground" href="/forgot-password">Forgot password?</Link>
         </div>
       ) : null}
     </form>

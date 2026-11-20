@@ -6,6 +6,7 @@ import { getNutritionAiQuotas, releaseNutritionAiQuota, reserveNutritionAiQuota 
 import { resolveDescribedFoods } from "@/lib/nutrition/describe-resolver";
 import { getUserEntitlements } from "@/lib/entitlements";
 import { createUserUnauthorizedResponse, getAuthenticatedUserId } from "@/lib/user-auth";
+import { hasNutritionAiConsent } from "@/lib/nutrition/ai-consent";
 
 const describeSchema = z
   .object({ description: z.string().trim().min(1).max(250) })
@@ -14,6 +15,9 @@ const describeSchema = z
 export async function POST(request: Request) {
   const userId = await getAuthenticatedUserId();
   if (!userId) return createUserUnauthorizedResponse();
+  if (!hasNutritionAiConsent(request.headers)) {
+    return createJsonErrorResponse("Confirm sharing this request with OpenAI.", 400, "CONSENT_REQUIRED");
+  }
 
   let body: unknown;
   try {

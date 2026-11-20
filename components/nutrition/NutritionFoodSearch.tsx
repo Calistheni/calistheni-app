@@ -11,6 +11,11 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { FoodDetailsDialog } from "@/components/nutrition/FoodDetailsDialog";
 import { FoodVisual } from "@/components/nutrition/FoodVisual";
+import {
+  NutritionAiConsentDialog,
+  type NutritionAiConsentRequest,
+} from "@/components/nutrition/NutritionAiConsentDialog";
+import { NUTRITION_AI_CONSENT_HEADERS } from "@/lib/nutrition/ai-consent";
 import { foodResultClassification, meaningfulFoodBrand } from "@/lib/nutrition/food-display";
 
 type Result = {
@@ -87,6 +92,7 @@ export function NutritionFoodSearch() {
   const [proposal, setProposal] = useState<Record<string, unknown> | null>(null);
   const [proposalBusy, setProposalBusy] = useState(false);
   const [proposalError, setProposalError] = useState("");
+  const [aiConsent, setAiConsent] = useState<NutritionAiConsentRequest | null>(null);
   const activeRequest = useRef(0);
   const abortController = useRef<AbortController | null>(null);
 
@@ -135,6 +141,14 @@ export function NutritionFoodSearch() {
     }
   }
 
+  function requestProposalConsent(name: string) {
+    if (proposalBusy) return;
+    setAiConsent({
+      description: "Calistheni may send the food name and search terms to OpenAI to suggest a nutrition entry.",
+      onApprove: () => void startProposal(name),
+    });
+  }
+
   async function startProposal(name: string) {
     if (proposalBusy) return;
     if (process.env.NODE_ENV === "development") console.info("[MissingFood] ADD clicked", { name });
@@ -142,7 +156,11 @@ export function NutritionFoodSearch() {
     setProposalBusy(true);
     try {
       if (process.env.NODE_ENV === "development") console.info("[MissingFood] POST /api/nutrition/foods/propose");
-      const response = await fetch("/api/nutrition/foods/propose", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "generate", name, context: query }) });
+      const response = await fetch("/api/nutrition/foods/propose", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...NUTRITION_AI_CONSENT_HEADERS },
+        body: JSON.stringify({ action: "generate", name, context: query }),
+      });
       const data = await response.json();
       if (process.env.NODE_ENV === "development") console.info("[MissingFood] proposal response", { status: response.status, kind: data?.kind ?? null, error: data?.error ?? null });
       if (!response.ok) throw new Error(responseErrorMessage(data, "Unable to prepare a food proposal."));
@@ -262,10 +280,10 @@ export function NutritionFoodSearch() {
           {results.missingIntent ? <Card>
             <CardContent className="flex items-center justify-between gap-3 p-4">
               <div><p className="font-medium">{results.missingIntent}</p><p className="text-sm text-muted-foreground">Not in Calistheni yet</p>{proposalBusy ? <p className="mt-1 text-xs text-muted-foreground">Preparing nutrition suggestion…</p> : null}</div>
-              <Button disabled={proposalBusy} onClick={() => void startProposal(results.missingIntent!)}>{proposalBusy ? <RefreshCw className="animate-spin" /> : null}ADD</Button>
+              <Button disabled={proposalBusy} onClick={() => requestProposalConsent(results.missingIntent!)}>{proposalBusy ? <RefreshCw className="animate-spin" /> : null}ADD</Button>
             </CardContent>
           </Card> : null}
-          {proposalError ? <Card><CardContent className="flex items-center justify-between gap-3 p-4 text-sm"><span>{proposalError}</span><Button size="sm" variant="outline" onClick={() => void startProposal(results?.missingIntent ?? query)}>Try again</Button></CardContent></Card> : null}
+          {proposalError ? <Card><CardContent className="flex items-center justify-between gap-3 p-4 text-sm"><span>{proposalError}</span><Button size="sm" variant="outline" onClick={() => requestProposalConsent(results?.missingIntent ?? query)}>Try again</Button></CardContent></Card> : null}
           {!results.localResults.length && !(results.genericResults ?? results.externalResults).length && !(results.packagedResults ?? []).length ? <Card><CardContent className="p-5 text-sm text-muted-foreground">No food results are available for this query.</CardContent></Card> : null}
         </div>
       ) : (
@@ -274,6 +292,7 @@ export function NutritionFoodSearch() {
         </Card>
       )}
       <FoodDetailsDialog food={selectedFood} open={Boolean(selectedFood)} onOpenChange={(open) => { if (!open) setSelectedFood(null); }} onImported={() => void search(query)} />
+      <NutritionAiConsentDialog request={aiConsent} onDismiss={() => setAiConsent(null)} />
       <Dialog open={Boolean(proposal)} onOpenChange={(open) => { if (!open) setProposal(null); }}>
         <DialogContent>
           <DialogHeader><DialogTitle>Add missing food</DialogTitle><DialogDescription>This food isn&apos;t currently available in the Calistheni database. AI values are estimates—please review them before saving.</DialogDescription></DialogHeader>

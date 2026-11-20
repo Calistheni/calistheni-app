@@ -1,117 +1,45 @@
-# App Store Connect privacy worksheet — Day 7D
+# Calistheni iOS App Store privacy checklist
 
-Status: evidence-based engineering draft, not submitted. Reconfirm answers
-against the release build, deployed vendor settings, and the App Store Connect
-definitions before publication. “Collected” below includes collection by
-third-party services where evidenced; on-device-only processing and transient
-requests are distinguished.
+Use this checklist for the signed iOS release and the Calistheni site loaded in its production WebView. Each selected row below uses **Tracking: No** based on the reviewed code and published provider behavior. Reconfirm the release configuration before publishing the label. The repository manifest includes the conservative selections marked provisional.
 
-| Apple data type | Collected | Linked to identity | Tracking | Purpose and flow | Evidence / processor | Owner verification |
-|---|---|---|---|---|---|---|
-| Name | Yes | Yes | No | Account/profile identity; user-provided | `User.name`, public profile and auth code; Calistheni/Neon | Confirm final profile fields |
-| Email address | Yes | Yes | No | Account sign-in, verification and security email; business partner inquiries are separate | `User.email`, password/auth flows, `PartnerInquiry.email`; Calistheni/Neon, Resend or configured Brevo SMTP | Confirm active email provider configuration and retention |
-| Other user contact information | Yes | Yes to the inquiry/contact identity; not linked to a Calistheni account by schema | No | Business name, contact name, website, location, and proposed reward submitted in partner inquiries | `PartnerInquiry`; Calistheni/Neon and Resend | Confirm inquiry retention and whether all fields remain necessary |
-| User ID | Yes | Yes | No | Account ownership, authorization, records and entitlements | `User.id`, session and service models; Calistheni/Neon | No additional source review identified |
-| Other data types | Yes | Yes | No | Optional date of birth, body-composition inputs, and profile/training preferences used by the corresponding account features | `User.dateOfBirth`, `User.bodyFatSex`, training and goal fields; Calistheni/Neon | Owner to confirm whether body-composition sex selection should also be disclosed as Sensitive Info |
-| Device ID | Yes (third-party SDK) | Yes (pseudonymous app-install identifier; not joined to Calistheni account in app source) | No | Mapbox GL JS anonymous telemetry identifier | Bundled `mapbox-gl` 3.24 telemetry implementation; Mapbox | Confirm identifier semantics and whether App Store classification as linked is correct |
-| Precise location | Yes | Yes (park-photo verification coordinates are stored with the linked park contribution; Mapbox also receives map/directions requests) | No evidence of tracking | Optional park-photo verification reads photo EXIF GPS or requests browser location, then stores exact coordinate, source, and distance with the park submission for authorized moderator review. Mapbox receives the viewed map area and, for explicitly requested directions, route origin/destination. Park viewport and duplicate-check coordinates use JSON request bodies rather than URL query strings; the nearby check itself does not persist them. | `components/user/ParkSubmissionForm.tsx`, `lib/photo-location-verification.ts`, `app/api/user/parks/route.ts`, park edit route, `components/ParksMap.tsx`; Calistheni/Neon, Vercel and Mapbox | Confirm retention period/access policy for stored park-verification coordinates and verify Mapbox deployed account/log settings |
-| Coarse location | Unconfirmed | Unconfirmed | No evidence of tracking | Map viewport and nearby park discovery may indicate an area; park coordinates represent parks, not necessarily the user | Same sources as precise location | Confirm whether disclosure is required after vendor review |
-| Health | Yes | Yes | No | Optional HealthKit body/profile measurement read/write; body measurements, nutrition, and wellness records entered or saved to account | `lib/native/apple-health.ts`, `lib/apple-health-capabilities.ts`, measurement and nutrition APIs; Apple HealthKit and Calistheni/Neon | Confirm final HealthKit capability and data types in signed archive |
-| Fitness | Yes | Yes | No | Workouts, exercise sets, progress, supplement logs/reminders, and optional HealthKit workout export | Prisma workout/progress/supplement models, workout APIs, `lib/apple-health-workout.ts`; Calistheni/Neon and Apple HealthKit | Confirm final release feature set |
-| Photos or videos | Yes | Yes | No | Optional workout/park/community image upload; optional nutrition image analysis | R2 upload services and nutrition image route; Cloudflare R2, OpenAI for analysis inputs | Confirm deployed image and OpenAI account handling |
-| Other user content | Yes | Yes | No | Workout notes, comments, park submissions, reports, explanations, nutrition descriptions, partner inquiry messages | Prisma social/park/moderation/nutrition models and APIs; Calistheni/Neon; OpenAI for submitted nutrition description | Confirm whether partner inquiry should be treated separately in App Store answers |
-| Purchase history | Yes | Yes | No | Subscription entitlement, transaction state and provider reconciliation | `Subscription`, `ApplePurchase`, `AppleTransaction`, billing routes; Stripe and Apple | Confirm final production product configuration separately; card data is not collected by Calistheni |
-| Product interaction | Yes | Yes for account-side activity records; Mapbox SDK events are pseudonymous | No evidence of tracking | Throttled account activity, feature counters and anonymous Mapbox map/style telemetry | `lib/user-activity.ts`, nutrition usage models, bundled Mapbox GL JS telemetry; Calistheni/Neon and Mapbox | Confirm exact App Store linkage selection and Mapbox SDK release behavior |
-| Search history | Unconfirmed (transient request; no Calistheni saved search-history row) | Yes within authenticated Calistheni request; external provider linkage unknown | No | Food search terms are sent to the authenticated Calistheni API and may be sent to USDA FoodData Central or Open Food Facts in POST request bodies. Barcode values are sent to Open Food Facts when required. Searches against the synchronized Fineli catalogue are local and are not sent to Fineli per query. Whether transient requests count as collection depends on provider/platform retention beyond the request. | `components/nutrition/*` callers, `app/api/nutrition/foods/search/route.ts`, `app/api/nutrition/foods/barcode/lookup/route.ts`, `lib/nutrition/service.ts`; USDA and Open Food Facts | Confirm provider query logging and deployed Vercel request-body handling before final selection |
-| Customer support | Unconfirmed / not collected by in-app form | N/A | No | Support link opens the user’s email client; business partner inquiry is a separate feature | Privacy/Terms `mailto:`; `PartnerInquiry` model | Confirm whether support mailbox creates support records outside the app |
-| Payment information | No (Calistheni does not receive card credentials from Stripe/Apple purchase flows) | N/A | No | Payment entry and processing occur with Stripe or Apple | Stripe Checkout/portal and StoreKit integration | Confirm no future client-side payment form changes this |
-| Diagnostics | Unconfirmed | Unconfirmed | No evidence of tracking | Vercel/platform operational logs may include request metadata; no application analytics/diagnostics SDK found | Vercel runtime logging documentation; platform configuration not inspected | Confirm plan, log settings, and any enabled error-monitoring integrations |
-| Contacts, audio, browsing history, advertising data | No evidence in app source | N/A | No | No corresponding collection or SDK behavior found | Repository/package/import review | Recheck release dependency inventory |
+| App Store Connect data type | Select | Purposes | Linked | Evidence |
+|---|---|---|---|---|
+| Name | Yes | App Functionality | Yes | Account and profile names in `User` and identity providers |
+| Email Address | Yes | App Functionality | Yes | Sign-in, recovery, security messages, and billing contact |
+| Other User Contact Info | Yes | App Functionality | Yes | The public footer links to the partner form, which retains contact name and business website in the same inquiry |
+| Health | Yes | App Functionality, Analytics | Yes | Saved nutrition and measurements, optional Apple Health imports, and authorized internal summaries of per-account nutrition activity |
+| Fitness | Yes | App Functionality, Analytics | Yes | Workout and exercise logs, progress, and workout engagement counts |
+| Precise Location | Yes | App Functionality | Yes | Park photo GPS or optional device location is stored with the contributor's submission. Mapbox receives route coordinates when directions are requested. |
+| Photos or Videos | Yes | App Functionality | Yes | Workout and park photos, and optional images sent to OpenAI for nutrition analysis |
+| Other User Content | Yes | App Functionality | Yes | Workout notes, community submissions and reports, and optional food descriptions |
+| Search History | Yes, provisional | App Functionality | Yes, provisional | Exercise, people, and park searches can place terms in URLs visible to runtime logs. Food search uses POST to Calistheni, and remote providers can receive search terms or barcodes. There is no saved search history feature. |
+| User ID | Yes | App Functionality, Analytics | Yes | Account ownership, sign-in, entitlements, and deduplicated active-user measures |
+| Device ID | Yes | App Functionality, Analytics | Yes, provisional | Mapbox GL JS stores a rotating WebView or browser identifier used in map usage and billing events. Calistheni does not attach its account ID. |
+| Purchase History | Yes | App Functionality, Analytics | Yes | Apple and Stripe transaction and entitlement records, plus subscription trends |
+| Product Interaction | Yes | App Functionality, Analytics | Yes | Account presence, activity counts, barcode outcomes, AI usage quotas, and Mapbox map usage |
+| Performance Data | Yes | App Functionality | Yes, provisional | Mapbox GL JS enables performance reporting by default. The performance payload includes timing and device characteristics and does not carry the map usage identifier. Mapbox's ability to join the records requires verification. |
+| Other Diagnostic Data | Yes, provisional | App Functionality | Yes, provisional | Server authentication and error events, plus hosting request logs. Verify retained fields and potential linkage in the release environment. |
+| Other Data Types | Yes | App Functionality | Yes | Optional date of birth stored as an account field |
 
-## Manifest mapping
+For Health, Analytics covers authorized review of nutrition logging frequency and summaries. The reviewed general product analytics dashboard does not use imported HealthKit measurements. Leave Product Personalization off for Health. Progress reports and calculations implement features requested by the user.
 
-The app manifest includes Name, EmailAddress, OtherUserContactInfo, UserID,
-OtherDataTypes, Fitness, PreciseLocation, Health, PhotosorVideos,
-OtherUserContent, PurchaseHistory, ProductInteraction, and DeviceID.
-Account-linked service data is marked AppFunctionality;
-ProductInteraction is linked to the Calistheni account for support/service
-operation, and the persistent Mapbox GL JS telemetry DeviceID is marked
-Analytics and linked conservatively pending owner confirmation. `NSPrivacyTracking`
-remains false and `NSPrivacyTrackingDomains` is explicitly empty. Apple states
-that a privacy manifest does not need to repeat data collected by third-party
-SDKs that the app links, but Mapbox GL JS runs in the app’s WebView rather than
-as a linked native SDK; confirm that this app-manifest mapping is appropriate
-for the submitted binary.
+## Checks before publication
 
-PreciseLocation is included because park-photo verification coordinates are
-stored with linked park-submission records for authorized moderator review.
-SearchHistory is not included because the app does not retain saved search
-history and provider retention is unresolved; revisit if provider evidence
-shows retention beyond the request. CoarseLocation is not separately declared. Mapbox provider-side retention and
-its treatment of map/directions requests still require account and release
-verification. Diagnostics and CustomerSupport are not declared without
-evidence of app-collected information in those categories.
+- **Mapbox:** Confirm the release sends the reviewed usage and performance events and confirm their retention, purpose, device linkage, and onward use. Keep provisional linked selections until evidence supports unlinkability. If performance metrics are also used to evaluate the product or feature, add Analytics. Check for any separately retained approximate user location before adding Coarse Location. A map viewport or a park's coordinates alone do not establish user location.
+- **Search and technical logs:** Check which URL parameters, bodies, identifiers, and diagnostic events Vercel or log drains retain. Check search-term retention at USDA FoodData Central and Open Food Facts. Change Search History or Other Diagnostic Data to Not Linked only if the retained records cannot be associated with an account or device. Omit the category only if nothing applicable is retained beyond the request.
+- **Support and crash reports:** The support page opens email or Instagram and has no in-app ticket upload. Confirm whether external support correspondence is retained and whether Apple's optional-disclosure criteria apply. If in scope, select Customer Support, App Functionality, with linkage based on the records. No crash-reporting integration was found in source. Add Crash Data only for crash reports actually collected in the release.
+- **OpenAI:** Confirm actual project-level abuse-monitoring and retention controls. AI Scan, Describe, nutrition-label extraction, and proposal generation require confirmation before submitting a request. `store: false` is a Responses API application-state setting. OpenAI's published default for abuse-monitoring logs is up to 30 days, with exceptions.
+- **Archive and questionnaire:** Compare the signed archive's aggregated privacy report, the deployed WebView, and the App Store Connect selections. The checked-in app manifest keeps UserDefaults reason `CA92.1` and has no tracking domains. Confirm the partner form's reachability and the active provider settings. The questionnaire and manifest are independently maintained.
 
-Apple manifest data types and App Store privacy answers are related but are
-not interchangeable; validate the manifest against Apple’s current schema and
-complete the App Store Connect questionnaire independently.
+No Payment Info selection is supported for the reviewed Apple and Stripe hosted payment flows. Calistheni does not receive payment card details. No source evidence supports contacts, audio recordings, private-message contents, browsing history, or advertising data.
 
-## Confirmed processors and unresolved settings
-
-- Apple: Sign in with Apple, HealthKit on user choice, and StoreKit purchases.
-- Google: OAuth sign-in.
-- Stripe: website subscription checkout/management and billing lifecycle.
-- Mapbox: map styles/tiles, park route directions, anonymous map telemetry;
-  its published policy describes processing and IP log handling, but Calistheni
-  account-level controls were not inspected.
-- Cloudflare R2: uploaded workout and park images; bucket access/log settings
-  were not inspected.
-- Neon and Vercel: application data and hosting; deployed project/log settings
-  were not inspected in this source-only task.
-- Resend: partner inquiry delivery; authentication email selects Resend by
-  default or Brevo SMTP when configured.
-- USDA FoodData Central and Open Food Facts: food search/barcode requests may
-  transmit the query or barcode. Provider logging was not verified. Fineli is
-  synchronized into Calistheni’s local catalogue; individual search queries
-  are not sent to Fineli, though the batch synchronization itself uses its
-  service.
-- OpenAI: nutrition images, descriptions, and food-candidate inputs are sent
-  to Responses API requests with `store: false`. OpenAI’s current API data
-  controls documentation says default abuse-monitoring logs may contain
-  content and are retained up to 30 days, subject to exceptions. `store:false`
-  does not prove abuse-monitoring retention is disabled; Calistheni’s account
-  configuration was not inspected.
-
-## Vendor documentation reviewed
-
-- Apple defines “linked to identity” to include linkage through an account,
-  device, or other details; “tracking” concerns linking to third-party data
-  for advertising/measurement or sharing with a data broker. The Mapbox
-  telemetry row therefore remains a conservative declaration pending owner
-  review of the exact identifier and linkage.
-- Mapbox documents `events.mapbox.com` as an endpoint for anonymized user
-  telemetry and states that its location telemetry does not record advertising
-  identifiers. This does not establish Calistheni’s Mapbox account settings or
-  determine how App Store Connect should classify every telemetry field.
-- Vercel runtime logs expose request paths and search parameters. Food search,
-  barcode lookup, map viewport, and nearby-coordinate calls now send those
-  values in POST bodies; application code does not log their values. This does
-  not establish the platform’s body handling, log retention, or other request
-  metadata settings.
-- Cloudflare documents optional R2 Data Access Logs, which include object keys
-  and request metadata and have seven-day retention when enabled. Whether this
-  feature is enabled for Calistheni’s buckets was not inspected.
-- OpenAI’s API documentation says default abuse-monitoring logs may retain
-  content for up to 30 days, subject to exceptions. The account’s retention
-  configuration was not inspected.
-
-## Sources for review
+## Sources
 
 - [Apple App Privacy Details](https://developer.apple.com/app-store/app-privacy-details/)
 - [Apple privacy manifest files](https://developer.apple.com/documentation/bundleresources/privacy-manifest-files)
-- [Apple collected-data types](https://developer.apple.com/documentation/bundleresources/app-privacy-configuration/nsprivacycollecteddatatypes/nsprivacycollecteddatatype)
-- [Mapbox GL JS security and telemetry endpoint](https://docs.mapbox.com/mapbox-gl-js/guides/security-and-testing/)
+- [Apple App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/#data-use-and-sharing)
+- [Mapbox GL JS performance option](https://docs.mapbox.com/mapbox-gl-js/api/map/#map-options-performancemetricscollection)
+- [Mapbox telemetry endpoints](https://docs.mapbox.com/mapbox-gl-js/guides/security-and-testing/)
 - [Mapbox Privacy Policy](https://www.mapbox.com/legal/privacy)
-- [OpenAI API data controls](https://developers.openai.com/api/docs/guides/your-data)
 - [Vercel runtime logs](https://vercel.com/docs/logs/runtime)
-- [Cloudflare R2 data access logs](https://developers.cloudflare.com/r2/buckets/data-access-logs/)
+- [OpenAI API data controls](https://developers.openai.com/api/docs/guides/your-data)
