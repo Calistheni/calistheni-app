@@ -35,10 +35,11 @@ shared deploy hook, production Neon URL, live Stripe key, or production R2 key.
 1. Resolve the staging database hostname and database name independently from Vercel configuration.
 2. Verify it is not any production Neon hostname, project, branch, role, or database.
 3. Take a staging backup or snapshot.
-4. Run `npm run auth:email-collision-preflight` read-only against staging.
-5. Review the five Phase 6 migrations and run `npx prisma migrate deploy` against staging only.
-6. Confirm all 69 migration rows completed and `npx prisma validate` still passes.
-7. Do not roll migrations back by dropping populated tables. Roll application code back or forward-fix with an additive migration.
+4. [Reconcile migration history](authentication-deployment.md#migration-history-reconciliation) against the exact staging release commit. Compare migration names, checksums, and attempt status with the release files and confirm the exact ordered pending set. Investigate any discrepancy before proceeding.
+5. Run `npm run --silent auth:email-collision-preflight -- --pre-migration` against staging with the explicit read-only connection and verified hostname described in [the authentication runbook](authentication-deployment.md#safe-deployment-order). Stop on any failure.
+6. After approval, run `npx prisma migrate deploy` against the verified staging database during the approved window.
+7. Run `npm run --silent auth:email-collision-preflight -- --post-migration` against the same staging database. Reconcile names, checksums, and migration status against the same release commit and verify the expected live schema. Run `npx prisma validate` to validate the local Prisma schema.
+8. Do not roll migrations back by dropping populated tables. Roll application code back or forward-fix with an additive migration.
 
 ## Safe initial worker state
 

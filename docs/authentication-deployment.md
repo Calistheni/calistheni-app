@@ -49,16 +49,36 @@ All variables above are server-only. None use the `NEXT_PUBLIC_` prefix.
 
 ## Safe deployment order
 
-1. Back up the database and run `npm run auth:email-collision-preflight` read-only against the target database. Resolve collisions manually; do not merge automatically.
-2. Configure Apple, email, encryption, and rate-limit secrets on a non-production environment.
-3. Review `prisma/migrations/20261103120000_secure_multi_provider_auth/migration.sql`, then apply it with the normal reviewed migration process. It additively extends Session with recent-authentication, purpose and provider provenance, extends the existing native-attempt table, and creates authentication, encrypted-email-outbox, Apple authorization/event, and rate-limit tables plus indexes/foreign keys.
-4. Deploy the web/server application. Verify existing Google login and an existing database session before enabling user-facing rollout.
-5. Test new registration, verification, password reset, Apple web login, explicit linking, and unlink safeguards with isolated test users.
-6. Build a new iOS binary because the AuthenticationServices bridge and Sign in with Apple entitlement are native changes. Verify Google external-browser handoff, Apple native login, session persistence, logout, Universal Links, and StoreKit in TestFlight/Sandbox.
-7. Create the reviewer account manually through normal registration. Verify its mailbox and exercise normal features. Do not hardcode or seed credentials.
-8. Only after separate approval, add that account's canonical User ID—not its email—to `APPLE_SANDBOX_ENTITLEMENT_USER_IDS`. Redeploy server configuration and verify an ordinary test user remains Free after a Sandbox purchase.
+The following steps are for an authorized future rollout. Rehearse them against an isolated database first.
+
+1. Verify the target database identity. Match the provider project, branch, and endpoint, and attest the database and role used by the operator connection.
+2. Confirm a restorable database recovery point and a rehearsed recovery procedure.
+3. [Reconcile migration history](#migration-history-reconciliation) against the exact release commit using read-only access. Record the exact ordered pending migration set and stop on any unexpected result.
+4. Run `npm run --silent auth:email-collision-preflight -- --pre-migration`. This checks only `public."User".email` and works before the credential table exists.
+5. Stop on any failure. Resolve collisions through a separately reviewed procedure and rerun the check. Coordinate an email/account-write freeze or equivalent protection against ownership changes between the final pre-check and rollout.
+6. Apply the reviewed migrations during an approved deployment window. The secure multi-provider authentication migration creates the credential table and extends sessions and native authentication attempts. Verify the migration runner's connection independently.
+7. Run `npm run --silent auth:email-collision-preflight -- --post-migration`. This requires the credential table and checks ownership across both sources. Matching records for the same user are allowed.
+8. Repeat migration history reconciliation against the same release commit. Confirm the expected migrations finished with matching names and checksums, no unexpected pending or failed migrations remain, and the expected schema is present.
+9. Enable the new authentication functionality only after the checks pass. Verify existing Google login and an existing database session before enabling user-facing rollout. Test registration, verification, password reset, Apple web login, explicit linking, and unlink safeguards with isolated test users.
+
+For both preflight modes, inject an explicitly approved read-only connection via `AUTH_EMAIL_PREFLIGHT_DATABASE_URL` and the independently verified exact hostname via `AUTH_EMAIL_PREFLIGHT_EXPECTED_HOST`. Grant the read-only role access to the required columns in each phase. Supply credentials through the operator's secret mechanism. The preflight does not load `.env.local` or fall back to `DATABASE_URL`. It uses verified TLS for remote connections and reports only aggregate counts and remediation guidance. Exit codes are `0` for pass, `1` for an incomplete check, and `2` for collisions. Counts include every inspected row and all records in any conflicting group. Null and normalized-empty addresses are excluded from grouping. Other stored values are compared using the runtime normalization, including malformed nonempty values.
+
+The installed PostgreSQL driver can negotiate channel binding when offered. It cannot guarantee that channel binding is used, so the preflight rejects `channel_binding=require` before connecting. If the requirement applies to the target connection, keep it in place and arrange a separately approved preflight using a client that enforces it.
+
+Build a new iOS binary because the AuthenticationServices bridge and Sign in with Apple entitlement are native changes. Verify Google external-browser handoff, Apple native login, session persistence, logout, Universal Links, and StoreKit in TestFlight/Sandbox.
+
+Create the reviewer account manually through normal registration and verify its mailbox and normal features. Only after separate approval, add its canonical User ID to `APPLE_SANDBOX_ENTITLEMENT_USER_IDS`. Redeploy server configuration and verify an ordinary test user remains Free after a Sandbox purchase.
 
 Rollback of the web code leaves the additive tables unused and preserves existing accounts. Do not roll back the migration by dropping populated auth tables after users begin using Apple/password authentication; restore application compatibility or perform an explicitly reviewed data-preserving migration instead.
+
+### Migration history reconciliation
+
+1. Pin the exact release commit and inventory the migration directories and `migration.sql` files in that revision. Use the matching file contents to check Prisma's recorded checksums.
+2. On the attested target, inspect `_prisma_migrations` in a read-only transaction. Compare each migration name and checksum with its release file. Use `started_at`, `finished_at`, and `rolled_back_at` to distinguish completed and rolled-back attempts. Investigate any unfinished attempt to determine whether it failed or is incomplete.
+3. Derive the ordered pending set from the release files without a successful matching application and compare it with the approved migration plan. Investigate unexpected names, missing history or gaps, mismatched checksums, failed or incomplete attempts, and any unexplained rolled-back attempts before proceeding. Keep this check read-only. It does not authorize history edits or `prisma migrate resolve`.
+4. After applying the approved set, compare names, checksums, and attempt status again against the same revision. Verify the resulting tables, columns, indexes, and constraints match the expected schema.
+
+**Open production verification item:** The owner observed 65 applied migrations in production while the audited `origin/main` contained 64 migration directories. Reconcile the records by name, checksum, and status before the production migration. The count discrepancy alone does not establish schema drift.
 
 Authentication email delivery is written transactionally to `AuthEmailDelivery` before the public response. Next.js `after()` immediately attempts the newly queued delivery and opportunistically drains a small additional batch, so a healthy registration or recovery request does not wait for a scheduler. `/api/cron/auth-email` is the independent retry and recovery path. Database leases using `FOR UPDATE SKIP LOCKED` prevent concurrent workers (including the request fast path) from claiming the same delivery. Expired or consumed action tokens and deleted accounts are marked terminal without being sent. Permanent provider rejections are terminal; transient, network, timeout, authentication, and provider-configuration errors use deterministic exponential retry beginning at 30 seconds, capped at one hour, and stop after 12 attempts. `AuthEmailDelivery` retains a safe failure category and terminal timestamp without storing provider response bodies, SMTP credentials, or recipient data in error logs.
 

@@ -16,7 +16,7 @@
     "test": "node --test lib/*.test.mjs && tsx --test tests/*.test.ts",
     "test:integration": "REQUIRE_DATABASE_INTEGRATION=1 node --conditions=react-server --import tsx --test --test-concurrency=1 tests/integration/*.integration.ts",
     "db:migrate:deploy": "prisma migrate deploy",
-    "auth:email-collision-preflight": "node --env-file-if-exists=.env.local --conditions=react-server ./node_modules/tsx/dist/cli.mjs scripts/auth-email-collision-preflight.mts",
+    "auth:email-collision-preflight": "node --import tsx scripts/auth-email-collision-preflight.mts",
     "mobile:assets": "capacitor-assets generate --ios --android --assetPath resources --iconBackgroundColor '#2563eb' --iconBackgroundColorDark '#09090b' --splashBackgroundColor '#09090b' --splashBackgroundColorDark '#09090b' --logoSplashScale 0.24",
     "mobile:sync": "CALISTHENI_BUNDLED_NATIVE=0 CALISTHENI_NATIVE_REMOTE_TARGET=production CALISTHENI_CAPACITOR_LOGGING=none cap sync && node scripts/set-ios-runtime-expectation.mjs remote production none && node scripts/verify-xcode-runtime-mode.mjs",
     "mobile:sync:ios:bundled": "node scripts/verify-native-output.mjs && CALISTHENI_BUNDLED_NATIVE=1 CALISTHENI_CAPACITOR_LOGGING=none cap sync ios && node scripts/set-ios-runtime-expectation.mjs bundled && node scripts/verify-bundled-ios.mjs && node scripts/verify-xcode-runtime-mode.mjs",

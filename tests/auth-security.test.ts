@@ -3,7 +3,7 @@ import test from "node:test";
 import { generateKeyPair, SignJWT } from "jose";
 import { verifyAppleAccountEvent, verifyAppleIdentityToken } from "../lib/auth/apple-token-verification.ts";
 import { hashPassword, normalizeAuthEmail, validatePassword, verifyPassword } from "../lib/auth/password-core.ts";
-import { findNormalizedEmailCollisions } from "../lib/auth/email-collision-preflight.ts";
+import { summarizeEmailCollisions } from "../lib/auth/email-collision-preflight.ts";
 import { decryptAuthToken, encryptAuthToken } from "../lib/auth/token-encryption.ts";
 
 test("passwords use Argon2id and reject an incorrect password", async () => {
@@ -37,15 +37,13 @@ test("authentication token encryption supports legacy records and versioned key 
 });
 
 test("email collision preflight uses runtime Unicode and case normalization", () => {
-  const collisions = findNormalizedEmailCollisions([
-    { userId: "user-1", email: "Test@Example.com", source: "User.email" },
-    { userId: "user-2", email: " test@example.COM ", source: "User.email" },
-    { userId: "user-3", email: "\u212B@example.com", source: "User.email" },
-    { userId: "user-4", email: "\u00C5@EXAMPLE.COM", source: "PasswordCredential.emailNormalized" },
+  const summary = summarizeEmailCollisions([
+    { userId: "user-1", email: "Test@Example.com" },
+    { userId: "user-2", email: " test@example.COM " },
+    { userId: "user-3", email: "\u212B@example.com" },
+    { userId: "user-4", email: "\u00C5@EXAMPLE.COM" },
   ]);
-  assert.equal(collisions.length, 2);
-  assert.ok(collisions.some((collision) => collision.userIds.join(",") === "user-1,user-2"));
-  assert.ok(collisions.some((collision) => collision.userIds.join(",") === "user-3,user-4"));
+  assert.deepEqual(summary, { collisionGroups: 2, affectedRecords: 4 });
 });
 
 async function appleToken(privateKey: CryptoKey, claims: Record<string, unknown> = {}) {
