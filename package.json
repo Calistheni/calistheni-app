@@ -15,7 +15,7 @@
     "lint:native": "eslint apps/native scripts/verify-native-source.mjs scripts/verify-native-output.mjs scripts/stamp-native-output.mjs scripts/verify-bundled-ios.mjs scripts/set-ios-runtime-expectation.mjs scripts/verify-xcode-runtime-mode.mjs scripts/verify-built-ios-app.mjs lib/capacitor-runtime-mode.ts lib/auth/native-session-core.ts lib/native-api-cors-core.ts tests/native-phase1.test.ts tests/native-bundled-auth.test.ts tests/native-primary-data-continuity.test.ts",
     "test": "node --test lib/*.test.mjs && tsx --test tests/*.test.ts",
     "test:integration": "REQUIRE_DATABASE_INTEGRATION=1 node --conditions=react-server --import tsx --test --test-concurrency=1 tests/integration/*.integration.ts",
-    "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate:deploy": "node --import tsx scripts/production-migrate.mts",
     "auth:email-collision-preflight": "node --import tsx scripts/auth-email-collision-preflight.mts",
     "mobile:assets": "capacitor-assets generate --ios --android --assetPath resources --iconBackgroundColor '#2563eb' --iconBackgroundColorDark '#09090b' --splashBackgroundColor '#09090b' --splashBackgroundColorDark '#09090b' --logoSplashScale 0.24",
     "mobile:sync": "CALISTHENI_BUNDLED_NATIVE=0 CALISTHENI_NATIVE_REMOTE_TARGET=production CALISTHENI_CAPACITOR_LOGGING=none cap sync && node scripts/set-ios-runtime-expectation.mjs remote production none && node scripts/verify-xcode-runtime-mode.mjs",
