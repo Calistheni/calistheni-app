@@ -1,8 +1,10 @@
 type Environment = Record<string, string | undefined>;
 
+export const PRODUCTION_VERCEL_PROJECT_ID = "prj_eWLVR9Q7U9zSJ0RQMy2e7fALBYf5";
+
 const deployments = {
   production: {
-    projectId: "prj_eWLVR9Q7U9zSJ0RQMy2e7fALBYf5",
+    projectId: PRODUCTION_VERCEL_PROJECT_ID,
     hosts: ["calistheni.app", "calistheni-app.vercel.app"],
     endpoint: "ep-dark-dew-aizz21ag",
   },

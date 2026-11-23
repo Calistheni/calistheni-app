@@ -13,33 +13,54 @@ if (safeLocalDatabase) {
 const origin = "http://localhost:3000";
 const secret = () => randomBytes(32).toString("base64url");
 
-test("workout photo responses reauthorize access and never cache, using a private R2 bucket", { skip: !safeLocalDatabase }, async (t) => {
+test("workout photos preserve their keys and enforce access when reusing the legacy bucket", { skip: !safeLocalDatabase }, async (t) => {
   const { prisma } = await import("../../lib/prisma.ts");
   const { GET } = await import("../../app/api/workouts/[id]/photos/[photoId]/route.ts");
+  const { POST } = await import("../../app/api/user/workouts/[id]/photos/route.ts");
+  const { DELETE } = await import("../../app/api/user/workouts/[id]/photos/[photoId]/route.ts");
   const { getAuthSessionCookieName } = await import("../../lib/auth/native-auth-server.ts");
-  const { getWorkoutPhotoKey } = await import("../../lib/workout-photo.ts");
-  const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3");
+  const { getWorkoutPhotoKey, isWorkoutPhotoKeyForWorkout } = await import("../../lib/workout-photo.ts");
+  const { getWorkoutPhotoObject, putWorkoutPhoto, deleteWorkoutPhotoObject } = await import("../../lib/workout-photo-storage.ts");
+  const { S3Client, GetObjectCommand, PutObjectCommand, HeadObjectCommand, DeleteObjectCommand } = await import("@aws-sdk/client-s3");
+  const { default: sharp } = await import("sharp");
+  let expectedBucket = "isolated-test-workout-bucket";
+  let acceptUpload = false;
+  let uploadedKey: string | undefined;
   const r2 = t.mock.method(S3Client.prototype, "send", async (command: unknown) => {
-    assert.ok(command instanceof GetObjectCommand);
-    assert.equal(command.input.Bucket, "isolated-test-workout-bucket");
-    return { Body: { transformToWebStream: () => new Response("image fixture").body } };
+    assert.ok(command instanceof GetObjectCommand || command instanceof PutObjectCommand ||
+      command instanceof HeadObjectCommand || command instanceof DeleteObjectCommand);
+    assert.equal(command.input.Bucket, expectedBucket);
+    if (acceptUpload && command instanceof PutObjectCommand) {
+      assert.ok(command.input.Key && isWorkoutPhotoKeyForWorkout(command.input.Key, owner.id, workout.id));
+      uploadedKey = command.input.Key;
+    }
+    assert.equal(command.input.Key, uploadedKey ?? photo.storageKey);
+    if (command instanceof GetObjectCommand) {
+      return { Body: { transformToWebStream: () => new Response("image fixture").body } };
+    }
+    if (command instanceof PutObjectCommand) assert.equal(command.input.CacheControl, "private, no-store");
+    return {};
   });
   const owner = await prisma.user.create({ data: {} });
   const viewer = await prisma.user.create({ data: {} });
-  const workout = await prisma.workout.create({ data: { userId: owner.id, visibility: "PUBLIC" } });
+  const workout = await prisma.workout.create({ data: { userId: owner.id, visibility: "PUBLIC", completedAt: new Date() } });
   const photo = await prisma.workoutPhoto.create({ data: {
     userId: owner.id, workoutId: workout.id, storageKey: getWorkoutPhotoKey(owner.id, workout.id), width: 1, height: 1,
     mimeType: "image/webp", originalFileName: "test.webp", fileSizeBytes: 1,
   } });
+  const legacyKey = photo.storageKey;
+  const originalSharedAccess = process.env.WORKOUT_PHOTO_R2_SHARED_BUCKET_ACCESS;
   const tokens = new Map([[owner.id, secret()], [viewer.id, secret()]]);
-  const requestPhoto = async (id?: string) => GET(new Request(`${origin}/api/workouts/${workout.id}/photos/${photo.id}`, {
-    headers: id ? { cookie: `${getAuthSessionCookieName()}=${tokens.get(id)}` } : {},
-  }), { params: Promise.resolve({ id: String(workout.id), photoId: photo.id }) });
-  const allowed = async (id?: string) => {
-    const response = await requestPhoto(id);
+  const sessionHeaders = (id?: string) => id ? { cookie: `${getAuthSessionCookieName()}=${tokens.get(id)}` } : undefined;
+  const requestPhoto = async (id?: string, workoutId = String(workout.id), photoId = photo.id) => GET(new Request(`${origin}/api/workouts/${workoutId}/photos/${photoId}`, {
+    headers: sessionHeaders(id),
+  }), { params: Promise.resolve({ id: workoutId, photoId }) });
+  const allowed = async (...args: Parameters<typeof requestPhoto>) => {
+    const response = await requestPhoto(...args);
     assert.equal(response.headers.get("cache-control"), "private, no-store");
     assert.equal(response.headers.get("location"), null);
-    await response.text();
+    if (response.status === 200) assert.equal(await response.text(), "image fixture");
+    else assert.equal(response.status, 404);
     return response.status === 200;
   };
   try {
@@ -51,13 +72,44 @@ test("workout photo responses reauthorize access and never cache, using a privat
     process.env.WORKOUT_PHOTO_R2_ENDPOINT = "https://00000000000000000000000000000000.r2.cloudflarestorage.com";
     process.env.WORKOUT_PHOTO_R2_ACCESS_KEY_ID = "test-placeholder";
     process.env.WORKOUT_PHOTO_R2_SECRET_ACCESS_KEY = "test-placeholder";
+    delete process.env.WORKOUT_PHOTO_R2_SHARED_BUCKET_ACCESS;
     assert.equal(await allowed(), false);
     process.env.WORKOUT_PHOTO_R2_BUCKET_NAME = "calistheni-photos";
+    assert.equal(await allowed(), false);
+    process.env.WORKOUT_PHOTO_R2_SHARED_BUCKET_ACCESS = "true";
+    assert.equal(await allowed(), false);
+    process.env.WORKOUT_PHOTO_R2_SHARED_BUCKET_ACCESS = "app-only";
+    process.env.WORKOUT_PHOTO_R2_BUCKET_NAME = process.env.PARK_PHOTO_R2_BUCKET_NAME;
     assert.equal(await allowed(), false);
     assert.equal(r2.mock.callCount(), 0);
     process.env.WORKOUT_PHOTO_R2_BUCKET_NAME = "isolated-test-workout-bucket";
     assert.equal(await allowed(), true);
+    process.env.WORKOUT_PHOTO_R2_BUCKET_NAME = "calistheni-photos";
+    process.env.PARK_PHOTO_R2_BUCKET_NAME = "calistheni-photos";
+    expectedBucket = "calistheni-photos";
+    assert.equal(await allowed(), true);
     assert.equal(await allowed(viewer.id), true);
+    assert.equal(await allowed(undefined, "../48"), false);
+    assert.equal(await allowed(undefined, String(workout.id + 1)), false);
+    assert.equal(await allowed(undefined, String(workout.id), encodeURIComponent(legacyKey)), false);
+    const invalidKeys = [
+      "parks/admin/photo.webp",
+      `users/${owner.id}/workouts/${workout.id}/../photo.webp`,
+      getWorkoutPhotoKey(viewer.id, workout.id),
+      getWorkoutPhotoKey(owner.id, workout.id + 1),
+    ];
+    for (const storageKey of invalidKeys) {
+      await prisma.workoutPhoto.update({ where: { id: photo.id }, data: { storageKey } });
+      assert.equal(await allowed(), false);
+    }
+    await prisma.workoutPhoto.update({ where: { id: photo.id }, data: { storageKey: legacyKey, userId: viewer.id } });
+    assert.equal(await allowed(viewer.id), false);
+    await prisma.workoutPhoto.update({ where: { id: photo.id }, data: { userId: owner.id } });
+    for (const key of invalidKeys.slice(0, 2)) {
+      await assert.rejects(getWorkoutPhotoObject(key), /invalid workout photo object key/i);
+      await assert.rejects(putWorkoutPhoto(key, Uint8Array.of(0)), /invalid workout photo object key/i);
+      await assert.rejects(deleteWorkoutPhotoObject(key), /invalid workout photo object key/i);
+    }
     await prisma.userBlock.create({ data: { blockerId: owner.id, blockedId: viewer.id } });
     assert.equal(await allowed(viewer.id), false);
     assert.equal(await allowed(owner.id), true);
@@ -67,20 +119,81 @@ test("workout photo responses reauthorize access and never cache, using a privat
     assert.equal(await allowed(viewer.id), false);
     assert.equal(await allowed(owner.id), true);
     await prisma.workout.update({ where: { id: workout.id }, data: { visibility: "PUBLIC", moderationHiddenAt: new Date() } });
+    assert.equal(await allowed(), false);
     assert.equal(await allowed(owner.id), false);
     assert.equal(await allowed(viewer.id), false);
     await prisma.workout.update({ where: { id: workout.id }, data: { moderationHiddenAt: null } });
     await prisma.user.update({ where: { id: owner.id }, data: { deletedAt: new Date() } });
     assert.equal(await allowed(owner.id), false);
     assert.equal(await allowed(viewer.id), false);
+    await prisma.user.update({ where: { id: owner.id }, data: { deletedAt: null } });
     await prisma.workoutPhoto.delete({ where: { id: photo.id } });
+    assert.equal(await allowed(), false);
     assert.equal(await allowed(owner.id), false);
+    assert.equal(r2.mock.callCount(), 5);
+    const endpoint = `${origin}/api/user/workouts/${workout.id}/photos`;
+    const image = await sharp({ create: { width: 2, height: 2, channels: 3, background: "blue" } }).webp().toBuffer();
+    const upload = (id?: string) => {
+      const form = new FormData();
+      form.set("file", new File([new Uint8Array(image)], "fixture.webp", { type: "image/webp" }));
+      const request = new Request(endpoint, { method: "POST", headers: sessionHeaders(id), body: form });
+      return POST(request, { params: Promise.resolve({ id: String(workout.id) }) });
+    };
+    assert.equal((await upload()).status, 401);
+    assert.equal((await upload(viewer.id)).status, 404);
+    assert.equal(r2.mock.callCount(), 5);
+    acceptUpload = true;
+    const created = await upload(owner.id);
+    assert.equal(created.status, 201);
+    const { photo: uploaded } = await created.json();
+    assert.equal(uploaded.storageKey, uploadedKey);
+    assert.equal(await allowed(undefined, String(workout.id), uploaded.id), true);
+    const remove = (id?: string) => {
+      const request = new Request(`${endpoint}/${uploaded.id}`, { method: "DELETE", headers: sessionHeaders(id) });
+      return DELETE(request, { params: Promise.resolve({ id: String(workout.id), photoId: uploaded.id }) });
+    };
+    assert.equal((await remove()).status, 401);
+    assert.equal((await remove(viewer.id)).status, 404);
+    await prisma.workoutPhoto.update({ where: { id: uploaded.id }, data: { storageKey: invalidKeys[2] } });
+    assert.equal((await remove(owner.id)).status, 404);
+    await prisma.workoutPhoto.update({ where: { id: uploaded.id }, data: { storageKey: uploaded.storageKey } });
+    assert.equal((await remove(owner.id)).status, 200);
+    assert.equal(await allowed(undefined, String(workout.id), uploaded.id), false);
     await prisma.workout.delete({ where: { id: workout.id } });
     assert.equal(await allowed(), false);
-    assert.equal(r2.mock.callCount(), 4);
+    assert.deepEqual(r2.mock.calls.slice(5).map(({ arguments: [command] }) => command?.constructor), [
+      PutObjectCommand, HeadObjectCommand, GetObjectCommand, DeleteObjectCommand,
+    ]);
   } finally {
+    if (originalSharedAccess === undefined) delete process.env.WORKOUT_PHOTO_R2_SHARED_BUCKET_ACCESS;
+    else process.env.WORKOUT_PHOTO_R2_SHARED_BUCKET_ACCESS = originalSharedAccess;
     await prisma.user.deleteMany({ where: { id: { in: [owner.id, viewer.id] } } });
   }
+});
+
+test("approved park photos keep their public URLs when workout storage reuses the bucket", async (t) => {
+  const { getParkPhotoUrlFromKey, getParkPhotoKeyFromUrl, getPermanentParkPhotoKey } = await import("../../lib/park-photo-storage.ts");
+  const env = {
+    PARK_PHOTO_R2_BUCKET_NAME: "calistheni-photos",
+    PARK_PHOTO_R2_ENDPOINT: "https://00000000000000000000000000000000.r2.cloudflarestorage.com",
+    PARK_PHOTO_R2_ACCESS_KEY_ID: "test-placeholder",
+    PARK_PHOTO_R2_SECRET_ACCESS_KEY: "test-placeholder",
+    PARK_PHOTO_R2_PUBLIC_URL: "https://photos.calistheni.app",
+  };
+  for (const [name, value] of Object.entries(env)) {
+    const previous = process.env[name];
+    process.env[name] = value;
+    t.after(() => {
+      if (previous === undefined) delete process.env[name];
+      else process.env[name] = previous;
+    });
+  }
+  const pending = "pending/parks/member/fixture.jpg";
+  const approved = getPermanentParkPhotoKey(pending);
+  const url = getParkPhotoUrlFromKey(approved);
+  assert.equal(url, "https://photos.calistheni.app/parks/member/fixture.jpg");
+  assert.equal(getParkPhotoKeyFromUrl(url), approved);
+  assert.equal(getParkPhotoUrlFromKey(pending), "https://photos.calistheni.app/pending/parks/member/fixture.jpg");
 });
 
 test("Google exchange requires browser completion, both proofs and the initiating account", { skip: !safeLocalDatabase }, async () => {

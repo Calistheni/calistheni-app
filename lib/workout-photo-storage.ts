@@ -5,14 +5,21 @@ import { isWorkoutPhotoKey } from "@/lib/workout-photo";
 
 let client: S3Client | undefined;
 
+const legacyWorkoutBucket = "calistheni-photos";
+
 function workoutPhotoStorage() {
   const bucket = process.env.WORKOUT_PHOTO_R2_BUCKET_NAME?.trim();
   const endpoint = process.env.WORKOUT_PHOTO_R2_ENDPOINT?.trim();
   const accessKeyId = process.env.WORKOUT_PHOTO_R2_ACCESS_KEY_ID?.trim();
   const secretAccessKey = process.env.WORKOUT_PHOTO_R2_SECRET_ACCESS_KEY?.trim();
-  const sharedBuckets = ["calistheni-photos", process.env.PARK_PHOTO_R2_BUCKET_NAME?.trim(), process.env.R2_BUCKET_NAME?.trim()];
-  if (!bucket || !endpoint || !accessKeyId || !secretAccessKey || sharedBuckets.includes(bucket)) {
-    throw new Error("Private workout photo storage is not configured.");
+  const sharedBuckets = [legacyWorkoutBucket, process.env.PARK_PHOTO_R2_BUCKET_NAME?.trim(), process.env.R2_BUCKET_NAME?.trim()];
+  if (!bucket || !endpoint || !accessKeyId || !secretAccessKey) {
+    throw new Error("Workout photo storage is not configured.");
+  }
+  // Enable reuse only after verifying that direct public access to workout keys is blocked.
+  const allowLegacyBucket = bucket === legacyWorkoutBucket && process.env.WORKOUT_PHOTO_R2_SHARED_BUCKET_ACCESS === "app-only";
+  if (sharedBuckets.includes(bucket) && !allowLegacyBucket) {
+    throw new Error("Shared workout photo storage must be restricted to application access.");
   }
   if (!/^https:\/\/[a-f0-9]{32}(?:\.(?:eu|fedramp))?\.r2\.cloudflarestorage\.com\/?$/.test(endpoint)) {
     throw new Error("Invalid workout photo R2 API endpoint.");

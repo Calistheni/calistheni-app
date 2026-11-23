@@ -4,13 +4,21 @@ export const WORKOUT_PHOTO_ACCEPT = ".jpg,.jpeg,.png,.webp,.heic,.heif,image/jpe
 export const WORKOUT_PHOTO_MAX_EDGE = 2048;
 export const WORKOUT_PHOTO_WEBP_QUALITY = 0.86;
 
-export function getWorkoutPhotoKey(userId: string, workoutId: number) {
+function workoutPhotoKeyPrefix(userId: string, workoutId: number) {
   const owner = userId.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 100);
-  return `users/${owner}/workouts/${workoutId}/${crypto.randomUUID()}.webp`;
+  return `users/${owner}/workouts/${workoutId}/`;
+}
+
+export function getWorkoutPhotoKey(userId: string, workoutId: number) {
+  return `${workoutPhotoKeyPrefix(userId, workoutId)}${crypto.randomUUID()}.webp`;
 }
 
 export function isWorkoutPhotoKey(key: string) {
   return /^users\/[A-Za-z0-9_-]+\/workouts\/\d+\/[0-9a-f-]+\.webp$/i.test(key);
+}
+
+export function isWorkoutPhotoKeyForWorkout(key: string, userId: string, workoutId: number) {
+  return isWorkoutPhotoKey(key) && key.startsWith(workoutPhotoKeyPrefix(userId, workoutId));
 }
 
 export function isWebpBytes(bytes: Uint8Array) {

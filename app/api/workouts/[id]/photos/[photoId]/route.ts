@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { parsePositiveInteger } from "@/lib/api-response";
 import { getDatabaseSessionFromRequest } from "@/lib/auth/database-session";
 import { prisma } from "@/lib/prisma";
+import { isWorkoutPhotoKeyForWorkout } from "@/lib/workout-photo";
 import { workoutPhotoWhere, WORKOUT_PHOTO_RESPONSE_HEADERS as headers } from "@/lib/workout-photo-access";
 import { getWorkoutPhotoObject } from "@/lib/workout-photo-storage";
 
@@ -16,9 +17,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   const photo = await prisma.workoutPhoto.findFirst({
     where: workoutPhotoWhere(workoutId, photoId, session?.userId),
-    select: { storageKey: true },
+    select: { storageKey: true, userId: true, workout: { select: { userId: true } } },
   });
-  if (!photo) return NextResponse.json({ error: "Not found." }, { status: 404, headers });
+  if (!photo || photo.userId !== photo.workout.userId ||
+      !isWorkoutPhotoKeyForWorkout(photo.storageKey, photo.userId, workoutId)) {
+    return NextResponse.json({ error: "Not found." }, { status: 404, headers });
+  }
 
   try {
     const object = await getWorkoutPhotoObject(photo.storageKey);

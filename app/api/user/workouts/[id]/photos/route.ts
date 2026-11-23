@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { parsePositiveInteger, createJsonErrorResponse, createInternalServerErrorResponse } from "@/lib/api-response";
-import { createUserUnauthorizedResponse, getAuthenticatedUserId } from "@/lib/user-auth";
+import { getDatabaseSessionFromRequest } from "@/lib/auth/database-session";
 import { prisma } from "@/lib/prisma";
 import { getWorkoutPhotoKey, validateCompressedWorkoutPhoto, WORKOUT_PHOTO_MAX_COUNT, WORKOUT_PHOTO_MAX_FILE_SIZE } from "@/lib/workout-photo";
 import { detectParkPhotoFamily } from "@/lib/park-photo-file";
@@ -11,8 +11,8 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   
-  const userId = await getAuthenticatedUserId();
-  if (!userId) return createUserUnauthorizedResponse();
+  const userId = (await getDatabaseSessionFromRequest(request))?.userId;
+  if (!userId) return createJsonErrorResponse("Unauthorized", 401);
   const workoutId = parsePositiveInteger((await params).id);
   if (workoutId === null) return createJsonErrorResponse("Invalid workout id.", 400);
   if (Number(request.headers.get("content-length") ?? 0) > WORKOUT_PHOTO_MAX_FILE_SIZE + 1024 * 1024) return createJsonErrorResponse("Image must be 15 MB or smaller.", 413);

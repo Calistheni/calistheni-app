@@ -215,14 +215,16 @@ export default function PrivacyPage() {
             <h2 className="text-xl font-semibold text-foreground">Public content and controls</h2>
             <p>
               Your public profile fields and workouts you explicitly mark public
-              can be viewed by other users. Public workout details can include
+              can be viewed by visitors, including people who are signed out.
+              Public workout details can include
               title, notes, exercise and set details, derived workout
               statistics, and photos attached to the public workout. Body
               measurements, nutrition logs, email address,
               billing identifiers, and HealthKit records are not included in
-              public workout responses. Comments and park contributions are
-              visible according to the feature&apos;s presentation and approval
-              state. You can report content, block users, change profile and
+              public workout responses. Approved park photos are displayed
+              publicly. Comments and other park contributions are visible
+              according to the feature&apos;s presentation and approval state.
+              You can report content, block users, change profile and
               workout visibility where supported, and manage permissions in iOS
               Settings.
             </p>

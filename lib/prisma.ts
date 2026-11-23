@@ -2,9 +2,12 @@ import { createHash } from "node:crypto";
 import { validateDatabaseIdentity } from "@/lib/deployment-identity";
 import { Prisma, PrismaClient } from "@/lib/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
+import { inspectDatabaseIdentity } from "@/lib/production-runtime-attestation";
 
 const globalForPrisma = globalThis as typeof globalThis & {
   prisma?: PrismaClient;
+  prismaPool?: Pool;
   prismaSchemaSignature?: string;
   prismaConnectionFingerprint?: string;
 };
@@ -55,19 +58,23 @@ function getDatabaseConnectionString() {
 
 const connectionString = getDatabaseConnectionString();
 const connectionFingerprint = createHash("sha256").update(connectionString).digest("hex");
-const cachedPrisma =
+const reusePool =
   globalForPrisma.prismaSchemaSignature === prismaSchemaSignature &&
-  globalForPrisma.prismaConnectionFingerprint === connectionFingerprint
-    ? globalForPrisma.prisma
-    : undefined;
+  globalForPrisma.prismaConnectionFingerprint === connectionFingerprint &&
+  globalForPrisma.prisma && globalForPrisma.prismaPool;
+const pool = reusePool || new Pool({ connectionString });
 
 export const prisma =
-  cachedPrisma ??
+  (reusePool ? globalForPrisma.prisma : undefined) ??
   new PrismaClient({
-    adapter: new PrismaPg({
-      connectionString,
-    }),
+    adapter: new PrismaPg(pool, { disposeExternalPool: true }),
   });
+
+export async function attestProductionDatabase() {
+  // Initialize Prisma's adapter and its idle pool error handler before checkout.
+  await prisma.$connect();
+  return inspectDatabaseIdentity(pool);
+}
 
 if (process.env.NODE_ENV !== "production") {
   if (globalForPrisma.prisma && globalForPrisma.prisma !== prisma) {
@@ -75,6 +82,7 @@ if (process.env.NODE_ENV !== "production") {
   }
 
   globalForPrisma.prisma = prisma;
+  globalForPrisma.prismaPool = pool;
   globalForPrisma.prismaSchemaSignature = prismaSchemaSignature;
   globalForPrisma.prismaConnectionFingerprint = connectionFingerprint;
 }
