@@ -2823,8 +2823,8 @@ export function WorkoutBuilder({
         clearActiveWorkoutSessionStorage(activeWorkoutSessionId);
       }
 
-      toast.success(isEditing ? "Workout updated." : "Workout finished.");
       if (isEditing) {
+        toast.success("Workout updated.");
         router.push(`/workouts/${workout.id}`);
         router.refresh();
       } else {

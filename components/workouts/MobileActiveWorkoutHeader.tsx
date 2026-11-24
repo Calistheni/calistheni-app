@@ -45,7 +45,8 @@ export function MobileActiveWorkoutHeader({
 }: MobileActiveWorkoutHeaderProps) {
   return (
     <div className="sticky top-0 z-30 shrink-0 overflow-hidden rounded-xl border bg-card/95 shadow-sm backdrop-blur md:hidden [overflow-anchor:none]">
-      <div className="grid grid-cols-[2.5rem_2.5rem_2.5rem_minmax(0,1fr)_3.75rem] gap-1 px-2 pt-[calc(env(safe-area-inset-top)+0.25rem)] pb-1">
+      {/* The native app body already provides the top safe-area padding. */}
+      <div className="grid grid-cols-[2.5rem_2.5rem_2.5rem_minmax(0,1fr)_3.75rem] gap-1 px-2 pt-[calc(env(safe-area-inset-top)+0.25rem)] pb-1 [html[data-native-app]_&]:pt-1">
         <Button asChild size="icon" variant="ghost" className="size-10">
           <Link href="/home" aria-label="Go to home">
             <House className="size-4" aria-hidden="true" />
