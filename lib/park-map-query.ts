@@ -8,6 +8,13 @@ export const MAX_PARK_MAP_LONGITUDE_SPAN = 180;
 export const MAX_PARK_MAP_LATITUDE_SPAN = 120;
 export const ADMIN_PARK_SEARCH_LIMIT = 100;
 
+export function hasValidParkCoordinates({ lat, lon }: { lat: unknown; lon: unknown }) {
+  return (
+    typeof lat === "number" && Number.isFinite(lat) && Math.abs(lat) <= 90 &&
+    typeof lon === "number" && Number.isFinite(lon) && Math.abs(lon) <= 180
+  );
+}
+
 export type ParsedParkMapQuery =
   | {
       success: true;

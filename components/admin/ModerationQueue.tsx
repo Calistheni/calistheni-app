@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import type { getAdminModerationReports } from "@/lib/moderation-admin";
+import { PARK_REPORT_REASONS } from "@/lib/moderation-shared";
 
 type Report = Awaited<ReturnType<typeof getAdminModerationReports>>[number];
 
@@ -55,16 +56,23 @@ export function ModerationQueue({ initialReports }: { initialReports: Report[] }
               </div>
               <div className="flex gap-2">
                 <Badge variant="outline">{report.status.toLowerCase().replaceAll("_", " ")}</Badge>
-                <Badge>{report.reason.toLowerCase().replaceAll("_", " ")}</Badge>
+                <Badge>{(report.targetType === "PARK" ? PARK_REPORT_REASONS.find(({ value }) => value === report.reason)?.label : null) ?? report.reason.toLowerCase().replaceAll("_", " ")}</Badge>
               </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            {report.targetType === "PARK" ? (
+              <p className="break-all text-sm">
+                {report.reporterId ? (
+                  <>Reporter <Link className="underline" href={`/admin/users/${report.reporterId}`}>{report.reporterId}</Link></>
+                ) : "Reporter unavailable"}
+              </p>
+            ) : null}
             {report.targetExcerpt ? <blockquote className="rounded-lg border-l-4 bg-muted/40 p-3 text-sm">{report.targetExcerpt}</blockquote> : null}
             {report.explanation ? <div><p className="text-xs font-medium text-muted-foreground">Reporter context</p><p className="text-sm">{report.explanation}</p></div> : null}
             <div className="flex flex-wrap gap-2">
               {report.targetType === "WORKOUT" ? <Button asChild size="sm" variant="outline"><Link href={`/workouts/${report.targetId}`}>Inspect workout</Link></Button> : null}
-              {report.targetType === "PARK" ? <Button asChild size="sm" variant="outline"><Link href={`/admin?parkId=${report.targetId}`}>Inspect park</Link></Button> : null}
+              {report.targetType === "PARK" && /^\d+$/.test(report.targetId) ? <Button asChild size="sm" variant="outline"><Link href={`/admin?park=${report.targetId}`}>Inspect park #{report.targetId}</Link></Button> : null}
               {report.targetOwnerId ? <Button asChild size="sm" variant="outline"><Link href={`/admin/users/${report.targetOwnerId}`}>Inspect account</Link></Button> : null}
             </div>
             {report.actions.length ? (
@@ -100,7 +108,8 @@ export function ModerationQueue({ initialReports }: { initialReports: Report[] }
               <Button variant="ghost" disabled={pending === report.id} onClick={() => void act(report, "DISMISS_REPORT")}>Dismiss</Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Reporter identity is intentionally not displayed. All moderator actions are recorded with the authenticated admin label.
+              {report.targetType === "PARK" ? "Reporter identity is visible to admins. " : "Reporter identity is intentionally not displayed. "}
+              All moderator actions are recorded with the authenticated admin label.
             </p>
           </CardContent>
         </Card>

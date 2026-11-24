@@ -55,7 +55,7 @@ test("blocking is server enforced and removes bidirectional social relationships
   assert.match(likeRoute, /usersBlockEachOther/);
 });
 
-test("moderators can act without exposing reporter identity", () => {
+test("moderation requires admin access and only includes reporter identity for park reports", () => {
   const page = read("../app/admin/moderation/page.tsx");
   const route = read("../app/api/admin/moderation/reports/[id]/route.ts");
   const listRoute = read("../app/api/admin/moderation/reports/route.ts");
@@ -68,7 +68,7 @@ test("moderators can act without exposing reporter identity", () => {
   assert.match(service, /HIDE_CONTENT/);
   assert.match(service, /RESTRICT_USER/);
   assert.match(service, /userFollow\.deleteMany/);
-  assert.doesNotMatch(service, /select:[\s\S]{0,120}reporterId: true/);
+  assert.match(service, /reporterId: report\.targetType === ModerationReportTarget\.PARK \? report\.reporterId : null/);
 });
 
 test("mobile moderation UI uses shadcn dialogs and exposes safety controls", () => {

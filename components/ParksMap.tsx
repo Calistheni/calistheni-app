@@ -16,14 +16,15 @@ import { createRoot, type Root } from "react-dom/client";
 import { LoaderCircle, MapPin, Plus, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AdminMapParkPopup } from "@/components/admin/AdminMapParkPopup";
-import { hasParkDirectionsCoordinates, ParkDirectionsSheet } from "@/components/parks/ParkDirectionsSheet";
+import { ParkDirectionsSheet } from "@/components/parks/ParkDirectionsSheet";
+import { ParkReportSheet } from "@/components/parks/ParkReportSheet";
 import { useMapUserFocus } from "@/components/parks/useMapUserFocus";
 import { buildParkOverviewGeoJson } from "@/lib/park-map-overview";
 import {
   dedupeParksById,
   getClusterLeafParkIds,
 } from "@/lib/park-map-clusters";
-import { isParkArchivedForAdminMap } from "@/lib/park-map-query";
+import { hasValidParkCoordinates, isParkArchivedForAdminMap } from "@/lib/park-map-query";
 import type {
   AdminParkDetail,
   AdminParkMapSummary,
@@ -465,7 +466,7 @@ async function getResponseErrorMessage(
 function buildGeoJson(parks: ParkSummary[]): GeoJSON.FeatureCollection {
   return {
     type: "FeatureCollection",
-    features: dedupeParksById(parks).map((park) => ({
+    features: dedupeParksById(parks).filter(hasValidParkCoordinates).map((park) => ({
       type: "Feature",
       properties: {
         id: park.id,
@@ -493,6 +494,10 @@ function renderPopupMarkup({
   const visibleEquipment =
     equipment && !expanded ? equipment.slice(0, 2) : equipment ?? [];
   const hiddenCount = (equipment?.length ?? 0) - visibleEquipment.length;
+  const hasValidCoordinates = park && hasValidParkCoordinates(park);
+  const invalidLocationNotice = !admin && park && !hasValidCoordinates
+    ? `<p style="margin:10px 0 0;color:var(--muted-foreground);font-size:13px;">Directions are unavailable because this park’s location is invalid.</p>`
+    : "";
 
   if (loading) {
     return `
@@ -500,6 +505,7 @@ function renderPopupMarkup({
         <h3 style="font-size:16px;font-weight:600;margin:0 0 8px 0;">
            "Loading park"
         </h3>
+        ${invalidLocationNotice}
         <div style="height:10px;border-radius:999px;background:var(--muted);margin-bottom:8px;"></div>
         <div style="height:10px;width:70%;border-radius:999px;background:var(--muted);margin-bottom:12px;"></div>
         <div style="display:flex;gap:6px;">
@@ -519,6 +525,7 @@ function renderPopupMarkup({
         <p style="margin:0 0 12px 0;color:var(--muted-foreground);font-size:13px;">
           ${escapeHtml(error)}
         </p>
+        ${invalidLocationNotice}
         <button
           data-popup-action="retry"
           style="
@@ -598,7 +605,7 @@ function renderPopupMarkup({
       }
 
       ${
-        !admin && park && equipment && hasParkDirectionsCoordinates(park)
+        !admin && equipment && hasValidCoordinates
           ? `
       <button
         type="button"
@@ -619,6 +626,8 @@ function renderPopupMarkup({
           `
           : ""
       }
+
+      ${invalidLocationNotice}
 
       ${
         park
@@ -645,6 +654,18 @@ function renderPopupMarkup({
             >
               ${admin ? "Edit park" : "Suggest Edit"}
             </a>
+          `
+          : ""
+      }
+
+      ${
+        !admin && equipment
+          ? `
+            <button
+              type="button"
+              data-popup-action="report"
+              style="display:block;min-height:44px;border:none;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:12px;margin-top:10px;background:var(--secondary);color:var(--secondary-foreground);"
+            >Report park</button>
           `
           : ""
       }
@@ -793,6 +814,10 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   const [showSearchThisArea, setShowSearchThisArea] = useState(false);
   const [isAreaTruncated, setIsAreaTruncated] = useState(false);
   const [directions, setDirections] = useState<{
+    park: MapParkDetail;
+    trigger: HTMLButtonElement;
+  } | null>(null);
+  const [report, setReport] = useState<{
     park: MapParkDetail;
     trigger: HTMLButtonElement;
   } | null>(null);
@@ -1440,6 +1465,9 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       const directionsButton = popupElement.querySelector<HTMLButtonElement>(
         '[data-popup-action="directions"]'
       );
+      const reportButton = popupElement.querySelector<HTMLButtonElement>(
+        '[data-popup-action="report"]'
+      );
       const showMoreButton = popupElement.querySelector<HTMLButtonElement>(
         '[data-popup-action="show-more"]'
       );
@@ -1451,6 +1479,11 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       if (directionsButton && park && "equipment" in park) {
         directionsButton.addEventListener("click", () => {
           setDirections({ park, trigger: directionsButton });
+        });
+      }
+      if (reportButton && park && "equipment" in park) {
+        reportButton.addEventListener("click", () => {
+          setReport({ park, trigger: reportButton });
         });
       }
 
@@ -1487,7 +1520,9 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         return;
       }
 
-      popup.setLngLat([park.lon, park.lat]);
+      if (hasValidParkCoordinates(park)) {
+        popup.setLngLat([park.lon, park.lat]);
+      }
       setPopupMarkup(popup, map, parkId, parkPreview, {
         park,
       });
@@ -1509,19 +1544,25 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   function openParkPopup(
     map: mapboxgl.Map,
     parkId: number,
-    coordinates: [number, number],
+    coordinates: [number, number] | null,
     parkPreview?: MapParkSummary
   ) {
     popupRootRef.current?.unmount();
     popupRootRef.current = null;
     popupRef.current?.remove();
 
+    // Keep the details usable even when a selected record cannot be plotted.
+    const popupPosition =
+      coordinates && hasValidParkCoordinates({ lat: coordinates[1], lon: coordinates[0] })
+        ? coordinates
+        : map.getCenter();
+
     const popup = new mapboxgl.Popup({
       closeButton: false,
       className: "calistheni-park-popup",
       offset: 25,
     })
-      .setLngLat(coordinates)
+      .setLngLat(popupPosition)
       .addTo(map);
 
     popup.on("close", () => {
@@ -2891,6 +2932,10 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   const selectedParkId = selectedPark?.id ?? null;
   const selectedParkLat = selectedPark?.lat ?? null;
   const selectedParkLon = selectedPark?.lon ?? null;
+  const selectedParkHasCoordinates = hasValidParkCoordinates({
+    lat: selectedParkLat,
+    lon: selectedParkLon,
+  });
 
   // Keep marker reconciliation independent from camera ownership. Viewport
   // and detail payloads may recreate a park object, but must never animate
@@ -2901,7 +2946,8 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     if (
       selectedParkId === null ||
       selectedParkLat === null ||
-      selectedParkLon === null
+      selectedParkLon === null ||
+      !selectedParkHasCoordinates
     ) {
       selectedMarkerRef.current?.remove();
       selectedMarkerRef.current = null;
@@ -2927,7 +2973,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     selectedMarkerRef.current
       .setLngLat([selectedParkLon, selectedParkLat])
       .addTo(map);
-  }, [selectedParkId, selectedParkLat, selectedParkLon]);
+  }, [selectedParkId, selectedParkLat, selectedParkLon, selectedParkHasCoordinates]);
 
   // Shared public/Admin selection camera owner. Admin details and viewport
   // responses only change marker/panel data; stable ID/coordinate dependencies
@@ -2935,17 +2981,21 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   useEffect(() => {
     const map = mapRef.current;
 
-    if (
-      selectedParkId === null ||
-      selectedParkLat === null ||
-      selectedParkLon === null ||
-      !map ||
-      !mapLoadedRef.current
-    ) {
+    if (selectedParkId === null || !map || !mapLoadedRef.current) {
       return;
     }
 
     const selectionRequestId = ++selectedParkCameraRequestRef.current;
+    if (selectedParkLat === null || selectedParkLon === null || !selectedParkHasCoordinates) {
+      openParkPopupRef.current(
+        map,
+        selectedParkId,
+        null,
+        parksRef.current.find((park) => park.id === selectedParkId)
+      );
+      return;
+    }
+
     beginAwayFromUser();
     const selectedCenter: [number, number] = [selectedParkLon, selectedParkLat];
     const targetZoom = map.getZoom();
@@ -2996,6 +3046,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     selectedParkId,
     selectedParkLat,
     selectedParkLon,
+    selectedParkHasCoordinates,
   ]);
 
   return (
@@ -3009,6 +3060,14 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
           park={directions.park}
           trigger={directions.trigger}
           onClose={() => setDirections((current) => current === directions ? null : current)}
+        />
+      ) : null}
+      {report ? (
+        <ParkReportSheet
+          key={report.park.id}
+          park={report.park}
+          trigger={report.trigger}
+          onClose={() => setReport((current) => current === report ? null : current)}
         />
       ) : null}
       <div className="absolute inset-0">

@@ -98,7 +98,10 @@ async function resolveReportTarget(
 
   if (targetType === "PARK") {
     const parkId = Number(targetId);
-    if (!Number.isSafeInteger(parkId) || parkId <= 0) return null;
+    if (
+      !Number.isInteger(parkId) || parkId <= 0 || parkId > 2_147_483_647 ||
+      String(parkId) !== targetId
+    ) return null;
     const park = await prisma.park.findFirst({
       where: { id: parkId, deletedAt: null, submissionStatus: "APPROVED" },
       select: { name: true, submittedById: true, address: true },

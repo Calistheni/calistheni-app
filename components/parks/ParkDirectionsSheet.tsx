@@ -27,13 +27,6 @@ const providers = [
   { id: "google", name: "Google Maps" },
 ] as const;
 
-export function hasParkDirectionsCoordinates({ lat, lon }: Destination) {
-  return (
-    Number.isFinite(lat) && Math.abs(lat) <= 90 &&
-    Number.isFinite(lon) && Math.abs(lon) <= 180
-  );
-}
-
 export function ParkDirectionsSheet({
   park,
   trigger,

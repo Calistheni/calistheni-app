@@ -18,6 +18,7 @@ export async function getAdminModerationReports() {
       targetExcerpt: true,
       reason: true,
       explanation: true,
+      reporterId: true,
       status: true,
       createdAt: true,
       actions: { orderBy: { createdAt: "desc" }, take: 10, select: { id: true, action: true, actorLabel: true, note: true, createdAt: true } },
@@ -25,6 +26,7 @@ export async function getAdminModerationReports() {
   });
   return reports.map((report) => ({
     ...report,
+    reporterId: report.targetType === ModerationReportTarget.PARK ? report.reporterId : null,
     createdAt: report.createdAt.toISOString(),
     actions: report.actions.map((action) => ({ ...action, createdAt: action.createdAt.toISOString() })),
   }));

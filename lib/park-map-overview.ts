@@ -1,4 +1,5 @@
 import type { ParkOverviewFeature } from "@/types/park";
+import { hasValidParkCoordinates } from "@/lib/park-map-query";
 
 export type ParkOverviewRow = {
   latCell: number;
@@ -87,6 +88,7 @@ export function buildParkOverviewGeoJson(
     Record<string, unknown>
   >[] = [];
   features.forEach((feature) => {
+    if (!hasValidParkCoordinates(feature)) return;
     if (feature.featureKind === "park") {
       if (!Number.isInteger(feature.park.id) || feature.park.id <= 0) return;
       geoJsonFeatures.push({

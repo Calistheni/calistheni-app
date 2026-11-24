@@ -26,6 +26,8 @@ const getGlobalParkClusters = unstable_cache(
       FROM "Park"
       WHERE "deletedAt" IS NULL
         AND "submissionStatus" = 'APPROVED'
+        AND "lat" BETWEEN -90 AND 90
+        AND "lon" BETWEEN -180 AND 180
       GROUP BY FLOOR(("lat" + 90) / 2), FLOOR(("lon" + 180) / 2)
       ORDER BY COUNT(*) DESC
     `;
