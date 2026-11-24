@@ -11,6 +11,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useTransition,
 } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -84,6 +85,7 @@ import { Label } from "@/components/ui/label";
 import { ExerciseNoteTextarea, NoteTextarea } from "@/components/ui/note-textarea";
 import { normalizeOptionalNote } from "@/lib/notes";
 import { compressWorkoutPhoto } from "@/lib/workout-photo-client";
+import { holdWorkoutLoading } from "@/components/workouts/WorkoutRouteLoading";
 import {
   Popover,
   PopoverContent,
@@ -1061,7 +1063,11 @@ export function WorkoutBuilder({
     exerciseName: string;
   } | null>(null);
   const [openSwipeSetId, setOpenSwipeSetId] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
+  const [isSavingWorkout, setIsSaving] = useState(false);
+  const [isOpeningFinishedWorkout, startFinishedWorkoutNavigation] = useTransition();
+  const finishNavigationReleaseRef = useRef<(() => void) | null>(null);
+  const [finishPhotoStepComplete, setFinishPhotoStepComplete] = useState(false);
+  const isSaving = isSavingWorkout || isOpeningFinishedWorkout;
   const [isWorkoutDetailsOpen, setIsWorkoutDetailsOpen] = useState(false);
   const [isExercisePickerOpen, setIsExercisePickerOpen] = useState(false);
   const [exerciseToReplaceId, setExerciseToReplaceId] = useState<string | null>(
@@ -2708,14 +2714,38 @@ export function WorkoutBuilder({
     }
   }
 
+  useEffect(() => () => {
+    finishNavigationReleaseRef.current?.();
+    finishNavigationReleaseRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    if (isOpeningFinishedWorkout || !finishNavigationReleaseRef.current) return;
+
+    finishNavigationReleaseRef.current();
+    finishNavigationReleaseRef.current = null;
+    if (window.location.pathname === "/workouts/new") {
+      toast.error("Your workout was saved, but its details could not be opened. Please try again.");
+    }
+  }, [isOpeningFinishedWorkout]);
+
   function openFinishedWorkout(workoutId: number) {
-    setIsFinishSheetOpen(false);
-    router.push(`/workouts/${workoutId}`);
-    router.refresh();
+    if (finishNavigationReleaseRef.current) return;
+
+    const pathname = `/workouts/${workoutId}`;
+    setFinishPhotoStepComplete(true);
+    finishNavigationReleaseRef.current = holdWorkoutLoading(pathname);
+    // Leave the progress sheet mounted until the saved detail replaces it.
+    startFinishedWorkoutNavigation(() => router.push(pathname));
   }
 
   async function saveWorkout() {
     if (isSaving) {
+      return;
+    }
+
+    if (savedFinishWorkoutId !== null && finishPhotoStepComplete) {
+      openFinishedWorkout(savedFinishWorkoutId);
       return;
     }
 
@@ -2806,6 +2836,9 @@ export function WorkoutBuilder({
       }
 
       const workout = (await response.json()) as { id: number };
+      if (!isEditing) {
+        setSavedFinishWorkoutId(workout.id);
+      }
       if (!isEditing && appleHealthWorkoutExportEnabled) {
         const healthResult = await saveAppleHealthWorkout(
           getAppleHealthWorkoutPayload(workout.id, payload)
@@ -2830,7 +2863,6 @@ export function WorkoutBuilder({
       } else {
         if (finishPhotos.length) {
           try {
-            setSavedFinishWorkoutId(workout.id);
             setUploadProgress(`Uploading photos 0 of ${finishPhotos.length}…`);
             for (const [index, original] of finishPhotos.entries()) {
               const compressed = await compressWorkoutPhoto(original);
@@ -4850,9 +4882,17 @@ export function WorkoutBuilder({
                   Back
                 </Button>
                 <Button type="submit" disabled={isSaving}>
-                  {isSaving ? (uploadProgress ?? "Finishing...") : savedFinishWorkoutId !== null ? "Retry photo upload" : "Finish Workout"}
+                  {isOpeningFinishedWorkout
+                    ? "Opening workout…"
+                    : isSaving
+                      ? (uploadProgress ?? "Finishing...")
+                      : finishPhotoStepComplete
+                        ? "Open saved workout"
+                        : savedFinishWorkoutId !== null
+                          ? "Retry photo upload"
+                          : "Finish Workout"}
                 </Button>
-                {savedFinishWorkoutId !== null ? <Button type="button" variant="ghost" disabled={isSaving} onClick={() => openFinishedWorkout(savedFinishWorkoutId)}>Continue without photos</Button> : null}
+                {savedFinishWorkoutId !== null && !finishPhotoStepComplete ? <Button type="button" variant="ghost" disabled={isSaving} onClick={() => openFinishedWorkout(savedFinishWorkoutId)}>Continue without photos</Button> : null}
               </SheetFooter>
             </form>
           </SheetContent>
