@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { ImagePlus, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { AdminParksMap } from "@/components/admin/AdminParksMap";
@@ -252,6 +253,14 @@ function redirectToLogin() {
 }
 
 export default function AdminDashboard() {
+  const parkParams = useSearchParams().getAll("park");
+  const parkParam = parkParams[0];
+  const parsedParkId = Number(parkParam);
+  const linkedParkId = parkParams.length === 1 && /^[1-9]\d*$/.test(parkParam) &&
+    Number.isInteger(parsedParkId) && parsedParkId <= 2_147_483_647
+    ? parsedParkId
+    : null;
+  const invalidParkLink = parkParams.length > 0 && linkedParkId === null;
   const [formValues, setFormValues] =
     useState<ParkFormValues>(EMPTY_FORM_VALUES);
   const [formErrors, setFormErrors] = useState<ParkFormErrors>({});
@@ -264,6 +273,12 @@ export default function AdminDashboard() {
   const [selectedParkPreview, setSelectedParkPreview] =
     useState<AdminParkMapSummary | null>(null);
   const mapSectionRef = useRef<HTMLDivElement | null>(null);
+  const parkDetailsRef = useRef<HTMLHeadingElement | null>(null);
+  const parkLinkErrorRef = useRef<HTMLParagraphElement | null>(null);
+  const [parkLinkError, setParkLinkError] = useState<{ id: number; message: string } | null>(null);
+  const parkSelectionError = invalidParkLink
+    ? "Invalid park ID in this link."
+    : parkLinkError?.id === linkedParkId ? parkLinkError.message : null;
   const [parkPhotos, setParkPhotos] = useState<AdminParkPhoto[]>([]);
   const [isParkPhotosLoading, setIsParkPhotosLoading] = useState(false);
   const [updatingPhotoId, setUpdatingPhotoId] = useState<number | null>(null);
@@ -277,7 +292,6 @@ export default function AdminDashboard() {
   const [adminPhoto, setAdminPhoto] = useState<File | null>(null);
   const [adminPhotoPreview, setAdminPhotoPreview] = useState<string | null>(null);
   const adminPhotoPreviewRef = useRef<string | null>(null);
-  const initialParkQueryHandledRef = useRef(false);
   const reviewingSubmissionRef = useRef(new Set<string>());
   const [isDeletePending, setIsDeletePending] = useState(false);
   const [deleteCandidate, setDeleteCandidate] = useState<AdminParkDetail | null>(
@@ -447,17 +461,51 @@ export default function AdminDashboard() {
   }, [parkStatusFilter, qrStatusFilter]);
 
   useEffect(() => {
-    if (isEquipmentLoading || initialParkQueryHandledRef.current) return;
-    initialParkQueryHandledRef.current = true;
+    if (isEquipmentLoading || linkedParkId === null) return;
 
-    const rawParkId = new URLSearchParams(window.location.search).get("park");
-    const parkId = rawParkId ? Number.parseInt(rawParkId, 10) : null;
-    if (parkId && Number.isInteger(parkId) && parkId > 0) {
-      void startEditing({ id: parkId });
-    }
+    const controller = new AbortController();
+    const frame = window.requestAnimationFrame(() => {
+      void startEditing({ id: linkedParkId }, controller.signal);
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      controller.abort();
+    };
     // startEditing is a function declaration and reads current equipment.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEquipmentLoading]);
+  }, [isEquipmentLoading, linkedParkId]);
+
+  useEffect(() => {
+    if (!invalidParkLink) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      adminSelectionRequestRef.current += 1;
+      clearParkSelection();
+      resetForm();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [invalidParkLink]);
+
+  useEffect(() => {
+    if (!parkSelectionError) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      parkLinkErrorRef.current?.focus({ preventScroll: true });
+      parkLinkErrorRef.current?.scrollIntoView({ block: "nearest", behavior: "instant" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [parkSelectionError]);
+
+  const selectedParkId = selectedPark?.id;
+  useEffect(() => {
+    if (linkedParkId === null || selectedParkId !== linkedParkId) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      parkDetailsRef.current?.focus({ preventScroll: true });
+      parkDetailsRef.current?.scrollIntoView({ block: "start", behavior: "instant" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [linkedParkId, selectedParkId]);
 
   useEffect(() => {
     async function loadEquipment() {
@@ -538,6 +586,13 @@ export default function AdminDashboard() {
     setPendingParkPhotos([]);
     setIsMapPlacementDraft(false);
     setPlacementResetToken((current) => current + 1);
+  }
+
+  function clearParkSelection() {
+    setSelectedPark(null);
+    setSelectedParkPreview(null);
+    setParkPhotos([]);
+    setIsParkPhotosLoading(false);
   }
 
   function beginMapParkCreate({ lat, lon }: { lat: number; lon: number }) {
@@ -722,6 +777,8 @@ export default function AdminDashboard() {
   }
 
   async function loadParkPhotos(parkId: number) {
+    const selectionRequestId = adminSelectionRequestRef.current;
+    const isCurrentSelection = () => selectionRequestId === adminSelectionRequestRef.current;
     setIsParkPhotosLoading(true);
     setParkPhotos([]);
 
@@ -730,6 +787,7 @@ export default function AdminDashboard() {
 
       if (!response.ok) {
         const apiError = await parseApiError(response);
+        if (!isCurrentSelection()) return;
 
         if (apiError.unauthorized) {
           toast.error(apiError.message);
@@ -741,11 +799,11 @@ export default function AdminDashboard() {
       }
 
       const payload = (await response.json()) as AdminParkPhotosResponse;
-      setParkPhotos(payload.photos);
+      if (isCurrentSelection()) setParkPhotos(payload.photos);
     } catch (error) {
-      toast.error(getErrorMessage(error, "Unable to load park photos."));
+      if (isCurrentSelection()) toast.error(getErrorMessage(error, "Unable to load park photos."));
     } finally {
-      setIsParkPhotosLoading(false);
+      if (isCurrentSelection()) setIsParkPhotosLoading(false);
     }
   }
 
@@ -1041,13 +1099,18 @@ export default function AdminDashboard() {
   }
 
   async function startEditing(
-    park: Pick<ParkSummary, "id"> & Partial<AdminParkMapSummary>
+    park: Pick<ParkSummary, "id"> & Partial<AdminParkMapSummary>,
+    linkSignal?: AbortSignal
   ) {
     const selectionRequestId = ++adminSelectionRequestRef.current;
+    const isCurrentSelection = () => !linkSignal?.aborted &&
+      selectionRequestId === adminSelectionRequestRef.current;
     // `selectedPark` holds the previous full detail response. Clear it before
     // publishing the new list preview so the map can focus this park once,
     // rather than continuing to receive the prior park until this fetch ends.
-    setSelectedPark(null);
+    clearParkSelection();
+    setParkLinkError(null);
+    if (linkSignal) resetForm();
 
     if (
       typeof park.lat === "number" &&
@@ -1063,12 +1126,12 @@ export default function AdminDashboard() {
         block: "start",
       });
     }
-    setParkPhotos([]);
     try {
-      const response = await fetch(`/api/admin/parks/${park.id}`);
+      const response = await fetch(`/api/admin/parks/${park.id}`, { signal: linkSignal });
 
       if (!response.ok) {
         const apiError = await parseApiError(response);
+        if (!isCurrentSelection()) return;
 
         if (apiError.unauthorized) {
           toast.error(apiError.message);
@@ -1076,14 +1139,14 @@ export default function AdminDashboard() {
           return;
         }
 
-        throw new Error(apiError.message);
+        throw new Error(response.status === 404 ? `Park #${park.id} could not be found.` : apiError.message);
       }
 
       const fullPark = (await response.json()) as AdminParkDetail;
 
       // A later list/map selection owns the current detail panel. Do not let
       // a stale authenticated-admin response replace its marker or camera.
-      if (selectionRequestId !== adminSelectionRequestRef.current) return;
+      if (!isCurrentSelection()) return;
 
       setSelectedPark(fullPark);
       setSelectedParkPreview(toParkSummary(fullPark));
@@ -1103,10 +1166,10 @@ export default function AdminDashboard() {
       });
       setFormErrors({});
     } catch (error) {
-      if (selectionRequestId !== adminSelectionRequestRef.current) return;
-      toast.error(
-        getErrorMessage(error, "Unable to load this park for editing.")
-      );
+      if (!isCurrentSelection()) return;
+      const message = getErrorMessage(error, "Unable to load this park for editing.");
+      if (linkSignal) setParkLinkError({ id: park.id, message });
+      else toast.error(message);
     }
   }
 
@@ -1236,6 +1299,14 @@ export default function AdminDashboard() {
           </form>
         </div>
       </div>
+
+      {parkSelectionError ? (
+        <Card className="mb-6 border-destructive/20">
+          <CardContent>
+            <p ref={parkLinkErrorRef} tabIndex={-1} className="text-sm text-destructive" role="alert">{parkSelectionError}</p>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {initialLoadError ? (
         <Card className="mb-6 border-destructive/20">
@@ -1844,7 +1915,8 @@ export default function AdminDashboard() {
       {selectedPark ? (
         <Card className="mb-6">
           <CardHeader>
-            <h2 className="text-2xl font-bold">{selectedPark.name}</h2>
+            <p className="text-sm text-muted-foreground">Park #{selectedPark.id}</p>
+            <h2 ref={parkDetailsRef} tabIndex={-1} className="scroll-mt-8 text-2xl font-bold">{selectedPark.name}</h2>
 
             {selectedPark.address ? (
               <p className="text-muted-foreground">{selectedPark.address}</p>
