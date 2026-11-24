@@ -35,8 +35,13 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>maps</string>
+		<string>comgooglemaps</string>
+	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Calistheni uses your location to show nearby workout parks, provide directions, and optionally verify where a submitted park photo was taken.</string>
+	<string>Calistheni uses your location to show nearby workout parks and optionally verify where a submitted park photo was taken.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>

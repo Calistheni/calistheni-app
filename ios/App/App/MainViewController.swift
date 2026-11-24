@@ -11,7 +11,9 @@ class MainViewController: CAPBridgeViewController {
         super.capacitorDidLoad()
         // Capacitor 8 auto-registers CAPBridgedPlugin types listed in the
         // bundled capacitor.config.json. The build phase adds native app
-        // plugins there before resources are copied.
+        // plugins there before resources are copied. Park Directions is
+        // registered here so it does not need a generated config entry.
+        bridge?.registerPluginInstance(CalistheniParkDirectionsPlugin())
 #if DEBUG
         // Runtime diagnostics are intentionally opt-in even for Debug builds.
         // Set CALISTHENI_RUNTIME_DIAGNOSTICS=1 in an Xcode scheme only while

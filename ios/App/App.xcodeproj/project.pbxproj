@@ -25,6 +25,7 @@
 		A10000000000000000000003 /* NutritionBarcodeScannerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000004 /* NutritionBarcodeScannerPlugin.swift */; };
 		A10000000000000000000006 /* BarcodeScannerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000007 /* BarcodeScannerViewController.swift */; };
 		A20000000000000000000001 /* CalistheniNutritionPhotoPickerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* CalistheniNutritionPhotoPickerPlugin.swift */; };
+		A30000000000000000000001 /* CalistheniParkDirectionsPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000002 /* CalistheniParkDirectionsPlugin.swift */; };
 		AF1452008C4D2A14E7240001 /* CalistheniHealthPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF1452008C4D2A14E7240002 /* CalistheniHealthPlugin.swift */; };
 		B20000000000000000000001 /* CalistheniStoreKitPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000002 /* CalistheniStoreKitPlugin.swift */; };
 		C30000000000000000000001 /* CalistheniSecureSessionPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = C30000000000000000000002 /* CalistheniSecureSessionPlugin.swift */; };
@@ -75,6 +76,7 @@
 		A10000000000000000000004 /* NutritionBarcodeScannerPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NutritionBarcodeScannerPlugin.swift; sourceTree = "<group>"; };
 		A10000000000000000000007 /* BarcodeScannerViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarcodeScannerViewController.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 /* CalistheniNutritionPhotoPickerPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalistheniNutritionPhotoPickerPlugin.swift; sourceTree = "<group>"; };
+		A30000000000000000000002 /* CalistheniParkDirectionsPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalistheniParkDirectionsPlugin.swift; sourceTree = "<group>"; };
 		AF1452008C4D2A14E7240002 /* CalistheniHealthPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CalistheniHealthPlugin.swift; sourceTree = "<group>"; };
 		B20000000000000000000002 /* CalistheniStoreKitPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CalistheniStoreKitPlugin.swift; sourceTree = "<group>"; };
 		B20000000000000000000003 /* Calistheni.storekit */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = Calistheni.storekit; sourceTree = "<group>"; };
@@ -154,6 +156,7 @@
 				A10000000000000000000004 /* NutritionBarcodeScannerPlugin.swift */,
 				A10000000000000000000007 /* BarcodeScannerViewController.swift */,
 				A20000000000000000000002 /* CalistheniNutritionPhotoPickerPlugin.swift */,
+				A30000000000000000000002 /* CalistheniParkDirectionsPlugin.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
@@ -340,6 +343,7 @@
 				A10000000000000000000003 /* NutritionBarcodeScannerPlugin.swift in Sources */,
 				A10000000000000000000006 /* BarcodeScannerViewController.swift in Sources */,
 				A20000000000000000000001 /* CalistheniNutritionPhotoPickerPlugin.swift in Sources */,
+				A30000000000000000000001 /* CalistheniParkDirectionsPlugin.swift in Sources */,
 				9A31CB7814E397F6BD948295 /* WorkoutLiveActivityPlugin.swift in Sources */,
 				AF1452008C4D2A14E7240001 /* CalistheniHealthPlugin.swift in Sources */,
 				B20000000000000000000001 /* CalistheniStoreKitPlugin.swift in Sources */,

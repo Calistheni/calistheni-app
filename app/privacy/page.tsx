@@ -135,9 +135,10 @@ export default function PrivacyPage() {
               and find nearby parks. Permission is optional; you can browse or
               move the map manually. Calistheni does not keep a location history
               for map browsing. Map requests necessarily reveal the viewed map
-              area to Mapbox. If you explicitly request directions from your
-              current location, the origin and destination are sent to Mapbox
-              for route calculation. Calistheni checks park
+              area to Mapbox. When you choose Directions, Calistheni passes the
+              park coordinates and, where supported, the park name to Apple Maps
+              or Google Maps. The selected provider handles directions under
+              its own privacy policy. Calistheni checks park
               coordinates submitted by a user for nearby existing parks; those
               coordinates are sent in a request body and are not stored by that
               check itself.

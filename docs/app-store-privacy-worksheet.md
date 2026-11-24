@@ -9,7 +9,7 @@ Use this checklist for the signed iOS release and the Calistheni site loaded in 
 | Other User Contact Info | Yes | App Functionality | Yes | The public footer links to the partner form, which retains contact name and business website in the same inquiry |
 | Health | Yes | App Functionality, Analytics | Yes | Saved nutrition and measurements, optional Apple Health imports, and authorized internal summaries of per-account nutrition activity |
 | Fitness | Yes | App Functionality, Analytics | Yes | Workout and exercise logs, progress, and workout engagement counts |
-| Precise Location | Yes | App Functionality | Yes | Park photo GPS or optional device location is stored with the contributor's submission. Mapbox receives route coordinates when directions are requested. |
+| Precise Location | Yes | App Functionality | Yes | Park photo GPS or optional device location is stored with the contributor's submission. Directions hand off the park coordinates to the chosen maps provider and do not use Calistheni's location permission. |
 | Photos or Videos | Yes | App Functionality | Yes | Workout and park photos, and optional images sent to OpenAI for nutrition analysis |
 | Other User Content | Yes | App Functionality | Yes | Workout notes, community submissions and reports, and optional food descriptions |
 | Search History | Yes, provisional | App Functionality | Yes, provisional | Exercise, people, and park searches can place terms in URLs visible to runtime logs. Food search uses POST to Calistheni, and remote providers can receive search terms or barcodes. There is no saved search history feature. |

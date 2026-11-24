@@ -16,6 +16,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { LoaderCircle, MapPin, Plus, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AdminMapParkPopup } from "@/components/admin/AdminMapParkPopup";
+import { hasParkDirectionsCoordinates, ParkDirectionsSheet } from "@/components/parks/ParkDirectionsSheet";
 import { useMapUserFocus } from "@/components/parks/useMapUserFocus";
 import { buildParkOverviewGeoJson } from "@/lib/park-map-overview";
 import {
@@ -198,6 +199,7 @@ function clearLegacyUserLocation() {
       localStorage.getItem("user-location") !== null;
     localStorage.removeItem("location-allowed");
     localStorage.removeItem("user-location");
+    localStorage.removeItem("active-route");
     if (locationWasPreviouslySaved) {
       sessionStorage.removeItem(PARKS_VIEWPORT_STORAGE_KEY);
     }
@@ -596,9 +598,10 @@ function renderPopupMarkup({
       }
 
       ${
-        !admin
+        !admin && park && equipment && hasParkDirectionsCoordinates(park)
           ? `
       <button
+        type="button"
         data-popup-action="directions"
         style="
           background:#2563eb;
@@ -789,9 +792,9 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   const [viewportError, setViewportError] = useState<string | null>(null);
   const [showSearchThisArea, setShowSearchThisArea] = useState(false);
   const [isAreaTruncated, setIsAreaTruncated] = useState(false);
-  const [activeRoute, setActiveRoute] = useState<{
-    parkId: number;
-    name: string;
+  const [directions, setDirections] = useState<{
+    park: MapParkDetail;
+    trigger: HTMLButtonElement;
   } | null>(null);
   const initialCenterRef = useRef<[number, number]>([
     -73.924958109856, 40.731742625495,
@@ -1274,58 +1277,6 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     []
   );
 
-  function clearRoute() {
-    const map = mapRef.current;
-
-    if (!map) return;
-
-    if (map.getLayer("route")) {
-      map.removeLayer("route");
-    }
-
-    if (map.getSource("route")) {
-      map.removeSource("route");
-    }
-
-    localStorage.removeItem("active-route");
-    setActiveRoute(null);
-  }
-
-  function restoreRoute(routeData: { geometry: GeoJSON.LineString }) {
-    const map = mapRef.current;
-
-    if (!map) return;
-
-    if (map.getSource("route")) {
-      (map.getSource("route") as mapboxgl.GeoJSONSource).setData({
-        type: "Feature",
-        properties: {},
-        geometry: routeData.geometry,
-      });
-
-      return;
-    }
-
-    map.addSource("route", {
-      type: "geojson",
-      data: {
-        type: "Feature",
-        properties: {},
-        geometry: routeData.geometry,
-      },
-    });
-
-    map.addLayer({
-      id: "route",
-      type: "line",
-      source: "route",
-      paint: {
-        "line-color": "#2563eb",
-        "line-width": 5,
-      },
-    });
-  }
-
   function setViewportLoading(nextValue: boolean) {
     setIsViewportLoading(nextValue);
     onViewportLoadingChange?.(nextValue);
@@ -1412,91 +1363,6 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
     return request;
   }
 
-  async function drawRoute(
-    map: mapboxgl.Map,
-    park: ParkDetail,
-    button: HTMLButtonElement
-  ) {
-    button.textContent = "Loading...";
-    button.disabled = true;
-
-    try {
-      if (!userLocationRef.current) {
-        requestUserLocation();
-        button.textContent = "Directions";
-        button.disabled = false;
-        return;
-      }
-
-      const [userLon, userLat] = userLocationRef.current;
-      const response = await fetch(
-        `https://api.mapbox.com/directions/v5/mapbox/walking/${userLon},${userLat};${park.lon},${park.lat}?geometries=geojson&access_token=${mapboxgl.accessToken}`
-      );
-
-      if (!response.ok) {
-        throw new Error("Directions request failed.");
-      }
-
-      const data = await response.json();
-      const route = data.routes?.[0]?.geometry;
-
-      localStorage.setItem(
-        "active-route",
-        JSON.stringify({
-          parkId: park.id,
-          name: park.name,
-          lat: park.lat,
-          lon: park.lon,
-          geometry: route,
-        })
-      );
-
-      if (!route) {
-        button.textContent = "No route";
-        button.disabled = false;
-        return;
-      }
-
-      if (map.getSource("route")) {
-        (map.getSource("route") as mapboxgl.GeoJSONSource).setData({
-          type: "Feature",
-          properties: {},
-          geometry: route,
-        });
-      } else {
-        map.addSource("route", {
-          type: "geojson",
-          data: {
-            type: "Feature",
-            properties: {},
-            geometry: route,
-          },
-        });
-
-        map.addLayer({
-          id: "route",
-          type: "line",
-          source: "route",
-          paint: {
-            "line-color": "#2563eb",
-            "line-width": 5,
-          },
-        });
-      }
-      button.textContent = "Route ready";
-
-      setActiveRoute({
-        parkId: park.id,
-        name: park.name,
-      });
-
-      button.textContent = "Route ready";
-    } catch {
-      button.textContent = "Retry directions";
-      button.disabled = false;
-    }
-  }
-
   function setPopupMarkup(
     popup: mapboxgl.Popup,
     map: mapboxgl.Map,
@@ -1581,9 +1447,10 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
         '[data-popup-action="retry"]'
       );
 
-      if (directionsButton && options.park && "equipment" in options.park) {
+      const park = options.park;
+      if (directionsButton && park && "equipment" in park) {
         directionsButton.addEventListener("click", () => {
-          void drawRoute(map, options.park as ParkDetail, directionsButton);
+          setDirections({ park, trigger: directionsButton });
         });
       }
 
@@ -2021,24 +1888,6 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
   }, [parks]);
 
   useEffect(() => {
-    if (mode !== "public") return;
-    const savedRoute = localStorage.getItem("active-route");
-
-    if (!savedRoute) return;
-
-    try {
-      const route = JSON.parse(savedRoute);
-
-      setTimeout(() => {
-        setActiveRoute({
-          parkId: route.parkId,
-          name: route.name,
-        });
-      }, 0);
-    } catch {}
-  }, [mode]);
-
-  useEffect(() => {
     if (!mapContainer.current || mapRef.current) {
       return;
     }
@@ -2346,21 +2195,6 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
           "circle-emissive-strength": 1,
         },
       });
-
-      const savedRoute =
-        mode === "public" ? localStorage.getItem("active-route") : null;
-
-      if (savedRoute) {
-        try {
-          const routeData = JSON.parse(savedRoute);
-
-          if (routeData.geometry) {
-            restoreRoute(routeData);
-          }
-        } catch (error) {
-          console.error(error);
-        }
-      }
 
       map.addLayer({
         id: "cluster-count",
@@ -3169,19 +3003,14 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       className="relative h-full min-h-0 w-full overflow-hidden"
       data-parks-map
     >
-      {activeRoute && (
-        <div className="absolute right-4 bottom-4 left-4 z-30 sm:right-auto sm:bottom-6 sm:left-1/2 sm:max-w-md sm:-translate-x-1/2">
-          <div className="flex flex-col gap-2 rounded-xl border border-border bg-card p-2 shadow-lg sm:flex-row sm:items-center">
-            <span className="text-sm break-words">
-              Navigating to {activeRoute.name}
-            </span>
-
-            <Button variant="destructive" size="sm" onClick={clearRoute}>
-              Cancel Route
-            </Button>
-          </div>
-        </div>
-      )}
+      {directions ? (
+        <ParkDirectionsSheet
+          key={directions.park.id}
+          park={directions.park}
+          trigger={directions.trigger}
+          onClose={() => setDirections((current) => current === directions ? null : current)}
+        />
+      ) : null}
       <div className="absolute inset-0">
         <div className="absolute inset-0">
           <div
@@ -3256,11 +3085,7 @@ const ParksMap = forwardRef<ParksMapHandle, ParksMapProps>(function ParksMap(
       </div>
 
       <div
-        className={`pointer-events-none absolute left-4 z-40 flex max-w-[calc(100%-2rem)] items-start gap-2 transition-[bottom,opacity] duration-200 ${
-          activeRoute
-            ? "bottom-[calc(env(safe-area-inset-bottom)+7rem)]"
-            : "bottom-[calc(env(safe-area-inset-bottom)+1rem)]"
-        } sm:bottom-4 sm:left-4 ${
+        className={`pointer-events-none absolute bottom-[calc(env(safe-area-inset-bottom)+1rem)] left-4 z-40 flex max-w-[calc(100%-2rem)] items-start gap-2 transition-opacity duration-200 sm:bottom-4 sm:left-4 ${
           isMapInitializing ? "opacity-0" : "opacity-100"
         }`}
         aria-hidden={isMapInitializing || undefined}
