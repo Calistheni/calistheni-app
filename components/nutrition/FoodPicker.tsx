@@ -128,7 +128,8 @@ export function FoodPicker({
   const [foods, setFoods] = useState<Food[]>(
     () => getSavedFoodsCache<Food>() ?? []
   );
-  const [inspectedFood, setInspectedFood] = useState<Food | null>(null);
+  const [inspectedFood, setInspectedFood] =
+    useState<FoodDetailsPreview | null>(null);
   const [quickAdding, setQuickAdding] = useState<string | null>(null);
   const [savedFoodsFailed, setSavedFoodsFailed] = useState(false);
   const [savingFoodIds, setSavingFoodIds] = useState<Set<string>>(
@@ -393,6 +394,7 @@ export function FoodPicker({
                 onEntries={(created) =>
                   onAddEntries(created as NutritionPickerEntry[])
                 }
+                onBarcodeFood={setInspectedFood}
                 capabilities={quickActionCapabilities}
               />
             ) : (
@@ -591,7 +593,7 @@ export function FoodPicker({
         </NutritionMobileSheet>
       </Sheet>
       <FoodDetailsDialog
-        food={inspectedFood as FoodDetailsPreview | null}
+        food={inspectedFood}
         open={Boolean(inspectedFood)}
         onOpenChange={(open) => {
           if (!open) setInspectedFood(null);

@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FoodVisual } from "@/components/nutrition/FoodVisual";
+import type { FoodDetailsPreview } from "@/components/nutrition/FoodDetailsDialog";
 import {
   NutritionAiConsentDialog,
   type NutritionAiConsentRequest,
@@ -66,7 +67,9 @@ import {
 } from "@/lib/native/nutrition-label-camera";
 import { compressWorkoutPhoto } from "@/lib/workout-photo-client";
 import { NUTRITION_AI_CONSENT_HEADERS } from "@/lib/nutrition/ai-consent";
+import { normalizeBarcode } from "@/lib/nutrition/normalization";
 import { rankNutritionFoodCandidates } from "@/lib/nutrition/search-ranking";
+import type { ExternalFoodResult, FoodSummary } from "@/lib/nutrition/types";
 import {
   missingFoodProposalSchema,
   type MissingFoodProposal,
@@ -314,11 +317,13 @@ export function NutritionQuickActions({
   meal,
   date,
   onEntries,
+  onBarcodeFood,
   capabilities,
 }: {
   meal: QuickMeal;
   date: string;
   onEntries: (entries: Entry[]) => void;
+  onBarcodeFood: (food: FoodDetailsPreview) => void;
   capabilities: NutritionQuickActionCapabilities;
 }) {
   const [workflow, setWorkflow] = useState<
@@ -407,6 +412,7 @@ export function NutritionQuickActions({
         date={date}
         close={closeWorkflow}
         onEntries={onEntries}
+        onFood={onBarcodeFood}
         requestAiConsent={setAiConsent}
       />
       <AiWorkflow
@@ -547,6 +553,7 @@ function BarcodeWorkflow({
   date,
   close,
   onEntries,
+  onFood,
   requestAiConsent,
 }: {
   open: boolean;
@@ -554,6 +561,7 @@ function BarcodeWorkflow({
   date: string;
   close: () => void;
   onEntries: (entries: Entry[]) => void;
+  onFood: (food: FoodDetailsPreview) => void;
   requestAiConsent: (request: NutritionAiConsentRequest) => void;
 }) {
   const [code, setCode] = useState("");
@@ -855,6 +863,13 @@ function BarcodeWorkflow({
     };
   });
   useEffect(() => {
+    if (!open) return;
+    return () => {
+      lookupAbortRef.current?.abort();
+      lookupAbortRef.current = null;
+    };
+  }, [open]);
+  useEffect(() => {
     if (process.env.NODE_ENV !== "development" || !open) return;
     console.info("[BarcodeScanner]", {
       platform: nativeAvailability.platform,
@@ -893,9 +908,7 @@ function BarcodeWorkflow({
         // best-effort and must never delay lookup or contribution UI.
         void endNativeScannerSession("barcode-detected");
         if (!nativeIosScanner) void signalNativeBarcodeSuccess();
-        setCode(value);
         setLookupState("detected");
-        if (process.env.NODE_ENV === "development")
         lookupRef.current(value);
       },
       {
@@ -975,28 +988,28 @@ function BarcodeWorkflow({
     };
   }, [open, nativeRuntime, endNativeScannerSession]);
   async function lookup(value: string) {
-    const barcode = value.replaceAll(/\s/g, "");
-    if (!/^\d{8,14}$/.test(barcode))
+    if (!open) return;
+    const barcode = normalizeBarcode(value.replaceAll(/\s/g, ""));
+    if (!barcode)
       return setError("Enter a valid 8–14 digit UPC, EAN, or GTIN.");
+    lookupAbortRef.current?.abort();
+    const controller = new AbortController();
+    lookupAbortRef.current = controller;
+    const isCurrentLookup = () => lookupAbortRef.current === controller;
+    setCode(barcode);
     setBusy(true);
     setPhase("looking");
     setLookupState("looking_up");
     setError("");
     setMissingBarcode(false);
     setContributionMode(null);
-    let controller: AbortController | null = null;
     try {
-      lookupAbortRef.current?.abort();
-      const activeController = new AbortController();
-      controller = activeController;
-      lookupAbortRef.current = activeController;
-      const isCurrentLookup = () => lookupAbortRef.current === activeController;
-      const timeoutId = window.setTimeout(() => activeController.abort(), 12_000);
+      const timeoutId = window.setTimeout(() => controller.abort(), 12_000);
       const response = await fetch("/api/nutrition/foods/barcode/lookup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ barcode }),
-        signal: activeController.signal,
+        signal: controller.signal,
       }).finally(() => window.clearTimeout(timeoutId));
       if (!isCurrentLookup()) return;
       if (!response.ok) {
@@ -1004,7 +1017,10 @@ function BarcodeWorkflow({
           await responseMessage(response, "Barcode lookup failed.")
         );
       }
-      const data = await response.json();
+      const data = (await response.json()) as
+        | { status: "found"; food: FoodSummary | ExternalFoodResult }
+        | { status: "not_found"; barcode: string };
+      if (!isCurrentLookup()) return;
       if (data.status === "not_found") {
         setCode(data.barcode);
         setMissingBarcode(true);
@@ -1015,15 +1031,14 @@ function BarcodeWorkflow({
       if (data.status !== "found" || !data.food) {
         throw new Error("Barcode lookup returned an unsupported result.");
       }
-      const match = await importFood(data.food);
-      setFood(match);
-      setLookupState("review");
-      const defaultServing = match.servings?.[0];
-      setGrams(defaultServing?.grams ?? 100);
-      setQuantity(1);
-      setUnit(defaultServing?.name.slice(0, 40) ?? "g");
+      const match = data.food;
+      const preview = "id" in match
+        ? { ...match, externalId: match.sourceExternalId }
+        : match;
+      dismiss();
+      onFood(preview);
     } catch (reason) {
-      if (reason instanceof DOMException && reason.name === "AbortError" && lookupAbortRef.current !== controller) return;
+      if (!isCurrentLookup()) return;
       setLookupState("lookup_error");
       setError(
         reason instanceof DOMException && reason.name === "AbortError"
@@ -1031,7 +1046,7 @@ function BarcodeWorkflow({
           : reason instanceof Error ? reason.message : "Barcode lookup failed."
       );
     } finally {
-      if (lookupAbortRef.current === controller) {
+      if (isCurrentLookup()) {
         lookupAbortRef.current = null;
         setBusy(false);
         setPhase(null);

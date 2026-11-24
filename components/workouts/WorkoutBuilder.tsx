@@ -2708,6 +2708,12 @@ export function WorkoutBuilder({
     }
   }
 
+  function openFinishedWorkout(workoutId: number) {
+    setIsFinishSheetOpen(false);
+    router.push(`/workouts/${workoutId}`);
+    router.refresh();
+  }
+
   async function saveWorkout() {
     if (isSaving) {
       return;
@@ -2736,7 +2742,7 @@ export function WorkoutBuilder({
           if (!upload.ok) throw new Error(await getApiErrorMessage(upload));
           setUploadProgress(`Uploading photos ${index + 1} of ${finishPhotos.length}…`);
         }
-        router.push(`/workouts/${savedFinishWorkoutId}`); router.refresh();
+        openFinishedWorkout(savedFinishWorkoutId);
       } catch (error) { setFinishPhotoError(getErrorMessage(error, "Your workout was saved, but photos could not be uploaded.")); }
       finally { setUploadProgress(null); setIsSaving(false); }
       return;
@@ -2834,8 +2840,7 @@ export function WorkoutBuilder({
               if (!upload.ok) throw new Error(await getApiErrorMessage(upload));
               setUploadProgress(`Uploading photos ${index + 1} of ${finishPhotos.length}…`);
             }
-            router.push(`/workouts/${workout.id}`);
-            router.refresh();
+            openFinishedWorkout(workout.id);
           } catch (uploadError) {
             // Saving the workout is intentionally never rolled back; retain the
             // original files so the existing completion dialog can retry them.
@@ -2843,8 +2848,7 @@ export function WorkoutBuilder({
             // Keep the finish sheet and its selected files open for a retry.
           } finally { setUploadProgress(null); }
         } else {
-          router.push(`/workouts/${workout.id}`);
-          router.refresh();
+          openFinishedWorkout(workout.id);
         }
       }
     } catch (error) {
@@ -4848,7 +4852,7 @@ export function WorkoutBuilder({
                 <Button type="submit" disabled={isSaving}>
                   {isSaving ? (uploadProgress ?? "Finishing...") : savedFinishWorkoutId !== null ? "Retry photo upload" : "Finish Workout"}
                 </Button>
-                {savedFinishWorkoutId !== null ? <Button type="button" variant="ghost" disabled={isSaving} onClick={() => { router.push(`/workouts/${savedFinishWorkoutId}`); router.refresh(); }}>Continue without photos</Button> : null}
+                {savedFinishWorkoutId !== null ? <Button type="button" variant="ghost" disabled={isSaving} onClick={() => openFinishedWorkout(savedFinishWorkoutId)}>Continue without photos</Button> : null}
               </SheetFooter>
             </form>
           </SheetContent>
