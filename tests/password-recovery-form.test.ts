@@ -54,14 +54,10 @@ test("password recovery UI captures the form before awaiting and retains status 
   assert.match(source, /setError\(cause instanceof Error \? cause\.message/);
 });
 
-test("connected-account password form also keeps its form reference across async work", async () => {
-  const source = await readFile(
-    new URL("../components/profile/ConnectedAccounts.tsx", import.meta.url),
+test("change password form keeps its form reference across async work", async () => {
+  const handler = await readFile(
+    new URL("../components/profile/ChangePassword.tsx", import.meta.url),
     "utf8"
-  );
-  const handler = source.slice(
-    source.indexOf("async function savePassword"),
-    source.indexOf("if (!status) return")
   );
 
   assert.match(handler, /const form = event\.currentTarget;/);

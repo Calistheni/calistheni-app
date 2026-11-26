@@ -3,11 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { signIn, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { Browser } from "@capacitor/browser";
 import { openNativeGoogleAuth } from "@/lib/native/google-handoff";
 import { AlertTriangle, Apple, Check, Loader2, Shield, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { ManageSubscriptionButton } from "@/components/billing/ManageSubscriptionButton";
+import { DeletionSubscriptionAction } from "@/components/profile/DeletionSubscriptionAction";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,7 +18,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,9 +28,8 @@ import {
 } from "@/lib/native/apple-auth-core";
 import { clearNativeSessionToken } from "@/lib/native/native-session-enrollment";
 import { isNativeApp } from "@/lib/native/platform";
-import { canUseAppleStoreKit, showAppleSubscriptionManagement } from "@/lib/native/apple-storekit";
+import type { AccountSubscriptionManagement } from "@/lib/billing-provider";
 
-const APPLE_SUBSCRIPTIONS_URL = "https://apps.apple.com/account/subscriptions";
 const SUPPORT_EMAIL = "hello@calistheni.app";
 
 type AccountStatus = {
@@ -43,7 +40,13 @@ type AccountStatus = {
   recentAuthentication: boolean;
 };
 
-export function AccountDeletionSection({ hasWebsiteSubscription }: { hasWebsiteSubscription: boolean }) {
+export function AccountDeletionSection({
+  management,
+  hasLifetime,
+}: {
+  management: AccountSubscriptionManagement;
+  hasLifetime: boolean;
+}) {
   const router = useRouter();
   const [stage, setStage] = useState<"information" | "confirmation">("information");
   const [status, setStatus] = useState<AccountStatus | null>(null);
@@ -139,26 +142,6 @@ export function AccountDeletionSection({ hasWebsiteSubscription }: { hasWebsiteS
     }
   }
 
-  async function manageAppleSubscription() {
-    if (canUseAppleStoreKit()) {
-      try {
-        const result = await showAppleSubscriptionManagement();
-        if (result.presented) return;
-      } catch {
-        // Keep the official web management link visible as the fallback.
-      }
-    }
-    if (isNativeApp()) {
-      try {
-        await Browser.open({ url: APPLE_SUBSCRIPTIONS_URL, presentationStyle: "popover" });
-      } catch {
-        toast.error("Apple subscription settings could not be opened. Use the Apple subscription settings link below.");
-      }
-    } else {
-      window.open(APPLE_SUBSCRIPTIONS_URL, "_blank", "noopener,noreferrer");
-    }
-  }
-
   async function submitDeletion() {
     if (busy || !status?.recentAuthentication || confirmation !== "DELETE_MY_ACCOUNT") return;
     setBusy(true);
@@ -198,17 +181,14 @@ export function AccountDeletionSection({ hasWebsiteSubscription }: { hasWebsiteS
   );
 
   return (
-    <Card className="mb-6 border-destructive/40" data-testid="account-deletion-section">
-      <CardHeader>
+    <section className="space-y-5 rounded-xl border border-destructive/40 p-4 sm:p-5" aria-labelledby="account-deletion-heading" data-testid="account-deletion-section">
         <div className="flex items-start gap-3">
           <div className="mt-0.5 rounded-full bg-destructive/10 p-2 text-destructive"><AlertTriangle className="size-5" aria-hidden="true" /></div>
           <div className="space-y-1">
-            <h2 className="text-xl font-semibold text-destructive">Delete Account</h2>
+            <h3 id="account-deletion-heading" className="text-base font-semibold text-destructive">Delete Account</h3>
             <p className="text-sm text-muted-foreground">Permanently deactivate your Calistheni account. Deleted accounts cannot be recovered.</p>
           </div>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-5">
         {stage === "information" ? (
           <>
             <div className="space-y-2 text-sm text-muted-foreground">
@@ -220,11 +200,7 @@ export function AccountDeletionSection({ hasWebsiteSubscription }: { hasWebsiteS
             <section className="space-y-3 rounded-lg border border-amber-500/40 bg-amber-500/5 p-4" aria-labelledby="deletion-subscription-warning">
               <h3 id="deletion-subscription-warning" className="font-semibold">Subscriptions are not cancelled automatically</h3>
               <p className="whitespace-pre-line text-sm text-muted-foreground">{"Deleting your Calistheni account does not automatically cancel your subscriptions.\n\nIf you subscribed through our website, we recommend cancelling your subscription in your Calistheni billing settings before deleting your account.\n\nIf you subscribed through the Apple App Store, you can cancel your subscription through your Apple subscription settings before or after deleting your account.\n\nYou may continue to be charged until your subscription is cancelled."}</p>
-              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                {hasWebsiteSubscription ? <ManageSubscriptionButton variant="outline" label="Manage Website Subscription" /> : null}
-                <Button type="button" variant="outline" onClick={() => void manageAppleSubscription()}><Apple aria-hidden="true" />Manage Apple Subscription</Button>
-                <a className="inline-flex min-h-10 items-center justify-center rounded-md px-3 text-sm underline underline-offset-4" href={APPLE_SUBSCRIPTIONS_URL} target="_blank" rel="noreferrer">Open Apple subscription settings</a>
-              </div>
+              <DeletionSubscriptionAction management={management} hasLifetime={hasLifetime} />
               <p className="text-xs text-muted-foreground">Website billing portal access may no longer be available after deletion. Former website subscribers can contact <a className="underline underline-offset-4" href={`mailto:${SUPPORT_EMAIL}`}>support</a>; ownership will be verified before billing changes.</p>
             </section>
             <Button type="button" variant="destructive" className="w-full sm:w-auto" onClick={() => setStage("confirmation")}>
@@ -289,7 +265,6 @@ export function AccountDeletionSection({ hasWebsiteSubscription }: { hasWebsiteS
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-      </CardContent>
-    </Card>
+    </section>
   );
 }

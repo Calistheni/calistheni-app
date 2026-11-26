@@ -7,19 +7,21 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf
 test("profile settings expose the account-deletion danger zone", () => {
   const profile = read("../app/(primary)/@profile/profile/page.tsx");
   const component = read("../components/profile/AccountDeletionSection.tsx");
-  assert.match(profile, /<AccountDeletionSection hasWebsiteSubscription=/);
+  assert.match(profile, /Account Settings[\s\S]*<ChangePassword \/>[\s\S]*<AccountDeletionSection/);
   assert.match(component, /Delete Account/);
   assert.match(component, /deleted accounts cannot be recovered/i);
 });
 
 test("deletion UI preserves the subscription warning and posts the existing confirmation contract", () => {
   const component = read("../components/profile/AccountDeletionSection.tsx");
+  const billing = read("../components/profile/DeletionSubscriptionAction.tsx");
   const route = read("../app/api/account/deletion/request/route.ts");
   assert.match(component, /does not automatically cancel your subscriptions/i);
-  assert.match(component, /Manage Website Subscription/);
-  assert.match(component, /Manage Apple Subscription/);
-  assert.match(component, /showAppleSubscriptionManagement\(\)/);
-  assert.match(component, /https:\/\/apps\.apple\.com\/account\/subscriptions/);
+  assert.match(component, /<DeletionSubscriptionAction/);
+  assert.match(billing, /<ManageSubscriptionButton/);
+  assert.match(billing, /showAppleSubscriptionManagement\(\)/);
+  assert.match(billing, /https:\/\/apps\.apple\.com\/account\/subscriptions/);
+  assert.match(billing, /href="\/pro"/);
   assert.match(component, /const SUPPORT_EMAIL = "hello@calistheni\.app"/);
   assert.match(component, /href=\{`mailto:\$\{SUPPORT_EMAIL\}`\}/);
   assert.match(component, /personal information will be deleted or anonymized within 30 days/i);

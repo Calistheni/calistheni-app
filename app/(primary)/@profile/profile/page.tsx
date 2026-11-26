@@ -2,11 +2,12 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { ChevronDown } from "lucide-react";
 import { BackButton } from "@/components/navigation/BackButton";
 import { BodyweightForm } from "@/components/profile/BodyweightForm";
 import { CardioGoalCard } from "@/components/profile/CardioGoalCard";
 import { MobileAccountUtilities } from "@/components/profile/MobileAccountUtilities";
-import { ConnectedAccounts } from "@/components/profile/ConnectedAccounts";
+import { ChangePassword } from "@/components/profile/ChangePassword";
 import { AccountDeletionSection } from "@/components/profile/AccountDeletionSection";
 import { ProfileStatCard } from "@/components/profile/ProfileStatCard";
 import { ProgressLinks } from "@/components/profile/ProgressLinks";
@@ -19,6 +20,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   formatPersonalRecordValue,
   PERSONAL_RECORD_LABELS,
@@ -27,6 +29,7 @@ import {
 import { aggregateMuscleActivity } from "@/lib/muscle-activity";
 import { getWeeklyCardioProgress } from "@/lib/cardio-service";
 import { formatDateOfBirth } from "@/lib/date-of-birth";
+import { getAccountSubscriptionManagement } from "@/lib/billing-provider";
 import { prisma } from "@/lib/prisma";
 import {
   getFriendlySubscriptionPlan,
@@ -42,13 +45,18 @@ export const metadata: Metadata = {
   },
 };
 
-export default async function ProfilePage() {
+export default async function ProfilePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ accountDeletionReauth?: string | string[] }>;
+}) {
   const session = await getServerSession();
 
   if (!session?.user) {
     redirect("/login");
   }
 
+  const { accountDeletionReauth } = await searchParams;
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -112,6 +120,7 @@ export default async function ProfilePage() {
         appleHealthBodyweightImportEnabled: true,
         appleHealthBodyMeasurementExportEnabled: true,
         rewardPoints: true,
+        passwordCredential: { select: { userId: true } },
         _count: {
           select: {
             followers: true,
@@ -173,7 +182,8 @@ export default async function ProfilePage() {
       return null;
     }),
   ]);
-  const { entitlements, subscription } = entitlementResult;
+  const { entitlements, subscription, applePurchases, grants } = entitlementResult;
+  const subscriptionManagement = getAccountSubscriptionManagement(subscription, applePurchases);
   const muscleActivity: MuscleActivityPoint[] = aggregateMuscleActivity(
     recentMuscleSets.map((set) => ({
       aggregationId: set.id,
@@ -372,14 +382,6 @@ export default async function ProfilePage() {
 
       <Card className="mb-6">
         <CardHeader>
-          <h2 className="text-2xl font-bold">Connected Accounts</h2>
-          <p className="text-sm text-muted-foreground">Manage the secure sign-in methods attached to this Calistheni account.</p>
-        </CardHeader>
-        <CardContent><ConnectedAccounts /></CardContent>
-      </Card>
-
-      <Card className="mb-6">
-        <CardHeader>
           <h2 className="text-2xl font-bold">Safety &amp; community</h2>
           <p className="text-sm text-muted-foreground">
             Review community rules, manage blocked users, or contact support.
@@ -398,19 +400,26 @@ export default async function ProfilePage() {
         </CardContent>
       </Card>
 
-      <Card className="mb-6 md:hidden">
-        <CardHeader>
-          <h2 className="text-2xl font-bold">Account settings</h2>
-          <p className="text-sm text-muted-foreground">
-            Appearance and sign-in controls for this account.
-          </p>
-        </CardHeader>
-        <CardContent>
-          <MobileAccountUtilities />
-        </CardContent>
+      <Card className="mb-6 gap-0 py-0">
+        <Collapsible defaultOpen={accountDeletionReauth === "1"}>
+          <h2>
+            <CollapsibleTrigger className="flex min-h-12 w-full items-center justify-between gap-3 rounded-xl px-4 py-3 text-left text-lg font-semibold outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset [&[data-state=open]>svg]:rotate-180">
+              Account Settings
+              <ChevronDown aria-hidden="true" className="size-5 shrink-0 text-muted-foreground motion-safe:transition-transform" />
+            </CollapsibleTrigger>
+          </h2>
+          <CollapsibleContent>
+            <CardContent className="space-y-6 pt-2 pb-4">
+              <div className="md:hidden"><MobileAccountUtilities /></div>
+              {profile?.passwordCredential ? <ChangePassword /> : null}
+              <AccountDeletionSection
+                management={subscriptionManagement}
+                hasLifetime={grants.some((grant) => grant.kind === "LIFETIME")}
+              />
+            </CardContent>
+          </CollapsibleContent>
+        </Collapsible>
       </Card>
-
-      <AccountDeletionSection hasWebsiteSubscription={Boolean(subscription?.stripeSubscriptionId)} />
 
     </main>
   );

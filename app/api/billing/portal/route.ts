@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import {
-  getUserSubscription,
-  hasRecurringProAccess,
-} from "@/lib/entitlements";
+import { getStripeManagementState } from "@/lib/billing-provider";
+import { getUserSubscription } from "@/lib/entitlements";
 import {
   getSafeServerErrorMessage,
   getStripe,
@@ -20,7 +18,8 @@ export async function POST() {
 
   try {
     const subscription = await getUserSubscription(userId);
-    if (subscription?.lifetimePurchasedAt) {
+    const management = getStripeManagementState(subscription);
+    if (management === "none" && subscription?.lifetimePurchasedAt) {
       return NextResponse.json(
         {
           code: "LIFETIME_NO_RENEWAL",
@@ -29,7 +28,7 @@ export async function POST() {
         { status: 409 }
       );
     }
-    if (!subscription?.stripeCustomerId || !hasRecurringProAccess(subscription)) {
+    if (!subscription?.stripeCustomerId || management === "none") {
       return NextResponse.json(
         { code: "NO_BILLING_ACCOUNT", error: "No billing account was found." },
         { status: 404 }

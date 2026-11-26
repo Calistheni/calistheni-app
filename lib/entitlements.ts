@@ -143,6 +143,7 @@ export async function getUserEntitlements(userId: string) {
         expiresAt: true,
         gracePeriodExpiresAt: true,
         revokedAt: true,
+        autoRenewStatus: true,
       },
     }),
   ]);
