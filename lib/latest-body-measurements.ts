@@ -7,6 +7,7 @@ type NumericValue = number | string | { toString(): string } | null | undefined;
 export type BodyMeasurementEntryLike = {
   measuredAt: string | Date;
   createdAt?: string | Date;
+  changedFields?: readonly string[];
   bodyweightKg?: NumericValue;
   bodyFatPercentage?: NumericValue;
   heightCm?: NumericValue;
@@ -36,6 +37,7 @@ export type LatestMeasurementState = Required<
 > & { sources: Partial<Record<MeasurementField, Date>> };
 
 function asNumber(value: NumericValue) {
+  if (value == null) return null;
   const number = Number(
     typeof value === "object" && value !== null && "toString" in value
       ? value.toString()
@@ -112,9 +114,11 @@ export function resolveLatestMeasurementState(
   ];
   for (const field of fields) {
     for (const entry of ordered) {
-      const value = valueFor(entry, field);
       const measuredAt = entryDate(entry);
-      if (value != null && measuredAt) {
+      if (!measuredAt) continue;
+      const cleared = entry[field] === null && entry.changedFields?.includes(field);
+      const value = cleared ? null : valueFor(entry, field);
+      if (value != null || cleared) {
         state[field] = value;
         sources[field] = measuredAt;
         break;

@@ -12,7 +12,7 @@ import { getUserEntitlements } from "@/lib/entitlements";
 import { latestMeasurementSnapshot } from "@/lib/latest-body-measurements";
 import { prisma } from "@/lib/prisma";
 import {
-  measurementSchema,
+  measurementPatchSchema,
   validateStoredMeasurementCapabilities,
   type MeasurementField,
   type MeasurementSnapshotValues,
@@ -37,7 +37,7 @@ export async function PATCH(
   } catch {
     return createJsonErrorResponse("Invalid JSON payload.", 400);
   }
-  const parsed = measurementSchema.partial().safeParse(body);
+  const parsed = measurementPatchSchema.safeParse(body);
   if (!parsed.success)
     return createJsonValidationErrorResponse(
       "Invalid measurement entry.",

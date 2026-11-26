@@ -82,7 +82,7 @@ const decimalValue = (field: MeasurementField) => {
   const metadata = MEASUREMENT_CATALOGUE[LEGACY_MEASUREMENT_KEY_MAP[field]];
   return z.coerce.number().finite().min(metadata.min).max(metadata.max);
 };
-export const measurementSchema = z
+const measurementObjectSchema = z
   .object({
     measuredAt: z.coerce.date(),
     // The transformer accepts undefined, but Zod still requires an object key
@@ -104,13 +104,16 @@ export const measurementSchema = z
       MEASUREMENT_FIELDS.map((field) => [field, decimalValue(field).optional()])
     ),
   })
-  .strict()
-  .refine(
-    (value) =>
-      MEASUREMENT_FIELDS.some((field) => Object.hasOwn(value, field)) ||
-      value.clearFields.length > 0,
-    { message: "Add at least one measurement or choose a field to clear." }
-  );
+  .strict();
+
+export const measurementPatchSchema = measurementObjectSchema.partial();
+
+export const measurementSchema = measurementObjectSchema.refine(
+  (value) =>
+    MEASUREMENT_FIELDS.some((field) => Object.hasOwn(value, field)) ||
+    value.clearFields.length > 0,
+  { message: "Add at least one measurement or choose a field to clear." }
+);
 
 export type MeasurementSnapshotValues = Partial<
   Record<MeasurementField, number | null | undefined>

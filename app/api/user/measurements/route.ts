@@ -8,11 +8,14 @@ import {
   createUserUnauthorizedResponse,
   getAuthenticatedUserId,
 } from "@/lib/user-auth";
-import { FREE_MEASUREMENT_HISTORY_LIMIT } from "@/lib/anthropometry";
+import { FREE_MEASUREMENT_HISTORY_LIMIT, MEASUREMENT_CATALOGUE } from "@/lib/anthropometry";
+import type { BodyMeasurementEntry } from "@/lib/generated/prisma/client";
 import { getUserEntitlements } from "@/lib/entitlements";
 import { prisma } from "@/lib/prisma";
 import {
   mergeMeasurementSnapshot,
+  LEGACY_MEASUREMENT_KEY_MAP,
+  MEASUREMENT_FIELDS,
   measurementSchema,
   validateStoredMeasurementCapabilities,
   type MeasurementField,
@@ -23,15 +26,11 @@ import {
   latestMeasurementSnapshot,
 } from "@/lib/latest-body-measurements";
 
-const PRO_ONLY_RESPONSE_FIELDS = [
-  "bodyFatPercentage",
-  "shouldersCm",
-  "hipsCm",
-  "forearmCm",
-  "wristCm",
-  "thighCm",
-  "calfCm",
-  "ankleCm",
+const PRO_ONLY_RESPONSE_FIELDS = new Set<string>([
+  ...MEASUREMENT_FIELDS.filter(
+    (field) => MEASUREMENT_CATALOGUE[LEGACY_MEASUREMENT_KEY_MAP[field]].availability === "PRO"
+  ),
+  // Historic storage fields no longer exposed as direct check-in inputs.
   "upperChestCm",
   "waistNarrowestCm",
   "abdomenCm",
@@ -39,6 +38,8 @@ const PRO_ONLY_RESPONSE_FIELDS = [
   "pelvisCm",
   "leftUpperArmRelaxedCm",
   "rightUpperArmRelaxedCm",
+  "leftUpperArmCm",
+  "rightUpperArmCm",
   "leftForearmCm",
   "rightForearmCm",
   "leftThighCm",
@@ -49,7 +50,15 @@ const PRO_ONLY_RESPONSE_FIELDS = [
   "rightWristCm",
   "leftAnkleCm",
   "rightAnkleCm",
-] as const;
+]);
+
+function freeMeasurementEntry(entry: BodyMeasurementEntry) {
+  return {
+    ...entry,
+    ...Object.fromEntries(Array.from(PRO_ONLY_RESPONSE_FIELDS, (key) => [key, null])),
+    changedFields: entry.changedFields.filter((field) => !PRO_ONLY_RESPONSE_FIELDS.has(field)),
+  };
+}
 
 class FreeMeasurementLimitError extends Error {}
 
@@ -68,17 +77,7 @@ export async function GET() {
       orderBy: [{ measuredAt: "desc" }, { createdAt: "desc" }],
     });
     const { entitlements } = await getUserEntitlements(userId);
-    const isPro = entitlements.isPro;
-    const visibleEntries = isPro
-      ? entries
-      : entries.map((entry) =>
-          Object.fromEntries(
-            Object.entries(entry).map(([key, value]) => [
-              key,
-              PRO_ONLY_RESPONSE_FIELDS.includes(key as never) ? null : value,
-            ])
-          )
-        );
+    const visibleEntries = entitlements.isPro ? entries : entries.map(freeMeasurementEntry);
     return NextResponse.json(visibleEntries);
   } catch (error) {
     console.error(error);
@@ -189,7 +188,7 @@ export async function POST(request: Request) {
       },
       { isolationLevel: "Serializable" }
     );
-    return NextResponse.json(entry, { status: 201 });
+    return NextResponse.json(isPro ? entry : freeMeasurementEntry(entry), { status: 201 });
   } catch (error) {
     if (error instanceof FreeMeasurementLimitError) {
       return createJsonErrorResponse(

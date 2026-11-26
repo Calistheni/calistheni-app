@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Loader2, LockKeyhole, Plus, Trash2 } from "lucide-react";
 import {
   Accordion,
@@ -8,6 +9,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -38,13 +40,14 @@ import {
   calculateAnthropometrySummary,
   estimateBodyFatPercentage,
   getMeasurementCapabilities,
+  isValidMeasurementValue,
   MEASUREMENT_CATALOGUE,
   type BodyFatSex,
+  type MeasurementValues,
 } from "@/lib/anthropometry";
 import {
   DIRECT_MEASUREMENT_FIELDS,
   LEGACY_MEASUREMENT_KEY_MAP,
-  type MeasurementField,
 } from "@/lib/progress";
 import {
   latestMeasurementSnapshot,
@@ -66,46 +69,61 @@ type Entry = {
   source?: "MANUAL" | "APPLE_HEALTH";
   changedFields?: string[];
 } & Record<string, DecimalValue | string[] | undefined>;
-type FormValues = Partial<Record<MeasurementField, string>>;
+type DirectField = (typeof DIRECT_MEASUREMENT_FIELDS)[number];
+type FormValues = Partial<Record<DirectField, string>>;
 const STORAGE_FIELDS = DIRECT_MEASUREMENT_FIELDS.map(
   (field) => [field, LEGACY_MEASUREMENT_KEY_MAP[field]] as const
 );
-const groups = {
-  Basic: ["bodyweightKg", "heightCm"],
-  Torso: ["neckCm", "shouldersCm", "chestCm", "waistCm", "hipsCm"],
-  Arms: ["bicepsCm", "forearmCm", "wristCm"],
-  Legs: ["thighCm", "calfCm", "ankleCm"],
-} as const satisfies Record<
-  string,
-  readonly Exclude<MeasurementField, "bodyFatPercentage">[]
->;
+const groups = ["Basic", "Torso", "Arms", "Legs"] as const;
 
 function format(value: number | null, digits = 1) {
   return value == null
     ? "—"
     : value.toLocaleString(undefined, { maximumFractionDigits: digits });
 }
-function label(field: Exclude<MeasurementField, "bodyFatPercentage">) {
+function label(field: DirectField) {
   return MEASUREMENT_CATALOGUE[LEGACY_MEASUREMENT_KEY_MAP[field]].label;
 }
-function unit(field: Exclude<MeasurementField, "bodyFatPercentage">) {
+function unit(field: DirectField) {
   return MEASUREMENT_CATALOGUE[LEGACY_MEASUREMENT_KEY_MAP[field]].unit;
 }
 function missingForEstimate(
-  values: Record<string, number | null | undefined>,
+  values: MeasurementValues,
   sex: BodyFatSex | null
 ) {
-  if (!sex) return ["Sex"];
   const fields =
     sex === "FEMALE"
-      ? ["heightCm", "neckCm", "waistAtNavelCm", "hipsCm"]
-      : ["heightCm", "neckCm", "waistAtNavelCm"];
-  return fields
-    .filter((key) => !values[key])
-    .map(
-      (key) =>
-        MEASUREMENT_CATALOGUE[key as keyof typeof MEASUREMENT_CATALOGUE].label
-    );
+      ? (["heightCm", "neckCm", "waistAtNavelCm", "hipsCm"] as const)
+      : (["heightCm", "neckCm", "waistAtNavelCm"] as const);
+  return [
+    ...(!sex ? ["Sex used for the estimate"] : []),
+    ...fields
+      .filter((key) => !isValidMeasurementValue(key, values[key]))
+      .map((key) => MEASUREMENT_CATALOGUE[key].label),
+  ];
+}
+
+function ProBadge() {
+  return <Badge variant="secondary"><LockKeyhole aria-hidden="true" /> Pro</Badge>;
+}
+
+function UpgradeToPro({ feature, compact = false }: { feature: string; compact?: boolean }) {
+  return (
+    <Button asChild size="sm" variant={compact ? "link" : "outline"} className="min-h-10">
+      <Link href="/pro" aria-label={`Upgrade to Pro for ${feature}`}>Upgrade to Pro</Link>
+    </Button>
+  );
+}
+
+function LockedMeasurement({ name }: { name: string }) {
+  return (
+    <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-2 rounded-md border bg-muted/25 px-3 py-1">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm font-medium">
+        {name} <ProBadge />
+      </div>
+      <UpgradeToPro feature={name} compact />
+    </div>
+  );
 }
 
 function MetricCard({
@@ -113,30 +131,35 @@ function MetricCard({
   value,
   detail,
   missing,
+  locked = false,
 }: {
   title: string;
   value: string;
   detail: string;
   missing?: string[];
+  locked?: boolean;
 }) {
   return (
     <Card size="sm">
       <CardHeader>
-        <CardTitle>{title}</CardTitle>
+        <CardTitle className="flex flex-wrap items-center gap-2">
+          {title} {locked ? <ProBadge /> : null}
+        </CardTitle>
         <CardDescription>{detail}</CardDescription>
       </CardHeader>
       <CardContent>
-        {value !== "—" ? (
+        {locked ? (
+          <UpgradeToPro feature={title} />
+        ) : value !== "—" ? (
           <p className="text-2xl font-semibold tabular-nums">{value}</p>
         ) : (
-          <div>
-            <p className="text-lg font-medium">Unavailable</p>
-            {missing?.length ? (
-              <p className="mt-1 text-xs text-muted-foreground">
-                Missing: {missing.join(", ")}
-              </p>
-            ) : null}
-          </div>
+          <p className="text-sm text-muted-foreground">
+            {missing === undefined
+              ? "No data yet"
+              : missing.length
+                ? `Missing: ${missing.join(", ")}`
+                : "Check the measurements used in this calculation."}
+          </p>
         )}
       </CardContent>
     </Card>
@@ -149,7 +172,7 @@ function MeasurementInput({
   onChange,
   onClear,
 }: {
-  field: Exclude<MeasurementField, "bodyFatPercentage">;
+  field: DirectField;
   value: string;
   error?: string;
   onChange: (value: string) => void;
@@ -204,7 +227,7 @@ function MeasurementHistoryCell({
   changed,
   locked,
 }: {
-  field: Exclude<MeasurementField, "bodyFatPercentage">;
+  field: DirectField;
   value: number | null | undefined;
   previousValue: number | null | undefined;
   changed: boolean;
@@ -217,11 +240,13 @@ function MeasurementHistoryCell({
     : "border-border bg-background/40";
   const status = locked
     ? "Upgrade to track"
-    : changed
-    ? previousValue == null
+    : !changed
+    ? "\u00a0"
+    : value == null
+    ? "Cleared"
+      : previousValue == null
       ? "Initial value"
-      : `${format(Number(previousValue))} → ${format(Number(value))}`
-    : "\u00a0";
+      : `${format(previousValue)} → ${format(value)}`;
 
   return (
     <div
@@ -265,14 +290,14 @@ export function MeasurementTracker({
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<FormValues>({});
   const [initialValues, setInitialValues] = useState<FormValues>({});
-  const [clearFields, setClearFields] = useState<MeasurementField[]>([]);
+  const [clearFields, setClearFields] = useState<DirectField[]>([]);
   const [note, setNote] = useState("");
   const [initialNote, setInitialNote] = useState("");
   const [sex, setSex] = useState<BodyFatSex | null>(initialBodyFatSex);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
-  const capabilities = getMeasurementCapabilities(isPro);
+  const capabilities = useMemo(() => getMeasurementCapabilities(isPro), [isPro]);
   const allowedFields = useMemo(
     () =>
       new Set(
@@ -292,8 +317,9 @@ export function MeasurementTracker({
     waistAtNavelCm: resolved.waistCm,
     hipsCm: resolved.hipsCm,
   };
-  const estimatedBodyFat =
-    isPro && sex ? estimateBodyFatPercentage({ sex, ...resolvedValues }) : null;
+  const estimatedBodyFat = capabilities.canEstimateBodyFat
+    ? estimateBodyFatPercentage({ sex, ...resolvedValues })
+    : null;
   const summary = calculateAnthropometrySummary({
     bodyweightKg: resolved.bodyweightKg,
     heightCm: resolved.heightCm,
@@ -301,18 +327,19 @@ export function MeasurementTracker({
     waistAtNavelCm: resolved.waistCm,
     hipsCm: resolved.hipsCm,
   });
-  const estimateMissing = missingForEstimate(
-    {
-      heightCm: resolved.heightCm,
-      neckCm: resolved.neckCm,
-      waistAtNavelCm: resolved.waistCm,
-      hipsCm: resolved.hipsCm,
-    },
-    sex
-  );
+  const estimateMissing = missingForEstimate(resolvedValues, sex);
+  const leanMassMissing = [
+    ...(!isValidMeasurementValue("bodyweightKg", resolved.bodyweightKg) ? ["Body weight"] : []),
+    ...(!isValidMeasurementValue("manualBodyFatPercent", estimatedBodyFat) ? ["Estimated body fat"] : []),
+  ];
+  const ffmiMissing = [
+    ...leanMassMissing,
+    ...(!isValidMeasurementValue("heightCm", resolved.heightCm) ? ["Height"] : []),
+  ];
   const hasPendingMeasurementChange = useMemo(
     () =>
       STORAGE_FIELDS.some(([field]) => {
+        if (!allowedFields.has(field)) return false;
         if (clearFields.includes(field)) return Boolean(initialValues[field]);
         const raw = values[field]?.trim();
         const initial = initialValues[field]?.trim();
@@ -323,7 +350,7 @@ export function MeasurementTracker({
           return Math.abs(next - previous) > 1e-9;
         return raw !== initial;
       }),
-    [clearFields, initialValues, values]
+    [allowedFields, clearFields, initialValues, values]
   );
   const load = async () => {
     const response = await fetch("/api/user/measurements");
@@ -345,6 +372,7 @@ export function MeasurementTracker({
     const snapshot = latestMeasurementSnapshot(entries);
     const next: FormValues = {};
     for (const [field] of STORAGE_FIELDS) {
+      if (!allowedFields.has(field)) continue;
       const value = snapshot[field];
       if (value != null) next[field] = String(value);
     }
@@ -357,12 +385,12 @@ export function MeasurementTracker({
     setRequestError(null);
     setOpen(true);
   }
-  function setValue(field: MeasurementField, value: string) {
+  function setValue(field: DirectField, value: string) {
     setValues((current) => ({ ...current, [field]: value }));
     setClearFields((current) => current.filter((item) => item !== field));
     setErrors((current) => ({ ...current, [field]: "" }));
   }
-  function clearValue(field: MeasurementField) {
+  function clearValue(field: DirectField) {
     setValues((current) => ({ ...current, [field]: "" }));
     setClearFields((current) =>
       current.includes(field) ? current : [...current, field]
@@ -375,10 +403,11 @@ export function MeasurementTracker({
     const nextErrors: Record<string, string> = {};
     const payload: Record<string, unknown> = {
       measuredAt: new Date().toISOString(),
-      clearFields,
+      clearFields: clearFields.filter((field) => allowedFields.has(field)),
     };
     if (note !== initialNote) payload.note = normalizeOptionalNote(note);
     for (const [field, key] of STORAGE_FIELDS) {
+      if (!allowedFields.has(field)) continue;
       const raw = values[field]?.trim();
       const initial = initialValues[field]?.trim();
       if (!raw) continue;
@@ -437,7 +466,7 @@ export function MeasurementTracker({
         await saveAppleHealthBodyMeasurements(
           getAppleHealthMeasurementPayloads(entry, isPro)
         );
-      if (sex !== initialBodyFatSex) {
+      if (capabilities.canEstimateBodyFat && sex !== initialBodyFatSex) {
         const profile = await fetch("/api/user/profile", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -495,13 +524,8 @@ export function MeasurementTracker({
             estimatedBodyFat == null ? "—" : `${format(estimatedBodyFat)}%`
           }
           detail="US Navy circumference estimate"
-          missing={
-            estimatedBodyFat == null
-              ? !isPro
-                ? ["Pro access"]
-                : estimateMissing
-              : undefined
-          }
+          locked={!capabilities.canEstimateBodyFat}
+          missing={estimateMissing}
         />
         <MetricCard
           title="Lean Mass"
@@ -511,11 +535,15 @@ export function MeasurementTracker({
               : `${format(summary.leanBodyMassKg)} kg`
           }
           detail="Weight excluding estimated body fat"
+          locked={!capabilities.canViewCalculatedMetrics}
+          missing={leanMassMissing}
         />
         <MetricCard
           title="FFMI"
           value={format(summary.ffmi, 1)}
           detail="Lean mass adjusted for height"
+          locked={!capabilities.canViewCalculatedMetrics}
+          missing={ffmiMissing}
         />
         <MetricCard
           title="Waist"
@@ -563,7 +591,8 @@ export function MeasurementTracker({
                     : `${format(estimatedBodyFat)}%`
                 }
                 detail="US Navy circumference estimate"
-                missing={!isPro ? ["Pro access"] : estimateMissing}
+                locked={!capabilities.canEstimateBodyFat}
+                missing={estimateMissing}
               />
               <MetricCard
                 title="Lean Body Mass"
@@ -573,11 +602,15 @@ export function MeasurementTracker({
                     : `${format(summary.leanBodyMassKg)} kg`
                 }
                 detail="Body mass excluding estimated fat mass."
+                locked={!capabilities.canViewCalculatedMetrics}
+                missing={leanMassMissing}
               />
               <MetricCard
                 title="FFMI"
                 value={format(summary.ffmi, 1)}
                 detail="Lean mass adjusted for height."
+                locked={!capabilities.canViewCalculatedMetrics}
+                missing={ffmiMissing}
               />
             </div>
           </AccordionContent>
@@ -667,24 +700,24 @@ export function MeasurementTracker({
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
               <Accordion
                 type="multiple"
-                defaultValue={["Basic", "Torso", "Arms", "Legs"]}
+                defaultValue={[...groups]}
                 className="rounded-xl border px-4"
               >
-                {Object.entries(groups).map(([group, fields]) => (
+                {groups.map((group) => (
                   <AccordionItem key={group} value={group}>
                     <AccordionTrigger>{group}</AccordionTrigger>
                     <AccordionContent>
                       <div className="grid gap-4 sm:grid-cols-2">
-                        {group === "Basic" ? (
+                        {group === "Basic" && capabilities.canEstimateBodyFat ? (
                           <div className="min-w-0 space-y-1.5">
-                            <Label>Sex used for body-fat estimate</Label>
+                            <Label htmlFor="measurement-body-fat-sex">Sex used for body-fat estimate</Label>
                             <Select
                               value={sex ?? undefined}
                               onValueChange={(value) =>
                                 setSex(value as BodyFatSex)
                               }
                             >
-                              <SelectTrigger className="w-full">
+                              <SelectTrigger id="measurement-body-fat-sex" className="w-full">
                                 <SelectValue placeholder="Choose Male or Female" />
                               </SelectTrigger>
                               <SelectContent>
@@ -697,10 +730,12 @@ export function MeasurementTracker({
                               inferred.
                             </p>
                           </div>
+                        ) : group === "Basic" ? (
+                          <LockedMeasurement name="Sex used for body-fat estimate" />
                         ) : null}
-                        {fields
-                          .filter((field) => allowedFields.has(field))
-                          .map((field) => (
+                        {STORAGE_FIELDS
+                          .filter(([, key]) => MEASUREMENT_CATALOGUE[key].category === group)
+                          .map(([field]) => allowedFields.has(field) ? (
                             <MeasurementInput
                               key={field}
                               field={field}
@@ -709,6 +744,8 @@ export function MeasurementTracker({
                               onChange={(value) => setValue(field, value)}
                               onClear={() => clearValue(field)}
                             />
+                          ) : (
+                            <LockedMeasurement key={field} name={label(field)} />
                           ))}
                       </div>
                     </AccordionContent>
@@ -736,7 +773,7 @@ export function MeasurementTracker({
             <DialogFooter className="m-0 shrink-0 rounded-none border-t bg-popover p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] sm:m-0 sm:justify-between sm:pb-4">
               <p className="text-xs text-muted-foreground">
                 {hasPendingMeasurementChange
-                  ? "Fields available for your current plan are shown."
+                  ? "Save your updated measurements."
                   : "Change at least one measurement before saving."}
               </p>
               <Button
