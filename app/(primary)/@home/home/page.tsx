@@ -188,6 +188,7 @@ export default async function HomePage() {
       where: { id: session.user.id },
       select: {
         name: true,
+        firstName: true,
         bodyweightKg: true,
         rewardPoints: true,
         weeklyWorkoutGoal: true,
@@ -301,7 +302,7 @@ export default async function HomePage() {
   const recentCompletedSets = recentWorkout
     ? completedSetCount(recentWorkout)
     : 0;
-  const firstName = profile.name?.trim().split(/\s+/)[0] ?? "athlete";
+  const firstName = profile.firstName ?? (profile.name?.trim().split(/\s+/)[0] || "athlete");
 
   const weekStats = [
     { label: "Workouts", value: weeklyWorkoutCount.toLocaleString() },

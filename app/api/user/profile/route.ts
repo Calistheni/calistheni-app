@@ -9,6 +9,8 @@ import {
   getAuthenticatedUserId,
 } from "@/lib/user-auth";
 import { parseWeeklyWorkoutGoal } from "@/lib/home-dashboard";
+import { assertTrustedAuthOrigin } from "@/lib/auth/security";
+import { validateDisplayName } from "@/lib/display-name";
 import {
   calculateAge,
   formatDateOfBirth,
@@ -17,6 +19,8 @@ import {
 import { prisma } from "@/lib/prisma";
 
 type ProfileUpdatePayload = {
+  firstName?: unknown;
+  familyName?: unknown;
   bodyweightKg?: unknown;
   measurementSystem?: unknown;
   dateOfBirth?: unknown;
@@ -36,6 +40,9 @@ const TRAINING_STYLES = ["CALISTHENICS", "GYM", "BOTH"] as const;
 const PRIMARY_GOALS = ["FIND_PARKS", "TRACK_WORKOUTS", "BOTH"] as const;
 const BODY_FAT_SEXES = ["MALE", "FEMALE"] as const;
 const MEASUREMENT_SYSTEMS = ["METRIC", "IMPERIAL"] as const;
+const NAME_REQUIRED = "Enter your first name to continue.";
+
+class OnboardingNameRequiredError extends Error {}
 
 function parseBodyweightKg(value: unknown) {
   if (value === null || value === undefined || value === "") {
@@ -104,12 +111,19 @@ export async function PATCH(request: Request) {
   let body: ProfileUpdatePayload;
 
   try {
-    body = (await request.json()) as ProfileUpdatePayload;
+    const input: unknown = await request.json();
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      return createJsonErrorResponse("Invalid JSON payload.", 400);
+    }
+    body = input;
   } catch {
     return createJsonErrorResponse("Invalid JSON payload.", 400);
   }
 
   const data: {
+    firstName?: string;
+    familyName?: string | null;
+    name?: string;
     bodyweightKg?: number | null;
     measurementSystem?: (typeof MEASUREMENT_SYSTEMS)[number];
     dateOfBirth?: Date | null;
@@ -125,6 +139,25 @@ export async function PATCH(request: Request) {
   } = {};
 
   const bodyweightSource = body.bodyweightSource === "APPLE_HEALTH" ? "APPLE_HEALTH" : "MANUAL";
+
+  if (hasField(body, "firstName") || hasField(body, "familyName")) {
+    try {
+      assertTrustedAuthOrigin(request);
+    } catch {
+      return createJsonErrorResponse("Invalid profile update request.", 403);
+    }
+    const validated = validateDisplayName(body.firstName, body.familyName);
+    if (!validated.ok) {
+      const { firstName, familyName } = validated.errors;
+      return createJsonValidationErrorResponse("Check your display name.", {
+        firstName: firstName ? [firstName] : undefined,
+        familyName: familyName ? [familyName] : undefined,
+      });
+    }
+    data.firstName = validated.fields.firstName;
+    data.familyName = validated.fields.familyName || null;
+    data.name = validated.name;
+  }
 
   if (hasField(body, "bodyweightKg")) {
     const bodyweightKg = parseBodyweightKg(body.bodyweightKg);
@@ -229,15 +262,24 @@ export async function PATCH(request: Request) {
 
   try {
     const user = await prisma.$transaction(async (tx) => {
-      const current = hasField(body, "bodyweightKg")
-        ? await tx.user.findUnique({ where: { id: userId }, select: { bodyweightKg: true } })
+      const needsName = data.onboardingCompleted === true && !data.name;
+      const current = needsName || hasField(body, "bodyweightKg")
+        ? await tx.user.findUnique({
+            where: { id: userId },
+            select: { bodyweightKg: true, name: true, onboardingCompleted: true },
+          })
         : null;
+      if (needsName && current && !current.onboardingCompleted && !current.name?.trim()) {
+        throw new OnboardingNameRequiredError();
+      }
       const updated = await tx.user.update({
       where: {
         id: userId,
+        deletedAt: null,
       },
       data,
       select: {
+        name: true,
         bodyweightKg: true,
         measurementSystem: true,
         dateOfBirth: true,
@@ -271,6 +313,9 @@ export async function PATCH(request: Request) {
         : profile
     );
   } catch (error) {
+    if (error instanceof OnboardingNameRequiredError) {
+      return createJsonValidationErrorResponse(NAME_REQUIRED, { firstName: [NAME_REQUIRED] });
+    }
     console.error(error);
     return createInternalServerErrorResponse();
   }

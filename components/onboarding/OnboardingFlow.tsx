@@ -4,16 +4,19 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { DateOfBirthPicker } from "@/components/profile/DateOfBirthPicker";
+import { DisplayNameInputs } from "@/components/profile/DisplayNameInputs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { calculateAge, validateDateOfBirth } from "@/lib/date-of-birth";
+import { formatDisplayName, validateDisplayName, type DisplayNameErrors, type DisplayNameFields } from "@/lib/display-name";
 
 type TrainingStyle = "CALISTHENICS" | "GYM" | "BOTH";
 type PrimaryGoal = "FIND_PARKS" | "TRACK_WORKOUTS" | "BOTH";
 
 type OnboardingFlowProps = {
+  initialName: DisplayNameFields & { legacyName: boolean };
   initialBodyweightKg: number | null;
   initialDateOfBirth: string | null;
   initialTrainingStyle: TrainingStyle | null;
@@ -73,6 +76,7 @@ function getErrorMessage(error: unknown) {
 }
 
 export function OnboardingFlow({
+  initialName,
   initialBodyweightKg,
   initialDateOfBirth,
   initialTrainingStyle,
@@ -80,6 +84,8 @@ export function OnboardingFlow({
 }: OnboardingFlowProps) {
   const router = useRouter();
   const [step, setStep] = useState(1);
+  const [name, setName] = useState<DisplayNameFields>(initialName);
+  const [nameErrors, setNameErrors] = useState<DisplayNameErrors>({});
   const [bodyweightKg, setBodyweightKg] = useState(
     initialBodyweightKg?.toString() ?? ""
   );
@@ -95,7 +101,14 @@ export function OnboardingFlow({
   const [isSaving, setIsSaving] = useState(false);
   const progress = (step / TOTAL_STEPS) * 100;
 
+  function validateName() {
+    const result = validateDisplayName(name.firstName, name.familyName);
+    setNameErrors(result.ok ? {} : result.errors);
+    return result.ok ? result.fields : null;
+  }
+
   function validatePersonalDetails() {
+    const validName = validateName();
     const dateResult = validateDateOfBirth(dateOfBirth);
     const nextDateError = dateResult.success ? null : dateResult.error;
     let nextBodyweightError: string | null = null;
@@ -116,7 +129,7 @@ export function OnboardingFlow({
     setBodyweightError(nextBodyweightError);
     const error = nextDateError ?? nextBodyweightError;
     if (error) toast.error(error);
-    return error === null;
+    return error === null ? validName : null;
   }
 
   function goNext() {
@@ -136,7 +149,8 @@ export function OnboardingFlow({
   }
 
   async function finishOnboarding() {
-    if (!validatePersonalDetails()) {
+    const validName = validatePersonalDetails();
+    if (!validName) {
       setStep(2);
       return;
     }
@@ -153,6 +167,7 @@ export function OnboardingFlow({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          ...validName,
           bodyweightKg: parsedBodyweight,
           dateOfBirth: dateOfBirth || null,
           trainingStyle,
@@ -164,11 +179,15 @@ export function OnboardingFlow({
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as {
           error?: string;
-          fieldErrors?: { dateOfBirth?: string[]; bodyweightKg?: string[] };
+          fieldErrors?: { dateOfBirth?: string[]; bodyweightKg?: string[]; firstName?: string[]; familyName?: string[] };
         } | null;
 
         setDateOfBirthError(payload?.fieldErrors?.dateOfBirth?.[0] ?? null);
         setBodyweightError(payload?.fieldErrors?.bodyweightKg?.[0] ?? null);
+        const firstName = payload?.fieldErrors?.firstName?.[0];
+        const familyName = payload?.fieldErrors?.familyName?.[0];
+        setNameErrors({ firstName, familyName });
+        if (firstName || familyName) setStep(2);
 
         throw new Error(payload?.error || "Unable to save onboarding.");
       }
@@ -214,10 +233,19 @@ export function OnboardingFlow({
             <div className="space-y-2">
               <h1 className="text-2xl font-bold">Personal details</h1>
               <p className="text-sm text-muted-foreground">
-                These details improve training insights. You can skip them for
-                now and update them privately from your profile later.
+                Choose the name people will see on your profile and in the community.
+                Date of birth and bodyweight are optional and private.
               </p>
             </div>
+            <DisplayNameInputs
+              value={name}
+              errors={nameErrors}
+              legacyName={initialName.legacyName}
+              onChange={(field, value) => {
+                setName((previous) => ({ ...previous, [field]: value }));
+                setNameErrors({});
+              }}
+            />
             <div className="space-y-2">
               <label
                 htmlFor="onboarding-date-of-birth"
@@ -368,6 +396,7 @@ export function OnboardingFlow({
               </p>
             </div>
             <div className="space-y-2 rounded-lg border bg-muted/40 p-4 text-sm">
+              <p><span className="font-medium">Displayed name:</span>{" "}{formatDisplayName(name)}</p>
               <p>
                 <span className="font-medium">Age:</span>{" "}
                 {calculateAge(dateOfBirth) ?? "Skipped"}
@@ -406,6 +435,7 @@ export function OnboardingFlow({
                   type="button"
                   variant="ghost"
                   onClick={() => {
+                    if (!validateName()) return;
                     setDateOfBirth("");
                     setDateOfBirthError(null);
                     setBodyweightKg("");
@@ -413,7 +443,7 @@ export function OnboardingFlow({
                     setStep(3);
                   }}
                 >
-                  Skip
+                  Skip optional details
                 </Button>
               ) : null}
               <Button type="button" onClick={goNext}>

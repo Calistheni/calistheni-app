@@ -40,7 +40,7 @@ export async function GET(request: Request) {
     await Promise.all([
       prisma.user.findUnique({
         where: { id: userId },
-        select: { name: true, weeklyWorkoutGoal: true },
+        select: { name: true, firstName: true, weeklyWorkoutGoal: true },
       }),
       prisma.workout.findMany({
         where: { userId, completedAt: { gte: previousWeekStart } },
@@ -130,7 +130,7 @@ export async function GET(request: Request) {
   return nativeCorsJson(
     request,
     completePrimaryPresentation({
-      greetingName: profile.name?.trim().split(/\s+/)[0] || "athlete",
+      greetingName: profile.firstName ?? (profile.name?.trim().split(/\s+/)[0] || "athlete"),
       asOf: now.toISOString(),
       streakDays: calculateCurrentWorkoutStreak(completedDates, now),
       week: {

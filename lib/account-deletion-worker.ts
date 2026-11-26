@@ -752,6 +752,8 @@ async function removePrivateRecords(deletion: ClaimedDeletion) {
     where: { id: userId, deletedAt: { not: null } },
     data: {
       name: null,
+      firstName: null,
+      familyName: null,
       email: null,
       emailVerified: null,
       image: null,

@@ -5,6 +5,7 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import type { Adapter, AdapterAccount } from "next-auth/adapters";
 import type { NextRequest } from "next/server";
 import { getSiteUrl } from "@/lib/site-url";
+import { providerDisplayName } from "@/lib/display-name";
 import { prisma } from "@/lib/prisma";
 import { AUTH_LINK_COOKIE, consumeOAuthLinkIntent, stageNativeOAuthLink } from "@/lib/auth/account-linking";
 import { markCurrentSessionRecentlyAuthenticated } from "@/lib/auth/database-session";
@@ -116,9 +117,31 @@ const nextAuth = NextAuth({
       // AUTH_GOOGLE_ID/AUTH_GOOGLE_SECRET environment inference.
       ...(googleClientId ? { clientId: googleClientId } : {}),
       ...(googleClientSecret ? { clientSecret: googleClientSecret } : {}),
+      profile(profile) {
+        return {
+          id: profile.sub,
+          ...providerDisplayName(
+            profile.given_name, profile.family_name,
+            profile.name ?? profile.nickname ?? profile.preferred_username
+          ),
+          email: profile.email,
+          image: profile.picture,
+        };
+      },
     }),
     ...(appleClientId && appleClientSecret
-      ? [Apple({ clientId: appleClientId, clientSecret: appleClientSecret })]
+      ? [Apple({
+          clientId: appleClientId,
+          clientSecret: appleClientSecret,
+          profile(profile) {
+            return {
+              id: profile.sub,
+              ...providerDisplayName(profile.user?.name?.firstName, profile.user?.name?.lastName),
+              email: profile.email,
+              image: null,
+            };
+          },
+        })]
       : []),
   ],
   session: {

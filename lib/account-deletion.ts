@@ -62,6 +62,8 @@ export function deactivateAccountForDeletion(userId: string, now = new Date()) {
         email: null,
         emailVerified: null,
         name: null,
+        firstName: null,
+        familyName: null,
         image: null,
         username: null,
       },

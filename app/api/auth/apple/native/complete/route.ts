@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { providerDisplayName } from "@/lib/display-name";
 import {
   exchangeNativeAppleAuthorizationCode,
   verifyExchangedAppleIdentityToken,
@@ -30,15 +31,6 @@ type NativeAppleBody = {
   givenName?: unknown;
   familyName?: unknown;
 };
-
-function safeName(givenName: unknown, familyName: unknown) {
-  const parts = [givenName, familyName]
-    .filter((value): value is string => typeof value === "string")
-    .map((value) => value.trim())
-    .filter(Boolean);
-  const name = parts.join(" ").slice(0, 120);
-  return name || null;
-}
 
 export async function POST(request: Request) {
   try {
@@ -197,7 +189,7 @@ export async function POST(request: Request) {
               data: {
                 email: identity.email,
                 emailVerified: identity.emailVerified ? now : null,
-                name: safeName(body.givenName, body.familyName),
+                ...providerDisplayName(body.givenName, body.familyName),
               },
             });
         if (user.deletedAt) throw new Error("AUTH_USER_DEACTIVATED");

@@ -7,6 +7,7 @@ import { BackButton } from "@/components/navigation/BackButton";
 import { BodyweightForm } from "@/components/profile/BodyweightForm";
 import { CardioGoalCard } from "@/components/profile/CardioGoalCard";
 import { MobileAccountUtilities } from "@/components/profile/MobileAccountUtilities";
+import { ChangeDisplayName } from "@/components/profile/ChangeDisplayName";
 import { ChangePassword } from "@/components/profile/ChangePassword";
 import { AccountDeletionSection } from "@/components/profile/AccountDeletionSection";
 import { ProfileStatCard } from "@/components/profile/ProfileStatCard";
@@ -29,6 +30,7 @@ import {
 import { aggregateMuscleActivity } from "@/lib/muscle-activity";
 import { getWeeklyCardioProgress } from "@/lib/cardio-service";
 import { formatDateOfBirth } from "@/lib/date-of-birth";
+import { prefillDisplayName } from "@/lib/display-name";
 import { getAccountSubscriptionManagement } from "@/lib/billing-provider";
 import { prisma } from "@/lib/prisma";
 import {
@@ -112,6 +114,9 @@ export default async function ProfilePage({
         id: session.user.id,
       },
       select: {
+        name: true,
+        firstName: true,
+        familyName: true,
         bodyweightKg: true,
         measurementSystem: true,
         dateOfBirth: true,
@@ -411,6 +416,7 @@ export default async function ProfilePage({
           <CollapsibleContent>
             <CardContent className="space-y-6 pt-2 pb-4">
               <div className="md:hidden"><MobileAccountUtilities /></div>
+              <ChangeDisplayName currentName={profile?.name ?? null} initialFields={prefillDisplayName(profile)} />
               {profile?.passwordCredential ? <ChangePassword /> : null}
               <AccountDeletionSection
                 management={subscriptionManagement}

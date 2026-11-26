@@ -48,8 +48,7 @@ export function ChangePassword() {
   }
 
   return (
-    <section className="space-y-3" aria-labelledby="account-password-heading">
-      <h3 id="account-password-heading" className="text-base font-semibold">Password</h3>
+    <section className="space-y-3" aria-label="Password">
       {open ? (
         <form className="max-w-md space-y-3" onSubmit={savePassword}>
           <div className="space-y-2">

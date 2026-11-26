@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { OnboardingFlow } from "@/components/onboarding/OnboardingFlow";
 import { formatDateOfBirth } from "@/lib/date-of-birth";
+import { prefillDisplayName } from "@/lib/display-name";
 import { prisma } from "@/lib/prisma";
 
 export const metadata: Metadata = {
@@ -25,6 +26,9 @@ export default async function OnboardingPage() {
       id: session.user.id,
     },
     select: {
+      name: true,
+      firstName: true,
+      familyName: true,
       bodyweightKg: true,
       dateOfBirth: true,
       onboardingCompleted: true,
@@ -40,6 +44,7 @@ export default async function OnboardingPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
       <OnboardingFlow
+        initialName={prefillDisplayName(user)}
         initialBodyweightKg={user?.bodyweightKg ?? null}
         initialDateOfBirth={formatDateOfBirth(user?.dateOfBirth)}
         initialTrainingStyle={user?.trainingStyle ?? null}
