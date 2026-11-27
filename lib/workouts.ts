@@ -310,7 +310,7 @@ export async function createUserWorkout(
     return null;
   }
 
-  const workoutId = await prisma.$transaction(async (tx) => {
+  const workout = await prisma.$transaction(async (tx) => {
     const workout = await tx.workout.create({
       data: {
         userId,
@@ -319,14 +319,17 @@ export async function createUserWorkout(
       select: { id: true },
     });
     await createWorkoutChildren(tx, workout.id, payload);
-    return workout.id;
-  });
-  const workout = await prisma.workout.findUniqueOrThrow({
-    where: { id: workoutId },
-    include: workoutInclude,
+    return tx.workout.findUniqueOrThrow({
+      where: { id: workout.id },
+      include: workoutInclude,
+    });
   });
 
-  await recomputeUserPersonalRecords(userId);
+  // A failure to rebuild derived records cannot undo a committed workout.
+  // Return its ID so the finish flow can continue without offering a second save.
+  await recomputeUserPersonalRecords(userId).catch((error) => {
+    console.error("Unable to recompute personal records after creating a workout.", error);
+  });
 
   return mapWorkoutDetail(workout);
 }

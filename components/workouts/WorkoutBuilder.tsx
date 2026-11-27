@@ -1083,6 +1083,7 @@ export function WorkoutBuilder({
   const [isFinishSheetOpen, setIsFinishSheetOpen] = useState(false);
   const finishPhotoInputRef = useRef<HTMLInputElement>(null);
   const [finishPhotos, setFinishPhotos] = useState<File[]>([]);
+  const uploadedFinishPhotos = useRef(new Set<File>());
   const [finishPhotoError, setFinishPhotoError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [showIncompleteSetsDialog, setShowIncompleteSetsDialog] =
@@ -2736,7 +2737,40 @@ export function WorkoutBuilder({
     setFinishPhotoStepComplete(true);
     finishNavigationReleaseRef.current = holdWorkoutLoading(pathname);
     // Leave the progress sheet mounted until the saved detail replaces it.
-    startFinishedWorkoutNavigation(() => router.push(pathname));
+    startFinishedWorkoutNavigation(() => {
+      router.push(pathname);
+      // Route-handler writes do not invalidate prefetched Activity or history.
+      // Refresh after pushing so the saved detail is the refresh target.
+      router.refresh();
+    });
+  }
+
+  async function uploadFinishPhotosAndOpenWorkout(workoutId: number) {
+    setFinishPhotoError(null);
+    const pendingPhotos = finishPhotos.filter((file) => !uploadedFinishPhotos.current.has(file));
+    const uploadedCount = finishPhotos.length - pendingPhotos.length;
+
+    try {
+      if (pendingPhotos.length) {
+        setUploadProgress(`Uploading photos ${uploadedCount} of ${finishPhotos.length}…`);
+      }
+      for (const [index, file] of pendingPhotos.entries()) {
+        const formData = new FormData();
+        formData.set("file", await compressWorkoutPhoto(file));
+        const upload = await fetch(`/api/user/workouts/${workoutId}/photos`, {
+          method: "POST",
+          body: formData,
+        });
+        if (!upload.ok) throw new Error(await getApiErrorMessage(upload));
+        uploadedFinishPhotos.current.add(file);
+        setUploadProgress(`Uploading photos ${uploadedCount + index + 1} of ${finishPhotos.length}…`);
+      }
+      openFinishedWorkout(workoutId);
+    } catch (error) {
+      setFinishPhotoError(getErrorMessage(error, "Your workout was saved, but photos could not be uploaded."));
+    } finally {
+      setUploadProgress(null);
+    }
   }
 
   async function saveWorkout() {
@@ -2763,18 +2797,11 @@ export function WorkoutBuilder({
       // The workout transaction has already committed. A retry must only retry
       // photo uploads, never create a duplicate workout.
       setIsSaving(true);
-      setFinishPhotoError(null);
       try {
-        setUploadProgress(`Uploading photos 0 of ${finishPhotos.length}…`);
-        for (const [index, original] of finishPhotos.entries()) {
-          const formData = new FormData(); formData.set("file", await compressWorkoutPhoto(original));
-          const upload = await fetch(`/api/user/workouts/${savedFinishWorkoutId}/photos`, { method: "POST", body: formData });
-          if (!upload.ok) throw new Error(await getApiErrorMessage(upload));
-          setUploadProgress(`Uploading photos ${index + 1} of ${finishPhotos.length}…`);
-        }
-        openFinishedWorkout(savedFinishWorkoutId);
-      } catch (error) { setFinishPhotoError(getErrorMessage(error, "Your workout was saved, but photos could not be uploaded.")); }
-      finally { setUploadProgress(null); setIsSaving(false); }
+        await uploadFinishPhotosAndOpenWorkout(savedFinishWorkoutId);
+      } finally {
+        setIsSaving(false);
+      }
       return;
     }
     const finalTitle = isEditing
@@ -2861,27 +2888,7 @@ export function WorkoutBuilder({
         router.push(`/workouts/${workout.id}`);
         router.refresh();
       } else {
-        if (finishPhotos.length) {
-          try {
-            setUploadProgress(`Uploading photos 0 of ${finishPhotos.length}…`);
-            for (const [index, original] of finishPhotos.entries()) {
-              const compressed = await compressWorkoutPhoto(original);
-              const formData = new FormData();
-              formData.set("file", compressed);
-              const upload = await fetch(`/api/user/workouts/${workout.id}/photos`, { method: "POST", body: formData });
-              if (!upload.ok) throw new Error(await getApiErrorMessage(upload));
-              setUploadProgress(`Uploading photos ${index + 1} of ${finishPhotos.length}…`);
-            }
-            openFinishedWorkout(workout.id);
-          } catch (uploadError) {
-            // Saving the workout is intentionally never rolled back; retain the
-            // original files so the existing completion dialog can retry them.
-            setFinishPhotoError(getErrorMessage(uploadError, "Your workout was saved, but photos could not be uploaded."));
-            // Keep the finish sheet and its selected files open for a retry.
-          } finally { setUploadProgress(null); }
-        } else {
-          openFinishedWorkout(workout.id);
-        }
+        await uploadFinishPhotosAndOpenWorkout(workout.id);
       }
     } catch (error) {
       toast.error(
@@ -4815,7 +4822,7 @@ export function WorkoutBuilder({
                   onChange={(event) => setTitle(event.target.value)}
                   placeholder={DEFAULT_WORKOUT_TITLE}
                   maxLength={140}
-                  disabled={isSaving}
+                  disabled={isSaving || savedFinishWorkoutId !== null}
                 />
                 <p className="text-xs text-muted-foreground">
                   {initialWorkout
@@ -4834,7 +4841,7 @@ export function WorkoutBuilder({
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}
                   placeholder="Add a post-workout note"
-                  disabled={isSaving}
+                  disabled={isSaving || savedFinishWorkoutId !== null}
                 />
               </div>
 
@@ -4844,7 +4851,26 @@ export function WorkoutBuilder({
                   <p className="text-xs text-muted-foreground">Add progress photos or pictures from this session.</p>
                 </div>
                 <input ref={finishPhotoInputRef} className="sr-only" id="finish-workout-photos" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple onChange={(event) => addFinishPhotos(event.target.files)} />
-                {finishPhotos.length ? <div className="grid grid-cols-4 gap-2">{finishPhotos.map((file, index) => <div key={`${file.name}-${index}`} className="relative aspect-square overflow-hidden rounded-md border"><Image src={URL.createObjectURL(file)} alt={`Selected workout photo ${index + 1}`} fill sizes="96px" className="object-cover" /><Button type="button" variant="secondary" size="icon-sm" className="absolute right-1 top-1" aria-label={`Remove selected workout photo ${index + 1}`} onClick={() => setFinishPhotos((items) => items.filter((_, itemIndex) => itemIndex !== index))}><Trash2 /></Button></div>)}</div> : null}
+                {finishPhotos.length ? (
+                  <div className="grid grid-cols-4 gap-2">
+                    {finishPhotos.map((file, index) => (
+                      <div key={`${file.name}-${index}`} className="relative aspect-square overflow-hidden rounded-md border">
+                        <Image src={URL.createObjectURL(file)} alt={`Selected workout photo ${index + 1}`} fill sizes="96px" className="object-cover" />
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="icon-sm"
+                          className="absolute right-1 top-1"
+                          aria-label={`Remove selected workout photo ${index + 1}`}
+                          disabled={isSaving || uploadedFinishPhotos.current.has(file)}
+                          onClick={() => setFinishPhotos((items) => items.filter((item) => item !== file))}
+                        >
+                          <Trash2 />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 <div className="flex items-center justify-between gap-2"><p className="text-xs text-muted-foreground">{finishPhotos.length} of 10 selected</p><Button type="button" variant="outline" size="sm" disabled={isSaving || finishPhotos.length >= 10} onClick={() => finishPhotoInputRef.current?.click()}><ImagePlus /> Add photos</Button></div>
                 {finishPhotoError ? <p className="text-sm text-destructive" role="alert">{finishPhotoError}</p> : null}
                 {uploadProgress ? <p className="text-sm text-muted-foreground" aria-live="polite">{uploadProgress}</p> : null}
@@ -4857,7 +4883,7 @@ export function WorkoutBuilder({
                   onValueChange={(value) =>
                     setVisibility(value as "PRIVATE" | "PUBLIC")
                   }
-                  disabled={isSaving}
+                  disabled={isSaving || savedFinishWorkoutId !== null}
                 >
                   <SelectTrigger
                     id="finish-workout-visibility"
