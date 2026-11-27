@@ -4,7 +4,10 @@ import {
   registerPlugin,
   type PluginListenerHandle,
 } from "@capacitor/core";
-import { acknowledgeThenFinishAppleTransaction } from "@/lib/apple-purchase-flow";
+import {
+  acknowledgeThenFinishAppleTransaction,
+  createAppleBackgroundTransactionSync,
+} from "@/lib/apple-purchase-flow";
 import {
   APPLE_NATIVE_SUBSCRIPTION_PRODUCT_IDS,
   APPLE_PRO_PRODUCT_IDS,
@@ -220,6 +223,15 @@ let cachedBillingConfig: { userKey: string; value: AppleBillingConfig } | null =
   null;
 let transactionListener: Promise<PluginListenerHandle> | null = null;
 const transactionSyncs = new Map<string, Promise<{ isPro: boolean }>>();
+let synchronizeWithCooldown = createAppleBackgroundTransactionSync(isOwnershipMismatch);
+
+function isOwnershipMismatch(error: unknown) {
+  return (
+    error instanceof AppleStoreKitError &&
+    error.status === 409 &&
+    error.code === "APPLE_TRANSACTION_OWNERSHIP_MISMATCH"
+  );
+}
 
 function activateAccount(userKey: string | null) {
   if (activeUserKey === userKey) return activeGeneration;
@@ -228,6 +240,7 @@ function activateAccount(userKey: string | null) {
   activeEntitlementCallback = null;
   cachedBillingConfig = null;
   transactionSyncs.clear();
+  synchronizeWithCooldown = createAppleBackgroundTransactionSync(isOwnershipMismatch);
   return activeGeneration;
 }
 
@@ -335,7 +348,7 @@ function synchronizeAndFinish(
   userKey: string,
   transaction: AppleStoreKitTransaction
 ) {
-  const key = `${userKey}:${transaction.transactionId}`;
+  const key = `${userKey}:${transaction.environment}:${transaction.transactionId}`;
   const existing = transactionSyncs.get(key);
   if (existing) return existing;
 
@@ -344,22 +357,34 @@ function synchronizeAndFinish(
     synchronize: synchronizeSignedTransaction,
     finish: finishAppleTransaction,
   }).finally(() => {
-    transactionSyncs.delete(key);
+    if (transactionSyncs.get(key) === operation) transactionSyncs.delete(key);
   });
   transactionSyncs.set(key, operation);
   return operation;
 }
 
+function synchronizeInBackground(
+  userKey: string,
+  transaction: AppleStoreKitTransaction
+) {
+  if (activeUserKey !== userKey) return Promise.resolve(null);
+  return synchronizeWithCooldown(transaction, () =>
+    synchronizeAndFinish(userKey, transaction)
+  );
+}
+
 async function synchronizeCollection(
   userKey: string,
-  collection: AppleTransactionCollection
+  collection: AppleTransactionCollection,
+  synchronize: typeof synchronizeInBackground = synchronizeAndFinish
 ) {
   let synchronized = 0;
   let isPro = false;
   const errors: AppleStoreKitError[] = [];
   for (const transaction of collection.transactions) {
     try {
-      const result = await synchronizeAndFinish(userKey, transaction);
+      const result = await synchronize(userKey, transaction);
+      if (!result) continue;
       synchronized += 1;
       isPro ||= result.isPro;
     } catch (error) {
@@ -387,9 +412,9 @@ function ensureTransactionListener() {
       const userKey = activeUserKey;
       const generation = activeGeneration;
       if (!userKey || event.status !== "verified") return;
-      void synchronizeAndFinish(userKey, event.transaction)
-        .then(() => {
-          if (activeUserKey === userKey && activeGeneration === generation) {
+      void synchronizeInBackground(userKey, event.transaction)
+        .then((result) => {
+          if (result && activeUserKey === userKey && activeGeneration === generation) {
             activeEntitlementCallback?.();
           }
         })
@@ -457,7 +482,14 @@ export async function synchronizeCurrentAppleTransactions(userKey: string) {
   if (activeUserKey !== userKey) return null;
   const generation = activeGeneration;
   const collection = await StoreKit.currentEntitlements();
-  const result = await synchronizeCollection(userKey, collection);
+  if (activeGeneration !== generation) return null;
+  const result = await synchronizeCollection(
+    userKey,
+    collection,
+    (key, transaction) => activeGeneration === generation
+      ? synchronizeInBackground(key, transaction)
+      : Promise.resolve(null)
+  );
   if (
     result.synchronized > 0 &&
     activeUserKey === userKey &&

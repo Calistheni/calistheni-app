@@ -16,8 +16,8 @@ public class CalistheniStoreKitPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "showManageSubscriptions", returnType: CAPPluginReturnPromise)
     ]
 
-    private static let monthlyProductId = "com.petershikrenov.calistheni.pro.monthly"
-    private static let yearlyProductId = "com.petershikrenov.calistheni.pro.yearly"
+    static let monthlyProductId = "com.petershikrenov.calistheni.pro.monthly"
+    static let yearlyProductId = "com.petershikrenov.calistheni.pro.yearly"
     private static let productIds = [monthlyProductId, yearlyProductId]
     private static let productIdSet = Set(productIds)
 

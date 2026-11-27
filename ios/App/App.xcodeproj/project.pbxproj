@@ -28,6 +28,7 @@
 		A30000000000000000000001 /* CalistheniParkDirectionsPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000002 /* CalistheniParkDirectionsPlugin.swift */; };
 		AF1452008C4D2A14E7240001 /* CalistheniHealthPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF1452008C4D2A14E7240002 /* CalistheniHealthPlugin.swift */; };
 		B20000000000000000000001 /* CalistheniStoreKitPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000002 /* CalistheniStoreKitPlugin.swift */; };
+		B20100000000000000000004 /* StoreKitDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20100000000000000000005 /* StoreKitDiagnostics.swift */; };
 		C30000000000000000000001 /* CalistheniSecureSessionPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = C30000000000000000000002 /* CalistheniSecureSessionPlugin.swift */; };
 		D40000000000000000000001 /* CalistheniAppleAuthPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000002 /* CalistheniAppleAuthPlugin.swift */; };
 		E50000000000000000000001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = E50000000000000000000002 /* PrivacyInfo.xcprivacy */; };
@@ -79,6 +80,7 @@
 		A30000000000000000000002 /* CalistheniParkDirectionsPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalistheniParkDirectionsPlugin.swift; sourceTree = "<group>"; };
 		AF1452008C4D2A14E7240002 /* CalistheniHealthPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CalistheniHealthPlugin.swift; sourceTree = "<group>"; };
 		B20000000000000000000002 /* CalistheniStoreKitPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CalistheniStoreKitPlugin.swift; sourceTree = "<group>"; };
+		B20100000000000000000005 /* StoreKitDiagnostics.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StoreKitDiagnostics.swift; sourceTree = "<group>"; };
 		B20000000000000000000003 /* Calistheni.storekit */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = Calistheni.storekit; sourceTree = "<group>"; };
 		C30000000000000000000002 /* CalistheniSecureSessionPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CalistheniSecureSessionPlugin.swift; sourceTree = "<group>"; };
 		D40000000000000000000002 /* CalistheniAppleAuthPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CalistheniAppleAuthPlugin.swift; sourceTree = "<group>"; };
@@ -168,6 +170,7 @@
 				EB38ABD0699A3E0BB6115EE6 /* WorkoutLiveActivityPlugin.swift */,
 				AF1452008C4D2A14E7240002 /* CalistheniHealthPlugin.swift */,
 				B20000000000000000000002 /* CalistheniStoreKitPlugin.swift */,
+				B20100000000000000000005 /* StoreKitDiagnostics.swift */,
 				B20000000000000000000003 /* Calistheni.storekit */,
 				C30000000000000000000002 /* CalistheniSecureSessionPlugin.swift */,
 				D40000000000000000000002 /* CalistheniAppleAuthPlugin.swift */,
@@ -347,6 +350,7 @@
 				9A31CB7814E397F6BD948295 /* WorkoutLiveActivityPlugin.swift in Sources */,
 				AF1452008C4D2A14E7240001 /* CalistheniHealthPlugin.swift in Sources */,
 				B20000000000000000000001 /* CalistheniStoreKitPlugin.swift in Sources */,
+				B20100000000000000000004 /* StoreKitDiagnostics.swift in Sources */,
 				C30000000000000000000001 /* CalistheniSecureSessionPlugin.swift in Sources */,
 				D40000000000000000000001 /* CalistheniAppleAuthPlugin.swift in Sources */,
 			);
@@ -581,6 +585,101 @@
 			};
 			name = Release;
 		};
+		B20100000000000000000001 /* StoreKitDiagnostics */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = StoreKitDiagnostics;
+		};
+		B20100000000000000000002 /* StoreKitDiagnostics */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CALISTHENI_APP_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_ENTITLEMENTS = "$(CALISTHENI_APP_ENTITLEMENTS)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 26;
+				DEVELOPMENT_TEAM = 89RH6XL9R6;
+				INFOPLIST_FILE = App/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.petershikrenov.calistheni;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = CALISTHENI_STOREKIT_DIAGNOSTICS;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = StoreKitDiagnostics;
+		};
+		B20100000000000000000003 /* StoreKitDiagnostics */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 26;
+				DEVELOPMENT_TEAM = 89RH6XL9R6;
+				INFOPLIST_FILE = App/CalistheniWorkoutWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.petershikrenov.calistheni.workout;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = StoreKitDiagnostics;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -588,6 +687,7 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				89CE016E481660A7FD999815 /* Release */,
+				B20100000000000000000003 /* StoreKitDiagnostics */,
 				4EA8383632C02B32FD01E988 /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -598,6 +698,7 @@
 			buildConfigurations = (
 				504EC3141FED79650016851F /* Debug */,
 				504EC3151FED79650016851F /* Release */,
+				B20100000000000000000001 /* StoreKitDiagnostics */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -607,6 +708,7 @@
 			buildConfigurations = (
 				504EC3171FED79650016851F /* Debug */,
 				504EC3181FED79650016851F /* Release */,
+				B20100000000000000000002 /* StoreKitDiagnostics */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

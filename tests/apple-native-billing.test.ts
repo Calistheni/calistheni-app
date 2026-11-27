@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { acknowledgeThenFinishAppleTransaction } from "../lib/apple-purchase-flow.ts";
+import {
+  acknowledgeThenFinishAppleTransaction,
+  createAppleBackgroundTransactionSync,
+} from "../lib/apple-purchase-flow.ts";
 import {
   selectProPurchaseSurface,
   selectSubscriptionManagement,
@@ -134,6 +137,72 @@ test("backend failure leaves the StoreKit transaction unfinished", async () => {
   assert.equal(finished, false);
 });
 
+test("background ownership conflicts cool down per transaction and environment", async () => {
+  let now = 0;
+  let attempts = 0;
+  const conflict = new Error("ownership mismatch");
+  const isConflict = (error: unknown) => error === conflict;
+  const backgroundSync = createAppleBackgroundTransactionSync(isConflict, () => now);
+  const transaction = { environment: "Sandbox", transactionId: "1" };
+  const rejectOwnership = async () => {
+    attempts += 1;
+    throw conflict;
+  };
+  const accept = async () => ({ isPro: true });
+
+  await assert.rejects(backgroundSync(transaction, rejectOwnership), conflict);
+  assert.equal(await backgroundSync(transaction, rejectOwnership), null);
+  assert.equal(attempts, 1);
+  assert.deepEqual(await backgroundSync({ ...transaction, transactionId: "2" }, accept), { isPro: true });
+  assert.deepEqual(await backgroundSync({ ...transaction, environment: "Production" }, accept), { isPro: true });
+
+  const nextAccountSync = createAppleBackgroundTransactionSync(isConflict, () => now);
+  assert.deepEqual(await nextAccountSync(transaction, accept), { isPro: true });
+  now = 60_000;
+  assert.deepEqual(await backgroundSync(transaction, accept), { isPro: true });
+});
+
+test("a transient background error remains eligible for immediate retry", async () => {
+  const backgroundSync = createAppleBackgroundTransactionSync(() => false);
+  const transaction = { environment: "Sandbox", transactionId: "1" };
+  await assert.rejects(backgroundSync(transaction, async () => {
+    throw new Error("backend unavailable");
+  }), /backend unavailable/);
+  assert.deepEqual(await backgroundSync(transaction, async () => ({ isPro: false })), { isPro: false });
+});
+
+test("background cooldown leaves a rejected transaction available for explicit restore", async () => {
+  const conflict = new Error("ownership mismatch");
+  const backgroundSync = createAppleBackgroundTransactionSync((error) => error === conflict);
+  const transaction = {
+    environment: "Sandbox",
+    transactionId: "2",
+    originalTransactionId: "1",
+    productId: APPLE_PRO_PRODUCT_IDS.monthly,
+    signedTransaction: "signed-test-payload",
+  };
+  let attempts = 0;
+  let finishes = 0;
+  const synchronizeAndFinish = () => acknowledgeThenFinishAppleTransaction({
+    transaction,
+    synchronize: async () => {
+      attempts += 1;
+      if (attempts === 1) throw conflict;
+      return { isPro: false };
+    },
+    finish: async () => { finishes += 1; },
+  });
+
+  await assert.rejects(backgroundSync(transaction, synchronizeAndFinish), conflict);
+  assert.equal(await backgroundSync(transaction, synchronizeAndFinish), null);
+  assert.equal(attempts, 1);
+  assert.equal(finishes, 0);
+
+  assert.deepEqual(await synchronizeAndFinish(), { isPro: false });
+  assert.equal(attempts, 2);
+  assert.equal(finishes, 1);
+});
+
 test("approved Apple product identifiers remain exact and native launches recurring plans only", () => {
   assert.deepEqual(APPLE_PRO_PRODUCT_IDS, {
     monthly: "com.petershikrenov.calistheni.pro.monthly",
@@ -148,6 +217,30 @@ test("approved Apple product identifiers remain exact and native launches recurr
     assert.match(swift, new RegExp(productId.replaceAll(".", "\\.")));
   }
   assert.doesNotMatch(swift, /pro\.lifetime/);
+});
+
+test("the StoreKit diagnostic is compiled only into the dedicated internal configuration", () => {
+  const schemes = "ios/App/App.xcodeproj/xcshareddata/xcschemes";
+  const project = read("ios/App/App.xcodeproj/project.pbxproj");
+  const controller = read("ios/App/App/MainViewController.swift");
+  const diagnostic = read("ios/App/App/StoreKitDiagnostics.swift");
+  assert.match(read(`${schemes}/App.xcscheme`), /<ArchiveAction\s+buildConfiguration = "Release"/);
+  assert.match(read(`${schemes}/App-StoreKitDiagnostics.xcscheme`), /<ArchiveAction\s+buildConfiguration = "StoreKitDiagnostics"/);
+  assert.match(project, /SWIFT_ACTIVE_COMPILATION_CONDITIONS = CALISTHENI_STOREKIT_DIAGNOSTICS;[\s\S]*?name = StoreKitDiagnostics;/);
+  assert.equal(project.match(/CALISTHENI_STOREKIT_DIAGNOSTICS/g)?.length, 1);
+  assert.match(controller, /#if CALISTHENI_STOREKIT_DIAGNOSTICS\s+installStoreKitDiagnostics\(\)\s+#endif/);
+  assert.match(diagnostic, /^#if CALISTHENI_STOREKIT_DIAGNOSTICS\n/);
+});
+
+test("the internal diagnostic reads StoreKit without requesting purchases or forwarding transaction data", () => {
+  const diagnostic = read("ios/App/App/StoreKitDiagnostics.swift");
+  assert.match(diagnostic, /Storefront\.current\?\.countryCode/);
+  assert.match(diagnostic, /Product\.products\(for: plans/);
+  assert.match(diagnostic, /Transaction\.currentEntitlements/);
+  assert.match(diagnostic, /Transaction\.unfinished/);
+  assert.match(diagnostic, /contentWorld: \.defaultClient/);
+  assert.match(diagnostic, /return "\\\(source\) · \\\(plan\.name\) · \\\(match\.rawValue\)"/);
+  assert.doesNotMatch(diagnostic, /\.purchase\(|\.finish\(|AppStore\.sync|jwsRepresentation|originalID|transaction\.id|console\.|\bprint\(/);
 });
 
 test("native prices come from StoreKit metadata and never from Stripe constants", () => {
@@ -278,6 +371,9 @@ test("one native listener and foreground current-entitlement sync live in Native
   assert.match(swift, /for await result in Transaction\.updates/);
   assert.match(swift, /Transaction\.currentEntitlements/);
   assert.match(bridge, /let transactionListener: Promise<PluginListenerHandle> \| null/);
+  assert.match(bridge, /synchronizeInBackground\(userKey, event\.transaction\)/);
+  assert.match(bridge, /activeGeneration === generation\s*\? synchronizeInBackground\(key, transaction\)/);
+  assert.match(bridge, /const collection = await StoreKit\.restorePurchases\(\);\s*const result = await synchronizeCollection\(userKey, collection\)/);
   assert.match(shell, /initializeAppleTransactionLifecycle/);
   assert.match(shell, /synchronizeCurrentAppleTransactions/);
   assert.match(shell, /appStateChange/);
@@ -290,6 +386,7 @@ test("account switching clears user-specific Apple state and ownership stays ser
   assert.match(bridge, /activeUserKey = userKey/);
   assert.match(bridge, /cachedBillingConfig = null/);
   assert.match(bridge, /transactionSyncs\.clear\(\)/);
+  assert.match(bridge, /transactionSyncs\.clear\(\)\s*;\s*synchronizeWithCooldown = createAppleBackgroundTransactionSync\(isOwnershipMismatch\)/);
   assert.match(shell, /clearAppleTransactionAccount\(\)/);
   assert.match(ownership, /belongs to another Calistheni account/);
 });

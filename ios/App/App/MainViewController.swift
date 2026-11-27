@@ -14,6 +14,9 @@ class MainViewController: CAPBridgeViewController {
         // plugins there before resources are copied. Park Directions is
         // registered here so it does not need a generated config entry.
         bridge?.registerPluginInstance(CalistheniParkDirectionsPlugin())
+#if CALISTHENI_STOREKIT_DIAGNOSTICS
+        installStoreKitDiagnostics()
+#endif
 #if DEBUG
         // Runtime diagnostics are intentionally opt-in even for Debug builds.
         // Set CALISTHENI_RUNTIME_DIAGNOSTICS=1 in an Xcode scheme only while
