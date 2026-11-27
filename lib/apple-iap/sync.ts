@@ -72,6 +72,7 @@ export async function synchronizeAppleTransactionJwsBatch({
     );
     if (ownerUserId !== userId) {
       throw new AppleTransactionOwnershipError(
+        ownerUserId ? "signed_in_account_mismatch" : "unregistered_account_token",
         "Verified Apple transaction belongs to another Calistheni account."
       );
     }

@@ -30,7 +30,6 @@ export async function POST(request: Request) {
     const { entitlements } = await getUserEntitlements(userId);
 
     console.info("[billing.apple.sync] completed", {
-      userId,
       transactionCount: synchronized.transactions.length,
       environments: [
         ...new Set(
@@ -52,8 +51,8 @@ export async function POST(request: Request) {
     const ownershipError = error instanceof AppleTransactionOwnershipError;
     const verificationError = error instanceof AppleVerificationError;
     console.error("[billing.apple.sync] failed", {
-      userId,
       errorType: error instanceof Error ? error.name : "UnknownError",
+      ownershipReason: ownershipError ? error.reason : undefined,
     });
     return withNativeCors(request, NextResponse.json(
       {

@@ -3,8 +3,17 @@ import type {
   AppleVerifiedTransaction,
 } from "@/lib/apple-iap/verification-types";
 
+type AppleOwnershipFailureReason =
+  | "unregistered_account_token"
+  | "signed_in_account_mismatch"
+  | "renewal_token_mismatch"
+  | "transaction_owner_mismatch"
+  | "transaction_identity_conflict"
+  | "purchase_chain_owner_mismatch"
+  | "renewal_owner_mismatch";
+
 export class AppleTransactionOwnershipError extends Error {
-  constructor(message: string) {
+  constructor(readonly reason: AppleOwnershipFailureReason, message: string) {
     super(message);
     this.name = "AppleTransactionOwnershipError";
   }
@@ -45,11 +54,13 @@ export async function synchronizeOwnedAppleTransaction({
   );
   if (!ownerUserId) {
     throw new AppleTransactionOwnershipError(
+      "unregistered_account_token",
       "Verified Apple app account token is not registered."
     );
   }
   if (authenticatedUserId && ownerUserId !== authenticatedUserId) {
     throw new AppleTransactionOwnershipError(
+      "signed_in_account_mismatch",
       "Verified Apple transaction belongs to another Calistheni account."
     );
   }
@@ -58,6 +69,7 @@ export async function synchronizeOwnedAppleTransaction({
     renewalInfo.appAccountToken !== transaction.appAccountToken
   ) {
     throw new AppleTransactionOwnershipError(
+      "renewal_token_mismatch",
       "Verified Apple renewal account token does not match the transaction."
     );
   }

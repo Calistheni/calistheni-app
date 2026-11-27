@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { APPLE_PRO_PRODUCT_IDS } from "@/lib/apple-iap/products";
 import {
   createProductRefreshCoordinator,
+  getAppleProductPurchaseIssue,
   type ProductRefreshCoordinator,
 } from "@/lib/apple-product-refresh";
 import {
@@ -43,6 +44,12 @@ const applePlans = [
 
 type BusyAction = string | "restore" | null;
 type ProductRefreshStage = "initial" | "foreground" | "pre_purchase" | "retry";
+
+const purchaseIssueMessages = {
+  refresh_failed: "App Store prices couldn’t be refreshed. Try again.",
+  unavailable: "This App Store product is unavailable right now.",
+  price_changed: "The App Store price changed. Review the updated price and choose the plan again.",
+};
 
 function displayPricesChanged(
   previous: AppleStoreKitProduct[],
@@ -107,7 +114,7 @@ export function ApplePurchaseOptions({
         displayPriceChanged: priceChanged,
       });
       setLoadError(false);
-      return { ...result, displayPriceChanged: priceChanged };
+      return result;
     } catch (error) {
       console.warn("[apple-iap] Pro product refresh failed", {
         stage,
@@ -191,21 +198,19 @@ export function ApplePurchaseOptions({
       });
       return;
     }
-    if (!productsById.has(productId)) {
-      toast.error("This App Store product is unavailable right now.");
+    const displayedProduct = productsById.get(productId);
+    if (!displayedProduct) {
+      toast.error(purchaseIssueMessages.unavailable);
       return;
     }
 
     setBusyAction(productId);
     try {
       const refreshed = await refreshProducts("pre_purchase");
-      const availableProducts = refreshed?.products ?? productsRef.current;
-      if (!availableProducts.some((product) => product.productId === productId)) {
-        toast.error("This App Store product is unavailable right now.");
+      const issue = getAppleProductPurchaseIssue(displayedProduct, refreshed);
+      if (issue) {
+        toast.error(purchaseIssueMessages[issue]);
         return;
-      }
-      if (refreshed?.displayPriceChanged) {
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       }
       const result = await purchaseAppleProduct({ userKey, productId });
       if (result.outcome === "userCancelled") return;

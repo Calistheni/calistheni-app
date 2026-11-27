@@ -201,14 +201,13 @@ test("native product refresh lifecycle is single-listener and cleanup safe", () 
   );
 });
 
-test("pre-purchase refresh updates metadata before purchasing the approved product ID", () => {
+test("pre-purchase refresh gates the native call on the selected plan's displayed price", () => {
   const options = read("components/billing/ApplePurchaseOptions.tsx");
   assert.match(
     options,
-    /await refreshProducts\("pre_purchase"\)[\s\S]*await purchaseAppleProduct\(\{ userKey, productId \}\)/
+    /await refreshProducts\("pre_purchase"\)[\s\S]*getAppleProductPurchaseIssue\(displayedProduct, refreshed\)[\s\S]*if \(issue\) \{\s*toast\.error\(purchaseIssueMessages\[issue\]\);\s*return;\s*\}[\s\S]*await purchaseAppleProduct\(\{ userKey, productId \}\)/
   );
   assert.match(options, /onClick=\{\(\) => void purchase\(plan\.productId\)\}/);
-  assert.match(options, /refreshed\?\.products \?\? productsRef\.current/);
 });
 
 test("StoreKit refresh replaces the native Product cache with a fresh query", () => {

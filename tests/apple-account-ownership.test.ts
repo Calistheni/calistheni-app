@@ -89,10 +89,10 @@ function repository(): AppleOwnershipRepository {
       const transactionOwner = transactions.get(transactionKey);
       const originalOwner = originals.get(originalKey);
       if (transactionOwner && transactionOwner !== userId) {
-        throw new AppleTransactionOwnershipError("transaction owner mismatch");
+        throw new AppleTransactionOwnershipError("transaction_owner_mismatch", "transaction owner mismatch");
       }
       if (originalOwner && originalOwner !== userId) {
-        throw new AppleTransactionOwnershipError("original owner mismatch");
+        throw new AppleTransactionOwnershipError("purchase_chain_owner_mismatch", "original owner mismatch");
       }
       const created = !transactionOwner;
       transactions.set(transactionKey, userId);
@@ -115,7 +115,7 @@ test("verified token must match the authenticated user", async () => {
       transaction: transaction(),
       repository: repository(),
     }),
-    /belongs to another/
+    { name: "AppleTransactionOwnershipError", reason: "signed_in_account_mismatch" }
   );
 });
 
@@ -126,7 +126,7 @@ test("unknown and mismatched renewal tokens are rejected", async () => {
       transaction: transaction({ appAccountToken: "33333333-3333-4333-8333-333333333333" }),
       repository: repository(),
     }),
-    /not registered/
+    { name: "AppleTransactionOwnershipError", reason: "unregistered_account_token" }
   );
   await assert.rejects(
     synchronizeOwnedAppleTransaction({
@@ -144,7 +144,7 @@ test("unknown and mismatched renewal tokens are rejected", async () => {
       },
       repository: repository(),
     }),
-    /does not match/
+    { name: "AppleTransactionOwnershipError", reason: "renewal_token_mismatch" }
   );
 });
 
@@ -160,7 +160,8 @@ test("transaction and original-chain ownership cannot move users", async () => {
       authenticatedUserId: "user-b",
       transaction: transaction({ appAccountToken: tokenB }),
       repository: store,
-    })
+    }),
+    { name: "AppleTransactionOwnershipError", reason: "transaction_owner_mismatch" }
   );
   await assert.rejects(
     synchronizeOwnedAppleTransaction({
@@ -170,7 +171,8 @@ test("transaction and original-chain ownership cannot move users", async () => {
         appAccountToken: tokenB,
       }),
       repository: store,
-    })
+    }),
+    { name: "AppleTransactionOwnershipError", reason: "purchase_chain_owner_mismatch" }
   );
 });
 

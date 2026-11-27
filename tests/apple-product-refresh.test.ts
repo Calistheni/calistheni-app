@@ -1,8 +1,35 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createProductRefreshCoordinator } from "../lib/apple-product-refresh.ts";
+import {
+  createProductRefreshCoordinator,
+  getAppleProductPurchaseIssue,
+} from "../lib/apple-product-refresh.ts";
 
 type Product = { productId: string; displayPrice: string };
+
+test("purchase requires a successful refresh with the selected plan still available", () => {
+  const monthly = { productId: "monthly", displayPrice: "€7.99" };
+
+  assert.equal(getAppleProductPurchaseIssue(monthly, null), "refresh_failed");
+  assert.equal(getAppleProductPurchaseIssue(monthly, {
+    applied: false, products: [monthly],
+  }), "refresh_failed");
+  assert.equal(getAppleProductPurchaseIssue(monthly, {
+    applied: true, products: [],
+  }), "unavailable");
+});
+
+test("a changed selected price requires another tap with the updated price", () => {
+  const monthly = { productId: "monthly", displayPrice: "€7.99" };
+  const updatedMonthly = { ...monthly, displayPrice: "€8.99" };
+  const refreshed = {
+    applied: true,
+    products: [updatedMonthly, { productId: "yearly", displayPrice: "€59.99" }],
+  };
+
+  assert.equal(getAppleProductPurchaseIssue(monthly, refreshed), "price_changed");
+  assert.equal(getAppleProductPurchaseIssue(updatedMonthly, refreshed), null);
+});
 
 test("a successful refresh atomically replaces stale product metadata", async () => {
   let products: Product[] = [{ productId: "monthly", displayPrice: "€4.99" }];

@@ -8,6 +8,23 @@ export type ProductRefreshCoordinator<T> = {
   dispose: () => void;
 };
 
+type DisplayedProduct = { productId: string; displayPrice: string };
+
+export function getAppleProductPurchaseIssue(
+  displayedProduct: DisplayedProduct,
+  refreshed: ProductRefreshResult<DisplayedProduct> | null
+) {
+  if (!refreshed?.applied) return "refresh_failed";
+  const currentProduct = refreshed.products.find(
+    (product) => product.productId === displayedProduct.productId
+  );
+  if (!currentProduct) return "unavailable";
+  if (currentProduct.displayPrice !== displayedProduct.displayPrice) {
+    return "price_changed";
+  }
+  return null;
+}
+
 export function createProductRefreshCoordinator<T>({
   loadProducts,
   replaceProducts,

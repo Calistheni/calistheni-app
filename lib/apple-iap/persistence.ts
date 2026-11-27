@@ -69,6 +69,7 @@ export const appleOwnershipRepository: AppleOwnershipRepository = {
 
           if (existingTransaction && existingTransaction.userId !== userId) {
             throw new AppleTransactionOwnershipError(
+              "transaction_owner_mismatch",
               "Apple transaction is already associated with another user."
             );
           }
@@ -81,11 +82,13 @@ export const appleOwnershipRepository: AppleOwnershipRepository = {
                 transaction.appAccountToken)
           ) {
             throw new AppleTransactionOwnershipError(
+              "transaction_identity_conflict",
               "Apple transaction identity conflicts with its immutable history."
             );
           }
           if (existingPurchase && existingPurchase.userId !== userId) {
             throw new AppleTransactionOwnershipError(
+              "purchase_chain_owner_mismatch",
               "Apple original transaction is already associated with another user."
             );
           }
@@ -201,6 +204,7 @@ export async function applyVerifiedAppleRenewalInfo({
           const mappedUserId = account?.userId ?? deletedMapping?.accountDeletion.userId;
           if (!mappedUserId || mappedUserId !== purchase.userId) {
             throw new AppleTransactionOwnershipError(
+              "renewal_owner_mismatch",
               "Apple renewal information belongs to another user."
             );
           }
