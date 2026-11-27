@@ -109,9 +109,9 @@ if [ ! -x node_modules/.bin/cap ]; then
   exit 1
 fi
 
-echo "Synchronizing Capacitor iOS..."
-ci_stage="Capacitor iOS synchronization"
-./node_modules/.bin/cap sync ios
+echo "Synchronizing Capacitor iOS for production..."
+ci_stage="Production Capacitor iOS synchronization"
+npm run mobile:sync:ios:production
 
 ci_stage="post-sync validation"
 if [ ! -f ios/App/CapApp-SPM/Package.swift ]; then

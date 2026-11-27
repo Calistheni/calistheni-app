@@ -208,12 +208,23 @@ test("a genuine barcode miss is an explicit creation state rather than a hidden 
   ]);
 
   assert.match(route, /status: "not_found", barcode/);
-  assert.match(workflow, /data\.status === "not_found"/);
+  const lookup = workflow.slice(
+    workflow.indexOf("async function lookup"),
+    workflow.indexOf("async function photo")
+  );
+  assert.match(
+    lookup,
+    /if \(data\.status === "not_found"\) \{\s+setCode\(data\.barcode\);\s+setMissingBarcode\(true\);\s+setLookupState\("not_found"\)/
+  );
   assert.match(workflow, /type BarcodeLookupState/);
-  assert.match(workflow, /setLookupState\("not_found"\)/);
   assert.match(workflow, /!missingBarcode/);
   assert.match(workflow, /setContributionMode\("manual"\);[\s\S]*setLookupState\("creating_manual"\)/);
-  assert.match(workflow, /window\.setTimeout\(\(\) => activeController\.abort\(\), 12_000\)/);
+  assert.match(lookup, /const timeoutId = window\.setTimeout\(\(\) => controller\.abort\(\), 12_000\)/);
+  assert.match(
+    lookup,
+    /fetch\("\/api\/nutrition\/foods\/barcode\/lookup", \{[\s\S]*?signal: controller\.signal,\s+\}\)\.finally\(\(\) => window\.clearTimeout\(timeoutId\)\)/
+  );
+  assert.match(lookup, /reason\.name === "AbortError"\s*\? "Couldn’t look up this barcode in time\./);
 });
 
 test("a genuine barcode miss keeps the scanned value and offers the existing contribution path, not retry", async () => {
@@ -284,7 +295,12 @@ test("AI label contribution stops barcode capture without losing the scanned bar
     workflow.indexOf("onManual:")
   );
   assert.match(detectedBarcodeHandler, /void endNativeScannerSession\("barcode-detected"\)/);
-  assert.match(detectedBarcodeHandler, /setCode\(value\);[\s\S]*lookupRef\.current\(value\)/);
+  assert.match(detectedBarcodeHandler, /setLookupState\("detected"\);\s+lookupRef\.current\(value\)/);
+  assert.match(workflow, /lookupRef\.current = \(value\) => \{\s+void lookup\(value\)/);
+  assert.match(
+    workflow,
+    /async function lookup\(value: string\) \{[\s\S]*?const barcode = normalizeBarcode\(value\.replaceAll\(\/\\s\/g, ""\)\);[\s\S]*?setCode\(barcode\)/
+  );
   assert.doesNotMatch(
     detectedBarcodeHandler,
     /endNativeScannerSession\("barcode-detected"\)\.then/
